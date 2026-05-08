@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>手动浇水 - 原型</title>
+  <link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body>
+  <nav class="topnav">
+    <a href="dashboard.html">灌溉</a>
+    <a href="status-api.html">状态 API</a>
+    <a class="active" href="manual.html">手动</a>
+    <a href="plans.html">计划</a>
+    <a href="settings.html">配置</a>
+    <a href="records.html">记录</a>
+  </nav>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>手动浇水</h1>
+        <p class="subtitle">每路独立选择是否参与，本页统一开始；停止操作必须确认。</p>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="panel span-4">
+        <h2>当前状态</h2>
+        <div class="kv"><span>第 1 路</span><strong>关闭</strong></div>
+        <div class="kv"><span>第 2 路</span><strong>未启用</strong></div>
+        <div class="kv"><span>默认模式</span><strong>同时浇水</strong></div>
+        <div class="kv"><span>无脉冲超时</span><strong>10 秒</strong></div>
+      </div>
+
+      <div class="panel span-8">
+        <h2>启动浇水</h2>
+        <div class="field-grid">
+          <div class="field">
+            <label>执行模式</label>
+            <select><option>同时浇水</option><option>顺序浇水</option></select>
+          </div>
+          <div class="field">
+            <label>第 1 路</label>
+            <select><option>浇水</option><option>不浇水</option></select>
+          </div>
+          <div class="field">
+            <label>第 1 路时长</label>
+            <input value="5" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label>第 2 路</label>
+            <select disabled><option>未启用</option></select>
+          </div>
+          <div class="field">
+            <label>第 2 路时长</label>
+            <input value="5" disabled>
+          </div>
+        </div>
+        <div class="actions">
+          <button>开始浇水</button>
+          <button class="danger">停止全部</button>
+        </div>
+      </div>
+
+      <div class="panel span-12">
+        <h2>运行时展示</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>路</th><th>状态</th><th>目标时长</th><th>剩余时间</th><th>原始脉冲</th><th>估算水量</th><th>流速</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>第 1 路</td><td>关闭</td><td>0 分钟</td><td>0 分钟</td><td>0</td><td>0.000 L</td><td>0.00 L/min</td><td><button class="secondary">停止第 1 路</button></td></tr>
+              <tr><td>第 2 路</td><td>未启用</td><td>0 分钟</td><td>0 分钟</td><td>0</td><td>0.000 L</td><td>0.00 L/min</td><td><span class="badge">未启用</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

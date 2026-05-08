@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>浇花计划 - 原型</title>
+  <link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body>
+  <nav class="topnav">
+    <a href="dashboard.html">灌溉</a>
+    <a href="status-api.html">状态 API</a>
+    <a href="manual.html">手动</a>
+    <a class="active" href="plans.html">计划</a>
+    <a href="settings.html">配置</a>
+    <a href="records.html">记录</a>
+  </nav>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>浇花计划</h1>
+        <p class="subtitle">列表页只看计划和进入编辑，编辑表单放在独立页面。</p>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="panel span-6">
+        <h2>今日剩余计划</h2>
+        <div class="table-wrap"><table><thead><tr><th>时间</th><th>计划</th><th>模式</th><th>第 1 路</th><th>第 2 路</th></tr></thead><tbody><tr><td colspan="5">无计划</td></tr></tbody></table></div>
+      </div>
+      <div class="panel span-6">
+        <h2>明日计划</h2>
+        <div class="table-wrap"><table><thead><tr><th>时间</th><th>计划</th><th>模式</th><th>第 1 路</th><th>第 2 路</th></tr></thead><tbody><tr><td colspan="5">无计划</td></tr></tbody></table></div>
+      </div>
+      <div class="panel span-12">
+        <h2>计划列表</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>启用</th><th>名称</th><th>时间</th><th>周期</th><th>模式</th><th>第 1 路</th><th>第 2 路</th><th>操作</th></tr></thead>
+            <tbody>
+              <tr><td>否</td><td>计划 1</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+              <tr><td>否</td><td>计划 2</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+              <tr><td>否</td><td>计划 3</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+              <tr><td>否</td><td>计划 4</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+              <tr><td>否</td><td>计划 5</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+              <tr><td>否</td><td>计划 6</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+              <tr><td>否</td><td>计划 7</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+              <tr><td>否</td><td>计划 8</td><td>07:00</td><td>每周</td><td>同时浇水</td><td>5 分钟</td><td>未启用</td><td><a class="button" href="plan-edit.html">编辑</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

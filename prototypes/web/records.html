@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据记录 - 原型</title>
+  <link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body>
+  <nav class="topnav">
+    <a href="dashboard.html">灌溉</a>
+    <a href="status-api.html">状态 API</a>
+    <a href="manual.html">手动</a>
+    <a href="plans.html">计划</a>
+    <a href="settings.html">配置</a>
+    <a class="active" href="records.html">记录</a>
+  </nav>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>数据记录</h1>
+        <p class="subtitle">记录保留原始秒、原始脉冲和估算水量，方便后续分析。</p>
+      </div>
+    </header>
+
+    <section class="grid">
+      <div class="panel span-12">
+        <h2>浇水记录</h2>
+        <div class="actions"><a class="button secondary" href="/api/v1/records">JSON</a><a class="button" href="/api/v1/records.csv">CSV 导出</a></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>来源</th><th>模式</th><th>原因</th><th>路</th><th>状态</th><th>目标秒</th><th>实际秒</th><th>原始脉冲</th><th>ml</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>手动</td><td>同时</td><td>手动停止</td><td>1</td><td>已停止</td><td>60</td><td>2</td><td>0</td><td>0</td></tr>
+              <tr><td>1</td><td>手动</td><td>同时</td><td>手动停止</td><td>2</td><td>空闲</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel span-12">
+        <h2>事件记录</h2>
+        <div class="actions"><a class="button secondary" href="/api/v1/events">JSON</a><a class="button" href="/api/v1/events.csv">CSV 导出</a></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>ID</th><th>类型</th><th>来源</th><th>路</th><th>代码</th><th>V1</th><th>V2</th><th>说明</th></tr></thead>
+            <tbody>
+              <tr><td>25</td><td>config_changed</td><td>web</td><td>0</td><td>0</td><td>1</td><td>10</td><td>config saved</td></tr>
+              <tr><td>26</td><td>watering_stopped</td><td>web</td><td>1</td><td>0</td><td>60</td><td>0</td><td>manual stop</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

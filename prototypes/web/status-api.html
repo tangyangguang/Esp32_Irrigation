@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>状态 API - 原型</title>
+  <link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body>
+  <nav class="topnav">
+    <a href="dashboard.html">灌溉</a>
+    <a class="active" href="status-api.html">状态 API</a>
+    <a href="manual.html">手动</a>
+    <a href="plans.html">计划</a>
+    <a href="settings.html">配置</a>
+    <a href="records.html">记录</a>
+  </nav>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>状态 API</h1>
+        <p class="subtitle">导航中提供状态 API 入口，便于调试和外部系统读取。</p>
+      </div>
+    </header>
+    <section class="grid">
+      <div class="panel span-12">
+        <h2>GET /api/v1/status</h2>
+        <pre class="json-box">{
+  "wifi": {"ssid": "IOTHOME", "rssi": -63, "ip": "192.168.2.112"},
+  "time": {"synced": true, "current": "2026-05-07 20:27:59"},
+  "system": {"free_heap": 195276},
+  "valves": {"r1_open": false, "r2_open": false},
+  "settings": {"enabled_roads": 1, "flow_no_pulse_timeout_s": 10},
+  "watering": {"active": false}
+}</pre>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

@@ -1,0 +1,5 @@
+.pio/
+.cache/
+*.tmp
+*.log
+.DS_Store
