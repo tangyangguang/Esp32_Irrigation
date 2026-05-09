@@ -6,47 +6,53 @@
   <title>数据记录 - 原型</title>
   <link rel="stylesheet" href="assets/prototype.css">
 </head>
-<body>
+<body class="page-table">
   <nav class="topnav">
-    <a href="dashboard.html">灌溉</a>
-    <a href="status-api.html">状态 API</a>
+    <a href="dashboard.html">总览</a>
     <a href="manual.html">手动</a>
-    <a href="plans.html">计划</a>
-    <a href="settings.html">配置</a>
+    <a href="plans.html">近期计划</a>
+    <a href="plan-config.html">计划配置</a>
     <a class="active" href="records.html">记录</a>
+    <a href="settings.html">设置</a>
+    <a href="status-api.html">调试</a>
   </nav>
   <main class="shell">
     <header class="page-head">
       <div>
         <h1>数据记录</h1>
-        <p class="subtitle">记录保留原始秒、原始脉冲和估算水量，方便后续分析。</p>
+        <p class="subtitle">查看什么时候浇水、实际执行多久、为什么结束。</p>
       </div>
     </header>
 
     <section class="grid">
       <div class="panel span-12">
-        <h2>浇水记录</h2>
-        <div class="actions"><a class="button secondary" href="/api/v1/records">JSON</a><a class="button" href="/api/v1/records.csv">CSV 导出</a></div>
+        <div class="panel-titlebar">
+          <h2>浇水记录</h2>
+          <div class="panel-tools"><a class="button secondary" href="/api/v1/records">JSON</a><a class="button" href="/api/v1/records.csv">CSV 导出</a></div>
+        </div>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>ID</th><th>来源</th><th>模式</th><th>原因</th><th>路</th><th>状态</th><th>目标秒</th><th>实际秒</th><th>原始脉冲</th><th>ml</th></tr></thead>
+            <thead><tr><th>开始时间</th><th>来源</th><th>路</th><th>目标时长</th><th>实际时长</th><th>水量</th><th>结束原因</th><th>结果</th></tr></thead>
             <tbody>
-              <tr><td>1</td><td>手动</td><td>同时</td><td>手动停止</td><td>1</td><td>已停止</td><td>60</td><td>2</td><td>0</td><td>0</td></tr>
-              <tr><td>1</td><td>手动</td><td>同时</td><td>手动停止</td><td>2</td><td>空闲</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+              <tr><td>2026-05-07 20:25</td><td>手动</td><td>第 1 路</td><td>1 分钟</td><td>2 秒</td><td>0.000 L</td><td>手动停止</td><td><span class="badge">已停止</span></td></tr>
+              <tr><td>2026-05-07 07:00</td><td>计划 1</td><td>第 1 路</td><td>5 分钟</td><td>5 分钟</td><td>1.240 L</td><td>到达目标时长</td><td><span class="badge ok">完成</span></td></tr>
             </tbody>
           </table>
         </div>
       </div>
 
       <div class="panel span-12">
-        <h2>事件记录</h2>
-        <div class="actions"><a class="button secondary" href="/api/v1/events">JSON</a><a class="button" href="/api/v1/events.csv">CSV 导出</a></div>
+        <div class="panel-titlebar">
+          <h2>系统事件</h2>
+          <div class="panel-tools"><a class="button secondary" href="/api/v1/events">JSON</a><a class="button" href="/api/v1/events.csv">CSV 导出</a></div>
+        </div>
+        <p class="note">系统事件来自 EventStore，用于排查启动、配置变更、计划变更、浇水开始/停止/错误、漏水告警和告警解除。</p>
         <div class="table-wrap">
           <table>
-            <thead><tr><th>ID</th><th>类型</th><th>来源</th><th>路</th><th>代码</th><th>V1</th><th>V2</th><th>说明</th></tr></thead>
+            <thead><tr><th>时间</th><th>类型</th><th>来源</th><th>影响对象</th><th>说明</th><th>建议动作</th></tr></thead>
             <tbody>
-              <tr><td>25</td><td>config_changed</td><td>web</td><td>0</td><td>0</td><td>1</td><td>10</td><td>config saved</td></tr>
-              <tr><td>26</td><td>watering_stopped</td><td>web</td><td>1</td><td>0</td><td>60</td><td>0</td><td>manual stop</td></tr>
+              <tr><td>2026-05-07 20:26</td><td>配置变更</td><td>Web</td><td>设备</td><td>保存设备配置</td><td>-</td></tr>
+              <tr><td>2026-05-07 20:25</td><td>浇水停止</td><td>Web</td><td>第 1 路</td><td>用户手动停止</td><td>无需处理</td></tr>
             </tbody>
           </table>
         </div>

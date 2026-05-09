@@ -6,14 +6,15 @@
   <title>手动浇水 - 原型</title>
   <link rel="stylesheet" href="assets/prototype.css">
 </head>
-<body>
+<body class="page-form">
   <nav class="topnav">
-    <a href="dashboard.html">灌溉</a>
-    <a href="status-api.html">状态 API</a>
+    <a href="dashboard.html">总览</a>
     <a class="active" href="manual.html">手动</a>
-    <a href="plans.html">计划</a>
-    <a href="settings.html">配置</a>
+    <a href="plans.html">近期计划</a>
+    <a href="plan-config.html">计划配置</a>
     <a href="records.html">记录</a>
+    <a href="settings.html">设置</a>
+    <a href="status-api.html">调试</a>
   </nav>
   <main class="shell">
     <header class="page-head">
@@ -25,53 +26,62 @@
 
     <section class="grid">
       <div class="panel span-4">
-        <h2>当前状态</h2>
-        <div class="kv"><span>第 1 路</span><strong>关闭</strong></div>
-        <div class="kv"><span>第 2 路</span><strong>未启用</strong></div>
-        <div class="kv"><span>默认模式</span><strong>同时浇水</strong></div>
-        <div class="kv"><span>无脉冲超时</span><strong>10 秒</strong></div>
+        <h2>浇水状态</h2>
+        <div class="overview-status status-compact">
+          <div><span>当前浇水</span><strong>未运行</strong></div>
+        </div>
+        <div class="valve-matrix" role="table" aria-label="浇水状态">
+          <div class="matrix-head" role="columnheader">项目</div>
+          <div class="matrix-head" role="columnheader">第 1 路</div>
+          <div class="matrix-head" role="columnheader">第 2 路</div>
+          <div class="matrix-label" role="rowheader">状态</div>
+          <strong>关闭</strong>
+          <strong>未启用</strong>
+          <div class="matrix-label" role="rowheader">目标</div>
+          <strong>0 分钟</strong>
+          <strong>-</strong>
+          <div class="matrix-label" role="rowheader">剩余</div>
+          <strong>0 分钟</strong>
+          <strong>-</strong>
+          <div class="matrix-label" role="rowheader">水量</div>
+          <strong>0.000 L</strong>
+          <strong>-</strong>
+          <div class="matrix-label" role="rowheader">流速</div>
+          <strong>0.00 L/min</strong>
+          <strong>-</strong>
+        </div>
+        <div class="valve-action valve-action-row">
+          <button class="danger" disabled>停止全部</button>
+          <button class="danger" disabled>停止第 1 路</button>
+          <button class="danger" disabled>停止第 2 路</button>
+        </div>
       </div>
 
       <div class="panel span-8">
         <h2>启动浇水</h2>
-        <div class="field-grid">
+        <div class="notice inline-notice">
+          <strong>上次操作</strong>
+          <p class="note">已停止第 1 路，当前设备空闲。</p>
+        </div>
+        <div class="field-grid single-field">
           <div class="field">
             <label>执行模式</label>
             <select><option>同时浇水</option><option>顺序浇水</option></select>
           </div>
-          <div class="field">
-            <label>第 1 路</label>
-            <select><option>浇水</option><option>不浇水</option></select>
-          </div>
-          <div class="field">
-            <label>第 1 路时长</label>
-            <input value="5" inputmode="decimal">
-          </div>
-          <div class="field">
-            <label>第 2 路</label>
-            <select disabled><option>未启用</option></select>
-          </div>
-          <div class="field">
-            <label>第 2 路时长</label>
-            <input value="5" disabled>
-          </div>
+        </div>
+        <div class="valve-matrix config-matrix" role="table" aria-label="启动浇水配置">
+          <div class="matrix-head" role="columnheader">项目</div>
+          <div class="matrix-head" role="columnheader">第 1 路</div>
+          <div class="matrix-head" role="columnheader">第 2 路</div>
+          <div class="matrix-label" role="rowheader">参与</div>
+          <select><option>浇水</option><option>不浇水</option></select>
+          <select disabled><option>未启用</option></select>
+          <div class="matrix-label" role="rowheader">时长</div>
+          <input value="5" inputmode="decimal" aria-label="第 1 路时长">
+          <input value="5" disabled aria-label="第 2 路时长">
         </div>
         <div class="actions">
-          <button>开始浇水</button>
-          <button class="danger">停止全部</button>
-        </div>
-      </div>
-
-      <div class="panel span-12">
-        <h2>运行时展示</h2>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>路</th><th>状态</th><th>目标时长</th><th>剩余时间</th><th>原始脉冲</th><th>估算水量</th><th>流速</th><th>操作</th></tr></thead>
-            <tbody>
-              <tr><td>第 1 路</td><td>关闭</td><td>0 分钟</td><td>0 分钟</td><td>0</td><td>0.000 L</td><td>0.00 L/min</td><td><button class="secondary">停止第 1 路</button></td></tr>
-              <tr><td>第 2 路</td><td>未启用</td><td>0 分钟</td><td>0 分钟</td><td>0</td><td>0.000 L</td><td>0.00 L/min</td><td><span class="badge">未启用</span></td></tr>
-            </tbody>
-          </table>
+          <button onclick="return confirm('确认开始手动浇水？')">开始浇水</button>
         </div>
       </div>
     </section>

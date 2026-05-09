@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 namespace {
 
@@ -41,12 +42,6 @@ SettingsStore::ExecutionMode clampMode(int32_t value) {
         : SettingsStore::MODE_SIMULTANEOUS;
 }
 
-PlanStore::RepeatMode clampRepeatMode(int32_t value) {
-    return value == PlanStore::REPEAT_INTERVAL
-        ? PlanStore::REPEAT_INTERVAL
-        : PlanStore::REPEAT_WEEKLY;
-}
-
 PlanStore::Plan defaultPlan() {
     PlanStore::Plan plan = {};
     plan.enabled = false;
@@ -54,10 +49,39 @@ PlanStore::Plan defaultPlan() {
     plan.roadSec[0] = 300;
     plan.roadSec[1] = 0;
     plan.mode = SettingsStore::MODE_SIMULTANEOUS;
-    plan.repeatMode = PlanStore::REPEAT_WEEKLY;
-    plan.weekMask = 0x7F;
-    plan.intervalDays = 1;
+    plan.cycleDays = 1;
+    plan.cycleMask = 0x01;
+    plan.cycleStartYmd = 20260503UL;
     return plan;
+}
+
+uint8_t clampCycleDays(int32_t value) {
+    if (value < 1 || value > 30) {
+        return 1;
+    }
+    return static_cast<uint8_t>(value);
+}
+
+uint32_t validCycleMask(uint8_t days) {
+    return days >= 32 ? 0xFFFFFFFFUL : ((1UL << days) - 1UL);
+}
+
+uint32_t clampCycleMask(int32_t value, uint8_t days) {
+    const uint32_t allowed = validCycleMask(days);
+    const uint32_t mask = static_cast<uint32_t>(value) & allowed;
+    return mask == 0 ? 0x01 : mask;
+}
+
+bool ymdToTime(uint32_t ymd, time_t* out) {
+    if (!out || ymd < 20000101UL) {
+        return false;
+    }
+    tm value = {};
+    value.tm_year = static_cast<int>(ymd / 10000UL) - 1900;
+    value.tm_mon = static_cast<int>((ymd / 100UL) % 100UL) - 1;
+    value.tm_mday = static_cast<int>(ymd % 100UL);
+    *out = mktime(&value);
+    return *out > 0;
 }
 
 }
@@ -73,12 +97,12 @@ void begin() {
         plan.roadSec[0] = clampDuration(getInt(i, "r1", plan.roadSec[0]));
         plan.roadSec[1] = clampDuration(getInt(i, "r2", plan.roadSec[1]));
         plan.mode = clampMode(getInt(i, "mode", SettingsStore::MODE_SIMULTANEOUS));
-        plan.repeatMode = clampRepeatMode(getInt(i, "rep", REPEAT_WEEKLY));
-        int32_t mask = getInt(i, "week", plan.weekMask);
-        plan.weekMask = mask >= 0 && mask <= 0x7F ? static_cast<uint8_t>(mask) : 0x7F;
-        int32_t interval = getInt(i, "int", plan.intervalDays);
-        plan.intervalDays = interval >= 1 && interval <= 30 ? static_cast<uint8_t>(interval) : 1;
-        plan.skipYmd = static_cast<uint32_t>(getInt(i, "skip", 0));
+        int32_t legacyRepeat = getInt(i, "rep", 0);
+        int32_t legacyWeekMask = getInt(i, "week", 0x7F);
+        int32_t legacyInterval = getInt(i, "int", 1);
+        plan.cycleDays = clampCycleDays(getInt(i, "cycle_d", legacyRepeat == 1 ? legacyInterval : 7));
+        plan.cycleMask = clampCycleMask(getInt(i, "cycle_m", legacyRepeat == 1 ? 0x01 : legacyWeekMask), plan.cycleDays);
+        plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", 20260503));
         plan.lastRunYmd = static_cast<uint32_t>(getInt(i, "last", 0));
         g_plans[i] = validate(plan) ? plan : defaultPlan();
     }
@@ -113,10 +137,9 @@ bool set(uint8_t index, const Plan& plan) {
                     setInt(index, "r1", plan.roadSec[0]) &&
                     setInt(index, "r2", plan.roadSec[1]) &&
                     setInt(index, "mode", static_cast<int32_t>(plan.mode)) &&
-                    setInt(index, "rep", static_cast<int32_t>(plan.repeatMode)) &&
-                    setInt(index, "week", plan.weekMask) &&
-                    setInt(index, "int", plan.intervalDays) &&
-                    setInt(index, "skip", static_cast<int32_t>(plan.skipYmd)) &&
+                    setInt(index, "cycle_d", plan.cycleDays) &&
+                    setInt(index, "cycle_m", static_cast<int32_t>(plan.cycleMask)) &&
+                    setInt(index, "cycle_s", static_cast<int32_t>(plan.cycleStartYmd)) &&
                     setInt(index, "last", static_cast<int32_t>(plan.lastRunYmd));
     if (ok) {
         g_plans[index] = plan;
@@ -135,29 +158,12 @@ bool setLastRunYmd(uint8_t index, uint32_t ymd) {
     return true;
 }
 
-bool setSkipYmd(uint8_t index, uint32_t ymd) {
-    if (index >= MaxPlans) {
-        return false;
-    }
-    if (!setInt(index, "skip", static_cast<int32_t>(ymd))) {
-        return false;
-    }
-    g_plans[index].skipYmd = ymd;
-    return true;
-}
-
-bool clearSkipYmd(uint8_t index) {
-    return setSkipYmd(index, 0);
-}
-
 bool validate(const Plan& plan) {
-    if (plan.minuteOfDay >= 1440 || plan.intervalDays < 1 || plan.intervalDays > 30 || plan.weekMask > 0x7F) {
+    if (plan.minuteOfDay >= 1440 || plan.cycleDays < 1 || plan.cycleDays > 30 || plan.cycleMask == 0 ||
+        (plan.cycleMask & ~validCycleMask(plan.cycleDays)) != 0 || plan.cycleStartYmd < 20000101UL) {
         return false;
     }
     if (plan.mode != SettingsStore::MODE_SIMULTANEOUS && plan.mode != SettingsStore::MODE_SEQUENTIAL) {
-        return false;
-    }
-    if (plan.repeatMode != REPEAT_WEEKLY && plan.repeatMode != REPEAT_INTERVAL) {
         return false;
     }
     bool any = false;
@@ -172,23 +178,15 @@ bool validate(const Plan& plan) {
     return any || !plan.enabled;
 }
 
-const char* repeatModeName(RepeatMode mode) {
-    return mode == REPEAT_INTERVAL ? "interval" : "weekly";
-}
-
-bool parseRepeatMode(const char* text, RepeatMode* mode) {
-    if (!text || !mode) {
+bool shouldRunOnDate(const Plan& plan, uint32_t ymd) {
+    time_t start = 0;
+    time_t target = 0;
+    if (!plan.enabled || !validate(plan) || !ymdToTime(plan.cycleStartYmd, &start) || !ymdToTime(ymd, &target) || target < start) {
         return false;
     }
-    if (strcmp(text, "weekly") == 0 || strcmp(text, "week") == 0) {
-        *mode = REPEAT_WEEKLY;
-        return true;
-    }
-    if (strcmp(text, "interval") == 0 || strcmp(text, "every_n_days") == 0) {
-        *mode = REPEAT_INTERVAL;
-        return true;
-    }
-    return false;
+    const uint32_t days = static_cast<uint32_t>((target - start) / 86400L);
+    const uint8_t dayInCycle = static_cast<uint8_t>(days % plan.cycleDays);
+    return (plan.cycleMask & (1UL << dayInCycle)) != 0;
 }
 
 }

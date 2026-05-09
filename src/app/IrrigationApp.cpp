@@ -10,6 +10,7 @@
 #include "domain/WateringPlanScheduler.h"
 #include "domain/WateringSession.h"
 #include "storage/PlanStore.h"
+#include "storage/PlanSkipStore.h"
 #include "storage/EventStore.h"
 #include "storage/RecordStore.h"
 #include "storage/SettingsStore.h"
@@ -25,6 +26,7 @@ void beginHardwareSafety() {
 void begin() {
     SettingsStore::begin();
     PlanStore::begin();
+    PlanSkipStore::begin();
     RecordStore::begin();
     EventStore::begin();
     (void)EventStore::append(EventStore::TYPE_BOOT, EventStore::SOURCE_SYSTEM, 0, 0, 0, 0, "app begin");

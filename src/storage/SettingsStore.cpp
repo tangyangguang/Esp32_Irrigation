@@ -11,6 +11,7 @@ namespace {
 
 static constexpr const char* kNamespace = "irr_cfg";
 static constexpr const char* kKeyEnabledRoads = "roads";
+static constexpr const char* kKeyRoadEnabledMask = "road_mask";
 static constexpr const char* kKeyDefaultMode = "mode";
 static constexpr const char* kKeyQuickR1 = "quick_r1";
 static constexpr const char* kKeyQuickR2 = "quick_r2";
@@ -21,7 +22,7 @@ static constexpr const char* kKeyKeypadLocked = "key_lock";
 static constexpr const char* kDefaultRoadNames[] = {"Road 1", "Road 2"};
 
 SettingsStore::Settings g_settings = {
-    IrrigationPins::DefaultEnabledRoads,
+    0x01,
     SettingsStore::MODE_SIMULTANEOUS,
     {300, 300},
     10,
@@ -36,7 +37,7 @@ SettingsStore::Settings g_settings = {
 
 SettingsStore::Settings defaultSettings() {
     SettingsStore::Settings settings = {
-        IrrigationPins::DefaultEnabledRoads,
+        0x01,
         SettingsStore::MODE_SIMULTANEOUS,
         {300, 300},
         10,
@@ -51,15 +52,20 @@ SettingsStore::Settings defaultSettings() {
     return settings;
 }
 
-uint8_t clampRoads(int32_t value) {
-    if (value < 1 || value > IrrigationPins::MaxRoads) {
-        return IrrigationPins::DefaultEnabledRoads;
+uint8_t enabledRoadsToMask(int32_t value) {
+    if (value >= 2) {
+        return 0x03;
     }
-    return static_cast<uint8_t>(value);
+    return 0x01;
 }
 
-bool validRoads(uint8_t value) {
-    return value >= 1 && value <= IrrigationPins::MaxRoads;
+uint8_t clampRoadMask(int32_t value) {
+    const uint8_t mask = static_cast<uint8_t>(value) & 0x03;
+    return mask == 0 ? 0x01 : mask;
+}
+
+bool validRoadMask(uint8_t value) {
+    return (value & 0x03) != 0 && (value & ~0x03) == 0;
 }
 
 bool validDuration(uint16_t value) {
@@ -144,7 +150,8 @@ uint8_t clampLeakPulses(int32_t value) {
 namespace SettingsStore {
 
 void begin() {
-    g_settings.enabledRoads = clampRoads(Esp32BaseConfig::getInt(kNamespace, kKeyEnabledRoads, IrrigationPins::DefaultEnabledRoads));
+    const int32_t legacyRoads = Esp32BaseConfig::getInt(kNamespace, kKeyEnabledRoads, IrrigationPins::DefaultEnabledRoads);
+    g_settings.roadEnabledMask = clampRoadMask(Esp32BaseConfig::getInt(kNamespace, kKeyRoadEnabledMask, enabledRoadsToMask(legacyRoads)));
     g_settings.defaultMode = clampMode(Esp32BaseConfig::getInt(kNamespace, kKeyDefaultMode, MODE_SIMULTANEOUS));
     g_settings.quickDurationSec[0] = clampDuration(Esp32BaseConfig::getInt(kNamespace, kKeyQuickR1, 300));
     g_settings.quickDurationSec[1] = clampDuration(Esp32BaseConfig::getInt(kNamespace, kKeyQuickR2, 300));
@@ -162,8 +169,8 @@ void begin() {
         roadKey(key, sizeof(key), road, "cal");
         g_settings.roads[i].calibrationX1000 = clampCalibration(Esp32BaseConfig::getInt(kNamespace, key, 1000));
     }
-    ESP32BASE_LOG_I("settings", "loaded roads=%u mode=%s quick=%u/%u flowTimeout=%u keypadLocked=%s",
-                    static_cast<unsigned>(g_settings.enabledRoads),
+    ESP32BASE_LOG_I("settings", "loaded roadMask=0x%02x mode=%s quick=%u/%u flowTimeout=%u keypadLocked=%s",
+                    static_cast<unsigned>(g_settings.roadEnabledMask),
                     executionModeName(g_settings.defaultMode),
                     static_cast<unsigned>(g_settings.quickDurationSec[0]),
                     static_cast<unsigned>(g_settings.quickDurationSec[1]),
@@ -185,11 +192,24 @@ bool clear() {
 }
 
 uint8_t enabledRoads() {
-    return g_settings.enabledRoads;
+    uint8_t count = 0;
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        if (isRoadEnabled(road)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+uint8_t roadEnabledMask() {
+    return g_settings.roadEnabledMask;
 }
 
 bool isRoadEnabled(uint8_t road) {
-    return road >= 1 && road <= g_settings.enabledRoads;
+    if (road < 1 || road > IrrigationPins::MaxRoads) {
+        return false;
+    }
+    return (g_settings.roadEnabledMask & (1U << (road - 1))) != 0;
 }
 
 ExecutionMode defaultExecutionMode() {
@@ -216,13 +236,32 @@ bool parseExecutionMode(const char* text, ExecutionMode* mode) {
 }
 
 bool setEnabledRoads(uint8_t roads) {
-    if (!validRoads(roads)) {
+    return setRoadEnabledMask(enabledRoadsToMask(roads));
+}
+
+bool setRoadEnabled(uint8_t road, bool enabled) {
+    if (road < 1 || road > IrrigationPins::MaxRoads) {
         return false;
     }
-    if (!Esp32BaseConfig::setInt(kNamespace, kKeyEnabledRoads, roads)) {
+    uint8_t mask = g_settings.roadEnabledMask;
+    const uint8_t bit = static_cast<uint8_t>(1U << (road - 1));
+    if (enabled) {
+        mask |= bit;
+    } else {
+        mask &= static_cast<uint8_t>(~bit);
+    }
+    return setRoadEnabledMask(mask);
+}
+
+bool setRoadEnabledMask(uint8_t mask) {
+    mask &= 0x03;
+    if (!validRoadMask(mask)) {
         return false;
     }
-    g_settings.enabledRoads = roads;
+    if (!Esp32BaseConfig::setInt(kNamespace, kKeyRoadEnabledMask, mask)) {
+        return false;
+    }
+    g_settings.roadEnabledMask = mask;
     return true;
 }
 

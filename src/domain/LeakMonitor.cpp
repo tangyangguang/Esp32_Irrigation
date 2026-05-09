@@ -62,7 +62,11 @@ void handle() {
 
     const SettingsStore::Settings& settings = SettingsStore::current();
     const uint32_t windowMs = static_cast<uint32_t>(settings.idleLeakWindowSec) * 1000UL;
-    for (uint8_t i = 0; i < settings.enabledRoads; ++i) {
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        if (!SettingsStore::isRoadEnabled(i + 1)) {
+            resetWindow(i, now);
+            continue;
+        }
         if (now - g_roads[i].windowStartedMs < windowMs) {
             continue;
         }

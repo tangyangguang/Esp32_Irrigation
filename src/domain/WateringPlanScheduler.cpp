@@ -7,6 +7,7 @@
 #include "domain/WateringSession.h"
 #include "storage/EventStore.h"
 #include "storage/PlanStore.h"
+#include "storage/PlanSkipStore.h"
 #include "storage/RecordStore.h"
 #include "storage/SettingsStore.h"
 
@@ -29,40 +30,11 @@ bool readLocalTime(tm* out) {
     return localtime_r(&now, out) != nullptr;
 }
 
-bool weeklyMatches(const PlanStore::Plan& plan, uint8_t weekDay) {
-    return (plan.weekMask & (1U << weekDay)) != 0;
-}
-
-bool intervalMatches(const PlanStore::Plan& plan, uint32_t today) {
-    if (plan.lastRunYmd == 0) {
-        return true;
-    }
-    tm last = {};
-    last.tm_year = static_cast<int>(plan.lastRunYmd / 10000UL) - 1900;
-    last.tm_mon = static_cast<int>((plan.lastRunYmd / 100UL) % 100UL) - 1;
-    last.tm_mday = static_cast<int>(plan.lastRunYmd % 100UL);
-    const time_t lastTime = mktime(&last);
-
-    tm now = {};
-    now.tm_year = static_cast<int>(today / 10000UL) - 1900;
-    now.tm_mon = static_cast<int>((today / 100UL) % 100UL) - 1;
-    now.tm_mday = static_cast<int>(today % 100UL);
-    const time_t nowTime = mktime(&now);
-    if (lastTime <= 0 || nowTime <= lastTime) {
+bool shouldTrigger(uint8_t index, const PlanStore::Plan& plan, uint16_t minuteOfDay, uint32_t today) {
+    if (!plan.enabled || plan.minuteOfDay != minuteOfDay || plan.lastRunYmd == today || PlanSkipStore::isSkipped(index, today)) {
         return false;
     }
-    const uint32_t days = static_cast<uint32_t>((nowTime - lastTime) / 86400L);
-    return days >= plan.intervalDays;
-}
-
-bool shouldTrigger(const PlanStore::Plan& plan, const tm& now, uint16_t minuteOfDay, uint32_t today) {
-    if (!plan.enabled || plan.minuteOfDay != minuteOfDay || plan.lastRunYmd == today || plan.skipYmd == today) {
-        return false;
-    }
-    if (plan.repeatMode == PlanStore::REPEAT_WEEKLY) {
-        return weeklyMatches(plan, static_cast<uint8_t>(now.tm_wday));
-    }
-    return intervalMatches(plan, today);
+    return PlanStore::shouldRunOnDate(plan, today);
 }
 
 void triggerPlan(uint8_t index, const PlanStore::Plan& plan, uint32_t today) {
@@ -73,7 +45,7 @@ void triggerPlan(uint8_t index, const PlanStore::Plan& plan, uint32_t today) {
         record.source = static_cast<uint8_t>(RecordStore::SOURCE_PLAN);
         record.mode = static_cast<uint8_t>(plan.mode);
         record.stopReason = static_cast<uint8_t>(WateringSession::REASON_SKIPPED);
-        record.enabledRoads = SettingsStore::current().enabledRoads;
+        record.enabledRoads = SettingsStore::enabledRoads();
         record.flowNoPulseTimeoutSec = SettingsStore::current().flowNoPulseTimeoutSec;
         for (uint8_t i = 0; i < 2; ++i) {
             record.roads[i].state = static_cast<uint8_t>(WateringSession::ROAD_STOPPED);
@@ -133,7 +105,7 @@ void handle() {
 
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
-        if (shouldTrigger(plan, now, minuteOfDay, today)) {
+        if (shouldTrigger(i, plan, minuteOfDay, today)) {
             triggerPlan(i, plan, today);
         }
     }

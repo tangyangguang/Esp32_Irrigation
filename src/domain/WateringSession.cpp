@@ -89,7 +89,7 @@ void appendRecord(WateringSession::StopReason reason) {
     record.source = static_cast<uint8_t>(g_session.source);
     record.mode = static_cast<uint8_t>(g_session.mode);
     record.stopReason = static_cast<uint8_t>(reason);
-    record.enabledRoads = SettingsStore::current().enabledRoads;
+    record.enabledRoads = SettingsStore::enabledRoads();
     record.flowNoPulseTimeoutSec = SettingsStore::current().flowNoPulseTimeoutSec;
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         record.roads[i].state = static_cast<uint8_t>(g_session.roads[i].state);

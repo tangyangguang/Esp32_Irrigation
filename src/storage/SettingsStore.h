@@ -16,7 +16,7 @@ struct RoadConfig {
 };
 
 struct Settings {
-    uint8_t enabledRoads;
+    uint8_t roadEnabledMask;
     ExecutionMode defaultMode;
     uint16_t quickDurationSec[2];
     uint8_t flowNoPulseTimeoutSec;
@@ -31,12 +31,15 @@ const Settings& current();
 bool clear();
 
 uint8_t enabledRoads();
+uint8_t roadEnabledMask();
 bool isRoadEnabled(uint8_t road);
 ExecutionMode defaultExecutionMode();
 const char* executionModeName(ExecutionMode mode);
 bool parseExecutionMode(const char* text, ExecutionMode* mode);
 
 bool setEnabledRoads(uint8_t roads);
+bool setRoadEnabled(uint8_t road, bool enabled);
+bool setRoadEnabledMask(uint8_t mask);
 bool setDefaultExecutionMode(ExecutionMode mode);
 bool setQuickDurationSec(uint8_t road, uint16_t seconds);
 bool setFlowNoPulseTimeoutSec(uint8_t seconds);

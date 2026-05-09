@@ -3,82 +3,75 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>灌溉首页 - 原型</title>
+  <title>总览 - 原型</title>
   <link rel="stylesheet" href="assets/prototype.css">
 </head>
-<body>
+<body class="page-overview">
   <nav class="topnav">
-    <a class="active" href="dashboard.html">灌溉</a>
-    <a href="status-api.html">状态 API</a>
+    <a class="active" href="dashboard.html">总览</a>
     <a href="manual.html">手动</a>
-    <a href="plans.html">计划</a>
-    <a href="settings.html">配置</a>
+    <a href="plans.html">近期计划</a>
+    <a href="plan-config.html">计划配置</a>
     <a href="records.html">记录</a>
+    <a href="settings.html">设置</a>
+    <a href="status-api.html">调试</a>
   </nav>
   <main class="shell">
     <header class="page-head">
       <div>
-        <h1>灌溉首页</h1>
-        <p class="subtitle">只放需要常看的信息：设备、阀门、异常、后续计划。</p>
+        <h1>总览</h1>
+        <p class="subtitle">只看系统状态、阀门状态和需要立即注意的信息。</p>
       </div>
     </header>
 
     <section class="grid">
-      <div class="panel span-4">
+      <div class="panel span-6">
         <h2>设备状态</h2>
-        <div class="kv"><span>WiFi 名称</span><strong>IOTHOME</strong></div>
-        <div class="kv"><span>信号质量</span><strong>-63 dBm</strong></div>
-        <div class="kv"><span>IP 地址</span><strong>192.168.2.112</strong></div>
-        <div class="kv"><span>当前时间</span><strong>2026-05-07 20:27:59</strong></div>
-        <div class="kv"><span>启用路数</span><strong>1 路</strong></div>
-        <div class="kv"><span>默认模式</span><strong>同时浇水</strong></div>
-        <div class="kv"><span>剩余内存</span><strong>190.7 KB</strong></div>
-      </div>
-
-      <div class="panel span-4">
-        <h2>阀门状态</h2>
-        <div class="stack">
-          <div class="road-card">
-            <strong>第 1 路：关闭</strong>
-            <div class="kv"><span>默认时长</span><strong>5 分钟</strong></div>
-            <div class="kv"><span>剩余时间</span><strong>0 分钟</strong></div>
-            <div class="kv"><span>原始脉冲</span><strong>0</strong></div>
-            <div class="kv"><span>估算水量</span><strong>0.000 L</strong></div>
-            <div class="kv"><span>当前流速</span><strong>0.00 L/min</strong></div>
-            <div class="actions"><button class="secondary">停止第 1 路</button></div>
-          </div>
-          <div class="road-card">
-            <strong>第 2 路：未启用</strong>
-            <div class="kv"><span>默认时长</span><strong>5 分钟</strong></div>
-            <div class="kv"><span>当前流速</span><strong>0.00 L/min</strong></div>
-            <div class="actions"><span class="badge">未启用</span></div>
-          </div>
+        <div class="overview-status">
+          <div><span>设备</span><strong><span class="badge ok">正常</span></strong></div>
+          <div><span>当前</span><strong>空闲</strong></div>
+          <div><span>WiFi</span><strong>IOTHOME</strong></div>
+          <div><span>信号</span><strong>良好（-63 dBm）</strong></div>
         </div>
       </div>
 
-      <div class="panel span-4">
-        <h2>异常与事件提示</h2>
+      <div class="panel span-6">
+        <h2>浇水状态</h2>
+        <div class="overview-status status-compact">
+          <div><span>当前浇水</span><strong>未运行</strong></div>
+        </div>
+        <div class="valve-matrix" role="table" aria-label="浇水状态">
+          <div class="matrix-head" role="columnheader">项目</div>
+          <div class="matrix-head" role="columnheader">第 1 路</div>
+          <div class="matrix-head" role="columnheader">第 2 路</div>
+          <div class="matrix-label" role="rowheader">状态</div>
+          <strong>关闭</strong>
+          <strong>未启用</strong>
+          <div class="matrix-label" role="rowheader">目标</div>
+          <strong>0 分钟</strong>
+          <strong>-</strong>
+          <div class="matrix-label" role="rowheader">剩余</div>
+          <strong>0 分钟</strong>
+          <strong>-</strong>
+          <div class="matrix-label" role="rowheader">水量</div>
+          <strong>0.000 L</strong>
+          <strong>-</strong>
+          <div class="matrix-label" role="rowheader">流速</div>
+          <strong>0.00 L/min</strong>
+          <strong>-</strong>
+        </div>
+        <div class="valve-action valve-action-row">
+          <button class="danger" disabled>停止全部</button>
+          <button class="danger" disabled>停止第 1 路</button>
+          <button class="danger" disabled>停止第 2 路</button>
+        </div>
+      </div>
+
+      <div class="panel span-6">
+        <h2>异常</h2>
         <div class="notice">
-          <strong>无当前异常</strong>
-          <p class="note">历史事件在记录页查看。只有存在当前异常时，才显示“解除异常提示”。</p>
-        </div>
-      </div>
-
-      <div class="panel span-12">
-        <h2>后续计划</h2>
-        <h3>今日剩余</h3>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>时间</th><th>计划</th><th>模式</th><th>第 1 路</th><th>第 2 路</th></tr></thead>
-            <tbody><tr><td colspan="5">无计划</td></tr></tbody>
-          </table>
-        </div>
-        <h3>明日</h3>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>时间</th><th>计划</th><th>模式</th><th>第 1 路</th><th>第 2 路</th></tr></thead>
-            <tbody><tr><td colspan="5">无计划</td></tr></tbody>
-          </table>
+          <strong><span class="badge ok">无当前异常</span></strong>
+          <p class="note">存在异常时在这里显示原因和状态，历史事件在记录页查看。</p>
         </div>
       </div>
     </section>

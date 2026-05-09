@@ -8,32 +8,33 @@
 </head>
 <body>
   <nav class="topnav">
-    <a class="active" href="dashboard.html">灌溉</a>
-    <a href="status-api.html">状态 API</a>
+    <a href="dashboard.html">总览</a>
     <a href="manual.html">手动</a>
-    <a href="plans.html">计划</a>
-    <a href="settings.html">配置</a>
+    <a href="plans.html">近期计划</a>
+    <a href="plan-config.html">计划配置</a>
     <a href="records.html">记录</a>
+    <a href="settings.html">设置</a>
+    <a href="status-api.html">调试</a>
   </nav>
   <main class="shell">
     <header class="page-head">
       <div>
         <h1>灌溉控制器 Web 原型</h1>
-        <p class="subtitle">按当前固件页面能力重新设计，简洁、响应式、中文界面。</p>
+        <p class="subtitle">按实际使用频率组织页面：总览看状态，手动紧跟首页，近期计划和计划配置分开。</p>
       </div>
     </header>
 
     <section class="grid">
       <div class="panel span-8">
         <h2>原型说明</h2>
-        <div class="kv"><span>对应固件导航</span><strong>灌溉 / 状态 API / 手动 / 计划 / 配置 / 记录</strong></div>
-        <div class="kv"><span>页面目标</span><strong>电脑宽屏可多列浏览，手机单列清晰操作</strong></div>
+        <div class="kv"><span>对应导航</span><strong>总览 / 手动 / 近期计划 / 计划配置 / 记录 / 设置 / 调试</strong></div>
+        <div class="kv"><span>首页职责</span><strong>只回答设备是否正常、是否正在浇水、能否立即停止、有没有异常</strong></div>
         <div class="kv"><span>交互边界</span><strong>所有改变状态的操作均需确认</strong></div>
         <div class="kv"><span>实现方式</span><strong>静态 HTML/CSS，不接入固件</strong></div>
       </div>
       <div class="panel span-4">
         <h2>设计原则</h2>
-        <p class="note">不做复杂 SPA，不堆装饰。首页看状态，手动页做操作，计划编辑进独立页，系统能力通过 Esp32Base 入口提供。</p>
+        <p class="note">不做复杂 SPA，不堆装饰。顶部导航负责去向，总览页不再重复放快捷入口。</p>
       </div>
       <div class="panel span-12">
         <h2>页面清单</h2>
@@ -41,13 +42,14 @@
           <table>
             <thead><tr><th>页面</th><th>功能</th><th>原型</th></tr></thead>
             <tbody>
-              <tr><td>首页</td><td>设备状态、阀门状态、异常提示、后续计划</td><td><a href="dashboard.html">打开</a></td></tr>
-              <tr><td>状态 API</td><td>展示当前 JSON 状态结构</td><td><a href="status-api.html">打开</a></td></tr>
-              <tr><td>手动</td><td>启动浇水、停止某一路、停止全部、运行时状态</td><td><a href="manual.html">打开</a></td></tr>
-              <tr><td>计划</td><td>今日/明日计划预览、8 个计划列表</td><td><a href="plans.html">打开</a></td></tr>
-              <tr><td>编辑计划</td><td>独立计划编辑页面</td><td><a href="plan-edit.html">打开</a></td></tr>
-              <tr><td>配置</td><td>基础、每路、水流、按键、认证、维护</td><td><a href="settings.html">打开</a></td></tr>
-              <tr><td>记录</td><td>浇水记录、事件记录、CSV 导出</td><td><a href="records.html">打开</a></td></tr>
+              <tr><td>总览</td><td>设备状态、浇水状态、停止操作和异常提示</td><td><a href="dashboard.html">打开</a></td></tr>
+              <tr><td>手动</td><td>查看浇水状态、按路选择时长并开始手动浇水</td><td><a href="manual.html">打开</a></td></tr>
+              <tr><td>近期计划</td><td>昨日、今日、明日、后天的计划执行状态，可跳过某次或某天计划</td><td><a href="plans.html">打开</a></td></tr>
+              <tr><td>计划配置</td><td>计划列表和修改入口</td><td><a href="plan-config.html">打开</a></td></tr>
+              <tr><td>编辑计划</td><td>执行时间、循环规则、执行模式和每路时长</td><td><a href="plan-edit.html">打开</a></td></tr>
+              <tr><td>记录</td><td>浇水记录和系统事件追踪</td><td><a href="records.html">打开</a></td></tr>
+              <tr><td>设置</td><td>灌溉业务参数，每次只修改一个参数</td><td><a href="settings.html">打开</a></td></tr>
+              <tr><td>调试</td><td>展示当前 JSON 状态结构</td><td><a href="status-api.html">打开</a></td></tr>
             </tbody>
           </table>
         </div>

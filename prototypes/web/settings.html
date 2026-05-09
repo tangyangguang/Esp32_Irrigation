@@ -3,86 +3,125 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>设备配置 - 原型</title>
+  <title>设置 - 原型</title>
   <link rel="stylesheet" href="assets/prototype.css">
 </head>
-<body>
+<body class="page-form page-settings">
   <nav class="topnav">
-    <a href="dashboard.html">灌溉</a>
-    <a href="status-api.html">状态 API</a>
+    <a href="dashboard.html">总览</a>
     <a href="manual.html">手动</a>
-    <a href="plans.html">计划</a>
-    <a class="active" href="settings.html">配置</a>
+    <a href="plans.html">近期计划</a>
+    <a href="plan-config.html">计划配置</a>
     <a href="records.html">记录</a>
+    <a class="active" href="settings.html">设置</a>
+    <a href="status-api.html">调试</a>
   </nav>
   <main class="shell">
     <header class="page-head">
       <div>
-        <h1>设备配置</h1>
-        <p class="subtitle">配置页按模块分组，字段网格紧凑展示，保存和恢复出厂必须确认。</p>
+        <h1>设置</h1>
+        <p class="subtitle">查看当前灌溉参数，每次只修改一个参数。</p>
       </div>
     </header>
 
     <section class="grid">
-      <div class="panel span-4">
-        <h2>基础设置</h2>
-        <div class="field-grid">
-          <div class="field"><label>启用路数</label><input value="1" inputmode="numeric"></div>
-          <div class="field"><label>默认模式</label><select><option>同时浇水</option><option>顺序浇水</option></select></div>
-        </div>
-      </div>
-
-      <div class="panel span-4">
-        <h2>第 1 路配置</h2>
-        <div class="field-grid">
-          <div class="field"><label>名称</label><input value="Road 1"></div>
-          <div class="field"><label>默认时长</label><input value="5"></div>
-          <div class="field"><label>每升脉冲</label><input value="450"></div>
-          <div class="field"><label>校准 x1000</label><input value="1000"></div>
-        </div>
-      </div>
-
-      <div class="panel span-4">
-        <h2>第 2 路配置</h2>
-        <div class="field-grid">
-          <div class="field"><label>名称</label><input value="Road 2" disabled></div>
-          <div class="field"><label>默认时长</label><input value="5" disabled></div>
-          <div class="field"><label>每升脉冲</label><input value="450" disabled></div>
-          <div class="field"><label>校准 x1000</label><input value="1000" disabled></div>
+      <div class="panel span-6">
+        <h2>灌溉设置</h2>
+        <div class="setting-list">
+          <div class="setting-row">
+            <span>已启用路数</span>
+            <strong>1 路</strong>
+            <em>由各路启用状态计算</em>
+          </div>
+          <div class="setting-row">
+            <span>默认模式</span>
+            <strong>同时浇水</strong>
+            <button class="secondary">修改</button>
+          </div>
         </div>
       </div>
 
       <div class="panel span-6">
         <h2>水流检测</h2>
-        <div class="field-grid">
-          <div class="field"><label>无脉冲超时</label><input value="10" inputmode="numeric"></div>
-          <div class="field"><label>漏水窗口</label><input value="10" inputmode="numeric"></div>
-          <div class="field"><label>漏水脉冲阈值</label><input value="3" inputmode="numeric"></div>
+        <div class="setting-list">
+          <div class="setting-row">
+            <span>无脉冲超时</span>
+            <strong>10 秒</strong>
+            <button class="secondary">修改</button>
+          </div>
+          <div class="setting-row">
+            <span>漏水窗口</span>
+            <strong>10 秒</strong>
+            <button class="secondary">修改</button>
+          </div>
+          <div class="setting-row">
+            <span>漏水脉冲阈值</span>
+            <strong>3</strong>
+            <button class="secondary">修改</button>
+          </div>
         </div>
       </div>
 
       <div class="panel span-6">
-        <h2>交互与安全</h2>
-        <div class="field-grid">
-          <div class="field"><label>按键锁定</label><select><option>未锁定</option><option>已锁定</option></select></div>
+        <h2>第 1 路配置</h2>
+        <div class="setting-list">
+          <div class="setting-row">
+            <span>启用状态</span>
+            <strong>已启用</strong>
+            <button class="secondary">修改</button>
+          </div>
+          <div class="setting-row">
+            <span>名称</span>
+            <strong>Road 1</strong>
+            <button class="secondary">修改</button>
+          </div>
+          <div class="setting-row">
+            <span>默认时长</span>
+            <strong>5 分钟</strong>
+            <button class="secondary">修改</button>
+          </div>
+          <div class="setting-row">
+            <span>每升脉冲</span>
+            <strong>450 pulse/L</strong>
+            <button class="secondary">修改</button>
+          </div>
+          <div class="setting-row">
+            <span>校准系数</span>
+            <strong>1000</strong>
+            <button class="secondary">修改</button>
+          </div>
         </div>
-        <div class="actions"><button>保存配置</button></div>
       </div>
 
       <div class="panel span-6">
-        <h2>登录与访问</h2>
-        <div class="kv"><span>当前账号</span><strong>root</strong></div>
-        <div class="kv"><span>修改账号密码</span><a href="/esp32base/auth">进入认证设置</a></div>
-        <p class="note">认证由 Esp32Base 内置页面管理，本业务页只提供入口。</p>
-      </div>
-
-      <div class="panel span-6">
-        <h2>维护</h2>
-        <div class="field-grid">
-          <div class="field"><label>确认文本</label><input placeholder="RESET"></div>
-          <div class="field"><label>记录处理</label><select><option>保留记录</option><option>清空记录</option></select></div>
+        <h2>第 2 路配置</h2>
+        <div class="setting-list">
+          <div class="setting-row">
+            <span>启用状态</span>
+            <strong>未启用</strong>
+            <button class="secondary">修改</button>
+          </div>
+          <div class="setting-row">
+            <span>名称</span>
+            <strong>Road 2</strong>
+            <button class="secondary" disabled>修改</button>
+          </div>
+          <div class="setting-row">
+            <span>默认时长</span>
+            <strong>5 分钟</strong>
+            <button class="secondary" disabled>修改</button>
+          </div>
+          <div class="setting-row">
+            <span>每升脉冲</span>
+            <strong>450 pulse/L</strong>
+            <button class="secondary" disabled>修改</button>
+          </div>
+          <div class="setting-row">
+            <span>校准系数</span>
+            <strong>1000</strong>
+            <button class="secondary" disabled>修改</button>
+          </div>
         </div>
-        <div class="actions"><button class="danger">恢复出厂</button></div>
       </div>
     </section>
   </main>
