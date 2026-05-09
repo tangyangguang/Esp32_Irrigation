@@ -5,9 +5,10 @@
 ## 首页与导航
 
 - 打开 `/`：应进入灌溉业务首页。
-- 打开 `/irrigation`：应显示中文业务首页，包含网络信息、阀门状态、异常提示、今日剩余计划和明日计划。
+- 打开 `/irrigation`：应显示中文业务首页，包含网络信息、阀门状态和异常提示。
 - 打开 `/irrigation/manual`：应显示手动浇水页面，每一路可独立选择是否参与本次浇水。
-- 打开 `/irrigation/plans`：应显示 8 个计划编辑表单。
+- 打开 `/irrigation/plans`：应显示昨日、今日、明日、后天的近期计划状态和跳过操作。
+- 打开 `/irrigation/plan-config`：应显示 8 个计划配置入口。
 - 打开 `/irrigation/settings`：应显示业务配置页面，按每一路聚合配置。
 - 打开 `/irrigation/data`：应显示最近记录和事件。
 - 打开 `/esp32base`：应显示基础库融合/系统工具入口。
@@ -15,7 +16,7 @@
 
 ## 状态区
 
-- 能看到 WiFi 名称、RSSI、IP 地址、当前时间、heap、阀门状态、按键锁定状态。
+- 能看到 WiFi 名称、RSSI、IP 地址、当前时间、阀门状态和记录/事件容量。
 - `GET /api/v1/status` 返回合法 JSON。
 - 状态 JSON 中包含 `wifi.ssid`、`wifi.rssi`、`wifi.ip`、`time.current`、每路 `flow_l_min`、`records.count` 和 `events.count`。
 
@@ -33,16 +34,16 @@
 - 刷新页面后配置值应保持。
 - 重启后配置值应保持。
 - 无效范围必须拒绝，例如 `flow_no_pulse_timeout_s=0` 或 `61`。
-- 配置页应显示当前登录账号，并提供 `/esp32base/auth` 登录设置入口。
+- 基础库系统导航应提供认证设置入口；业务项目不保存基础库鉴权密码。
 - 通过 `/esp32base/auth` 修改账号密码后，新账号密码立即生效，旧凭据后续请求应失效。
 
 ## 浇花计划
 
 - 8 个计划都应显示。
-- 每个计划可单独保存启用状态、时间、R1/R2 时长、模式、重复方式、week mask、interval days。
+- 每个计划可单独保存启用状态、时间、R1/R2 时长、模式、循环天数和周期内执行日。
 - Skip 应设置当天跳过；Unskip 应清除跳过。
 - 保存或跳过操作后 `/api/v1/events` 应出现 `plan_changed`。
-- `GET /api/v1/plans` 返回 `preview.today_remaining`、`preview.tomorrow` 和 `preview.next`。
+- `GET /api/v1/plans` 返回 8 个计划的原始配置字段。
 
 ## 记录与导出
 

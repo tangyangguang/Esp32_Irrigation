@@ -10,7 +10,6 @@
 namespace {
 
 static constexpr const char* kNamespace = "irr_cfg";
-static constexpr const char* kKeyEnabledRoads = "roads";
 static constexpr const char* kKeyRoadEnabledMask = "road_mask";
 static constexpr const char* kKeyDefaultMode = "mode";
 static constexpr const char* kKeyQuickR1 = "quick_r1";
@@ -50,13 +49,6 @@ SettingsStore::Settings defaultSettings() {
         },
     };
     return settings;
-}
-
-uint8_t enabledRoadsToMask(int32_t value) {
-    if (value >= 2) {
-        return 0x03;
-    }
-    return 0x01;
 }
 
 uint8_t clampRoadMask(int32_t value) {
@@ -150,8 +142,7 @@ uint8_t clampLeakPulses(int32_t value) {
 namespace SettingsStore {
 
 void begin() {
-    const int32_t legacyRoads = Esp32BaseConfig::getInt(kNamespace, kKeyEnabledRoads, IrrigationPins::DefaultEnabledRoads);
-    g_settings.roadEnabledMask = clampRoadMask(Esp32BaseConfig::getInt(kNamespace, kKeyRoadEnabledMask, enabledRoadsToMask(legacyRoads)));
+    g_settings.roadEnabledMask = clampRoadMask(Esp32BaseConfig::getInt(kNamespace, kKeyRoadEnabledMask, IrrigationPins::DefaultEnabledRoads));
     g_settings.defaultMode = clampMode(Esp32BaseConfig::getInt(kNamespace, kKeyDefaultMode, MODE_SIMULTANEOUS));
     g_settings.quickDurationSec[0] = clampDuration(Esp32BaseConfig::getInt(kNamespace, kKeyQuickR1, 300));
     g_settings.quickDurationSec[1] = clampDuration(Esp32BaseConfig::getInt(kNamespace, kKeyQuickR2, 300));
@@ -236,7 +227,10 @@ bool parseExecutionMode(const char* text, ExecutionMode* mode) {
 }
 
 bool setEnabledRoads(uint8_t roads) {
-    return setRoadEnabledMask(enabledRoadsToMask(roads));
+    if (roads < 1 || roads > IrrigationPins::MaxRoads) {
+        return false;
+    }
+    return setRoadEnabledMask(roads >= 2 ? 0x03 : 0x01);
 }
 
 bool setRoadEnabled(uint8_t road, bool enabled) {

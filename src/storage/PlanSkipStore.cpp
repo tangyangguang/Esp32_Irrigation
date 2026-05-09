@@ -68,14 +68,6 @@ void begin() {
         }
     }
 
-    for (uint8_t i = 0; i < PlanStore::MaxPlans && g_count < Capacity; ++i) {
-        char k[16];
-        snprintf(k, sizeof(k), "p%u_skip", static_cast<unsigned>(i));
-        const uint32_t legacy = static_cast<uint32_t>(Esp32BaseConfig::getInt("irr_plan", k, 0));
-        if (valid(i, legacy) && find(i, legacy) < 0) {
-            g_entries[g_count++] = {i, legacy};
-        }
-    }
     (void)persist();
     ESP32BASE_LOG_I("skips", "loaded count=%u", static_cast<unsigned>(g_count));
 }

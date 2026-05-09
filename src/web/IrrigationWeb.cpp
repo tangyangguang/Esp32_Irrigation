@@ -10,6 +10,7 @@
 #include "Version.h"
 #include "domain/FlowMeter.h"
 #include "domain/LeakMonitor.h"
+#include "domain/MaintenanceService.h"
 #include "domain/SafetyManager.h"
 #include "domain/ValveController.h"
 #include "domain/WateringSession.h"
@@ -126,6 +127,17 @@ void writeLitersFromMl(uint32_t ml) {
     char text[20];
     snprintf(text, sizeof(text), "%lu.%03lu L", static_cast<unsigned long>(ml / 1000UL), static_cast<unsigned long>(ml % 1000UL));
     Esp32BaseWeb::sendChunk(text);
+}
+
+uint8_t readLimitParam(uint8_t defaultLimit, uint8_t maxLimit) {
+    uint16_t raw = defaultLimit;
+    if (Esp32BaseWeb::hasParam("limit") && (!readUIntParam("limit", &raw) || raw == 0)) {
+        return defaultLimit;
+    }
+    if (raw > maxLimit) {
+        raw = maxLimit;
+    }
+    return static_cast<uint8_t>(raw);
 }
 
 const char* modeLabel(SettingsStore::ExecutionMode mode) {
@@ -824,6 +836,10 @@ void handleSettingsPage() {
     snprintf(value, sizeof(value), "%u", static_cast<unsigned>(s.idleLeakPulseThreshold));
     writeSettingRow("idle_leak_pulse_threshold", "漏水脉冲阈值", value);
     Esp32BaseWeb::sendChunk("</div></div>");
+    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>维护</h2><div class='setting-list'>");
+    writeSettingReadOnlyRow("恢复出厂请求", SafetyManager::factoryResetRequested() ? "已由 BOOT 键请求" : "未请求", "执行前仍需二次确认");
+    writeSettingReadOnlyRow("恢复出厂状态", MaintenanceService::factoryResetPending() ? "等待重启执行" : "空闲", "执行时会先关闭所有阀门");
+    Esp32BaseWeb::sendChunk("</div><form method='post' action='/api/v1/maintenance/factory-reset' data-confirm='确认恢复出厂？设备会关闭阀门并重启。'><div class='field-grid' style='margin-top:12px'><div class='field'><label>确认文本</label><input name='confirm' maxlength='5' placeholder='RESET'></div><div class='field'><label>记录处理</label><select name='clear_records'><option value='0'>保留记录和事件</option><option value='1'>同时清空记录和事件</option></select></div></div><div class='actions'><button class='warn'>恢复出厂</button></div></form></div>");
     Esp32BaseWeb::sendChunk("</section>");
     writeSettingEditModals();
     writeSettingsModalScript();
@@ -1141,6 +1157,26 @@ void handleAlertsClearApi() {
     redirectTo("/irrigation");
 }
 
+void handleFactoryResetApi() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
+        sendMethodNotAllowed("POST");
+        return;
+    }
+    char confirm[8] = "";
+    bool clearRecords = false;
+    (void)readBoolParam("clear_records", &clearRecords);
+    if (!Esp32BaseWeb::getParam("confirm", confirm, sizeof(confirm)) || strcmp(confirm, "RESET") != 0) {
+        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"confirmation_required\"}");
+        return;
+    }
+    if (!MaintenanceService::requestFactoryReset(clearRecords)) {
+        Esp32BaseWeb::sendJson(409, "{\"ok\":false,\"error\":\"factory_reset_pending\"}");
+        return;
+    }
+    redirectTo("/irrigation/settings");
+}
+
 void handlePlansApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
@@ -1241,13 +1277,53 @@ void writeRecordJson(const RecordStore::Record& record, void* user) {
     *first = false;
     Esp32BaseWeb::sendChunk("{\"id\":");
     writeUInt(record.id);
+    Esp32BaseWeb::sendChunk(",\"session_started_ms\":");
+    writeUInt(record.sessionStartedMs);
+    Esp32BaseWeb::sendChunk(",\"session_ended_ms\":");
+    writeUInt(record.sessionEndedMs);
     Esp32BaseWeb::sendChunk(",\"source\":\"");
     Esp32BaseWeb::writeJsonEscaped(RecordStore::sourceName(static_cast<RecordStore::Source>(record.source)));
     Esp32BaseWeb::sendChunk("\",\"mode\":\"");
     Esp32BaseWeb::writeJsonEscaped(modeName(static_cast<SettingsStore::ExecutionMode>(record.mode)));
     Esp32BaseWeb::sendChunk("\",\"stop_reason\":\"");
     Esp32BaseWeb::writeJsonEscaped(WateringSession::stopReasonName(static_cast<WateringSession::StopReason>(record.stopReason)));
-    Esp32BaseWeb::sendChunk("\"}");
+    Esp32BaseWeb::sendChunk("\",\"enabled_roads\":");
+    writeUInt(record.enabledRoads);
+    Esp32BaseWeb::sendChunk(",\"flow_no_pulse_timeout_s\":");
+    writeUInt(record.flowNoPulseTimeoutSec);
+    Esp32BaseWeb::sendChunk(",\"roads\":[");
+    for (uint8_t road = 1; road <= 2; ++road) {
+        if (road > 1) Esp32BaseWeb::sendChunk(",");
+        const RecordStore::RoadRecord& rr = record.roads[road - 1];
+        const uint32_t pulses = rr.endedPulseCount >= rr.startedPulseCount ? rr.endedPulseCount - rr.startedPulseCount : 0;
+        const uint32_t actualSec = rr.endedMs >= rr.startedMs && rr.startedMs > 0 ? (rr.endedMs - rr.startedMs) / 1000UL : 0;
+        Esp32BaseWeb::sendChunk("{\"road\":");
+        writeUInt(road);
+        Esp32BaseWeb::sendChunk(",\"state\":\"");
+        Esp32BaseWeb::writeJsonEscaped(WateringSession::roadStateName(static_cast<WateringSession::RoadState>(rr.state)));
+        Esp32BaseWeb::sendChunk("\",\"target_sec\":");
+        writeUInt(rr.targetSec);
+        Esp32BaseWeb::sendChunk(",\"actual_sec\":");
+        writeUInt(actualSec);
+        Esp32BaseWeb::sendChunk(",\"started_ms\":");
+        writeUInt(rr.startedMs);
+        Esp32BaseWeb::sendChunk(",\"ended_ms\":");
+        writeUInt(rr.endedMs);
+        Esp32BaseWeb::sendChunk(",\"started_pulses\":");
+        writeUInt(rr.startedPulseCount);
+        Esp32BaseWeb::sendChunk(",\"ended_pulses\":");
+        writeUInt(rr.endedPulseCount);
+        Esp32BaseWeb::sendChunk(",\"pulses\":");
+        writeUInt(pulses);
+        Esp32BaseWeb::sendChunk(",\"pulse_per_liter\":");
+        writeUInt(rr.pulsePerLiter);
+        Esp32BaseWeb::sendChunk(",\"calibration_x1000\":");
+        writeUInt(rr.calibrationX1000);
+        Esp32BaseWeb::sendChunk(",\"estimated_ml\":");
+        writeUInt(rr.estimatedMilliliters);
+        Esp32BaseWeb::sendChunk("}");
+    }
+    Esp32BaseWeb::sendChunk("]}");
 }
 
 void handleRecordsApi() {
@@ -1263,7 +1339,7 @@ void handleRecordsApi() {
     writeUInt(RecordStore::capacity());
     Esp32BaseWeb::sendChunk(",\"records\":[");
     bool first = true;
-    (void)RecordStore::readLatest(0, 20, writeRecordJson, &first);
+    (void)RecordStore::readLatest(0, readLimitParam(20, 50), writeRecordJson, &first);
     Esp32BaseWeb::sendChunk("]}");
     endJson();
 }
@@ -1309,11 +1385,23 @@ void writeEventJsonCb(const EventStore::Event& event, void* user) {
     *first = false;
     Esp32BaseWeb::sendChunk("{\"id\":");
     writeUInt(event.id);
+    Esp32BaseWeb::sendChunk(",\"uptime_ms\":");
+    writeUInt(event.uptimeMs);
+    Esp32BaseWeb::sendChunk(",\"epoch\":");
+    writeUInt(event.epoch);
     Esp32BaseWeb::sendChunk(",\"type\":\"");
     Esp32BaseWeb::writeJsonEscaped(EventStore::typeName(static_cast<EventStore::Type>(event.type)));
     Esp32BaseWeb::sendChunk("\",\"source\":\"");
     Esp32BaseWeb::writeJsonEscaped(EventStore::sourceName(static_cast<EventStore::Source>(event.source)));
-    Esp32BaseWeb::sendChunk("\",\"text\":\"");
+    Esp32BaseWeb::sendChunk("\",\"road\":");
+    writeUInt(event.road);
+    Esp32BaseWeb::sendChunk(",\"code\":");
+    writeUInt(event.code);
+    Esp32BaseWeb::sendChunk(",\"value1\":");
+    writeInt(event.value1);
+    Esp32BaseWeb::sendChunk(",\"value2\":");
+    writeInt(event.value2);
+    Esp32BaseWeb::sendChunk(",\"text\":\"");
     Esp32BaseWeb::writeJsonEscaped(event.text);
     Esp32BaseWeb::sendChunk("\"}");
 }
@@ -1331,7 +1419,7 @@ void handleEventsApi() {
     writeUInt(EventStore::capacity());
     Esp32BaseWeb::sendChunk(",\"events\":[");
     bool first = true;
-    (void)EventStore::readLatest(0, 20, writeEventJsonCb, &first);
+    (void)EventStore::readLatest(0, readLimitParam(20, 50), writeEventJsonCb, &first);
     Esp32BaseWeb::sendChunk("]}");
     endJson();
 }
@@ -1380,7 +1468,8 @@ void begin() {
     const bool plansOk = Esp32BaseWeb::addApi("/api/v1/plans", handlePlansApi);
     const bool skipOk = Esp32BaseWeb::addApi("/api/v1/plans/skip", handlePlanSkipApi);
     const bool alertsOk = Esp32BaseWeb::addApi("/api/v1/alerts/clear", handleAlertsClearApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s manual=%s recent=%s planConfig=%s data=%s settings=%s debug=%s planEdit=%s status=%s config=%s start=%s stop=%s records=%s recordsCsv=%s events=%s eventsCsv=%s plans=%s skip=%s alerts=%s firmware=%s",
+    const bool factoryResetOk = Esp32BaseWeb::addApi("/api/v1/maintenance/factory-reset", handleFactoryResetApi);
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s manual=%s recent=%s planConfig=%s data=%s settings=%s debug=%s planEdit=%s status=%s config=%s start=%s stop=%s records=%s recordsCsv=%s events=%s eventsCsv=%s plans=%s skip=%s alerts=%s factoryReset=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     manualOk ? "ok" : "fail",
                     recentOk ? "ok" : "fail",
@@ -1400,6 +1489,7 @@ void begin() {
                     plansOk ? "ok" : "fail",
                     skipOk ? "ok" : "fail",
                     alertsOk ? "ok" : "fail",
+                    factoryResetOk ? "ok" : "fail",
                     IrrigationVersion::FirmwareName);
 }
 

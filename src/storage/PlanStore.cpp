@@ -10,6 +10,7 @@
 namespace {
 
 static constexpr const char* kNamespace = "irr_plan";
+static constexpr uint32_t kDefaultCycleStartYmd = 20260101UL;
 
 PlanStore::Plan g_plans[PlanStore::MaxPlans] = {};
 
@@ -51,7 +52,7 @@ PlanStore::Plan defaultPlan() {
     plan.mode = SettingsStore::MODE_SIMULTANEOUS;
     plan.cycleDays = 1;
     plan.cycleMask = 0x01;
-    plan.cycleStartYmd = 20260503UL;
+    plan.cycleStartYmd = kDefaultCycleStartYmd;
     return plan;
 }
 
@@ -81,7 +82,16 @@ bool ymdToTime(uint32_t ymd, time_t* out) {
     value.tm_mon = static_cast<int>((ymd / 100UL) % 100UL) - 1;
     value.tm_mday = static_cast<int>(ymd % 100UL);
     *out = mktime(&value);
-    return *out > 0;
+    if (*out <= 0) {
+        return false;
+    }
+    tm normalized = {};
+    if (localtime_r(out, &normalized) == nullptr) {
+        return false;
+    }
+    return normalized.tm_year == static_cast<int>(ymd / 10000UL) - 1900 &&
+           normalized.tm_mon == static_cast<int>((ymd / 100UL) % 100UL) - 1 &&
+           normalized.tm_mday == static_cast<int>(ymd % 100UL);
 }
 
 }
@@ -97,12 +107,9 @@ void begin() {
         plan.roadSec[0] = clampDuration(getInt(i, "r1", plan.roadSec[0]));
         plan.roadSec[1] = clampDuration(getInt(i, "r2", plan.roadSec[1]));
         plan.mode = clampMode(getInt(i, "mode", SettingsStore::MODE_SIMULTANEOUS));
-        int32_t legacyRepeat = getInt(i, "rep", 0);
-        int32_t legacyWeekMask = getInt(i, "week", 0x7F);
-        int32_t legacyInterval = getInt(i, "int", 1);
-        plan.cycleDays = clampCycleDays(getInt(i, "cycle_d", legacyRepeat == 1 ? legacyInterval : 7));
-        plan.cycleMask = clampCycleMask(getInt(i, "cycle_m", legacyRepeat == 1 ? 0x01 : legacyWeekMask), plan.cycleDays);
-        plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", 20260503));
+        plan.cycleDays = clampCycleDays(getInt(i, "cycle_d", plan.cycleDays));
+        plan.cycleMask = clampCycleMask(getInt(i, "cycle_m", plan.cycleMask), plan.cycleDays);
+        plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", kDefaultCycleStartYmd));
         plan.lastRunYmd = static_cast<uint32_t>(getInt(i, "last", 0));
         g_plans[i] = validate(plan) ? plan : defaultPlan();
     }
@@ -159,8 +166,9 @@ bool setLastRunYmd(uint8_t index, uint32_t ymd) {
 }
 
 bool validate(const Plan& plan) {
+    time_t ignored = 0;
     if (plan.minuteOfDay >= 1440 || plan.cycleDays < 1 || plan.cycleDays > 30 || plan.cycleMask == 0 ||
-        (plan.cycleMask & ~validCycleMask(plan.cycleDays)) != 0 || plan.cycleStartYmd < 20000101UL) {
+        (plan.cycleMask & ~validCycleMask(plan.cycleDays)) != 0 || !ymdToTime(plan.cycleStartYmd, &ignored)) {
         return false;
     }
     if (plan.mode != SettingsStore::MODE_SIMULTANEOUS && plan.mode != SettingsStore::MODE_SEQUENTIAL) {
