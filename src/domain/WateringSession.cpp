@@ -10,6 +10,8 @@
 
 namespace {
 
+static constexpr uint32_t kStartupFlowGraceMs = 3000UL;
+
 struct SessionState {
     bool active;
     SettingsStore::ExecutionMode mode;
@@ -177,7 +179,9 @@ void handle() {
         const uint32_t elapsedMs = now - road.startedMs;
         const uint32_t noPulseMs = now - road.lastPulseMs;
         const uint32_t timeoutMs = static_cast<uint32_t>(SettingsStore::current().flowNoPulseTimeoutSec) * 1000UL;
-        if (noPulseMs >= timeoutMs) {
+        const bool noPulseSinceStart = pulses == road.startedPulseCount;
+        const uint32_t effectiveTimeoutMs = noPulseSinceStart && timeoutMs < kStartupFlowGraceMs ? kStartupFlowGraceMs : timeoutMs;
+        if (noPulseMs >= effectiveTimeoutMs) {
             finishRoadByIndex(i, ROAD_ERROR, "flow no pulse timeout");
             (void)EventStore::append(EventStore::TYPE_WATER_ERROR,
                                      eventSource(g_session.source),
@@ -314,7 +318,17 @@ bool stopRoad(uint8_t road, StopReason reason, const char* textReason) {
         return false;
     }
     if (!g_session.active) {
-        return ValveController::off(road, textReason);
+        const bool ok = ValveController::off(road, textReason);
+        if (ok) {
+            (void)EventStore::append(EventStore::TYPE_WATER_STOP,
+                                     EventStore::SOURCE_SYSTEM,
+                                     road,
+                                     static_cast<uint8_t>(reason),
+                                     0,
+                                     0,
+                                     textReason);
+        }
+        return ok;
     }
     RoadStatus& status = g_session.roads[index];
     if (status.state == ROAD_RUNNING || status.state == ROAD_PENDING) {
@@ -326,8 +340,8 @@ bool stopRoad(uint8_t road, StopReason reason, const char* textReason) {
                                  eventSource(g_session.source),
                                  road,
                                  static_cast<uint8_t>(reason),
-                                 status.targetSec,
-                                 0,
+                                 road == 1 ? status.targetSec : 0,
+                                 road == 2 ? status.targetSec : 0,
                                  textReason);
     } else {
         ValveController::off(road, textReason);
@@ -338,6 +352,10 @@ bool stopRoad(uint8_t road, StopReason reason, const char* textReason) {
 
 bool isActive() {
     return g_session.active;
+}
+
+RecordStore::Source source() {
+    return g_session.source;
 }
 
 SettingsStore::ExecutionMode mode() {

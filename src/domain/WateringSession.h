@@ -44,6 +44,7 @@ void stopAll(StopReason reason, const char* textReason);
 bool stopRoad(uint8_t road, StopReason reason, const char* textReason);
 
 bool isActive();
+RecordStore::Source source();
 SettingsStore::ExecutionMode mode();
 const RoadStatus& roadStatus(uint8_t road);
 const char* roadStateName(RoadState state);

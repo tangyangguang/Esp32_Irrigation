@@ -44,18 +44,23 @@ uint16_t clampCount(int32_t value) {
 
 bool createEmptyStore() {
     const uint32_t total = fileSizeBytes();
-    uint8_t* zeros = static_cast<uint8_t*>(calloc(total, 1));
-    if (!zeros) {
+    uint8_t zeros[256] = {};
+    if (!Esp32BaseFs::writeBytes(kPath, nullptr, 0)) {
+        ESP32BASE_LOG_W("events", "create store failed open");
         return false;
     }
-    const bool ok = Esp32BaseFs::writeBytes(kPath, zeros, total);
-    free(zeros);
-    if (!ok) {
-        ESP32BASE_LOG_W("events", "create store failed bytes=%lu", static_cast<unsigned long>(total));
-        return false;
+    for (uint32_t offset = 0; offset < total; offset += sizeof(zeros)) {
+        const uint32_t remaining = total - offset;
+        const size_t chunk = remaining < sizeof(zeros) ? static_cast<size_t>(remaining) : sizeof(zeros);
+        if (!Esp32BaseFs::appendBytes(kPath, zeros, chunk)) {
+            ESP32BASE_LOG_W("events", "create store failed offset=%lu bytes=%u",
+                            static_cast<unsigned long>(offset),
+                            static_cast<unsigned>(chunk));
+            return false;
+        }
+        delay(0);
     }
-    delay(0);
-    return true;
+    return Esp32BaseFs::fileSize(kPath) == static_cast<int64_t>(total);
 }
 
 bool ensureStoreFile() {

@@ -12,6 +12,8 @@
 
 namespace {
 
+static constexpr uint32_t kIdleSettleMs = 3000UL;
+
 struct RoadLeakState {
     uint32_t windowStartedMs;
     uint32_t windowStartPulses;
@@ -19,6 +21,8 @@ struct RoadLeakState {
 };
 
 RoadLeakState g_roads[2] = {};
+bool g_wasMonitoringAllowed = false;
+uint32_t g_monitoringAllowedSinceMs = 0;
 
 bool roadIndex(uint8_t road, uint8_t* index) {
     if (road < 1 || road > IrrigationPins::MaxRoads) {
@@ -45,6 +49,8 @@ namespace LeakMonitor {
 
 void begin() {
     const uint32_t now = millis();
+    g_wasMonitoringAllowed = monitoringAllowed();
+    g_monitoringAllowedSinceMs = g_wasMonitoringAllowed ? now : 0;
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         g_roads[i].alert = false;
         resetWindow(i, now);
@@ -53,7 +59,12 @@ void begin() {
 
 void handle() {
     const uint32_t now = millis();
-    if (!monitoringAllowed()) {
+    const bool allowed = monitoringAllowed();
+    if (allowed != g_wasMonitoringAllowed) {
+        g_wasMonitoringAllowed = allowed;
+        g_monitoringAllowedSinceMs = allowed ? now : 0;
+    }
+    if (!allowed || now - g_monitoringAllowedSinceMs < kIdleSettleMs) {
         for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
             resetWindow(i, now);
         }

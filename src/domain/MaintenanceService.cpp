@@ -16,6 +16,7 @@ namespace {
 bool g_pending = false;
 bool g_clearRecords = false;
 uint32_t g_requestedMs = 0;
+EventStore::Source g_requestSource = EventStore::SOURCE_SYSTEM;
 
 }
 
@@ -25,6 +26,7 @@ void begin() {
     g_pending = false;
     g_clearRecords = false;
     g_requestedMs = 0;
+    g_requestSource = EventStore::SOURCE_SYSTEM;
 }
 
 void handle() {
@@ -40,7 +42,7 @@ void handle() {
     const bool recordsOk = !g_clearRecords || RecordStore::clear();
     const bool eventsOk = !g_clearRecords || EventStore::clear();
     (void)EventStore::append(EventStore::TYPE_FACTORY_RESET_EXECUTED,
-                             EventStore::SOURCE_SYSTEM,
+                             g_requestSource,
                              0,
                              g_clearRecords ? 1 : 0,
                              settingsOk && plansOk && recordsOk && eventsOk ? 1 : 0,
@@ -65,6 +67,7 @@ bool requestFactoryReset(bool clearRecords) {
     g_pending = true;
     g_clearRecords = clearRecords;
     g_requestedMs = millis();
+    g_requestSource = EventStore::SOURCE_WEB;
     (void)EventStore::append(EventStore::TYPE_FACTORY_RESET_REQUESTED,
                              EventStore::SOURCE_WEB,
                              0,

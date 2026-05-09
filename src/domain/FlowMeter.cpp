@@ -12,16 +12,21 @@ static constexpr uint8_t kFlowPins[] = {
 };
 
 volatile uint32_t g_pulses[2] = {0, 0};
+portMUX_TYPE g_pulseMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t g_lastSampleMs = 0;
 uint32_t g_lastSamplePulses[2] = {0, 0};
 uint32_t g_ratePerMinuteX1000[2] = {0, 0};
 
 void IRAM_ATTR onFlow1Pulse() {
+    portENTER_CRITICAL_ISR(&g_pulseMux);
     ++g_pulses[0];
+    portEXIT_CRITICAL_ISR(&g_pulseMux);
 }
 
 void IRAM_ATTR onFlow2Pulse() {
+    portENTER_CRITICAL_ISR(&g_pulseMux);
     ++g_pulses[1];
+    portEXIT_CRITICAL_ISR(&g_pulseMux);
 }
 
 bool roadIndex(uint8_t road, uint8_t* index) {
@@ -66,9 +71,9 @@ uint32_t pulseCount(uint8_t road) {
     if (!roadIndex(road, &index)) {
         return 0;
     }
-    noInterrupts();
+    portENTER_CRITICAL(&g_pulseMux);
     const uint32_t count = g_pulses[index];
-    interrupts();
+    portEXIT_CRITICAL(&g_pulseMux);
     return count;
 }
 
@@ -85,9 +90,9 @@ void reset(uint8_t road) {
     if (!roadIndex(road, &index)) {
         return;
     }
-    noInterrupts();
+    portENTER_CRITICAL(&g_pulseMux);
     g_pulses[index] = 0;
-    interrupts();
+    portEXIT_CRITICAL(&g_pulseMux);
     g_lastSamplePulses[index] = 0;
     g_ratePerMinuteX1000[index] = 0;
 }

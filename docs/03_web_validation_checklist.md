@@ -19,6 +19,7 @@
 - 能看到 WiFi 名称、RSSI、IP 地址、当前时间、阀门状态和记录/事件容量。
 - `GET /api/v1/status` 返回合法 JSON。
 - 状态 JSON 中包含 `wifi.ssid`、`wifi.rssi`、`wifi.ip`、`time.current`、每路 `flow_l_min`、`records.count` 和 `events.count`。
+- 禁用 `ESP32BASE_ENABLE_WIFI` 构建时，状态 JSON 仍必须是合法 JSON，`wifi.connected=false` 且 `ssid/ip` 为空字符串。
 
 ## 手动控制
 

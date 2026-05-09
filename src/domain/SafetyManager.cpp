@@ -108,6 +108,9 @@ bool isLocked() {
 }
 
 bool setLocked(bool locked) {
+    if (g_locked == locked) {
+        return true;
+    }
     if (!SettingsStore::setKeypadLocked(locked)) {
         ESP32BASE_LOG_W("safety", "keypad lock save failed");
         return false;

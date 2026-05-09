@@ -2,6 +2,7 @@
 
 #include <Esp32Base.h>
 #include <stdio.h>
+#include <time.h>
 
 #include "storage/PlanStore.h"
 
@@ -47,6 +48,40 @@ bool persist() {
     return ok;
 }
 
+uint32_t currentYmd() {
+    if (!Esp32BaseNtp::isTimeSynced()) {
+        return 0;
+    }
+    const time_t now = static_cast<time_t>(Esp32BaseNtp::timestamp());
+    tm local = {};
+    if (localtime_r(&now, &local) == nullptr) {
+        return 0;
+    }
+    return static_cast<uint32_t>(local.tm_year + 1900) * 10000UL +
+           static_cast<uint32_t>(local.tm_mon + 1) * 100UL +
+           static_cast<uint32_t>(local.tm_mday);
+}
+
+bool pruneExpired(uint32_t today) {
+    if (today < 20000101UL) {
+        return false;
+    }
+    uint8_t out = 0;
+    bool changed = false;
+    for (uint8_t i = 0; i < g_count; ++i) {
+        if (g_entries[i].ymd < today) {
+            changed = true;
+            continue;
+        }
+        if (out != i) {
+            g_entries[out] = g_entries[i];
+        }
+        ++out;
+    }
+    g_count = out;
+    return changed;
+}
+
 }
 
 namespace PlanSkipStore {
@@ -68,7 +103,9 @@ void begin() {
         }
     }
 
-    (void)persist();
+    if (pruneExpired(currentYmd())) {
+        (void)persist();
+    }
     ESP32BASE_LOG_I("skips", "loaded count=%u", static_cast<unsigned>(g_count));
 }
 
@@ -80,8 +117,9 @@ bool setSkipped(uint8_t planIndex, uint32_t ymd) {
     if (!valid(planIndex, ymd)) {
         return false;
     }
+    const bool pruned = pruneExpired(currentYmd());
     if (find(planIndex, ymd) >= 0) {
-        return true;
+        return !pruned || persist();
     }
     if (g_count >= Capacity) {
         for (uint8_t i = 1; i < g_count; ++i) {
@@ -94,9 +132,10 @@ bool setSkipped(uint8_t planIndex, uint32_t ymd) {
 }
 
 bool clearSkipped(uint8_t planIndex, uint32_t ymd) {
+    const bool pruned = pruneExpired(currentYmd());
     const int pos = find(planIndex, ymd);
     if (pos < 0) {
-        return true;
+        return !pruned || persist();
     }
     for (uint8_t i = static_cast<uint8_t>(pos + 1); i < g_count; ++i) {
         g_entries[i - 1] = g_entries[i];

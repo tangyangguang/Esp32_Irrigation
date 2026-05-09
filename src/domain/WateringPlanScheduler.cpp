@@ -15,6 +15,8 @@ namespace {
 
 uint16_t g_lastMinuteOfDay = 1440;
 uint32_t g_lastYmd = 0;
+uint8_t g_lastTriggeredMinute[PlanStore::MaxPlans] = {};
+uint32_t g_lastTriggeredYmd[PlanStore::MaxPlans] = {};
 
 uint32_t makeYmd(const tm& value) {
     return static_cast<uint32_t>(value.tm_year + 1900) * 10000UL +
@@ -34,26 +36,14 @@ bool shouldTrigger(uint8_t index, const PlanStore::Plan& plan, uint16_t minuteOf
     if (!plan.enabled || plan.minuteOfDay != minuteOfDay || plan.lastRunYmd == today || PlanSkipStore::isSkipped(index, today)) {
         return false;
     }
+    if (g_lastTriggeredYmd[index] == today && g_lastTriggeredMinute[index] == minuteOfDay) {
+        return false;
+    }
     return PlanStore::shouldRunOnDate(plan, today);
 }
 
 void triggerPlan(uint8_t index, const PlanStore::Plan& plan, uint32_t today) {
     if (WateringSession::isActive()) {
-        RecordStore::Record record = {};
-        record.sessionStartedMs = millis();
-        record.sessionEndedMs = record.sessionStartedMs;
-        record.source = static_cast<uint8_t>(RecordStore::SOURCE_PLAN);
-        record.mode = static_cast<uint8_t>(plan.mode);
-        record.stopReason = static_cast<uint8_t>(WateringSession::REASON_SKIPPED);
-        record.enabledRoads = SettingsStore::enabledRoads();
-        record.flowNoPulseTimeoutSec = SettingsStore::current().flowNoPulseTimeoutSec;
-        for (uint8_t i = 0; i < 2; ++i) {
-            record.roads[i].state = static_cast<uint8_t>(WateringSession::ROAD_STOPPED);
-            record.roads[i].targetSec = plan.roadSec[i];
-            record.roads[i].pulsePerLiter = SettingsStore::current().roads[i].pulsePerLiter;
-            record.roads[i].calibrationX1000 = SettingsStore::current().roads[i].calibrationX1000;
-        }
-        (void)RecordStore::append(record);
         (void)EventStore::append(EventStore::TYPE_WATER_STOP,
                                  EventStore::SOURCE_PLAN,
                                  0,
@@ -61,7 +51,9 @@ void triggerPlan(uint8_t index, const PlanStore::Plan& plan, uint32_t today) {
                                  plan.roadSec[0],
                                  plan.roadSec[1],
                                  "plan skipped active");
-        (void)PlanStore::setLastRunYmd(index, today);
+        if (PlanStore::setLastRunYmd(index, today)) {
+            Esp32BaseConfig::flushAll();
+        }
         ESP32BASE_LOG_W("plans", "skip active_session index=%u", static_cast<unsigned>(index));
         return;
     }
@@ -77,7 +69,9 @@ void triggerPlan(uint8_t index, const PlanStore::Plan& plan, uint32_t today) {
         ESP32BASE_LOG_W("plans", "trigger rejected index=%u", static_cast<unsigned>(index));
         return;
     }
-    (void)PlanStore::setLastRunYmd(index, today);
+    if (PlanStore::setLastRunYmd(index, today)) {
+        Esp32BaseConfig::flushAll();
+    }
     ESP32BASE_LOG_I("plans", "triggered index=%u", static_cast<unsigned>(index));
 }
 
@@ -88,6 +82,10 @@ namespace WateringPlanScheduler {
 void begin() {
     g_lastMinuteOfDay = 1440;
     g_lastYmd = 0;
+    for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
+        g_lastTriggeredMinute[i] = 255;
+        g_lastTriggeredYmd[i] = 0;
+    }
 }
 
 void handle() {
@@ -106,6 +104,8 @@ void handle() {
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
         if (shouldTrigger(i, plan, minuteOfDay, today)) {
+            g_lastTriggeredMinute[i] = minuteOfDay;
+            g_lastTriggeredYmd[i] = today;
             triggerPlan(i, plan, today);
         }
     }

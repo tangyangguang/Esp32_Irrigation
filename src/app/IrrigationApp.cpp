@@ -29,7 +29,6 @@ void begin() {
     PlanSkipStore::begin();
     RecordStore::begin();
     EventStore::begin();
-    (void)EventStore::append(EventStore::TYPE_BOOT, EventStore::SOURCE_SYSTEM, 0, 0, 0, 0, "app begin");
     FlowMeter::begin();
     SafetyManager::begin();
     WateringSession::begin();
@@ -37,6 +36,7 @@ void begin() {
     LeakMonitor::begin();
     MaintenanceService::begin();
     IrrigationWeb::begin();
+    (void)EventStore::append(EventStore::TYPE_BOOT, EventStore::SOURCE_SYSTEM, 0, 0, 0, 0, "app ready");
     ESP32BASE_LOG_I("irrigation", "application shell ready");
 }
 

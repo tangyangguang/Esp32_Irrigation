@@ -3,6 +3,9 @@
 #include <stdint.h>
 
 namespace IrrigationPins {
+// Current hardware target is the new 1-2 road controller, not the older
+// 4-road EC11 design in old-docs/02. GPIO34/35 are input-only pins and require
+// external pull-ups when used with open-drain flow sensors such as YF-S201.
 static constexpr uint8_t Valve1 = 13;
 static constexpr uint8_t Valve2 = 14;
 
@@ -17,6 +20,8 @@ static constexpr uint8_t MenuBackButton = 25;
 static constexpr uint8_t LockButton = 33;
 static constexpr uint8_t Road1UpButton = 18;
 static constexpr uint8_t Road2DownButton = 19;
+// GPIO0 is also the ESP32 boot strap pin. It must not be held during reset or
+// power-on; long press is only valid after the firmware is already running.
 static constexpr uint8_t FactoryResetButton = 0;
 
 static constexpr uint8_t Flow1 = 34;

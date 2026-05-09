@@ -109,8 +109,44 @@ bool readModeParam(const char* name, SettingsStore::ExecutionMode* mode) {
     return Esp32BaseWeb::getParam(name, text, sizeof(text)) && SettingsStore::parseExecutionMode(text, mode);
 }
 
+bool readMinuteOfDayParam(const char* name, uint16_t* minuteOfDay) {
+    char text[8] = "";
+    if (!minuteOfDay || !Esp32BaseWeb::getParam(name, text, sizeof(text)) || strlen(text) != 5 || text[2] != ':') {
+        return false;
+    }
+    if (text[0] < '0' || text[0] > '9' || text[1] < '0' || text[1] > '9' ||
+        text[3] < '0' || text[3] > '9' || text[4] < '0' || text[4] > '9') {
+        return false;
+    }
+    const uint8_t hour = static_cast<uint8_t>((text[0] - '0') * 10 + (text[1] - '0'));
+    const uint8_t minute = static_cast<uint8_t>((text[3] - '0') * 10 + (text[4] - '0'));
+    if (hour > 23 || minute > 59) {
+        return false;
+    }
+    *minuteOfDay = static_cast<uint16_t>(hour * 60U + minute);
+    return true;
+}
+
 uint16_t minutesToSeconds(uint16_t minutes) {
     return minutes > 240 ? 0 : static_cast<uint16_t>(minutes * 60U);
+}
+
+bool readDurationSecondsParam(const char* name, uint16_t* seconds) {
+    uint16_t minutes = 0;
+    if (!seconds || !readUIntParam(name, &minutes) || minutes < 1 || minutes > 240) {
+        return false;
+    }
+    *seconds = static_cast<uint16_t>(minutes * 60U);
+    return true;
+}
+
+bool readPlanDurationSecondsParam(const char* name, uint16_t* seconds) {
+    uint16_t minutes = 0;
+    if (!seconds || !readUIntParam(name, &minutes) || minutes > 240) {
+        return false;
+    }
+    *seconds = static_cast<uint16_t>(minutes * 60U);
+    return true;
 }
 
 void writeMinutesFromSeconds(uint32_t seconds) {
@@ -470,13 +506,12 @@ void writeRecentRows(int8_t offset, uint32_t ymd) {
     bool any = false;
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
-        if (!plan.enabled && !PlanStore::shouldRunOnDate(plan, ymd)) continue;
         if (plan.enabled && !PlanStore::shouldRunOnDate(plan, ymd)) continue;
         any = true;
         const bool skipped = PlanSkipStore::isSkipped(i, ymd);
         const bool completed = plan.lastRunYmd == ymd;
         const bool disabled = !plan.enabled;
-        const bool running = WateringSession::isActive() && offset == 0 && plan.minuteOfDay == nowMinute;
+        const bool running = WateringSession::isActive() && WateringSession::source() == RecordStore::SOURCE_PLAN && offset == 0 && plan.minuteOfDay == nowMinute;
         const bool pastToday = offset == 0 && plan.minuteOfDay < nowMinute;
         const char* status = disabled ? "已停用" : (skipped ? "已跳过" : (completed ? "已完成" : (running ? "进行中" : (pastToday ? "未执行" : "未开始"))));
         Esp32BaseWeb::sendChunk("<tr><td>");
@@ -560,7 +595,7 @@ void handlePlanConfigPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("计划配置", "page-table");
     writePageHead("计划配置", "这里只修改计划内容；执行结果在近期计划和记录页查看。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>计划列表</h2><div class='table-wrap'><table><thead><tr><th>状态</th><th>计划</th><th>时间</th><th>循环规则</th><th>内容</th><th>下次执行</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>计划列表</h2><div class='table-wrap'><table><thead><tr><th>状态</th><th>计划</th><th>时间</th><th>循环规则</th><th>内容</th><th>操作</th></tr></thead><tbody>");
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
         Esp32BaseWeb::sendChunk("<tr><td><span class='badge");
@@ -577,7 +612,7 @@ void handlePlanConfigPage() {
         writePlanContent(plan);
         Esp32BaseWeb::sendChunk("，");
         Esp32BaseWeb::writeHtmlEscaped(modeLabel(plan.mode));
-        Esp32BaseWeb::sendChunk("</td><td>-</td><td><a class='button secondary' href='/irrigation/plan?edit=");
+        Esp32BaseWeb::sendChunk("</td><td><a class='button secondary' href='/irrigation/plan?edit=");
         writeUIntText(i);
         Esp32BaseWeb::sendChunk("'>修改</a></td></tr>");
     }
@@ -710,7 +745,7 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
     Esp32BaseWeb::writeHtmlEscaped(title);
     Esp32BaseWeb::sendChunk("：");
     Esp32BaseWeb::writeHtmlEscaped(currentValue);
-    Esp32BaseWeb::sendChunk("</p><form method='post' action='/api/v1/config' data-confirm='off'><div class='field-grid'>");
+    Esp32BaseWeb::sendChunk("</p><form method='post' action='/api/v1/config' data-confirm='确认保存设置？'><div class='field-grid'>");
     if (strcmp(edit, "default_mode") == 0) {
         Esp32BaseWeb::sendChunk("<div class='field'><label>默认模式</label><select name='default_mode'>");
         writeModeOptions(s.defaultMode);
@@ -898,7 +933,7 @@ void handleDebugPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("调试", "page-table");
     writePageHead("调试与状态 API", "查看业务状态 JSON，用于联调和问题排查。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>状态 JSON</h2><p><a class='button secondary' href='/api/v1/status'>打开 /api/v1/status</a></p><pre class='json-box'>{\"watering\":{\"active\":false},\"plans\":{\"count\":8},\"settings\":{\"roads\":{\"r1\":{\"enabled\":true}}}}</pre></div></section>");
+    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>状态 JSON</h2><p class='note'>实时内容由接口返回。</p><div class='actions'><a class='button secondary' href='/api/v1/status'>打开 /api/v1/status</a></div></div></section>");
     sendFooter();
 }
 
@@ -1020,7 +1055,7 @@ void handleStatusApi() {
     Esp32BaseWeb::writeJsonEscaped(ip);
 #else
     writeBool(false);
-    Esp32BaseWeb::sendChunk(",\"ssid\":\"\",\"rssi\":0,\"ip\":\"\"");
+    Esp32BaseWeb::sendChunk(",\"ssid\":\"\",\"rssi\":0,\"ip\":\"");
 #endif
     Esp32BaseWeb::sendChunk("\"},\"time\":{\"synced\":");
     writeBool(Esp32BaseNtp::isTimeSynced());
@@ -1068,9 +1103,11 @@ void handleConfigApi() {
         SettingsStore::ExecutionMode mode = SettingsStore::MODE_SIMULTANEOUS;
         ok = readModeParam("default_mode", &mode) && SettingsStore::setDefaultExecutionMode(mode);
     } else if (Esp32BaseWeb::hasParam("quick_r1_min")) {
-        ok = readUIntParam("quick_r1_min", &value) && SettingsStore::setQuickDurationSec(1, minutesToSeconds(value));
+        uint16_t seconds = 0;
+        ok = readDurationSecondsParam("quick_r1_min", &seconds) && SettingsStore::setQuickDurationSec(1, seconds);
     } else if (Esp32BaseWeb::hasParam("quick_r2_min")) {
-        ok = readUIntParam("quick_r2_min", &value) && SettingsStore::setQuickDurationSec(2, minutesToSeconds(value));
+        uint16_t seconds = 0;
+        ok = readDurationSecondsParam("quick_r2_min", &seconds) && SettingsStore::setQuickDurationSec(2, seconds);
     } else if (Esp32BaseWeb::hasParam("flow_no_pulse_timeout_s")) {
         ok = readUIntParam("flow_no_pulse_timeout_s", &value) && value <= 60 && SettingsStore::setFlowNoPulseTimeoutSec(static_cast<uint8_t>(value));
     } else if (Esp32BaseWeb::hasParam("idle_leak_window_s")) {
@@ -1111,10 +1148,13 @@ void handleWaterStartApi() {
     bool useR1 = true;
     bool useR2 = false;
     SettingsStore::ExecutionMode mode = SettingsStore::defaultExecutionMode();
-    (void)readUIntParam("r1_min", &r1Min);
-    (void)readUIntParam("r2_min", &r2Min);
     (void)readBoolParam("r1_enabled", &useR1);
     (void)readBoolParam("r2_enabled", &useR2);
+    if ((useR1 && (!readUIntParam("r1_min", &r1Min) || r1Min < 1 || r1Min > 240)) ||
+        (useR2 && (!readUIntParam("r2_min", &r2Min) || r2Min < 1 || r2Min > 240))) {
+        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
+        return;
+    }
     if (Esp32BaseWeb::hasParam("mode") && !readModeParam("mode", &mode)) {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_mode\"}");
         return;
@@ -1204,19 +1244,45 @@ void handlePlansApi() {
     PlanStore::Plan plan = PlanStore::get(static_cast<uint8_t>(indexRaw));
     bool enabled = false;
     uint16_t value = 0;
-    char text[12] = "";
     if (readBoolParam("enabled", &enabled)) plan.enabled = enabled;
-    if (Esp32BaseWeb::getParam("time", text, sizeof(text)) && strlen(text) >= 5) {
-        plan.minuteOfDay = static_cast<uint16_t>(atoi(text) * 60 + atoi(text + 3));
+    if (Esp32BaseWeb::hasParam("time") && !readMinuteOfDayParam("time", &plan.minuteOfDay)) {
+        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_time\"}");
+        return;
     }
-    if (readUIntParam("r1_min", &value)) plan.roadSec[0] = minutesToSeconds(value);
-    if (readUIntParam("r2_min", &value)) plan.roadSec[1] = minutesToSeconds(value);
+    if (Esp32BaseWeb::hasParam("r1_min")) {
+        uint16_t seconds = 0;
+        if (!readPlanDurationSecondsParam("r1_min", &seconds)) {
+            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
+            return;
+        }
+        plan.roadSec[0] = seconds;
+    }
+    if (Esp32BaseWeb::hasParam("r2_min")) {
+        uint16_t seconds = 0;
+        if (!readPlanDurationSecondsParam("r2_min", &seconds)) {
+            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
+            return;
+        }
+        plan.roadSec[1] = seconds;
+    }
     bool useRoad = false;
     if (readBoolParam("r1_enabled", &useRoad) && !useRoad) plan.roadSec[0] = 0;
     if (readBoolParam("r2_enabled", &useRoad) && !useRoad) plan.roadSec[1] = 0;
     SettingsStore::ExecutionMode mode = plan.mode;
-    if (Esp32BaseWeb::hasParam("mode") && readModeParam("mode", &mode)) plan.mode = mode;
-    if (readUIntParam("cycle_days", &value) && value >= 1 && value <= 30) plan.cycleDays = static_cast<uint8_t>(value);
+    if (Esp32BaseWeb::hasParam("mode")) {
+        if (!readModeParam("mode", &mode)) {
+            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_mode\"}");
+            return;
+        }
+        plan.mode = mode;
+    }
+    if (Esp32BaseWeb::hasParam("cycle_days")) {
+        if (!readUIntParam("cycle_days", &value) || value < 1 || value > 30) {
+            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_cycle\"}");
+            return;
+        }
+        plan.cycleDays = static_cast<uint8_t>(value);
+    }
     uint32_t ymd = 0;
     if (readU32Param("cycle_start_ymd", &ymd)) plan.cycleStartYmd = ymd;
     plan.cycleMask = readCycleMaskFromForm(plan.cycleDays);
@@ -1252,7 +1318,13 @@ void handlePlanSkipApi() {
     } else if (strcmp(action, "skip_day") == 0) {
         char scope[12] = "all";
         (void)Esp32BaseWeb::getParam("scope", scope, sizeof(scope));
-        const bool remaining = strcmp(scope, "remaining") == 0 && ymd == currentYmd();
+        const uint32_t today = currentYmd();
+        const bool wantsRemaining = strcmp(scope, "remaining") == 0;
+        if (wantsRemaining && today == 0) {
+            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"time_not_synced\"}");
+            return;
+        }
+        const bool remaining = wantsRemaining && ymd == today;
         const uint16_t nowMinute = currentMinuteOfDay();
         for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
             const PlanStore::Plan& plan = PlanStore::get(i);
@@ -1375,7 +1447,7 @@ void handleRecordsCsvApi() {
             writeUInt(rr.estimatedMilliliters); Esp32BaseWeb::sendChunk("\r\n");
         }
     };
-    (void)RecordStore::readLatest(0, 50, cb, nullptr);
+    (void)RecordStore::readLatest(0, RecordStore::capacity(), cb, nullptr);
     Esp32BaseWeb::endResponse();
 }
 
@@ -1440,7 +1512,7 @@ void handleEventsCsvApi() {
         writeInt(event.value2); Esp32BaseWeb::sendChunk(",");
         Esp32BaseWeb::writeCsvEscaped(event.text); Esp32BaseWeb::sendChunk("\r\n");
     };
-    (void)EventStore::readLatest(0, 50, cb, nullptr);
+    (void)EventStore::readLatest(0, EventStore::capacity(), cb, nullptr);
     Esp32BaseWeb::endResponse();
 }
 
