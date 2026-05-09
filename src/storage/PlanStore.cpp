@@ -189,7 +189,7 @@ bool validate(const Plan& plan) {
 bool shouldRunOnDate(const Plan& plan, uint32_t ymd) {
     time_t start = 0;
     time_t target = 0;
-    if (!plan.enabled || !validate(plan) || !ymdToTime(plan.cycleStartYmd, &start) || !ymdToTime(ymd, &target) || target < start) {
+    if (!plan.enabled || !ymdToTime(plan.cycleStartYmd, &start) || !ymdToTime(ymd, &target) || target < start) {
         return false;
     }
     const uint32_t days = static_cast<uint32_t>((target - start) / 86400L);

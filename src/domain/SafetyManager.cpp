@@ -99,7 +99,7 @@ void handle() {
                                  0,
                                  0,
                                  "gpio0 long press");
-        ESP32BASE_LOG_W("safety", "factory reset confirmation requested");
+        ESP32BASE_LOG_W("safety", "factory reset requested by gpio0 long press");
     }
 }
 

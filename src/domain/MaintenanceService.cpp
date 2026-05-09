@@ -30,6 +30,13 @@ void begin() {
 }
 
 void handle() {
+    if (!g_pending && SafetyManager::factoryResetRequested()) {
+        g_pending = true;
+        g_clearRecords = false;
+        g_requestedMs = millis();
+        g_requestSource = EventStore::SOURCE_BUTTON;
+        ESP32BASE_LOG_W("maintenance", "factory reset requested by gpio0 long press");
+    }
     if (!g_pending || millis() - g_requestedMs < 750UL) {
         return;
     }

@@ -252,6 +252,9 @@ bool setRoadEnabledMask(uint8_t mask) {
     if (!validRoadMask(mask)) {
         return false;
     }
+    if (g_settings.roadEnabledMask == mask) {
+        return true;
+    }
     if (!Esp32BaseConfig::setInt(kNamespace, kKeyRoadEnabledMask, mask)) {
         return false;
     }
@@ -263,6 +266,9 @@ bool setDefaultExecutionMode(ExecutionMode mode) {
     if (mode != MODE_SIMULTANEOUS && mode != MODE_SEQUENTIAL) {
         return false;
     }
+    if (g_settings.defaultMode == mode) {
+        return true;
+    }
     if (!Esp32BaseConfig::setInt(kNamespace, kKeyDefaultMode, static_cast<int32_t>(mode))) {
         return false;
     }
@@ -273,6 +279,9 @@ bool setDefaultExecutionMode(ExecutionMode mode) {
 bool setQuickDurationSec(uint8_t road, uint16_t seconds) {
     if ((road != 1 && road != 2) || !validDuration(seconds)) {
         return false;
+    }
+    if (g_settings.quickDurationSec[road - 1] == seconds) {
+        return true;
     }
     const char* key = road == 1 ? kKeyQuickR1 : kKeyQuickR2;
     if (!Esp32BaseConfig::setInt(kNamespace, key, seconds)) {
@@ -286,6 +295,9 @@ bool setFlowNoPulseTimeoutSec(uint8_t seconds) {
     if (!validFlowTimeout(seconds)) {
         return false;
     }
+    if (g_settings.flowNoPulseTimeoutSec == seconds) {
+        return true;
+    }
     if (!Esp32BaseConfig::setInt(kNamespace, kKeyFlowTimeout, seconds)) {
         return false;
     }
@@ -296,6 +308,9 @@ bool setFlowNoPulseTimeoutSec(uint8_t seconds) {
 bool setIdleLeakWindowSec(uint8_t seconds) {
     if (!validLeakWindow(seconds)) {
         return false;
+    }
+    if (g_settings.idleLeakWindowSec == seconds) {
+        return true;
     }
     if (!Esp32BaseConfig::setInt(kNamespace, kKeyLeakWindow, seconds)) {
         return false;
@@ -308,6 +323,9 @@ bool setIdleLeakPulseThreshold(uint8_t pulses) {
     if (!validLeakPulses(pulses)) {
         return false;
     }
+    if (g_settings.idleLeakPulseThreshold == pulses) {
+        return true;
+    }
     if (!Esp32BaseConfig::setInt(kNamespace, kKeyLeakPulses, pulses)) {
         return false;
     }
@@ -316,6 +334,9 @@ bool setIdleLeakPulseThreshold(uint8_t pulses) {
 }
 
 bool setKeypadLocked(bool locked) {
+    if (g_settings.keypadLocked == locked) {
+        return true;
+    }
     if (!Esp32BaseConfig::setBool(kNamespace, kKeyKeypadLocked, locked)) {
         return false;
     }
@@ -327,6 +348,9 @@ bool setRoadName(uint8_t road, const char* name) {
     uint8_t index = 0;
     if (!roadIndex(road, &index) || !name || name[0] == '\0' || strlen(name) >= sizeof(g_settings.roads[index].name)) {
         return false;
+    }
+    if (strcmp(g_settings.roads[index].name, name) == 0) {
+        return true;
     }
     char key[16];
     roadKey(key, sizeof(key), road, "name");
@@ -342,6 +366,9 @@ bool setRoadPulsePerLiter(uint8_t road, uint16_t pulsePerLiter) {
     if (!roadIndex(road, &index) || pulsePerLiter < 1 || pulsePerLiter > 10000) {
         return false;
     }
+    if (g_settings.roads[index].pulsePerLiter == pulsePerLiter) {
+        return true;
+    }
     char key[16];
     roadKey(key, sizeof(key), road, "ppl");
     if (!Esp32BaseConfig::setInt(kNamespace, key, pulsePerLiter)) {
@@ -355,6 +382,9 @@ bool setRoadCalibrationX1000(uint8_t road, uint16_t calibrationX1000) {
     uint8_t index = 0;
     if (!roadIndex(road, &index) || calibrationX1000 < 100 || calibrationX1000 > 10000) {
         return false;
+    }
+    if (g_settings.roads[index].calibrationX1000 == calibrationX1000) {
+        return true;
     }
     char key[16];
     roadKey(key, sizeof(key), road, "cal");

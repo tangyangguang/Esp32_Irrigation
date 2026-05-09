@@ -123,13 +123,13 @@ bool roadAlert(uint8_t road) {
     return g_roads[index].alert;
 }
 
-void clearAlerts() {
+void clearAlerts(EventStore::Source source) {
     const uint32_t now = millis();
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         g_roads[i].alert = false;
         resetWindow(i, now);
     }
-    (void)EventStore::append(EventStore::TYPE_ALERT_CLEAR, EventStore::SOURCE_SYSTEM, 0, 0, 0, 0, "leak alerts");
+    (void)EventStore::append(EventStore::TYPE_ALERT_CLEAR, source, 0, 0, 0, 0, "leak alerts");
     ESP32BASE_LOG_I("leak", "alerts cleared");
 }
 

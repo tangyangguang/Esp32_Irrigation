@@ -44,6 +44,9 @@ struct Record {
     RoadRecord roads[RoadCount];
 };
 
+static_assert(sizeof(RoadRecord) == 28, "RecordStore::RoadRecord binary layout changed");
+static_assert(sizeof(Record) == 88, "RecordStore::Record binary layout changed");
+
 using ReadCallback = void (*)(const Record& record, void* user);
 
 void begin();

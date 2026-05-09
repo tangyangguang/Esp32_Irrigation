@@ -42,6 +42,8 @@ struct Event {
     char text[32];
 };
 
+static_assert(sizeof(Event) == 64, "EventStore::Event binary layout changed");
+
 using ReadCallback = void (*)(const Event& event, void* user);
 
 void begin();

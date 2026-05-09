@@ -872,7 +872,7 @@ void handleSettingsPage() {
     writeSettingRow("idle_leak_pulse_threshold", "漏水脉冲阈值", value);
     Esp32BaseWeb::sendChunk("</div></div>");
     Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>维护</h2><div class='setting-list'>");
-    writeSettingReadOnlyRow("恢复出厂请求", SafetyManager::factoryResetRequested() ? "已由 BOOT 键请求" : "未请求", "执行前仍需二次确认");
+    writeSettingReadOnlyRow("恢复出厂请求", SafetyManager::factoryResetRequested() ? "已由 BOOT 键请求" : "未请求", "BOOT 长按会直接恢复配置并重启");
     writeSettingReadOnlyRow("恢复出厂状态", MaintenanceService::factoryResetPending() ? "等待重启执行" : "空闲", "执行时会先关闭所有阀门");
     Esp32BaseWeb::sendChunk("</div><form method='post' action='/api/v1/maintenance/factory-reset' data-confirm='确认恢复出厂？设备会关闭阀门并重启。'><div class='field-grid' style='margin-top:12px'><div class='field'><label>确认文本</label><input name='confirm' maxlength='5' placeholder='RESET'></div><div class='field'><label>记录处理</label><select name='clear_records'><option value='0'>保留记录和事件</option><option value='1'>同时清空记录和事件</option></select></div></div><div class='actions'><button class='warn'>恢复出厂</button></div></form></div>");
     Esp32BaseWeb::sendChunk("</section>");
@@ -1193,7 +1193,7 @@ void handleAlertsClearApi() {
         sendMethodNotAllowed("POST");
         return;
     }
-    LeakMonitor::clearAlerts();
+    LeakMonitor::clearAlerts(EventStore::SOURCE_WEB);
     redirectTo("/irrigation");
 }
 
