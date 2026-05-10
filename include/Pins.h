@@ -28,5 +28,5 @@ static constexpr uint8_t Flow1 = 34;
 static constexpr uint8_t Flow2 = 35;
 
 static constexpr uint8_t MaxRoads = 2;
-static constexpr uint8_t DefaultEnabledRoads = 1;
+static constexpr uint8_t DefaultRoadEnabledMask = 0x01;
 }

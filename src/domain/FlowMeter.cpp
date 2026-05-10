@@ -85,16 +85,4 @@ uint32_t pulseRatePerMinuteX1000(uint8_t road) {
     return g_ratePerMinuteX1000[index];
 }
 
-void reset(uint8_t road) {
-    uint8_t index = 0;
-    if (!roadIndex(road, &index)) {
-        return;
-    }
-    portENTER_CRITICAL(&g_pulseMux);
-    g_pulses[index] = 0;
-    portEXIT_CRITICAL(&g_pulseMux);
-    g_lastSamplePulses[index] = 0;
-    g_ratePerMinuteX1000[index] = 0;
-}
-
 }

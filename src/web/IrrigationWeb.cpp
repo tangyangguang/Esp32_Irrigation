@@ -38,10 +38,6 @@ void writeInt(int32_t value) {
     Esp32BaseWeb::sendChunk(text);
 }
 
-void writeUIntText(uint32_t value) {
-    writeUInt(value);
-}
-
 void beginJson(int code = 200) {
     (void)Esp32BaseWeb::beginResponse(code, "application/json", nullptr);
 }
@@ -377,13 +373,13 @@ void writeWateringStatusPanel(const char* title) {
     Esp32BaseWeb::sendChunk(">停止全部</button></form>");
     for (uint8_t road = 1; road <= 2; ++road) {
         Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止第 ");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路？'><input type='hidden' name='road' value='");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("'><button class='secondary'");
         Esp32BaseWeb::sendChunk(active && SettingsStore::isRoadEnabled(road) ? "" : " disabled");
         Esp32BaseWeb::sendChunk(">停止第 ");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路</button></form>");
     }
     Esp32BaseWeb::sendChunk(active ? "" : "<span class='note'>当前未运行，停止不可用。</span>");
@@ -443,7 +439,7 @@ void handleManualPage() {
     for (uint8_t road = 1; road <= 2; ++road) {
         const bool enabled = SettingsStore::isRoadEnabled(road);
         Esp32BaseWeb::sendChunk("<div><select name='r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_enabled'");
         Esp32BaseWeb::sendChunk(enabled ? "" : " disabled");
         Esp32BaseWeb::sendChunk("><option value='1'>浇水</option><option value='0'");
@@ -455,7 +451,7 @@ void handleManualPage() {
     Esp32BaseWeb::sendChunk("<div class='matrix-label'>时长</div>");
     for (uint8_t road = 1; road <= 2; ++road) {
         Esp32BaseWeb::sendChunk("<div><input name='r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='1' max='240' value='");
         writeMinutesFromSeconds(settings.quickDurationSec[road - 1]);
         Esp32BaseWeb::sendChunk("'");
@@ -473,7 +469,7 @@ void writePlanContent(const PlanStore::Plan& plan) {
         if (!first) Esp32BaseWeb::sendChunk("，");
         first = false;
         Esp32BaseWeb::sendChunk("第 ");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路 ");
         writeMinutesFromSeconds(plan.roadSec[road - 1]);
         Esp32BaseWeb::sendChunk(" 分钟");
@@ -482,14 +478,14 @@ void writePlanContent(const PlanStore::Plan& plan) {
 }
 
 void writeCycleText(const PlanStore::Plan& plan) {
-    writeUIntText(plan.cycleDays);
+    writeUInt(plan.cycleDays);
     Esp32BaseWeb::sendChunk(" 天循环，执行第 ");
     bool first = true;
     for (uint8_t i = 0; i < plan.cycleDays; ++i) {
         if ((plan.cycleMask & (1UL << i)) == 0) continue;
         if (!first) Esp32BaseWeb::sendChunk("、");
         first = false;
-        writeUIntText(i + 1);
+        writeUInt(i + 1);
     }
     Esp32BaseWeb::sendChunk(" 天");
 }
@@ -517,7 +513,7 @@ void writeRecentRows(int8_t offset, uint32_t ymd) {
         Esp32BaseWeb::sendChunk("<tr><td>");
         writeMinuteOfDay(plan.minuteOfDay);
         Esp32BaseWeb::sendChunk("</td><td>计划 ");
-        writeUIntText(i + 1);
+        writeUInt(i + 1);
         Esp32BaseWeb::sendChunk("</td><td>");
         writePlanContent(plan);
         Esp32BaseWeb::sendChunk("</td><td>");
@@ -531,15 +527,15 @@ void writeRecentRows(int8_t offset, uint32_t ymd) {
         Esp32BaseWeb::sendChunk("</td><td>");
         if (!disabled && !completed && !running && !pastToday && !skipped) {
             Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过本次计划？'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
-            writeUIntText(i);
+            writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
-            writeUIntText(ymd);
+            writeUInt(ymd);
             Esp32BaseWeb::sendChunk("'><button class='warn'>跳过本次</button></form>");
         } else if (skipped) {
             Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认取消跳过本次计划？'><input type='hidden' name='action' value='clear_skip'><input type='hidden' name='index' value='");
-            writeUIntText(i);
+            writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
-            writeUIntText(ymd);
+            writeUInt(ymd);
             Esp32BaseWeb::sendChunk("'><button class='secondary'>取消跳过</button></form>");
         } else {
             Esp32BaseWeb::sendChunk("-");
@@ -565,7 +561,7 @@ void writeRecentPanel(const char* label, int8_t offset) {
         Esp32BaseWeb::writeHtmlEscaped(label);
         Esp32BaseWeb::sendChunk(offset == 0 ? "剩余未执行计划？" : "全部未执行计划？");
         Esp32BaseWeb::sendChunk("'><input type='hidden' name='action' value='skip_day'><input type='hidden' name='ymd' value='");
-        writeUIntText(ymd);
+        writeUInt(ymd);
         Esp32BaseWeb::sendChunk("'><input type='hidden' name='scope' value='");
         Esp32BaseWeb::sendChunk(offset == 0 ? "remaining" : "all");
         Esp32BaseWeb::sendChunk("'><button class='warn'>跳过");
@@ -603,7 +599,7 @@ void handlePlanConfigPage() {
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(plan.enabled ? "启用" : "停用");
         Esp32BaseWeb::sendChunk("</span></td><td>计划 ");
-        writeUIntText(i + 1);
+        writeUInt(i + 1);
         Esp32BaseWeb::sendChunk("</td><td>");
         writeMinuteOfDay(plan.minuteOfDay);
         Esp32BaseWeb::sendChunk("</td><td>");
@@ -613,7 +609,7 @@ void handlePlanConfigPage() {
         Esp32BaseWeb::sendChunk("，");
         Esp32BaseWeb::writeHtmlEscaped(modeLabel(plan.mode));
         Esp32BaseWeb::sendChunk("</td><td><a class='button secondary' href='/irrigation/plan?edit=");
-        writeUIntText(i);
+        writeUInt(i);
         Esp32BaseWeb::sendChunk("'>修改</a></td></tr>");
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
@@ -646,9 +642,9 @@ void handlePlanEditPage() {
     sendHeader("编辑计划", "page-form", "/irrigation/plan-config");
     writePageHead("编辑计划", "编辑单个计划的固定配置，保存后用于后续自动浇水。");
     Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans' data-confirm='确认保存计划？'><input type='hidden' name='index' value='");
-    writeUIntText(index);
+    writeUInt(index);
     Esp32BaseWeb::sendChunk("'><section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>计划 ");
-    writeUIntText(index + 1);
+    writeUInt(index + 1);
     Esp32BaseWeb::sendChunk("</h2><a class='button secondary' href='/irrigation/plan-config'>返回计划配置</a></div></div><div class='panel span-12'><h2>计划状态</h2><div class='field-grid'><div class='field'><label>启用状态</label><select name='enabled'><option value='0'");
     writeSelected(!plan.enabled);
     Esp32BaseWeb::sendChunk(">停用</option><option value='1'");
@@ -660,7 +656,7 @@ void handlePlanEditPage() {
     Esp32BaseWeb::sendChunk("</select></div></div></div><div class='panel span-12'><h2>浇水路配置</h2><div class='valve-matrix config-matrix'><div class='matrix-head'>项目</div><div class='matrix-head'>第 1 路</div><div class='matrix-head'>第 2 路</div><div class='matrix-label'>参与</div>");
     for (uint8_t road = 1; road <= 2; ++road) {
         Esp32BaseWeb::sendChunk("<div><select name='r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_enabled'");
         Esp32BaseWeb::sendChunk(SettingsStore::isRoadEnabled(road) ? "" : " disabled");
         Esp32BaseWeb::sendChunk("><option value='1'");
@@ -674,7 +670,7 @@ void handlePlanEditPage() {
     Esp32BaseWeb::sendChunk("<div class='matrix-label'>时长</div>");
     for (uint8_t road = 1; road <= 2; ++road) {
         Esp32BaseWeb::sendChunk("<div><input name='r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='0' max='240' value='");
         writeMinutesFromSeconds(plan.roadSec[road - 1]);
         Esp32BaseWeb::sendChunk("'");
@@ -682,19 +678,19 @@ void handlePlanEditPage() {
         Esp32BaseWeb::sendChunk("></div>");
     }
     Esp32BaseWeb::sendChunk("</div></div><div class='panel span-12'><h2>循环规则</h2><div class='field-grid'><div class='field'><label>循环天数</label><input id='cycleDays' name='cycle_days' type='number' min='1' max='30' value='");
-    writeUIntText(plan.cycleDays);
+    writeUInt(plan.cycleDays);
     Esp32BaseWeb::sendChunk("'></div><div class='field'><label>循环开始日期</label><input name='cycle_start_ymd' type='number' min='20000101' max='20991231' value='");
-    writeUIntText(plan.cycleStartYmd);
+    writeUInt(plan.cycleStartYmd);
     Esp32BaseWeb::sendChunk("'></div></div><h3>循环执行日</h3><div class='check-grid' id='cycleDayList'>");
     for (uint8_t i = 0; i < 30; ++i) {
         Esp32BaseWeb::sendChunk("<label class='check-item' data-day='");
-        writeUIntText(i + 1);
+        writeUInt(i + 1);
         Esp32BaseWeb::sendChunk("'><input type='checkbox' name='d");
-        writeUIntText(i);
+        writeUInt(i);
         Esp32BaseWeb::sendChunk("'");
         writeChecked((plan.cycleMask & (1UL << i)) != 0);
         Esp32BaseWeb::sendChunk("> 第 ");
-        writeUIntText(i + 1);
+        writeUInt(i + 1);
         Esp32BaseWeb::sendChunk(" 天</label>");
     }
     Esp32BaseWeb::sendChunk("</div><p class='note'>计划只使用循环规则：每天浇水是 1 天循环；浇 2 天停 1 天是 3 天循环并执行第 1、2 天；每周固定日期是 7 天循环。</p></div><div class='panel span-12'><div class='actions form-actions'><a class='button secondary' href='/irrigation/plan-config'>返回计划配置</a><button>保存计划</button></div></div></section></form><script>(function(){var n=document.getElementById('cycleDays');var list=document.getElementById('cycleDayList');function sync(){var max=Math.max(1,Math.min(30,parseInt(n.value||'1',10)||1));n.value=max;list.querySelectorAll('[data-day]').forEach(function(item){var show=parseInt(item.dataset.day,10)<=max;item.style.display=show?'flex':'none';if(!show){var c=item.querySelector('input');if(c)c.checked=false;}});}if(n&&list){n.addEventListener('input',sync);sync();}})();</script>");
@@ -753,7 +749,7 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
     } else if (strcmp(edit, "r1_enabled") == 0 || strcmp(edit, "r2_enabled") == 0) {
         const uint8_t road = strcmp(edit, "r1_enabled") == 0 ? 1 : 2;
         Esp32BaseWeb::sendChunk("<input type='hidden' name='road' value='");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("'><div class='field'><label>启用状态</label><select name='enabled'><option value='1'");
         writeSelected(SettingsStore::isRoadEnabled(road));
         Esp32BaseWeb::sendChunk(">已启用</option><option value='0'");
@@ -762,30 +758,30 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
     } else if (strcmp(edit, "r1_name") == 0 || strcmp(edit, "r2_name") == 0) {
         const uint8_t road = strcmp(edit, "r1_name") == 0 ? 1 : 2;
         Esp32BaseWeb::sendChunk("<div class='field'><label>名称</label><input name='r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_name' maxlength='11' value='");
         Esp32BaseWeb::writeHtmlEscaped(s.roads[road - 1].name);
         Esp32BaseWeb::sendChunk("'></div>");
     } else if (strcmp(edit, "quick_r1_min") == 0 || strcmp(edit, "quick_r2_min") == 0) {
         const uint8_t road = strcmp(edit, "quick_r1_min") == 0 ? 1 : 2;
         Esp32BaseWeb::sendChunk("<div class='field'><label>默认时长（分钟）</label><input name='quick_r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='1' max='240' value='");
         writeMinutesFromSeconds(s.quickDurationSec[road - 1]);
         Esp32BaseWeb::sendChunk("'></div>");
     } else if (strcmp(edit, "r1_pulse_per_liter") == 0 || strcmp(edit, "r2_pulse_per_liter") == 0) {
         const uint8_t road = strcmp(edit, "r1_pulse_per_liter") == 0 ? 1 : 2;
         Esp32BaseWeb::sendChunk("<div class='field'><label>每升脉冲</label><input name='r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_pulse_per_liter' type='number' min='1' max='10000' value='");
-        writeUIntText(s.roads[road - 1].pulsePerLiter);
+        writeUInt(s.roads[road - 1].pulsePerLiter);
         Esp32BaseWeb::sendChunk("'></div>");
     } else if (strcmp(edit, "r1_calibration_x1000") == 0 || strcmp(edit, "r2_calibration_x1000") == 0) {
         const uint8_t road = strcmp(edit, "r1_calibration_x1000") == 0 ? 1 : 2;
         Esp32BaseWeb::sendChunk("<div class='field'><label>校准系数</label><input name='r");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk("_calibration_x1000' type='number' min='100' max='10000' value='");
-        writeUIntText(s.roads[road - 1].calibrationX1000);
+        writeUInt(s.roads[road - 1].calibrationX1000);
         Esp32BaseWeb::sendChunk("'></div>");
     } else if (strcmp(edit, "flow_no_pulse_timeout_s") == 0 || strcmp(edit, "idle_leak_window_s") == 0 || strcmp(edit, "idle_leak_pulse_threshold") == 0) {
         uint16_t current = s.flowNoPulseTimeoutSec;
@@ -804,9 +800,9 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
         Esp32BaseWeb::sendChunk("</label><input name='");
         Esp32BaseWeb::writeHtmlEscaped(edit);
         Esp32BaseWeb::sendChunk("' type='number' min='1' max='");
-        writeUIntText(max);
+        writeUInt(max);
         Esp32BaseWeb::sendChunk("' value='");
-        writeUIntText(current);
+        writeUInt(current);
         Esp32BaseWeb::sendChunk("'></div>");
     }
     Esp32BaseWeb::sendChunk("</div><div class='actions'><button type='button' class='secondary' data-setting-close>取消</button><button>保存</button></div></form></div></div>");
@@ -851,7 +847,7 @@ void handleSettingsPage() {
     for (uint8_t road = 1; road <= 2; ++road) {
         const SettingsStore::RoadConfig& r = s.roads[road - 1];
         Esp32BaseWeb::sendChunk("<div class='panel span-6'><h2>第 ");
-        writeUIntText(road);
+        writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路配置</h2><div class='setting-list'>");
         writeSettingRow(road == 1 ? "r1_enabled" : "r2_enabled", "启用状态", SettingsStore::isRoadEnabled(road) ? "已启用" : "未启用");
         writeSettingRow(road == 1 ? "r1_name" : "r2_name", "名称", r.name);
@@ -891,7 +887,7 @@ void handleDataPage() {
             const RecordStore::RoadRecord& rr = record.roads[road - 1];
             const uint32_t actualSec = rr.endedMs >= rr.startedMs && rr.startedMs > 0 ? (rr.endedMs - rr.startedMs) / 1000UL : 0;
             Esp32BaseWeb::sendChunk("<tr><td>");
-            writeUIntText(record.id);
+            writeUInt(record.id);
             Esp32BaseWeb::sendChunk("</td><td>");
             Esp32BaseWeb::writeHtmlEscaped(RecordStore::sourceName(static_cast<RecordStore::Source>(record.source)));
             Esp32BaseWeb::sendChunk("</td><td>");
@@ -899,11 +895,11 @@ void handleDataPage() {
             Esp32BaseWeb::sendChunk("</td><td>");
             Esp32BaseWeb::writeHtmlEscaped(WateringSession::stopReasonName(static_cast<WateringSession::StopReason>(record.stopReason)));
             Esp32BaseWeb::sendChunk("</td><td>第 ");
-            writeUIntText(road);
+            writeUInt(road);
             Esp32BaseWeb::sendChunk(" 路</td><td>");
             writeMinutesFromSeconds(rr.targetSec);
             Esp32BaseWeb::sendChunk(" 分钟</td><td>");
-            writeUIntText(actualSec);
+            writeUInt(actualSec);
             Esp32BaseWeb::sendChunk(" 秒</td><td>");
             writeLitersFromMl(rr.estimatedMilliliters);
             Esp32BaseWeb::sendChunk("</td></tr>");
@@ -913,13 +909,13 @@ void handleDataPage() {
     Esp32BaseWeb::sendChunk("</tbody></table></div></div><div class='panel span-12'><div class='panel-titlebar'><h2>系统事件</h2><div class='panel-tools'><a class='button secondary' href='/api/v1/events'>JSON</a><a class='button secondary' href='/api/v1/events.csv'>CSV 导出</a></div></div><p class='note'>系统事件来自 EventStore，用于排查启动、配置变更、计划变更、浇水开始/停止/错误、漏水告警和告警解除。</p><div class='table-wrap'><table><thead><tr><th>ID</th><th>类型</th><th>来源</th><th>影响对象</th><th>说明</th></tr></thead><tbody>");
     auto eventCb = [](const EventStore::Event& event, void*) {
         Esp32BaseWeb::sendChunk("<tr><td>");
-        writeUIntText(event.id);
+        writeUInt(event.id);
         Esp32BaseWeb::sendChunk("</td><td>");
         Esp32BaseWeb::writeHtmlEscaped(EventStore::typeName(static_cast<EventStore::Type>(event.type)));
         Esp32BaseWeb::sendChunk("</td><td>");
         Esp32BaseWeb::writeHtmlEscaped(EventStore::sourceName(static_cast<EventStore::Source>(event.source)));
         Esp32BaseWeb::sendChunk("</td><td>");
-        writeUIntText(event.road);
+        writeUInt(event.road);
         Esp32BaseWeb::sendChunk("</td><td>");
         Esp32BaseWeb::writeHtmlEscaped(event.text);
         Esp32BaseWeb::sendChunk("</td></tr>");
