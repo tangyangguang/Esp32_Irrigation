@@ -17,8 +17,8 @@
 | `config_changed` | 0 | 配置值 | 0 | Web 保存配置时 `value1` 为启用路 mask；按键锁定时 `value1` 为 1/0。 |
 | `plan_changed` | 0 | 计划索引或日期 | 周期天数或 0 | 保存计划时为计划索引和周期天数；跳过计划时为 `ymd` 和 0。 |
 | `water_start` | 执行模式 | 第 1 路目标秒数 | 第 2 路目标秒数 | `code` 使用 `SettingsStore::ExecutionMode`。 |
-| `water_stop` | 停止原因 | 第 1 路目标秒数 | 第 2 路目标秒数 | `code` 使用 `WateringSession::StopReason`；单路停止只填写对应路槽位。 |
-| `water_error` | 停止原因 | 脉冲数或第 1 路目标秒数 | 超时秒数或第 2 路目标秒数 | 路级无脉冲异常时 `road>0`，`value1` 为本路脉冲增量、`value2` 为超时秒数；会话级错误时 `road=0`，两个值为目标秒数。 |
+| `water_stop` | 停止原因 | 第 1 路目标秒数 | 第 2 路目标秒数 | `code` 使用 `WateringSession::StopReason`；单路停止只填写对应路槽位；`replaced` 表示旧会话被新会话替换，`source` 仍为旧会话原始来源。 |
+| `water_error` | 停止原因 | 脉冲数或第 1 路目标秒数 | 超时秒数或第 2 路目标秒数 | 路级无脉冲异常时 `road>0`，`value1` 为本路脉冲增量、`value2` 为超时秒数；会话级错误时 `road=0`，两个值为目标秒数；多路部分失败时使用 `partial_error`。 |
 | `leak_alert` | 0 | 窗口内脉冲增量 | 告警阈值 | 待机漏水或阀门粘连告警。 |
 | `alert_clear` | 0 | 0 | 0 | 告警清除；`source` 区分 Web 或系统来源。 |
 | `factory_reset_requested` | 是否清记录 | 0 | 0 | Web 请求时 `code=1` 表示同时清空记录和事件；BOOT 长按固定为 0。 |
