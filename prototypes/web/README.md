@@ -2,6 +2,8 @@
 
 本目录存放 ESP32 灌溉项目的 Web 页面原型。原型用于确认页面结构、操作流程、字段和中文文案，不承载真实业务逻辑，不接入 PlatformIO 构建。
 
+真实运行页面以 `src/web/IrrigationWeb.cpp` 生成的服务端 HTML 为准；本目录是静态设计稿，不代表当前固件一定逐字一致。
+
 ## 当前版本
 
 本版按实际使用频率组织导航：
@@ -19,6 +21,20 @@
 - `records.html`：浇水记录、系统事件和导出入口。
 - `settings.html`：灌溉业务参数，每次只修改一个参数。
 - `status-api.html`：调试页，展示状态 API 结构示意。
+
+## 原型到真实路由
+
+| 原型文件 | 当前真实路由 | 说明 |
+|---|---|---|
+| `dashboard.html` | `/irrigation` | 业务总览。 |
+| `manual.html` | `/irrigation/manual` | 手动浇水。 |
+| `plans.html` | `/irrigation/plans` | 近期计划和跳过操作。 |
+| `plan-config.html` | `/irrigation/plan-config` | 计划列表。 |
+| `plan-edit.html` | `/irrigation/plan?edit=<index>` | 单条计划编辑。 |
+| `records.html` | `/irrigation/data` | 记录、事件、CSV 导出。 |
+| `settings.html` | `/irrigation/settings` | 灌溉业务设置和恢复出厂入口。 |
+| `status-api.html` | `/irrigation/debug`、`/api/v1/status` | 调试页和实时状态 API。 |
+| `index.html` | 无直接运行路由 | 原型入口。 |
 
 ## 设计原则
 

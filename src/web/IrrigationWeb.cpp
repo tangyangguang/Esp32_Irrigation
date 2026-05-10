@@ -145,6 +145,31 @@ bool readPlanDurationSecondsParam(const char* name, uint16_t* seconds) {
     return true;
 }
 
+uint8_t countConfigFields() {
+    uint8_t count = 0;
+    const char* fields[] = {
+        "road",
+        "default_mode",
+        "quick_r1_min",
+        "quick_r2_min",
+        "flow_no_pulse_timeout_s",
+        "idle_leak_window_s",
+        "idle_leak_pulse_threshold",
+        "r1_name",
+        "r2_name",
+        "r1_pulse_per_liter",
+        "r2_pulse_per_liter",
+        "r1_calibration_x1000",
+        "r2_calibration_x1000",
+    };
+    for (const char* field : fields) {
+        if (Esp32BaseWeb::hasParam(field)) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 void writeMinutesFromSeconds(uint32_t seconds) {
     writeUInt(seconds / 60UL);
 }
@@ -1092,6 +1117,10 @@ void handleConfigApi() {
     bool boolValue = false;
     char text[12] = "";
     bool ok = true;
+    if (countConfigFields() != 1) {
+        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"one_config_field_required\"}");
+        return;
+    }
     if (Esp32BaseWeb::hasParam("road")) {
         uint16_t road = 0;
         ok = readUIntParam("road", &road) && readBoolParam("enabled", &boolValue) && SettingsStore::setRoadEnabled(static_cast<uint8_t>(road), boolValue);
