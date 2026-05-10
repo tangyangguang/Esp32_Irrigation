@@ -82,18 +82,19 @@ Esp32_Irrigation/
 │  │  ├─ SafetyManager.*
 │  │  ├─ WateringPlanScheduler.*
 │  │  └─ WateringSession.*
+│  ├─ io/
+│  │  └─ ButtonInput.*
 │  ├─ storage/
 │  │  ├─ SettingsStore.*
 │  │  ├─ RecordStore.*
 │  │  ├─ EventStore.*
-│  │  └─ PlanStore.*
-│  ├─ ui/
-│  │  ├─ Display1602.*
-│  │  ├─ LedIndicator.*
-│  │  └─ LocalMenu.*
+│  │  ├─ PlanStore.*
+│  │  └─ PlanSkipStore.*
 │  └─ web/
 │     └─ IrrigationWeb.*
 ```
+
+本地 LCD/LED 菜单尚未实装，因此当前工程结构中没有 `src/ui/`。进入本地交互阶段时再按实际确认后的设计新增，不预留空目录。
 
 ## 4. 模块建设路线
 
