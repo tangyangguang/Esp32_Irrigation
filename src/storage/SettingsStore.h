@@ -16,6 +16,7 @@ struct RoadConfig {
 };
 
 struct Settings {
+    // Bit mask, not count: bit0 enables road 1, bit1 enables road 2.
     uint8_t roadEnabledMask;
     ExecutionMode defaultMode;
     uint16_t quickDurationSec[2];

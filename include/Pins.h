@@ -28,5 +28,6 @@ static constexpr uint8_t Flow1 = 34;
 static constexpr uint8_t Flow2 = 35;
 
 static constexpr uint8_t MaxRoads = 2;
+// Bit mask, not road count: bit0 enables road 1, bit1 enables road 2.
 static constexpr uint8_t DefaultRoadEnabledMask = 0x01;
 }
