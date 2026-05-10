@@ -2,11 +2,12 @@
 
 #include <Arduino.h>
 
-ButtonInput::ButtonInput(uint8_t pin, bool activeLow, uint16_t debounceMs, uint16_t longPressMs)
+ButtonInput::ButtonInput(uint8_t pin, bool activeLow, uint16_t debounceMs, uint16_t longPressMs, bool suppressInitialPress)
     : m_pin(pin),
       m_activeLow(activeLow),
       m_debounceMs(debounceMs),
       m_longPressMs(longPressMs),
+      m_suppressInitialPress(suppressInitialPress),
       m_stablePressed(false),
       m_lastRawPressed(false),
       m_pressEvent(false),
@@ -25,7 +26,7 @@ void ButtonInput::begin() {
     m_stableSinceMs = now;
     m_pressEvent = false;
     m_longPressEvent = false;
-    m_longPressFired = false;
+    m_longPressFired = m_suppressInitialPress && m_stablePressed;
 }
 
 void ButtonInput::handle(uint32_t nowMs) {

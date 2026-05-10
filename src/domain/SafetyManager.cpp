@@ -18,7 +18,7 @@ ButtonInput g_road2(IrrigationPins::Road2DownButton);
 ButtonInput g_startOk(IrrigationPins::StartOkButton);
 ButtonInput g_menuBack(IrrigationPins::MenuBackButton);
 ButtonInput g_lock(IrrigationPins::LockButton);
-ButtonInput g_factoryReset(IrrigationPins::FactoryResetButton, true, 30, 3000);
+ButtonInput g_factoryReset(IrrigationPins::FactoryResetButton, true, 30, 3000, true);
 
 bool g_locked = false;
 bool g_factoryResetRequested = false;

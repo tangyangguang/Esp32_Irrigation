@@ -76,10 +76,17 @@ void finishRoadByIndex(uint8_t index, WateringSession::RoadState state, const ch
 }
 
 WateringSession::StopReason finalReason(WateringSession::StopReason fallback) {
+    bool hasError = false;
+    bool hasDone = false;
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         if (g_session.roads[i].state == WateringSession::ROAD_ERROR) {
-            return WateringSession::REASON_ERROR;
+            hasError = true;
+        } else if (g_session.roads[i].state == WateringSession::ROAD_DONE) {
+            hasDone = true;
         }
+    }
+    if (hasError) {
+        return hasDone ? WateringSession::REASON_PARTIAL_ERROR : WateringSession::REASON_ERROR;
     }
     return fallback;
 }
@@ -121,7 +128,8 @@ void maybeFinishSession(WateringSession::StopReason reason) {
     g_session.endedMs = millis();
     g_session.lastStopReason = reason;
     appendRecord(reason);
-    (void)EventStore::append(reason == WateringSession::REASON_ERROR ? EventStore::TYPE_WATER_ERROR : EventStore::TYPE_WATER_STOP,
+    const bool endedWithError = reason == WateringSession::REASON_ERROR || reason == WateringSession::REASON_PARTIAL_ERROR;
+    (void)EventStore::append(endedWithError ? EventStore::TYPE_WATER_ERROR : EventStore::TYPE_WATER_STOP,
                              eventSource(g_session.source),
                              0,
                              static_cast<uint8_t>(reason),
@@ -391,6 +399,7 @@ const char* stopReasonName(StopReason reason) {
         case REASON_REPLACED: return "replaced";
         case REASON_ERROR: return "error";
         case REASON_SKIPPED: return "skipped";
+        case REASON_PARTIAL_ERROR: return "partial_error";
         case REASON_NONE:
         default: return "none";
     }

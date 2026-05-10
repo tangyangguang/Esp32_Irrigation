@@ -24,6 +24,7 @@ enum StopReason : uint8_t {
     REASON_REPLACED,
     REASON_ERROR,
     REASON_SKIPPED,
+    REASON_PARTIAL_ERROR,
 };
 
 struct RoadStatus {
