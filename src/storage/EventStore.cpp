@@ -9,12 +9,26 @@ namespace {
 
 static constexpr const char* kPath = "/irr_events.bin";
 static constexpr const char* kNamespace = "irr_evt";
-static constexpr const char* kKeyHead = "head";
-static constexpr const char* kKeyCount = "count";
-static constexpr const char* kKeyNextId = "next_id";
 static constexpr const char* kKeyInitialized = "init";
+static constexpr const char* kKeyMeta = "meta";
+static constexpr const char* kLegacyKeyHead = "head";
+static constexpr const char* kLegacyKeyCount = "count";
+static constexpr const char* kLegacyKeyNextId = "next_id";
 static constexpr uint32_t kMagic = 0x49524556UL;
+static constexpr uint32_t kMetaMagic = 0x4952454DUL;
 static constexpr uint16_t kVersion = 1;
+static constexpr uint16_t kMetaVersion = 1;
+
+struct StoreMeta {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t head;
+    uint16_t count;
+    uint16_t reserved;
+    uint32_t nextId;
+};
+
+static_assert(sizeof(StoreMeta) == 16, "EventStore::StoreMeta binary layout changed");
 
 uint16_t g_head = 0;
 uint16_t g_count = 0;
@@ -40,6 +54,47 @@ uint16_t clampCount(int32_t value) {
         return EventStore::Capacity;
     }
     return static_cast<uint16_t>(value);
+}
+
+bool validMeta(const StoreMeta& meta) {
+    return meta.magic == kMetaMagic &&
+           meta.version == kMetaVersion &&
+           meta.head < EventStore::Capacity &&
+           meta.count <= EventStore::Capacity &&
+           meta.nextId != 0;
+}
+
+StoreMeta makeMeta() {
+    StoreMeta meta = {};
+    meta.magic = kMetaMagic;
+    meta.version = kMetaVersion;
+    meta.head = g_head;
+    meta.count = g_count;
+    meta.nextId = g_nextId == 0 ? 1 : g_nextId;
+    return meta;
+}
+
+bool saveMeta() {
+    const StoreMeta meta = makeMeta();
+    return Esp32BaseConfig::setPod(kNamespace, kKeyMeta, meta);
+}
+
+void loadMeta() {
+    StoreMeta meta = {};
+    if (Esp32BaseConfig::getPod(kNamespace, kKeyMeta, meta) && validMeta(meta)) {
+        g_head = meta.head;
+        g_count = meta.count;
+        g_nextId = meta.nextId;
+        return;
+    }
+
+    g_head = clampIndex(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyHead, 0));
+    g_count = clampCount(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyCount, 0));
+    g_nextId = static_cast<uint32_t>(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyNextId, 1));
+    if (g_nextId == 0) {
+        g_nextId = 1;
+    }
+    (void)saveMeta();
 }
 
 bool createEmptyStore() {
@@ -116,12 +171,7 @@ void begin() {
         return;
     }
 
-    g_head = clampIndex(Esp32BaseConfig::getInt(kNamespace, kKeyHead, 0));
-    g_count = clampCount(Esp32BaseConfig::getInt(kNamespace, kKeyCount, 0));
-    g_nextId = static_cast<uint32_t>(Esp32BaseConfig::getInt(kNamespace, kKeyNextId, 1));
-    if (g_nextId == 0) {
-        g_nextId = 1;
-    }
+    loadMeta();
     ESP32BASE_LOG_I("events", "ready count=%u head=%u next=%lu",
                     static_cast<unsigned>(g_count),
                     static_cast<unsigned>(g_head),
@@ -168,9 +218,7 @@ bool append(Type type, Source source, uint8_t road, uint8_t code, int32_t value1
         g_nextId = 1;
     }
 
-    return Esp32BaseConfig::setInt(kNamespace, kKeyHead, g_head) &&
-           Esp32BaseConfig::setInt(kNamespace, kKeyCount, g_count) &&
-           Esp32BaseConfig::setInt(kNamespace, kKeyNextId, static_cast<int32_t>(g_nextId));
+    return saveMeta();
 }
 
 bool clear() {
@@ -185,6 +233,10 @@ bool clear() {
     g_head = 0;
     g_count = 0;
     g_nextId = 1;
+    if (!saveMeta()) {
+        g_ready = false;
+        return false;
+    }
     g_ready = true;
     ESP32BASE_LOG_W("events", "cleared");
     return true;
