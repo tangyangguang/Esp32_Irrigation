@@ -285,6 +285,8 @@ const char* typeName(Type type) {
         case TYPE_ALERT_CLEAR: return "alert_clear";
         case TYPE_FACTORY_RESET_REQUESTED: return "factory_reset_requested";
         case TYPE_FACTORY_RESET_EXECUTED: return "factory_reset_executed";
+        case TYPE_WIFI_STATUS_CHANGED: return "wifi_status_changed";
+        case TYPE_OTA_STATUS_CHANGED: return "ota_status_changed";
         default: return "unknown";
     }
 }

@@ -17,6 +17,8 @@ enum Type : uint8_t {
     TYPE_ALERT_CLEAR = 8,
     TYPE_FACTORY_RESET_REQUESTED = 9,
     TYPE_FACTORY_RESET_EXECUTED = 10,
+    TYPE_WIFI_STATUS_CHANGED = 11,
+    TYPE_OTA_STATUS_CHANGED = 12,
 };
 
 enum Source : uint8_t {
