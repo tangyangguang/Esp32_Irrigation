@@ -206,6 +206,7 @@ bool append(const Record& record) {
 }
 
 bool clear() {
+    const uint32_t nextId = g_nextId == 0 ? 1 : g_nextId;
     if (!Esp32BaseConfig::clearNamespace(kNamespace)) {
         return false;
     }
@@ -216,7 +217,7 @@ bool clear() {
     (void)Esp32BaseConfig::setInt(kNamespace, kKeyInitialized, 1);
     g_head = 0;
     g_count = 0;
-    g_nextId = 1;
+    g_nextId = nextId;
     if (!saveMeta()) {
         g_ready = false;
         return false;
