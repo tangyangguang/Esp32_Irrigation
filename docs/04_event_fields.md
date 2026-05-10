@@ -22,7 +22,7 @@
 | `leak_alert` | 0 | 窗口内脉冲增量 | 告警阈值 | 待机漏水或阀门粘连告警。 |
 | `alert_clear` | 0 | 0 | 0 | 告警清除；`source` 区分 Web 或系统来源。 |
 | `factory_reset_requested` | 是否清记录 | 0 | 0 | Web 请求时 `code=1` 表示同时清空记录和事件；BOOT 长按固定为 0。 |
-| `factory_reset_executed` | 是否清记录 | 是否成功 | 0 | `code=1` 表示同时清空记录和事件，`value1=1` 表示各清理步骤均成功。 |
+| `factory_reset_executed` | 0 | 是否成功 | 0 | 仅在恢复出厂保留事件时写入；`value1=1` 表示配置、计划和记录处理步骤均成功。选择清空事件时不写该事件。 |
 
 ## 约束
 

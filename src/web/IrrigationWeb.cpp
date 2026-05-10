@@ -145,6 +145,14 @@ bool readPlanDurationSecondsParam(const char* name, uint16_t* seconds) {
     return true;
 }
 
+bool wantsJsonResponse() {
+    char text[8] = "";
+    if (!Esp32BaseWeb::getParam("response", text, sizeof(text))) {
+        return false;
+    }
+    return strcmp(text, "json") == 0 || strcmp(text, "1") == 0 || strcmp(text, "true") == 0;
+}
+
 uint8_t countConfigFields() {
     uint8_t count = 0;
     const char* fields[] = {
@@ -1159,6 +1167,10 @@ void handleConfigApi() {
         return;
     }
     (void)EventStore::append(EventStore::TYPE_CONFIG_CHANGED, EventStore::SOURCE_WEB, 0, 0, SettingsStore::roadEnabledMask(), 0, "config saved");
+    if (wantsJsonResponse()) {
+        Esp32BaseWeb::sendJson(200, "{\"ok\":true}");
+        return;
+    }
     redirectTo("/irrigation/settings");
 }
 

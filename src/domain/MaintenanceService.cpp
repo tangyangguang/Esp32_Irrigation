@@ -47,14 +47,16 @@ void handle() {
     const bool settingsOk = SettingsStore::clear();
     const bool plansOk = PlanStore::clear();
     const bool recordsOk = !g_clearRecords || RecordStore::clear();
+    if (!g_clearRecords) {
+        (void)EventStore::append(EventStore::TYPE_FACTORY_RESET_EXECUTED,
+                                 g_requestSource,
+                                 0,
+                                 0,
+                                 settingsOk && plansOk && recordsOk ? 1 : 0,
+                                 0,
+                                 "factory reset");
+    }
     const bool eventsOk = !g_clearRecords || EventStore::clear();
-    (void)EventStore::append(EventStore::TYPE_FACTORY_RESET_EXECUTED,
-                             g_requestSource,
-                             0,
-                             g_clearRecords ? 1 : 0,
-                             settingsOk && plansOk && recordsOk && eventsOk ? 1 : 0,
-                             0,
-                             "factory reset");
     SafetyManager::clearFactoryResetRequest();
 
     ESP32BASE_LOG_W("maintenance", "factory reset settings=%s plans=%s records=%s events=%s clearRecords=%s",
