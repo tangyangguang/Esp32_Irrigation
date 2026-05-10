@@ -55,7 +55,7 @@ bool clear();
 uint16_t count();
 uint16_t capacity();
 uint32_t nextId();
-bool readLatest(uint16_t offset, uint8_t limit, ReadCallback callback, void* user);
+bool readLatest(uint16_t offset, uint16_t limit, ReadCallback callback, void* user);
 
 const char* sourceName(Source source);
 

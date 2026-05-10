@@ -198,7 +198,7 @@ uint16_t capacity() {
     return Capacity;
 }
 
-bool readLatest(uint16_t offset, uint8_t limit, ReadCallback callback, void* user) {
+bool readLatest(uint16_t offset, uint16_t limit, ReadCallback callback, void* user) {
     if (!callback || !g_ready || offset >= g_count) {
         return false;
     }

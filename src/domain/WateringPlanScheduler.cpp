@@ -15,7 +15,7 @@ namespace {
 
 uint16_t g_lastMinuteOfDay = 1440;
 uint32_t g_lastYmd = 0;
-uint8_t g_lastTriggeredMinute[PlanStore::MaxPlans] = {};
+uint16_t g_lastTriggeredMinute[PlanStore::MaxPlans] = {};
 uint32_t g_lastTriggeredYmd[PlanStore::MaxPlans] = {};
 
 uint32_t makeYmd(const tm& value) {
@@ -83,7 +83,7 @@ void begin() {
     g_lastMinuteOfDay = 1440;
     g_lastYmd = 0;
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
-        g_lastTriggeredMinute[i] = 255;
+        g_lastTriggeredMinute[i] = 1440;
         g_lastTriggeredYmd[i] = 0;
     }
 }

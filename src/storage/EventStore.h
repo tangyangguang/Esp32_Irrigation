@@ -51,7 +51,7 @@ bool append(Type type, Source source, uint8_t road, uint8_t code, int32_t value1
 bool clear();
 uint16_t count();
 uint16_t capacity();
-bool readLatest(uint16_t offset, uint8_t limit, ReadCallback callback, void* user);
+bool readLatest(uint16_t offset, uint16_t limit, ReadCallback callback, void* user);
 
 const char* typeName(Type type);
 const char* sourceName(Source source);
