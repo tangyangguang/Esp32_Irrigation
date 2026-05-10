@@ -34,6 +34,8 @@ lib_deps =
 - 业务首页：`/irrigation`
 - 系统工具：`/esp32base`
 - 状态 API：`/api/v1/status`
+- 设置表单：`/irrigation/settings/config`
+- 设置 JSON：`/api/v1/config`
 - 记录 JSON：`/api/v1/records`
 - 记录 CSV：`/api/v1/records.csv`
 - 事件 JSON：`/api/v1/events`

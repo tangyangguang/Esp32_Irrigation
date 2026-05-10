@@ -17,6 +17,7 @@ bool g_pending = false;
 bool g_clearRecords = false;
 uint32_t g_requestedMs = 0;
 EventStore::Source g_requestSource = EventStore::SOURCE_SYSTEM;
+static constexpr uint32_t kFactoryResetResponseDelayMs = 750UL;
 
 }
 
@@ -37,7 +38,7 @@ void handle() {
         g_requestSource = EventStore::SOURCE_BUTTON;
         ESP32BASE_LOG_W("maintenance", "factory reset requested by gpio0 long press");
     }
-    if (!g_pending || millis() - g_requestedMs < 750UL) {
+    if (!g_pending || millis() - g_requestedMs < kFactoryResetResponseDelayMs) {
         return;
     }
 

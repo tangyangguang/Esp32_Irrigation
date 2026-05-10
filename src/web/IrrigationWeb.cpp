@@ -145,14 +145,6 @@ bool readPlanDurationSecondsParam(const char* name, uint16_t* seconds) {
     return true;
 }
 
-bool wantsJsonResponse() {
-    char text[8] = "";
-    if (!Esp32BaseWeb::getParam("response", text, sizeof(text))) {
-        return false;
-    }
-    return strcmp(text, "json") == 0 || strcmp(text, "1") == 0 || strcmp(text, "true") == 0;
-}
-
 uint8_t countConfigFields() {
     uint8_t count = 0;
     const char* fields[] = {
@@ -774,7 +766,7 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
     Esp32BaseWeb::writeHtmlEscaped(title);
     Esp32BaseWeb::sendChunk("：");
     Esp32BaseWeb::writeHtmlEscaped(currentValue);
-    Esp32BaseWeb::sendChunk("</p><form method='post' action='/api/v1/config' data-confirm='确认保存设置？'><div class='field-grid'>");
+    Esp32BaseWeb::sendChunk("</p><form method='post' action='/irrigation/settings/config' data-confirm='确认保存设置？'><div class='field-grid'>");
     if (strcmp(edit, "default_mode") == 0) {
         Esp32BaseWeb::sendChunk("<div class='field'><label>默认模式</label><select name='default_mode'>");
         writeModeOptions(s.defaultMode);
@@ -1107,27 +1099,35 @@ void handleStatusApi() {
     endJson();
 }
 
-void handleConfigApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
-        beginJson();
-        Esp32BaseWeb::sendChunk("{");
-        writeSettingsJson();
-        Esp32BaseWeb::sendChunk("}");
-        endJson();
-        return;
+bool rejectIfFactoryResetPending() {
+    if (!MaintenanceService::factoryResetPending()) {
+        return false;
     }
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("GET,POST");
-        return;
+    Esp32BaseWeb::sendJson(409, "{\"ok\":false,\"error\":\"factory_reset_pending\"}");
+    return true;
+}
+
+void sendConfigError(const char* error) {
+    beginJson(400);
+    Esp32BaseWeb::sendChunk("{\"ok\":false,\"error\":\"");
+    Esp32BaseWeb::writeJsonEscaped(error ? error : "invalid_config");
+    Esp32BaseWeb::sendChunk("\"}");
+    endJson();
+}
+
+bool saveConfigFromRequest(const char** error) {
+    if (error) {
+        *error = nullptr;
     }
     uint16_t value = 0;
     bool boolValue = false;
     char text[12] = "";
     bool ok = true;
     if (countConfigFields() != 1) {
-        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"one_config_field_required\"}");
-        return;
+        if (error) {
+            *error = "one_config_field_required";
+        }
+        return false;
     }
     if (Esp32BaseWeb::hasParam("road")) {
         uint16_t road = 0;
@@ -1163,12 +1163,52 @@ void handleConfigApi() {
         ok = false;
     }
     if (!ok) {
-        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_config\"}");
-        return;
+        if (error) {
+            *error = "invalid_config";
+        }
+        return false;
     }
     (void)EventStore::append(EventStore::TYPE_CONFIG_CHANGED, EventStore::SOURCE_WEB, 0, 0, SettingsStore::roadEnabledMask(), 0, "config saved");
-    if (wantsJsonResponse()) {
-        Esp32BaseWeb::sendJson(200, "{\"ok\":true}");
+    return true;
+}
+
+void handleConfigApi() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
+        beginJson();
+        Esp32BaseWeb::sendChunk("{");
+        writeSettingsJson();
+        Esp32BaseWeb::sendChunk("}");
+        endJson();
+        return;
+    }
+    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
+        sendMethodNotAllowed("GET,POST");
+        return;
+    }
+    if (rejectIfFactoryResetPending()) {
+        return;
+    }
+    const char* error = nullptr;
+    if (!saveConfigFromRequest(&error)) {
+        sendConfigError(error);
+        return;
+    }
+    Esp32BaseWeb::sendJson(200, "{\"ok\":true}");
+}
+
+void handleSettingsConfigForm() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
+        sendMethodNotAllowed("POST");
+        return;
+    }
+    if (rejectIfFactoryResetPending()) {
+        return;
+    }
+    const char* error = nullptr;
+    if (!saveConfigFromRequest(&error)) {
+        sendConfigError(error);
         return;
     }
     redirectTo("/irrigation/settings");
@@ -1178,6 +1218,9 @@ void handleWaterStartApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
         sendMethodNotAllowed("POST");
+        return;
+    }
+    if (rejectIfFactoryResetPending()) {
         return;
     }
     uint16_t r1Min = 0;
@@ -1211,6 +1254,9 @@ void handleWaterStopApi() {
         sendMethodNotAllowed("POST");
         return;
     }
+    if (rejectIfFactoryResetPending()) {
+        return;
+    }
     uint16_t road = 0;
     (void)readUIntParam("road", &road);
     if (road == 0) {
@@ -1230,6 +1276,9 @@ void handleAlertsClearApi() {
         sendMethodNotAllowed("POST");
         return;
     }
+    if (rejectIfFactoryResetPending()) {
+        return;
+    }
     LeakMonitor::clearAlerts(EventStore::SOURCE_WEB);
     redirectTo("/irrigation");
 }
@@ -1238,6 +1287,10 @@ void handleFactoryResetApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
         sendMethodNotAllowed("POST");
+        return;
+    }
+    if (MaintenanceService::factoryResetPending()) {
+        Esp32BaseWeb::sendJson(409, "{\"ok\":false,\"error\":\"factory_reset_pending\"}");
         return;
     }
     char confirm[8] = "";
@@ -1271,6 +1324,9 @@ void handlePlansApi() {
     }
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
         sendMethodNotAllowed("GET,POST");
+        return;
+    }
+    if (rejectIfFactoryResetPending()) {
         return;
     }
     uint16_t indexRaw = 0;
@@ -1335,6 +1391,9 @@ void handlePlanSkipApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
         sendMethodNotAllowed("POST");
+        return;
+    }
+    if (rejectIfFactoryResetPending()) {
         return;
     }
     char action[16] = "";
@@ -1566,6 +1625,7 @@ void begin() {
     const bool settingsOk = Esp32BaseWeb::addPage("/irrigation/settings", "设置", handleSettingsPage);
     const bool debugOk = Esp32BaseWeb::addPage("/irrigation/debug", "调试", handleDebugPage);
     const bool planEditOk = Esp32BaseWeb::addRoute("/irrigation/plan", Esp32BaseWeb::METHOD_GET, handlePlanEditPage);
+    const bool settingsConfigOk = Esp32BaseWeb::addRoute("/irrigation/settings/config", Esp32BaseWeb::METHOD_POST, handleSettingsConfigForm);
     const bool statusOk = Esp32BaseWeb::addApi("/api/v1/status", handleStatusApi);
     const bool configOk = Esp32BaseWeb::addApi("/api/v1/config", handleConfigApi);
     const bool startOk = Esp32BaseWeb::addApi("/api/v1/water/start", handleWaterStartApi);
@@ -1578,7 +1638,7 @@ void begin() {
     const bool skipOk = Esp32BaseWeb::addApi("/api/v1/plans/skip", handlePlanSkipApi);
     const bool alertsOk = Esp32BaseWeb::addApi("/api/v1/alerts/clear", handleAlertsClearApi);
     const bool factoryResetOk = Esp32BaseWeb::addApi("/api/v1/maintenance/factory-reset", handleFactoryResetApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s manual=%s recent=%s planConfig=%s data=%s settings=%s debug=%s planEdit=%s status=%s config=%s start=%s stop=%s records=%s recordsCsv=%s events=%s eventsCsv=%s plans=%s skip=%s alerts=%s factoryReset=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s manual=%s recent=%s planConfig=%s data=%s settings=%s debug=%s planEdit=%s settingsConfig=%s status=%s config=%s start=%s stop=%s records=%s recordsCsv=%s events=%s eventsCsv=%s plans=%s skip=%s alerts=%s factoryReset=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     manualOk ? "ok" : "fail",
                     recentOk ? "ok" : "fail",
@@ -1587,6 +1647,7 @@ void begin() {
                     settingsOk ? "ok" : "fail",
                     debugOk ? "ok" : "fail",
                     planEditOk ? "ok" : "fail",
+                    settingsConfigOk ? "ok" : "fail",
                     statusOk ? "ok" : "fail",
                     configOk ? "ok" : "fail",
                     startOk ? "ok" : "fail",
