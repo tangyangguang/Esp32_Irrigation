@@ -8,7 +8,6 @@ void setup() {
     IrrigationApp::beginHardwareSafety();
 
     Esp32Base::setFirmwareInfo(IrrigationVersion::FirmwareName, IrrigationVersion::FirmwareVersion);
-    Esp32Base::setHostname(IrrigationVersion::Hostname);
     Esp32BaseWeb::setDefaultAuth(IrrigationVersion::WebUser, IrrigationVersion::WebPassword);
     Esp32BaseWeb::setDeviceName("总览");
     Esp32BaseWeb::setHomePath("/irrigation");
@@ -23,10 +22,6 @@ void setup() {
     Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_SYSTEM, "系统工具");
 
     Esp32Base::begin();
-
-#if ESP32BASE_ENABLE_FILELOG
-    Esp32BaseFileLog::enable("/logs/irrigation.log", 32UL * 1024UL, Esp32BaseLog::WARN, 4);
-#endif
 
     IrrigationApp::begin();
 }

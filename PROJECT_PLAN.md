@@ -53,6 +53,8 @@ lib_deps =
 | `Esp32BaseWeb` | 业务页面、HTTP API、鉴权、HTML/JSON helper |
 | `Esp32BaseOta` | Web OTA、回滚、升级状态 |
 
+`Esp32BaseAppConfig` 暂不接入。业务配置仍保留在现有 `/irrigation/settings` 和 `SettingsStore`，后续需要先确认哪些业务参数进入基础库 App Config 页面。
+
 Web 首页模型：
 
 - 本项目声明 `/irrigation` 为业务首页。
