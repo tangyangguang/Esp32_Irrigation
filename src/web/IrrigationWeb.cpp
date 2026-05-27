@@ -325,12 +325,9 @@ void writeCss() {
     Esp32BaseWeb::sendChunk(
         "<style>"
         ":root{color-scheme:light;--bg:#f7f8fa;--surface:#fff;--muted:#667085;--text:#17202a;--line:#d8dee6;--soft:#edf0f3;--primary:#146c5f;--ok:#087443;--warn:#a15c07;--danger:#b42318}"
-        "*{box-sizing:border-box}body{--page-width:1100px;--page-margin:28px;max-width:none;margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.page-overview{--page-width:980px}.page-table{--page-width:1120px;--page-margin:36px}.page-form{--page-width:1040px}.page-settings{--page-width:860px}"
-        "a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}"
-        "body>nav{width:min(var(--page-width),calc(100% - var(--page-margin)));margin-left:auto;margin-right:auto;position:sticky;top:0;z-index:2;display:flex;gap:4px;align-items:center;overflow-x:auto;margin-top:0;margin-bottom:14px;padding:9px 10px;background:rgba(255,255,255,.98);border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}"
-        "body>nav a{display:inline-flex;align-items:center;flex:0 0 auto;min-height:34px;padding:0 10px;border-radius:6px;color:#344054;font-weight:600}body>nav a.active,body>nav a.current{background:#e7f1ef;color:var(--primary)}"
-        ".shell{width:min(var(--page-width),calc(100% - var(--page-margin)));margin:0 auto;padding:6px 0 34px}"
-        ".page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}h1,h2,h3,p{margin-top:0}h1{margin-bottom:4px;font-size:26px;line-height:1.25}.subtitle,.note{margin-bottom:0;color:var(--muted)}"
+        ".shell,.shell *{box-sizing:border-box}.shell{--page-width:1040px;width:100%;max-width:var(--page-width);margin:0 auto;padding:6px 0 34px;color:var(--text);font-size:14px;line-height:1.5}.page-overview .shell{--page-width:980px}.page-table .shell{--page-width:1040px}.page-form .shell{--page-width:1040px}.page-settings .shell{--page-width:860px}"
+        ".shell a{color:var(--primary);text-decoration:none}.shell a:hover{text-decoration:underline}"
+        ".page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}.shell h1,.shell h2,.shell h3,.shell p{margin-top:0}.shell h1{margin-bottom:4px;font-size:26px;line-height:1.25}.subtitle,.note{margin-bottom:0;color:var(--muted)}"
         ".grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;align-items:start}.panel{grid-column:span 12;min-width:0;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:8px}.span-4{grid-column:span 4}.span-6{grid-column:span 6}.span-8{grid-column:span 8}.span-12{grid-column:span 12}.panel h2{margin-bottom:12px;font-size:16px}.panel h3{margin:16px 0 8px;color:#475467;font-size:14px}"
         ".panel-titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.panel-titlebar h2{margin-bottom:0}.panel-tools,.actions{display:flex;flex-wrap:wrap;gap:8px}.panel-tools{justify-content:flex-end}.actions{margin-top:14px}.form-actions{justify-content:flex-end}.title-date{margin-left:8px;color:var(--muted);font-size:13px;font-weight:500}"
         ".overview-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.overview-status div{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:8px 10px;border:1px solid var(--soft);border-radius:6px;background:#f9fafb}.overview-status span,.matrix-head,.matrix-label{color:var(--muted)}.overview-status strong{overflow-wrap:anywhere}"
@@ -343,22 +340,17 @@ void writeCss() {
         ".setting-list{border:1px solid var(--line);border-radius:8px;overflow:hidden}.setting-row{display:grid;grid-template-columns:minmax(82px,1fr) minmax(80px,1fr) auto;gap:8px;align-items:center;min-width:0;padding:7px 9px;border-bottom:1px solid var(--soft);background:#fff}.setting-row:last-child{border-bottom:0}.setting-row span{color:var(--muted);font-weight:650}.setting-row strong{min-width:0;overflow-wrap:anywhere}.summary-line{margin-top:12px;padding:8px 10px;border-radius:6px;background:#f9fafb;color:#344054;font-weight:650}.json-box{margin:0;padding:14px;overflow-x:auto;border-radius:8px;background:#182230;color:#d6e4ff;font-size:13px}"
         ".modal[hidden]{display:none}.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:18px;background:rgba(15,23,42,.32)}.modal-card{width:min(420px,100%);padding:16px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 18px 40px rgba(15,23,42,.18)}.modal-card h2{margin-bottom:4px;font-size:18px}.modal-card .field-grid{grid-template-columns:1fr;margin-top:12px}.modal-card .actions{justify-content:flex-end}.modal-value{margin:6px 0 0;color:var(--muted)}"
         "@media(max-width:980px){.span-4,.span-6,.span-8{grid-column:span 12}.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-mode{grid-template-columns:1fr}.manual-road-grid{grid-template-columns:1fr}}"
-        "@media(max-width:640px){body{--page-margin:20px;font-size:13px}body>nav{padding:8px 10px}.shell{padding-top:0}.page-head{display:block;margin-bottom:14px}h1{font-size:22px}.panel{padding:12px}.panel-titlebar{align-items:flex-start;flex-direction:column;gap:8px}.panel-tools{justify-content:flex-start}.field-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-status{grid-template-columns:1fr}.valve-matrix{grid-template-columns:minmax(48px,.6fr) repeat(2,minmax(82px,1fr))}.manual-fields{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr auto}.setting-row strong{grid-column:1}.setting-row a,.setting-row button{grid-column:2;grid-row:1/span 2}}"
+        "@media(max-width:640px){.shell{padding-top:0;font-size:13px}.page-head{display:block;margin-bottom:14px}.shell h1{font-size:22px}.panel{padding:12px}.panel-titlebar{align-items:flex-start;flex-direction:column;gap:8px}.panel-tools{justify-content:flex-start}.field-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-status{grid-template-columns:1fr}.valve-matrix{grid-template-columns:minmax(48px,.6fr) repeat(2,minmax(82px,1fr))}.manual-fields{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr auto}.setting-row strong{grid-column:1}.setting-row a,.setting-row button{grid-column:2;grid-row:1/span 2}}"
         "</style><script>document.addEventListener('submit',function(e){var f=e.target;if(!f||String(f.method).toLowerCase()!=='post')return;var raw=f.getAttribute('data-confirm');if(raw==='off')return;var msg=raw||'确认执行此操作？';if(!confirm(msg)){e.preventDefault();}});</script>");
 }
 
-void sendHeader(const char* title, const char* pageClass, const char* activePath = nullptr) {
+void sendHeader(const char* title, const char* pageClass) {
+    Esp32BaseWeb::setHeadExtraCallback(writeCss);
     Esp32BaseWeb::sendHeader(title);
-    writeCss();
+    Esp32BaseWeb::setHeadExtraCallback(nullptr);
     Esp32BaseWeb::sendChunk("<script>document.body.className='");
     Esp32BaseWeb::writeHtmlEscaped(pageClass);
-    Esp32BaseWeb::sendChunk("';");
-    if (activePath && activePath[0]) {
-        Esp32BaseWeb::sendChunk("document.querySelectorAll('body>nav a').forEach(function(a){a.classList.remove('active','current');if(a.getAttribute('href')==='");
-        Esp32BaseWeb::writeHtmlEscaped(activePath);
-        Esp32BaseWeb::sendChunk("'){a.classList.add('active','current');}});");
-    }
-    Esp32BaseWeb::sendChunk("</script><main class='shell'>");
+    Esp32BaseWeb::sendChunk("';</script><main class='shell'>");
 }
 
 void sendFooter() {
@@ -508,7 +500,7 @@ void handleOverviewPage() {
     if (LeakMonitor::hasAlert()) {
         Esp32BaseWeb::sendChunk("<span class='badge danger'>存在异常</span><p class='note'>请确认现场状态，处理后清除提示。</p><form method='post' action='/api/v1/alerts/clear' data-confirm='确认现场已处理并解除异常提示？'><button>解除异常</button></form>");
     } else {
-        Esp32BaseWeb::sendChunk("<span class='badge ok'>无当前异常</span><p class='note'>存在异常时在这里显示原因和状态，历史事件在记录页查看。</p>");
+        Esp32BaseWeb::sendChunk("<span class='badge ok'>无当前异常</span><p class='note'>存在异常时在这里显示当前原因和状态；设备级诊断请查看基础库日志。</p>");
     }
     Esp32BaseWeb::sendChunk("</div></section>");
     sendFooter();
@@ -636,7 +628,7 @@ void handlePlansPage() {
 void handlePlanConfigPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("计划配置", "page-table");
-    writePageHead("计划配置", "这里只修改计划内容；执行结果在近期计划和记录页查看。");
+    writePageHead("计划配置", "这里只修改计划内容；执行结果在近期计划和历史记录页查看。");
     Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>计划列表</h2><div class='table-wrap'><table><thead><tr><th>状态</th><th>计划</th><th>时间</th><th>循环规则</th><th>内容</th><th>操作</th></tr></thead><tbody>");
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
@@ -685,7 +677,7 @@ void handlePlanEditPage() {
     uint16_t raw = 0;
     const uint8_t index = (Esp32BaseWeb::hasParam("edit") && readUIntParam("edit", &raw) && raw < PlanStore::MaxPlans) ? static_cast<uint8_t>(raw) : 0;
     const PlanStore::Plan& plan = PlanStore::get(index);
-    sendHeader("编辑计划", "page-form", "/irrigation/plan-config");
+    sendHeader("编辑计划", "page-form");
     writePageHead("编辑计划", "编辑单个计划的固定配置，保存后用于后续自动浇水。");
     Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans' data-confirm='确认保存计划？'><input type='hidden' name='index' value='");
     writeUInt(index);
@@ -922,8 +914,8 @@ void handleSettingsPage() {
 
 void handleDataPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
-    sendHeader("记录", "page-table");
-    writePageHead("记录", "查看历史浇水会话、每路实际执行情况和结束原因。");
+    sendHeader("历史记录", "page-table");
+    writePageHead("历史记录", "查看历史浇水会话、每路实际执行情况和结束原因。");
     Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>浇水记录</h2></div><div class='table-wrap'><table><thead><tr><th>ID</th><th>来源</th><th>模式</th><th>结束原因</th><th>路</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
     auto recordCb = [](const RecordStore::Record& record, void*) {
         for (uint8_t road = 1; road <= 2; ++road) {
@@ -1541,8 +1533,8 @@ namespace IrrigationWeb {
 void begin() {
     const bool overviewOk = Esp32BaseWeb::addPage("/irrigation", "首页", handleOverviewPage);
     const bool recentOk = Esp32BaseWeb::addPage("/irrigation/plans", "近期计划", handlePlansPage);
+    const bool dataOk = Esp32BaseWeb::addPage("/irrigation/data", "历史记录", handleDataPage);
     const bool configPageOk = Esp32BaseWeb::addPage("/irrigation/plan-config", "计划配置", handlePlanConfigPage);
-    const bool dataOk = Esp32BaseWeb::addPage("/irrigation/data", "记录", handleDataPage);
     const bool settingsOk = Esp32BaseWeb::addPage("/irrigation/settings", "灌溉设置", handleSettingsPage);
     const bool planEditOk = Esp32BaseWeb::addRoute("/irrigation/plan", Esp32BaseWeb::METHOD_GET, handlePlanEditPage);
     const bool settingsConfigOk = Esp32BaseWeb::addRoute("/irrigation/settings/config", Esp32BaseWeb::METHOD_POST, handleSettingsConfigForm);
