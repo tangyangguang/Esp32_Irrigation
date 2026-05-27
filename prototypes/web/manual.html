@@ -57,32 +57,40 @@
         </div>
       </div>
 
-      <div class="panel span-8">
+      <div class="panel span-8 manual-start">
         <h2>启动浇水</h2>
         <div class="notice inline-notice">
           <strong>上次操作</strong>
           <p class="note">已停止第 1 路，当前设备空闲。</p>
         </div>
-        <div class="field-grid single-field">
-          <div class="field">
-            <label>执行模式</label>
-            <select><option>同时浇水</option><option>顺序浇水</option></select>
+        <form>
+          <div class="manual-mode">
+            <div class="field">
+              <label>执行模式</label>
+              <select><option>同时浇水</option><option>顺序浇水</option></select>
+            </div>
+            <p class="note">同时模式会一起开阀，顺序模式按路号依次执行。</p>
           </div>
-        </div>
-        <div class="valve-matrix config-matrix" role="table" aria-label="启动浇水配置">
-          <div class="matrix-head" role="columnheader">项目</div>
-          <div class="matrix-head" role="columnheader">第 1 路</div>
-          <div class="matrix-head" role="columnheader">第 2 路</div>
-          <div class="matrix-label" role="rowheader">参与</div>
-          <select><option>浇水</option><option>不浇水</option></select>
-          <select disabled><option>未启用</option></select>
-          <div class="matrix-label" role="rowheader">时长</div>
-          <input value="5" inputmode="decimal" aria-label="第 1 路时长">
-          <input value="5" disabled aria-label="第 2 路时长">
-        </div>
-        <div class="actions">
-          <button onclick="return confirm('确认开始手动浇水？')">开始浇水</button>
-        </div>
+          <div class="manual-road-grid">
+            <div class="manual-road">
+              <div class="manual-road-head"><strong>第 1 路</strong><span class="badge ok">已启用</span></div>
+              <div class="manual-fields">
+                <label><span>参与</span><select><option>浇水</option><option>不浇水</option></select></label>
+                <label><span>时长</span><span class="input-suffix"><input value="5" inputmode="decimal" aria-label="第 1 路时长"><em>分钟</em></span></label>
+              </div>
+            </div>
+            <div class="manual-road off">
+              <div class="manual-road-head"><strong>第 2 路</strong><span class="badge off">未启用</span></div>
+              <div class="manual-fields">
+                <label><span>参与</span><select disabled><option>未启用</option></select></label>
+                <label><span>时长</span><span class="input-suffix"><input value="5" disabled aria-label="第 2 路时长"><em>分钟</em></span></label>
+              </div>
+            </div>
+          </div>
+          <div class="actions">
+            <button onclick="return confirm('确认开始手动浇水？')">开始浇水</button>
+          </div>
+        </form>
       </div>
     </section>
   </main>

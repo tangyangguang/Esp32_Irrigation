@@ -298,24 +298,25 @@ void writeCss() {
     Esp32BaseWeb::sendChunk(
         "<style>"
         ":root{color-scheme:light;--bg:#f7f8fa;--surface:#fff;--muted:#667085;--text:#17202a;--line:#d8dee6;--soft:#edf0f3;--primary:#146c5f;--ok:#087443;--warn:#a15c07;--danger:#b42318}"
-        "*{box-sizing:border-box}body{max-width:none;margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}"
+        "*{box-sizing:border-box}body{--page-width:1100px;--page-margin:28px;max-width:none;margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.page-overview{--page-width:980px}.page-table{--page-width:1120px;--page-margin:36px}.page-form{--page-width:1040px}.page-settings{--page-width:860px}"
         "a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}"
-        "body>nav{position:sticky;top:0;z-index:2;display:flex;gap:4px;align-items:center;overflow-x:auto;padding:9px 18px;background:rgba(255,255,255,.98);border-bottom:1px solid var(--line)}"
+        "body>nav,.footerbar,.info{width:min(var(--page-width),calc(100% - var(--page-margin)));margin-left:auto;margin-right:auto}body>nav{position:sticky;top:0;z-index:2;display:flex;gap:4px;align-items:center;overflow-x:auto;margin-top:0;margin-bottom:14px;padding:9px 10px;background:rgba(255,255,255,.98);border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}"
         "body>nav a{display:inline-flex;align-items:center;flex:0 0 auto;min-height:34px;padding:0 10px;border-radius:6px;color:#344054;font-weight:600}body>nav a.active,body>nav a.current{background:#e7f1ef;color:var(--primary)}"
-        ".shell{width:min(1100px,calc(100% - 28px));margin:0 auto;padding:20px 0 34px}.page-overview .shell{width:min(980px,calc(100% - 28px))}.page-table .shell{width:min(1120px,calc(100% - 36px))}.page-settings .shell{width:min(860px,calc(100% - 28px))}"
+        ".shell{width:min(var(--page-width),calc(100% - var(--page-margin)));margin:0 auto;padding:6px 0 34px}"
         ".page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}h1,h2,h3,p{margin-top:0}h1{margin-bottom:4px;font-size:26px;line-height:1.25}.subtitle,.note{margin-bottom:0;color:var(--muted)}"
         ".grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;align-items:start}.panel{grid-column:span 12;min-width:0;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:8px}.span-4{grid-column:span 4}.span-6{grid-column:span 6}.span-8{grid-column:span 8}.span-12{grid-column:span 12}.panel h2{margin-bottom:12px;font-size:16px}.panel h3{margin:16px 0 8px;color:#475467;font-size:14px}"
         ".panel-titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.panel-titlebar h2{margin-bottom:0}.panel-tools,.actions{display:flex;flex-wrap:wrap;gap:8px}.panel-tools{justify-content:flex-end}.actions{margin-top:14px}.form-actions{justify-content:flex-end}.title-date{margin-left:8px;color:var(--muted);font-size:13px;font-weight:500}"
         ".overview-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.overview-status div{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:8px 10px;border:1px solid var(--soft);border-radius:6px;background:#f9fafb}.overview-status span,.matrix-head,.matrix-label{color:var(--muted)}.overview-status strong{overflow-wrap:anywhere}"
         ".valve-matrix{display:grid;grid-template-columns:minmax(56px,.7fr) repeat(2,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.valve-matrix>*{min-width:0;padding:8px 10px;border-right:1px solid var(--soft);border-bottom:1px solid var(--soft)}.valve-matrix>:nth-child(3n){border-right:0}.valve-matrix>:nth-last-child(-n+3){border-bottom:0}.matrix-head{background:#f9fafb;font-size:13px;font-weight:650}.matrix-label{font-weight:650}.status-compact{grid-template-columns:1fr;margin-bottom:12px}.valve-action{display:flex;align-items:center;gap:8px;margin-top:12px}"
-        ".badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;background:#f0f2f4;color:#475467;font-size:13px;font-weight:650;white-space:nowrap}.badge.ok{background:#e7f5ee;color:var(--ok)}.badge.warn{background:#fff5df;color:var(--warn)}.badge.danger{background:#fff0ee;color:var(--danger)}"
+        ".badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;background:#f0f2f4;color:#475467;font-size:13px;font-weight:650;white-space:nowrap}.badge.ok{background:#e7f5ee;color:var(--ok)}.badge.warn{background:#fff5df;color:var(--warn)}.badge.danger{background:#fff0ee;color:var(--danger)}.badge.off{background:#f7f1e8;color:#875a20}"
         "input,select{min-width:0;width:100%;min-height:36px;padding:7px 9px;border:1px solid #cfd6df;border-radius:6px;background:#fff;color:var(--text);font:inherit}input[type=checkbox]{position:absolute;opacity:0;width:1px;min-height:0;margin:0;padding:0;border:0}input:disabled,select:disabled{color:#98a2b3;background:#f3f4f6}.field-grid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:12px 14px}.field{display:grid;gap:6px;min-width:0}.field label{color:#475467;font-size:13px;font-weight:650}.check-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}.check-item{position:relative;display:flex;align-items:center;justify-content:center;min-height:36px;padding:0 10px;border:1px solid var(--soft);border-radius:6px;background:#fff;color:#344054;font-weight:650}.check-item:has(input:checked){border-color:var(--primary);background:#e7f1ef;color:var(--primary)}"
-        "button,.button,input[type=submit]{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 11px;border:1px solid var(--primary);border-radius:6px;background:var(--primary);color:#fff;font:inherit;font-weight:650;cursor:default}.button.secondary,button.secondary,input.secondary{border-color:#cfd6df;background:#fff;color:#344054}.button.warn,button.warn,input.warn{border-color:#cfd6df;background:#fff;color:#344054}button:disabled,input:disabled{border-color:#d0d5dd;background:#f2f4f7;color:#98a2b3}"
+        ".manual-start{padding:12px}.manual-start form{display:grid;gap:12px}.manual-mode{display:grid;grid-template-columns:minmax(150px,240px) 1fr;gap:10px;align-items:end;padding:10px;border:1px solid var(--soft);border-radius:8px;background:#fbfcfc}.manual-mode .note{padding-bottom:7px}.manual-road-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.manual-road{display:grid;gap:9px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}.manual-road.off{background:#f8f9fa}.manual-road-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.manual-road-head strong{font-size:15px}.manual-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.manual-fields label{display:grid;gap:5px;color:#475467;font-size:13px;font-weight:650}.input-suffix{display:flex;align-items:center;border:1px solid #cfd6df;border-radius:6px;background:#fff;overflow:hidden}.input-suffix input{border:0;border-radius:0}.input-suffix em{padding:0 9px;color:var(--muted);font-style:normal;white-space:nowrap}.manual-road.off .input-suffix{background:#f3f4f6}.manual-road.off .input-suffix input{background:#f3f4f6}"
+        "button,.button,input[type=submit]{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 11px;border:1px solid var(--primary);border-radius:6px;background:var(--primary);color:#fff;font:inherit;font-weight:650;cursor:default}.button.secondary,button.secondary,input.secondary{border-color:#cfd6df;background:#fff;color:#344054}.button.warn,button.warn,input.warn{border-color:#cfd6df;background:#fff;color:#344054}button:disabled,input:disabled{border-color:#d0d5dd;background:#f2f4f7;color:#98a2b3}.input-suffix input,.input-suffix input:disabled{border:0;border-radius:0;margin:0}"
         ".table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:9px 10px;border-bottom:1px solid var(--soft);text-align:left;white-space:nowrap}th{background:#f9fafb;color:#475467;font-size:13px;font-weight:650}tr:last-child td{border-bottom:0}.action-table th:last-child,.action-table td:last-child{width:1%;text-align:center}.action-table td:last-child button,.action-table td:last-child input{min-width:82px}"
         ".setting-list{border:1px solid var(--line);border-radius:8px;overflow:hidden}.setting-row{display:grid;grid-template-columns:minmax(82px,1fr) minmax(80px,1fr) auto;gap:8px;align-items:center;min-width:0;padding:7px 9px;border-bottom:1px solid var(--soft);background:#fff}.setting-row:last-child{border-bottom:0}.setting-row span{color:var(--muted);font-weight:650}.setting-row strong{min-width:0;overflow-wrap:anywhere}.summary-line{margin-top:12px;padding:8px 10px;border-radius:6px;background:#f9fafb;color:#344054;font-weight:650}.json-box{margin:0;padding:14px;overflow-x:auto;border-radius:8px;background:#182230;color:#d6e4ff;font-size:13px}"
         ".modal[hidden]{display:none}.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:18px;background:rgba(15,23,42,.32)}.modal-card{width:min(420px,100%);padding:16px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 18px 40px rgba(15,23,42,.18)}.modal-card h2{margin-bottom:4px;font-size:18px}.modal-card .field-grid{grid-template-columns:1fr;margin-top:12px}.modal-card .actions{justify-content:flex-end}.modal-value{margin:6px 0 0;color:var(--muted)}"
-        "@media(max-width:980px){.span-4,.span-6,.span-8{grid-column:span 12}.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}"
-        "@media(max-width:640px){body{font-size:13px}body>nav{padding:8px 10px}.shell{width:calc(100% - 20px);padding-top:14px}.page-head{display:block;margin-bottom:14px}h1{font-size:22px}.panel{padding:12px}.panel-titlebar{align-items:flex-start;flex-direction:column;gap:8px}.panel-tools{justify-content:flex-start}.field-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-status{grid-template-columns:1fr}.valve-matrix{grid-template-columns:minmax(48px,.6fr) repeat(2,minmax(82px,1fr))}.setting-row{grid-template-columns:1fr auto}.setting-row strong{grid-column:1}.setting-row a,.setting-row button{grid-column:2;grid-row:1/span 2}}"
+        "@media(max-width:980px){.span-4,.span-6,.span-8{grid-column:span 12}.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-mode{grid-template-columns:1fr}.manual-road-grid{grid-template-columns:1fr}}"
+        "@media(max-width:640px){body{--page-margin:20px;font-size:13px}body>nav{padding:8px 10px}.shell{padding-top:0}.page-head{display:block;margin-bottom:14px}h1{font-size:22px}.panel{padding:12px}.panel-titlebar{align-items:flex-start;flex-direction:column;gap:8px}.panel-tools{justify-content:flex-start}.field-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-status{grid-template-columns:1fr}.valve-matrix{grid-template-columns:minmax(48px,.6fr) repeat(2,minmax(82px,1fr))}.manual-fields{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr auto}.setting-row strong{grid-column:1}.setting-row a,.setting-row button{grid-column:2;grid-row:1/span 2}}"
         "</style><script>document.addEventListener('submit',function(e){var f=e.target;if(!f||String(f.method).toLowerCase()!=='post')return;var raw=f.getAttribute('data-confirm');if(raw==='off')return;var msg=raw||'确认执行此操作？';if(!confirm(msg)){e.preventDefault();}});</script>");
 }
 
@@ -456,14 +457,22 @@ void handleManualPage() {
     writePageHead("手动浇水", "每路独立选择是否参与，本页统一开始；停止操作必须确认。");
     Esp32BaseWeb::sendChunk("<section class='grid'>");
     writeWateringStatusPanel("浇水状态");
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>启动浇水</h2><p class='inline-notice note'>上次操作：");
+    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>启动浇水</h2><p class='inline-notice note'>上次操作：");
     Esp32BaseWeb::writeHtmlEscaped(WateringSession::stopReasonName(WateringSession::lastStopReason()));
-    Esp32BaseWeb::sendChunk("</p><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><div class='field-grid'><div class='field'><label>执行模式</label><select name='mode'>");
+    Esp32BaseWeb::sendChunk("</p><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><div class='manual-mode'><div class='field'><label>执行模式</label><select name='mode'>");
     writeModeOptions(settings.defaultMode);
-    Esp32BaseWeb::sendChunk("</select></div></div><div class='valve-matrix config-matrix'><div class='matrix-head'>项目</div><div class='matrix-head'>第 1 路</div><div class='matrix-head'>第 2 路</div><div class='matrix-label'>参与</div>");
+    Esp32BaseWeb::sendChunk("</select></div><p class='note'>同时模式会一起开阀，顺序模式按路号依次执行。</p></div><div class='manual-road-grid'>");
     for (uint8_t road = 1; road <= 2; ++road) {
         const bool enabled = SettingsStore::isRoadEnabled(road);
-        Esp32BaseWeb::sendChunk("<div><select name='r");
+        Esp32BaseWeb::sendChunk("<div class='manual-road");
+        Esp32BaseWeb::sendChunk(enabled ? "" : " off");
+        Esp32BaseWeb::sendChunk("'><div class='manual-road-head'><strong>第 ");
+        writeUInt(road);
+        Esp32BaseWeb::sendChunk(" 路</strong><span class='badge");
+        Esp32BaseWeb::sendChunk(enabled ? " ok" : " off");
+        Esp32BaseWeb::sendChunk("'>");
+        Esp32BaseWeb::sendChunk(enabled ? "已启用" : "未启用");
+        Esp32BaseWeb::sendChunk("</span></div><div class='manual-fields'><label><span>参与</span><select name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_enabled'");
         Esp32BaseWeb::sendChunk(enabled ? "" : " disabled");
@@ -471,17 +480,13 @@ void handleManualPage() {
         writeSelected(!enabled);
         Esp32BaseWeb::sendChunk(">");
         Esp32BaseWeb::sendChunk(enabled ? "不浇水" : "未启用");
-        Esp32BaseWeb::sendChunk("</option></select></div>");
-    }
-    Esp32BaseWeb::sendChunk("<div class='matrix-label'>时长</div>");
-    for (uint8_t road = 1; road <= 2; ++road) {
-        Esp32BaseWeb::sendChunk("<div><input name='r");
+        Esp32BaseWeb::sendChunk("</option></select></label><label><span>时长</span><span class='input-suffix'><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='1' max='240' value='");
         writeMinutesFromSeconds(settings.quickDurationSec[road - 1]);
         Esp32BaseWeb::sendChunk("'");
         Esp32BaseWeb::sendChunk(SettingsStore::isRoadEnabled(road) ? "" : " disabled");
-        Esp32BaseWeb::sendChunk("></div>");
+        Esp32BaseWeb::sendChunk("><em>分钟</em></span></label></div></div>");
     }
     Esp32BaseWeb::sendChunk("</div><div class='actions'><button>开始浇水</button></div></form></div></section>");
     sendFooter();
@@ -517,7 +522,6 @@ void writeCycleText(const PlanStore::Plan& plan) {
 
 const char* statusClass(const char* status) {
     if (strcmp(status, "已完成") == 0) return " ok";
-    if (strcmp(status, "已停用") == 0) return " warn";
     if (strcmp(status, "进行中") == 0) return " danger";
     return "";
 }
@@ -527,14 +531,14 @@ void writeRecentRows(int8_t offset, uint32_t ymd) {
     bool any = false;
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
-        if (plan.enabled && !PlanStore::shouldRunOnDate(plan, ymd)) continue;
-        any = true;
         const bool skipped = PlanSkipStore::isSkipped(i, ymd);
         const bool completed = plan.lastRunYmd == ymd;
-        const bool disabled = !plan.enabled;
         const bool running = WateringSession::isActive() && WateringSession::source() == RecordStore::SOURCE_PLAN && offset == 0 && plan.minuteOfDay == nowMinute;
+        if (!plan.enabled && !completed && !running) continue;
+        if (plan.enabled && !PlanStore::shouldRunOnDate(plan, ymd)) continue;
+        any = true;
         const bool pastToday = offset == 0 && plan.minuteOfDay < nowMinute;
-        const char* status = disabled ? "已停用" : (skipped ? "已跳过" : (completed ? "已完成" : (running ? "进行中" : (pastToday ? "未执行" : "未开始"))));
+        const char* status = completed ? "已完成" : (running ? "进行中" : (skipped ? "已跳过" : (pastToday ? "未执行" : "未开始")));
         Esp32BaseWeb::sendChunk("<tr><td>");
         writeMinuteOfDay(plan.minuteOfDay);
         Esp32BaseWeb::sendChunk("</td><td>计划 ");
@@ -548,9 +552,9 @@ void writeRecentRows(int8_t offset, uint32_t ymd) {
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::writeHtmlEscaped(status);
         Esp32BaseWeb::sendChunk("</span></td><td>");
-        Esp32BaseWeb::sendChunk(disabled ? "计划未启用，不会执行" : (skipped ? "已跳过这一次" : (completed ? "按计划完成" : (pastToday ? "已过执行时间" : "等待执行"))));
+        Esp32BaseWeb::sendChunk(completed ? "按计划完成" : (running ? "正在执行" : (skipped ? "已跳过这一次" : (pastToday ? "已过执行时间" : "等待执行"))));
         Esp32BaseWeb::sendChunk("</td><td>");
-        if (!disabled && !completed && !running && !pastToday && !skipped) {
+        if (plan.enabled && !completed && !running && !pastToday && !skipped) {
             Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过本次计划？'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
             writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
@@ -620,7 +624,7 @@ void handlePlanConfigPage() {
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
         Esp32BaseWeb::sendChunk("<tr><td><span class='badge");
-        Esp32BaseWeb::sendChunk(plan.enabled ? " ok" : "");
+        Esp32BaseWeb::sendChunk(plan.enabled ? " ok" : " off");
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(plan.enabled ? "启用" : "停用");
         Esp32BaseWeb::sendChunk("</span></td><td>计划 ");
