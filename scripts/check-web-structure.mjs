@@ -12,6 +12,11 @@ function assert(condition, message) {
 assert(main.includes('Esp32BaseWeb::setDeviceName("首页")'), 'home label should be 首页');
 assert(web.includes('Esp32BaseWeb::setHeadExtraCallback(writeCss)'), 'business CSS should be injected through Esp32Base head callback');
 assert(main.includes('Esp32BaseWeb::setSystemNavMode(Esp32BaseWeb::SYSTEM_NAV_SECTION)'), 'system navigation should use Esp32Base default compact footer section');
+assert(!main.includes('Esp32BaseWeb::setBuiltinLabel'), 'system footer labels should remain Esp32Base defaults');
+const pio = fs.readFileSync('platformio.ini', 'utf8');
+assert(pio.includes('-D ESP32BASE_ENABLE_APP_CONFIG=1'), 'App Config should be enabled so Esp32Base footer includes App Config');
+assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_GROUPS=1'), 'App Config group capacity should be explicit');
+assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_FIELDS=1'), 'App Config field capacity should be explicit');
 assert(!web.includes('.footerbar'), 'business CSS must not override Esp32Base footer navigation');
 assert(!web.includes('body>nav'), 'business CSS/script must not override Esp32Base navigation');
 assert(!web.includes('max-width:none'), 'business CSS must not override Esp32Base body/page width model');

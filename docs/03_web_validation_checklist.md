@@ -13,7 +13,7 @@
 - 打开 `/irrigation/plan-config`：应显示 8 个计划配置入口。
 - 打开 `/irrigation/settings`：应显示灌溉设置页面，按水路、流量计量和检测参数聚合配置，不显示维护或恢复出厂表单。
 - 打开 `/esp32base`：应显示基础库融合/系统工具入口。
-- 业务页应使用 `Esp32BaseWeb::setHeadExtraCallback()` 注入业务 CSS，底部应保留 `Esp32Base` 默认页脚导航，不应被业务 CSS 覆盖。
+- 业务页应使用 `Esp32BaseWeb::setHeadExtraCallback()` 注入业务 CSS，底部应保留 `Esp32Base` 默认页脚导航：`Status`、`Logs`、`App Config`、`System`，不应被业务 CSS 或中文标签覆盖。
 
 ## 状态区
 

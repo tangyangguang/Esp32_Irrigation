@@ -31,7 +31,7 @@ lib_deps =
 
 默认 hostname 通过 `ESP32BASE_DEFAULT_HOSTNAME` 编译期宏设置为 `esp32-irrigation`；基础库 Web/API 保存的 hostname 会在重启后覆盖该默认值。文件日志路径通过 `ESP32BASE_EB_FILELOG_PATH` 设置为 `/logs/irrigation.log`。
 
-`Esp32BaseAppConfig` 暂不启用；业务参数仍由本项目现有设置页和 `SettingsStore` 管理，后续统一确认参数边界后再接入。
+`Esp32BaseAppConfig` 已启用，以保留基础库默认底部导航中的 App Config 入口；业务参数仍由本项目现有灌溉设置页和 `SettingsStore` 管理，后续统一确认参数边界后再逐步迁入 App Config。
 
 ## 运行入口
 
