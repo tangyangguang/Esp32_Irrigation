@@ -496,7 +496,7 @@ void handleOverviewPage() {
     Esp32BaseWeb::sendChunk(")</strong></div></div></div>");
     writeWateringStatusPanel("浇水状态");
     writeManualStartPanel();
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>异常</h2>");
+    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>当前告警</h2>");
     if (LeakMonitor::hasAlert()) {
         Esp32BaseWeb::sendChunk("<span class='badge danger'>存在异常</span><p class='note'>请确认现场状态，处理后清除提示。</p><form method='post' action='/api/v1/alerts/clear' data-confirm='确认现场已处理并解除异常提示？'><button>解除异常</button></form>");
     } else {
@@ -506,19 +506,36 @@ void handleOverviewPage() {
     sendFooter();
 }
 
-void writePlanContent(const PlanStore::Plan& plan) {
+uint16_t effectivePlanRoadSec(const PlanStore::Plan& plan, uint8_t road) {
+    if (road < 1 || road > IrrigationPins::MaxRoads || !SettingsStore::isRoadEnabled(road)) {
+        return 0;
+    }
+    return plan.roadSec[road - 1];
+}
+
+bool hasEffectivePlanRoad(const PlanStore::Plan& plan) {
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        if (effectivePlanRoadSec(plan, road) > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void writePlanContent(const PlanStore::Plan& plan, bool effectiveOnly = false) {
     bool first = true;
-    for (uint8_t road = 1; road <= 2; ++road) {
-        if (plan.roadSec[road - 1] == 0) continue;
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        const uint16_t seconds = effectiveOnly ? effectivePlanRoadSec(plan, road) : plan.roadSec[road - 1];
+        if (seconds == 0) continue;
         if (!first) Esp32BaseWeb::sendChunk("，");
         first = false;
         Esp32BaseWeb::sendChunk("第 ");
         writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路 ");
-        writeMinutesFromSeconds(plan.roadSec[road - 1]);
+        writeMinutesFromSeconds(seconds);
         Esp32BaseWeb::sendChunk(" 分钟");
     }
-    if (first) Esp32BaseWeb::sendChunk("未设置");
+    if (first) Esp32BaseWeb::sendChunk(effectiveOnly ? "当前无可执行水路" : "未设置");
 }
 
 void writeCycleText(const PlanStore::Plan& plan) {
@@ -538,6 +555,7 @@ const char* statusClass(const char* status) {
     if (strcmp(status, "已完成") == 0) return " ok";
     if (strcmp(status, "进行中") == 0) return " danger";
     if (strcmp(status, "已跳过") == 0) return " warn";
+    if (strcmp(status, "不可执行") == 0) return " warn";
     return "";
 }
 
@@ -556,11 +574,12 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         const bool skipped = PlanSkipStore::isSkipped(i, ymd);
         const bool completed = plan.lastRunYmd == ymd;
         const bool running = WateringSession::isActive() && WateringSession::source() == RecordStore::SOURCE_PLAN && offset == 0 && plan.minuteOfDay == nowMinute;
+        const bool executable = hasEffectivePlanRoad(plan);
         if (!plan.enabled && !completed && !running) continue;
         if (plan.enabled && !PlanStore::shouldRunOnDate(plan, ymd)) continue;
         any = true;
         const bool pastToday = offset == 0 && plan.minuteOfDay < nowMinute;
-        const char* status = completed ? "已完成" : (running ? "进行中" : (skipped ? "已跳过" : (pastToday ? "未执行" : "未开始")));
+        const char* status = completed ? "已完成" : (running ? "进行中" : (skipped ? "已跳过" : (!executable ? "不可执行" : (pastToday ? "未执行" : "未开始"))));
         Esp32BaseWeb::sendChunk("<tr><td>");
         Esp32BaseWeb::writeHtmlEscaped(label);
         Esp32BaseWeb::sendChunk("<span class='title-date'>");
@@ -570,7 +589,7 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         Esp32BaseWeb::sendChunk("</td><td>计划 ");
         writeUInt(i + 1);
         Esp32BaseWeb::sendChunk("</td><td>");
-        writePlanContent(plan);
+        writePlanContent(plan, true);
         Esp32BaseWeb::sendChunk("</td><td>");
         Esp32BaseWeb::writeHtmlEscaped(modeLabel(plan.mode));
         Esp32BaseWeb::sendChunk("</td><td><span class='badge");
@@ -578,9 +597,9 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::writeHtmlEscaped(status);
         Esp32BaseWeb::sendChunk("</span></td><td>");
-        Esp32BaseWeb::sendChunk(completed ? "按计划完成" : (running ? "正在执行" : (skipped ? "已跳过这一次" : (pastToday ? "已过执行时间" : "等待执行"))));
+        Esp32BaseWeb::sendChunk(completed ? "按计划完成" : (running ? "正在执行" : (skipped ? "已跳过这一次" : (!executable ? "无启用水路" : (pastToday ? "已过执行时间" : "等待执行")))));
         Esp32BaseWeb::sendChunk("</td><td>");
-        if (plan.enabled && !completed && !running && !pastToday && !skipped) {
+        if (plan.enabled && executable && !completed && !running && !pastToday && !skipped) {
             Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过本次计划？'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
             writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
@@ -643,7 +662,7 @@ void handlePlanConfigPage() {
         Esp32BaseWeb::sendChunk("</td><td>");
         writeCycleText(plan);
         Esp32BaseWeb::sendChunk("</td><td>");
-        writePlanContent(plan);
+        writePlanContent(plan, true);
         Esp32BaseWeb::sendChunk("，");
         Esp32BaseWeb::writeHtmlEscaped(modeLabel(plan.mode));
         Esp32BaseWeb::sendChunk("</td><td><a class='button secondary' href='/irrigation/plan?edit=");
@@ -693,26 +712,30 @@ void handlePlanEditPage() {
     writeModeOptions(plan.mode);
     Esp32BaseWeb::sendChunk("</select></div></div></div><div class='panel span-12'><h2>浇水路配置</h2><div class='valve-matrix config-matrix'><div class='matrix-head'>项目</div><div class='matrix-head'>第 1 路</div><div class='matrix-head'>第 2 路</div><div class='matrix-label'>参与</div>");
     for (uint8_t road = 1; road <= 2; ++road) {
+        const bool roadEnabled = SettingsStore::isRoadEnabled(road);
+        const uint16_t seconds = roadEnabled ? plan.roadSec[road - 1] : 0;
         Esp32BaseWeb::sendChunk("<div><select name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_enabled'");
-        Esp32BaseWeb::sendChunk(SettingsStore::isRoadEnabled(road) ? "" : " disabled");
+        Esp32BaseWeb::sendChunk(roadEnabled ? "" : " disabled");
         Esp32BaseWeb::sendChunk("><option value='1'");
-        writeSelected(plan.roadSec[road - 1] > 0);
+        writeSelected(seconds > 0);
         Esp32BaseWeb::sendChunk(">浇水</option><option value='0'");
-        writeSelected(plan.roadSec[road - 1] == 0);
+        writeSelected(seconds == 0);
         Esp32BaseWeb::sendChunk(">");
-        Esp32BaseWeb::sendChunk(SettingsStore::isRoadEnabled(road) ? "不浇水" : "未启用");
+        Esp32BaseWeb::sendChunk(roadEnabled ? "不浇水" : "未启用");
         Esp32BaseWeb::sendChunk("</option></select></div>");
     }
     Esp32BaseWeb::sendChunk("<div class='matrix-label'>时长</div>");
     for (uint8_t road = 1; road <= 2; ++road) {
+        const bool roadEnabled = SettingsStore::isRoadEnabled(road);
+        const uint16_t seconds = roadEnabled ? plan.roadSec[road - 1] : 0;
         Esp32BaseWeb::sendChunk("<div><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='0' max='240' value='");
-        writeMinutesFromSeconds(plan.roadSec[road - 1]);
+        writeMinutesFromSeconds(seconds);
         Esp32BaseWeb::sendChunk("'");
-        Esp32BaseWeb::sendChunk(SettingsStore::isRoadEnabled(road) ? "" : " disabled");
+        Esp32BaseWeb::sendChunk(roadEnabled ? "" : " disabled");
         Esp32BaseWeb::sendChunk("></div>");
     }
     const uint32_t editCycleStartYmd = cycleStartYmdForEdit(plan);
@@ -1212,8 +1235,8 @@ void handleWaterStartApi() {
     }
     uint16_t r1Min = 0;
     uint16_t r2Min = 0;
-    bool useR1 = true;
-    bool useR2 = false;
+    bool useR1 = SettingsStore::isRoadEnabled(1);
+    bool useR2 = SettingsStore::isRoadEnabled(2);
     SettingsStore::ExecutionMode mode = SettingsStore::defaultExecutionMode();
     (void)readBoolParam("r1_enabled", &useR1);
     (void)readBoolParam("r2_enabled", &useR2);
@@ -1324,6 +1347,11 @@ void handlePlansApi() {
     bool useRoad = false;
     if (readBoolParam("r1_enabled", &useRoad) && !useRoad) plan.roadSec[0] = 0;
     if (readBoolParam("r2_enabled", &useRoad) && !useRoad) plan.roadSec[1] = 0;
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        if (!SettingsStore::isRoadEnabled(road)) {
+            plan.roadSec[road - 1] = 0;
+        }
+    }
     SettingsStore::ExecutionMode mode = plan.mode;
     if (Esp32BaseWeb::hasParam("mode")) {
         if (!readModeParam("mode", &mode)) {

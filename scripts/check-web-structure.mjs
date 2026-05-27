@@ -2,6 +2,10 @@ import fs from 'node:fs';
 
 const web = fs.readFileSync('src/web/IrrigationWeb.cpp', 'utf8');
 const main = fs.readFileSync('src/main.cpp', 'utf8');
+const pins = fs.readFileSync('include/Pins.h', 'utf8');
+const settings = fs.readFileSync('src/storage/SettingsStore.cpp', 'utf8');
+const plans = fs.readFileSync('src/storage/PlanStore.cpp', 'utf8');
+const scheduler = fs.readFileSync('src/domain/WateringPlanScheduler.cpp', 'utf8');
 
 function assert(condition, message) {
   if (!condition) {
@@ -30,6 +34,14 @@ assert(!web.includes('/api/v1/maintenance/factory-reset'), 'business web should 
 assert(!web.includes('writeRecentPanel("昨日"'), 'recent plans should not render yesterday as a separate panel');
 assert(!web.includes('writeRecentPanel("今日"'), 'recent plans should use a single table instead of per-day panels');
 assert(web.includes('<th>日期</th><th>时间</th><th>计划</th>'), 'recent plans should render a single date/time table');
+assert(pins.includes('DefaultRoadEnabledMask = 0x03'), 'default road mask should enable both roads');
+assert(!settings.includes('0x01,\n    SettingsStore::MODE_SIMULTANEOUS'), 'settings defaults should not keep one-road mask');
+assert(settings.includes('return mask == 0 ? IrrigationPins::DefaultRoadEnabledMask : mask'), 'invalid road mask should fall back to the two-road default mask');
+assert(plans.includes('plan.roadSec[1] = 300'), 'default plans should include road 2');
+assert(!web.includes('bool useR1 = true;\n    bool useR2 = false;'), 'manual start API should not hard-code road 1 only by default');
+assert(web.includes('SettingsStore::isRoadEnabled(1)') && web.includes('SettingsStore::isRoadEnabled(2)'), 'manual and plan web logic should consult enabled-road settings');
+assert(scheduler.includes('effectiveRoadSec') && scheduler.includes('plan no enabled roads'), 'scheduler should execute effective enabled-road plan content');
+assert(web.includes('当前告警'), 'home alert panel should use current alert terminology');
 
 const navOrder = [
   'addPage("/irrigation", "首页"',

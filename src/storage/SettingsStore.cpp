@@ -21,7 +21,7 @@ static constexpr const char* kKeyKeypadLocked = "key_lock";
 static constexpr const char* kDefaultRoadNames[] = {"Road 1", "Road 2"};
 
 SettingsStore::Settings g_settings = {
-    0x01,
+    IrrigationPins::DefaultRoadEnabledMask,
     SettingsStore::MODE_SIMULTANEOUS,
     {300, 300},
     10,
@@ -36,7 +36,7 @@ SettingsStore::Settings g_settings = {
 
 SettingsStore::Settings defaultSettings() {
     SettingsStore::Settings settings = {
-        0x01,
+        IrrigationPins::DefaultRoadEnabledMask,
         SettingsStore::MODE_SIMULTANEOUS,
         {300, 300},
         10,
@@ -53,7 +53,7 @@ SettingsStore::Settings defaultSettings() {
 
 uint8_t clampRoadMask(int32_t value) {
     const uint8_t mask = static_cast<uint8_t>(value) & 0x03;
-    return mask == 0 ? 0x01 : mask;
+    return mask == 0 ? IrrigationPins::DefaultRoadEnabledMask : mask;
 }
 
 bool validRoadMask(uint8_t value) {

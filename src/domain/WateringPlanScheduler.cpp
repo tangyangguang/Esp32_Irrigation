@@ -4,6 +4,7 @@
 #include <Esp32Base.h>
 #include <time.h>
 
+#include "Pins.h"
 #include "domain/WateringSession.h"
 #include "storage/EventStore.h"
 #include "storage/PlanStore.h"
@@ -42,36 +43,68 @@ bool shouldTrigger(uint8_t index, const PlanStore::Plan& plan, uint16_t minuteOf
     return PlanStore::shouldRunOnDate(plan, today);
 }
 
+void effectiveRoadSec(const PlanStore::Plan& plan, uint16_t out[2]) {
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        out[i] = SettingsStore::isRoadEnabled(i + 1) ? plan.roadSec[i] : 0;
+    }
+}
+
+bool hasEffectiveRoad(const uint16_t roadSec[2]) {
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        if (roadSec[i] > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void markPlanHandled(uint8_t index, uint32_t today) {
+    if (PlanStore::setLastRunYmd(index, today)) {
+        Esp32BaseConfig::flushAll();
+    }
+}
+
 void triggerPlan(uint8_t index, const PlanStore::Plan& plan, uint32_t today) {
+    uint16_t effective[2] = {};
+    effectiveRoadSec(plan, effective);
+    if (!hasEffectiveRoad(effective)) {
+        (void)EventStore::append(EventStore::TYPE_WATER_STOP,
+                                 EventStore::SOURCE_PLAN,
+                                 0,
+                                 WateringSession::REASON_SKIPPED,
+                                 0,
+                                 0,
+                                 "plan no enabled roads");
+        markPlanHandled(index, today);
+        ESP32BASE_LOG_W("plans", "skip no_enabled_roads index=%u", static_cast<unsigned>(index));
+        return;
+    }
+
     if (WateringSession::isActive()) {
         (void)EventStore::append(EventStore::TYPE_WATER_STOP,
                                  EventStore::SOURCE_PLAN,
                                  0,
                                  WateringSession::REASON_SKIPPED,
-                                 plan.roadSec[0],
-                                 plan.roadSec[1],
+                                 effective[0],
+                                 effective[1],
                                  "plan skipped active");
-        if (PlanStore::setLastRunYmd(index, today)) {
-            Esp32BaseConfig::flushAll();
-        }
+        markPlanHandled(index, today);
         ESP32BASE_LOG_W("plans", "skip active_session index=%u", static_cast<unsigned>(index));
         return;
     }
 
-    if (!WateringSession::startManual(plan.roadSec[0], plan.roadSec[1], plan.mode, RecordStore::SOURCE_PLAN, "plan")) {
+    if (!WateringSession::startManual(effective[0], effective[1], plan.mode, RecordStore::SOURCE_PLAN, "plan")) {
         (void)EventStore::append(EventStore::TYPE_WATER_STOP,
                                  EventStore::SOURCE_PLAN,
                                  0,
                                  WateringSession::REASON_SKIPPED,
-                                 plan.roadSec[0],
-                                 plan.roadSec[1],
+                                 effective[0],
+                                 effective[1],
                                  "plan rejected");
         ESP32BASE_LOG_W("plans", "trigger rejected index=%u", static_cast<unsigned>(index));
         return;
     }
-    if (PlanStore::setLastRunYmd(index, today)) {
-        Esp32BaseConfig::flushAll();
-    }
+    markPlanHandled(index, today);
     ESP32BASE_LOG_I("plans", "triggered index=%u", static_cast<unsigned>(index));
 }
 

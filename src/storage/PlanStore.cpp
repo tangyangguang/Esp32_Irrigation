@@ -46,7 +46,7 @@ PlanStore::Plan defaultPlan() {
     plan.enabled = false;
     plan.minuteOfDay = 7 * 60;
     plan.roadSec[0] = 300;
-    plan.roadSec[1] = 0;
+    plan.roadSec[1] = 300;
     plan.mode = SettingsStore::MODE_SIMULTANEOUS;
     plan.cycleDays = 1;
     plan.cycleMask = 0x01;
