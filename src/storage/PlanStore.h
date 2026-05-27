@@ -7,6 +7,7 @@
 namespace PlanStore {
 
 static constexpr uint8_t MaxPlans = 8;
+static constexpr uint32_t DefaultCycleStartYmd = 20260101UL;
 
 struct Plan {
     bool enabled;

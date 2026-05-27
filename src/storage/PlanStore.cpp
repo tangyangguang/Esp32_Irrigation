@@ -10,8 +10,6 @@
 namespace {
 
 static constexpr const char* kNamespace = "irr_plan";
-static constexpr uint32_t kDefaultCycleStartYmd = 20260101UL;
-
 PlanStore::Plan g_plans[PlanStore::MaxPlans] = {};
 
 void key(char* out, size_t len, uint8_t index, const char* name) {
@@ -52,7 +50,7 @@ PlanStore::Plan defaultPlan() {
     plan.mode = SettingsStore::MODE_SIMULTANEOUS;
     plan.cycleDays = 1;
     plan.cycleMask = 0x01;
-    plan.cycleStartYmd = kDefaultCycleStartYmd;
+    plan.cycleStartYmd = PlanStore::DefaultCycleStartYmd;
     return plan;
 }
 
@@ -109,7 +107,7 @@ void begin() {
         plan.mode = clampMode(getInt(i, "mode", SettingsStore::MODE_SIMULTANEOUS));
         plan.cycleDays = clampCycleDays(getInt(i, "cycle_d", plan.cycleDays));
         plan.cycleMask = clampCycleMask(getInt(i, "cycle_m", plan.cycleMask), plan.cycleDays);
-        plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", kDefaultCycleStartYmd));
+        plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", PlanStore::DefaultCycleStartYmd));
         plan.lastRunYmd = static_cast<uint32_t>(getInt(i, "last", 0));
         g_plans[i] = validate(plan) ? plan : defaultPlan();
     }

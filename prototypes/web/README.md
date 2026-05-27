@@ -8,7 +8,7 @@
 
 本版按实际使用频率组织导航：
 
-`总览 / 手动 / 近期计划 / 计划配置 / 记录 / 设置 / 调试`
+`总览 / 手动 / 近期计划 / 计划配置 / 记录 / 设置`
 
 ## 页面清单
 
@@ -18,9 +18,8 @@
 - `plans.html`：近期计划，展示昨日、今日、明日、后天的计划执行状态，并处理跳过某次或某天计划。
 - `plan-config.html`：计划配置，展示计划列表和修改入口。
 - `plan-edit.html`：编辑执行时间、循环规则、执行模式和每路时长。
-- `records.html`：浇水记录、系统事件和导出入口。
+- `records.html`：浇水记录和系统事件。
 - `settings.html`：灌溉业务参数，每次只修改一个参数。
-- `status-api.html`：调试页，展示状态 API 结构示意。
 
 ## 原型到真实路由
 
@@ -31,9 +30,8 @@
 | `plans.html` | `/irrigation/plans` | 近期计划和跳过操作。 |
 | `plan-config.html` | `/irrigation/plan-config` | 计划列表。 |
 | `plan-edit.html` | `/irrigation/plan?edit=<index>` | 单条计划编辑。 |
-| `records.html` | `/irrigation/data` | 记录、事件、CSV 导出。 |
+| `records.html` | `/irrigation/data` | 记录、事件。 |
 | `settings.html` | `/irrigation/settings` | 灌溉业务设置和恢复出厂入口。 |
-| `status-api.html` | `/irrigation/debug`、`/api/v1/status` | 调试页和实时状态 API。 |
 | `index.html` | 无直接运行路由 | 原型入口。 |
 
 ## 设计原则

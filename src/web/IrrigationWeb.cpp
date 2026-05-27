@@ -84,6 +84,26 @@ bool readU32Param(const char* name, uint32_t* value) {
     return true;
 }
 
+bool readYmdParam(const char* name, uint32_t* value) {
+    char text[16] = "";
+    if (!value || !Esp32BaseWeb::getParam(name, text, sizeof(text))) {
+        return false;
+    }
+    if (strlen(text) == 10 && text[4] == '-' && text[7] == '-') {
+        for (uint8_t i = 0; i < 10; ++i) {
+            if ((i == 4 || i == 7) ? text[i] != '-' : (text[i] < '0' || text[i] > '9')) {
+                return false;
+            }
+        }
+        const uint32_t year = static_cast<uint32_t>((text[0] - '0') * 1000 + (text[1] - '0') * 100 + (text[2] - '0') * 10 + (text[3] - '0'));
+        const uint32_t month = static_cast<uint32_t>((text[5] - '0') * 10 + (text[6] - '0'));
+        const uint32_t day = static_cast<uint32_t>((text[8] - '0') * 10 + (text[9] - '0'));
+        *value = year * 10000UL + month * 100UL + day;
+        return true;
+    }
+    return readU32Param(name, value);
+}
+
 bool readBoolParam(const char* name, bool* value) {
     char text[8] = "";
     if (!Esp32BaseWeb::getParam(name, text, sizeof(text))) {
@@ -252,6 +272,14 @@ void writeYmd(uint32_t ymd) {
              static_cast<unsigned long>((ymd / 100UL) % 100UL),
              static_cast<unsigned long>(ymd % 100UL));
     Esp32BaseWeb::sendChunk(text);
+}
+
+uint32_t cycleStartYmdForEdit(const PlanStore::Plan& plan) {
+    const uint32_t today = currentYmd();
+    if (today >= 20000101UL && !plan.enabled && plan.lastRunYmd == 0 && plan.cycleStartYmd == PlanStore::DefaultCycleStartYmd) {
+        return today;
+    }
+    return plan.cycleStartYmd;
 }
 
 void writeMinuteOfDay(uint16_t minuteOfDay) {
@@ -706,10 +734,11 @@ void handlePlanEditPage() {
         Esp32BaseWeb::sendChunk(SettingsStore::isRoadEnabled(road) ? "" : " disabled");
         Esp32BaseWeb::sendChunk("></div>");
     }
+    const uint32_t editCycleStartYmd = cycleStartYmdForEdit(plan);
     Esp32BaseWeb::sendChunk("</div></div><div class='panel span-12'><h2>循环规则</h2><div class='field-grid'><div class='field'><label>循环天数</label><input id='cycleDays' name='cycle_days' type='number' min='1' max='30' value='");
     writeUInt(plan.cycleDays);
-    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>循环开始日期</label><input name='cycle_start_ymd' type='number' min='20000101' max='20991231' value='");
-    writeUInt(plan.cycleStartYmd);
+    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>循环开始日期</label><input name='cycle_start_ymd' type='date' value='");
+    writeYmd(editCycleStartYmd);
     Esp32BaseWeb::sendChunk("'></div></div><h3>循环执行日</h3><div class='check-grid' id='cycleDayList'>");
     for (uint8_t i = 0; i < 30; ++i) {
         Esp32BaseWeb::sendChunk("<label class='check-item' data-day='");
@@ -910,7 +939,7 @@ void handleDataPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("数据记录", "page-table");
     writePageHead("数据记录", "查看什么时候浇水、实际执行多久、为什么结束。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>浇水记录</h2><div class='panel-tools'><a class='button secondary' href='/api/v1/records'>JSON</a><a class='button secondary' href='/api/v1/records.csv'>CSV 导出</a></div></div><div class='table-wrap'><table><thead><tr><th>ID</th><th>来源</th><th>模式</th><th>结束原因</th><th>路</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>浇水记录</h2></div><div class='table-wrap'><table><thead><tr><th>ID</th><th>来源</th><th>模式</th><th>结束原因</th><th>路</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
     auto recordCb = [](const RecordStore::Record& record, void*) {
         for (uint8_t road = 1; road <= 2; ++road) {
             const RecordStore::RoadRecord& rr = record.roads[road - 1];
@@ -935,7 +964,7 @@ void handleDataPage() {
         }
     };
     (void)RecordStore::readLatest(0, 10, recordCb, nullptr);
-    Esp32BaseWeb::sendChunk("</tbody></table></div></div><div class='panel span-12'><div class='panel-titlebar'><h2>系统事件</h2><div class='panel-tools'><a class='button secondary' href='/api/v1/events'>JSON</a><a class='button secondary' href='/api/v1/events.csv'>CSV 导出</a></div></div><p class='note'>系统事件来自 EventStore，用于排查启动、配置变更、计划变更、浇水开始/停止/错误、漏水告警和告警解除。</p><div class='table-wrap'><table><thead><tr><th>ID</th><th>类型</th><th>来源</th><th>影响对象</th><th>说明</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div></div><div class='panel span-12'><div class='panel-titlebar'><h2>系统事件</h2></div><p class='note'>系统事件来自 EventStore，用于排查启动、配置变更、计划变更、浇水开始/停止/错误、漏水告警和告警解除。</p><div class='table-wrap'><table><thead><tr><th>ID</th><th>类型</th><th>来源</th><th>影响对象</th><th>说明</th></tr></thead><tbody>");
     auto eventCb = [](const EventStore::Event& event, void*) {
         Esp32BaseWeb::sendChunk("<tr><td>");
         writeUInt(event.id);
@@ -951,14 +980,6 @@ void handleDataPage() {
     };
     (void)EventStore::readLatest(0, 20, eventCb, nullptr);
     Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
-    sendFooter();
-}
-
-void handleDebugPage() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    sendHeader("调试", "page-table");
-    writePageHead("调试与状态 API", "查看业务状态 JSON，用于联调和问题排查。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>状态 JSON</h2><p class='note'>实时内容由接口返回。</p><div class='actions'><a class='button secondary' href='/api/v1/status'>打开 /api/v1/status</a></div></div></section>");
     sendFooter();
 }
 
@@ -1381,7 +1402,13 @@ void handlePlansApi() {
         plan.cycleDays = static_cast<uint8_t>(value);
     }
     uint32_t ymd = 0;
-    if (readU32Param("cycle_start_ymd", &ymd)) plan.cycleStartYmd = ymd;
+    if (Esp32BaseWeb::hasParam("cycle_start_ymd")) {
+        if (!readYmdParam("cycle_start_ymd", &ymd)) {
+            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_cycle_start\"}");
+            return;
+        }
+        plan.cycleStartYmd = ymd;
+    }
     plan.cycleMask = readCycleMaskFromForm(plan.cycleDays);
     if (!PlanStore::set(static_cast<uint8_t>(indexRaw), plan)) {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_plan\"}");
@@ -1516,41 +1543,6 @@ void handleRecordsApi() {
     endJson();
 }
 
-void handleRecordsCsvApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::beginCsv(200, "irrigation-records.csv")) return;
-    Esp32BaseWeb::sendChunk("session_id,source,mode,stop_reason,session_started_ms,session_ended_ms,enabled_roads,flow_no_pulse_timeout_s,road,state,target_sec,actual_sec,road_started_ms,road_ended_ms,pulse_start,pulse_end,pulses,pulse_per_liter,calibration_x1000,estimated_ml\r\n");
-    auto cb = [](const RecordStore::Record& record, void*) {
-        for (uint8_t road = 1; road <= 2; ++road) {
-            const RecordStore::RoadRecord& rr = record.roads[road - 1];
-            const uint32_t pulses = rr.endedPulseCount >= rr.startedPulseCount ? rr.endedPulseCount - rr.startedPulseCount : 0;
-            const uint32_t actualSec = rr.endedMs >= rr.startedMs && rr.startedMs > 0 ? (rr.endedMs - rr.startedMs) / 1000UL : 0;
-            writeUInt(record.id); Esp32BaseWeb::sendChunk(",");
-            Esp32BaseWeb::writeCsvEscaped(RecordStore::sourceName(static_cast<RecordStore::Source>(record.source))); Esp32BaseWeb::sendChunk(",");
-            Esp32BaseWeb::writeCsvEscaped(modeName(static_cast<SettingsStore::ExecutionMode>(record.mode))); Esp32BaseWeb::sendChunk(",");
-            Esp32BaseWeb::writeCsvEscaped(WateringSession::stopReasonName(static_cast<WateringSession::StopReason>(record.stopReason))); Esp32BaseWeb::sendChunk(",");
-            writeUInt(record.sessionStartedMs); Esp32BaseWeb::sendChunk(",");
-            writeUInt(record.sessionEndedMs); Esp32BaseWeb::sendChunk(",");
-            writeUInt(record.enabledRoads); Esp32BaseWeb::sendChunk(",");
-            writeUInt(record.flowNoPulseTimeoutSec); Esp32BaseWeb::sendChunk(",");
-            writeUInt(road); Esp32BaseWeb::sendChunk(",");
-            Esp32BaseWeb::writeCsvEscaped(WateringSession::roadStateName(static_cast<WateringSession::RoadState>(rr.state))); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.targetSec); Esp32BaseWeb::sendChunk(",");
-            writeUInt(actualSec); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.startedMs); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.endedMs); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.startedPulseCount); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.endedPulseCount); Esp32BaseWeb::sendChunk(",");
-            writeUInt(pulses); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.pulsePerLiter); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.calibrationX1000); Esp32BaseWeb::sendChunk(",");
-            writeUInt(rr.estimatedMilliliters); Esp32BaseWeb::sendChunk("\r\n");
-        }
-    };
-    (void)RecordStore::readLatest(0, RecordStore::capacity(), cb, nullptr);
-    Esp32BaseWeb::endResponse();
-}
-
 void writeEventJsonCb(const EventStore::Event& event, void* user) {
     bool* first = static_cast<bool*>(user);
     if (!*first) Esp32BaseWeb::sendChunk(",");
@@ -1596,26 +1588,6 @@ void handleEventsApi() {
     endJson();
 }
 
-void handleEventsCsvApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::beginCsv(200, "irrigation-events.csv")) return;
-    Esp32BaseWeb::sendChunk("event_id,type,source,uptime_ms,epoch,road,code,value1,value2,text\r\n");
-    auto cb = [](const EventStore::Event& event, void*) {
-        writeUInt(event.id); Esp32BaseWeb::sendChunk(",");
-        Esp32BaseWeb::writeCsvEscaped(EventStore::typeName(static_cast<EventStore::Type>(event.type))); Esp32BaseWeb::sendChunk(",");
-        Esp32BaseWeb::writeCsvEscaped(EventStore::sourceName(static_cast<EventStore::Source>(event.source))); Esp32BaseWeb::sendChunk(",");
-        writeUInt(event.uptimeMs); Esp32BaseWeb::sendChunk(",");
-        writeUInt(event.epoch); Esp32BaseWeb::sendChunk(",");
-        writeUInt(event.road); Esp32BaseWeb::sendChunk(",");
-        writeUInt(event.code); Esp32BaseWeb::sendChunk(",");
-        writeInt(event.value1); Esp32BaseWeb::sendChunk(",");
-        writeInt(event.value2); Esp32BaseWeb::sendChunk(",");
-        Esp32BaseWeb::writeCsvEscaped(event.text); Esp32BaseWeb::sendChunk("\r\n");
-    };
-    (void)EventStore::readLatest(0, EventStore::capacity(), cb, nullptr);
-    Esp32BaseWeb::endResponse();
-}
-
 }
 
 namespace IrrigationWeb {
@@ -1627,7 +1599,6 @@ void begin() {
     const bool configPageOk = Esp32BaseWeb::addPage("/irrigation/plan-config", "计划配置", handlePlanConfigPage);
     const bool dataOk = Esp32BaseWeb::addPage("/irrigation/data", "记录", handleDataPage);
     const bool settingsOk = Esp32BaseWeb::addPage("/irrigation/settings", "设置", handleSettingsPage);
-    const bool debugOk = Esp32BaseWeb::addPage("/irrigation/debug", "调试", handleDebugPage);
     const bool planEditOk = Esp32BaseWeb::addRoute("/irrigation/plan", Esp32BaseWeb::METHOD_GET, handlePlanEditPage);
     const bool settingsConfigOk = Esp32BaseWeb::addRoute("/irrigation/settings/config", Esp32BaseWeb::METHOD_POST, handleSettingsConfigForm);
     const bool statusOk = Esp32BaseWeb::addApi("/api/v1/status", handleStatusApi);
@@ -1635,21 +1606,18 @@ void begin() {
     const bool startOk = Esp32BaseWeb::addApi("/api/v1/water/start", handleWaterStartApi);
     const bool stopOk = Esp32BaseWeb::addApi("/api/v1/water/stop", handleWaterStopApi);
     const bool recordsOk = Esp32BaseWeb::addApi("/api/v1/records", handleRecordsApi);
-    const bool recordsCsvOk = Esp32BaseWeb::addApi("/api/v1/records.csv", handleRecordsCsvApi);
     const bool eventsOk = Esp32BaseWeb::addApi("/api/v1/events", handleEventsApi);
-    const bool eventsCsvOk = Esp32BaseWeb::addApi("/api/v1/events.csv", handleEventsCsvApi);
     const bool plansOk = Esp32BaseWeb::addApi("/api/v1/plans", handlePlansApi);
     const bool skipOk = Esp32BaseWeb::addApi("/api/v1/plans/skip", handlePlanSkipApi);
     const bool alertsOk = Esp32BaseWeb::addApi("/api/v1/alerts/clear", handleAlertsClearApi);
     const bool factoryResetOk = Esp32BaseWeb::addApi("/api/v1/maintenance/factory-reset", handleFactoryResetApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s manual=%s recent=%s planConfig=%s data=%s settings=%s debug=%s planEdit=%s settingsConfig=%s status=%s config=%s start=%s stop=%s records=%s recordsCsv=%s events=%s eventsCsv=%s plans=%s skip=%s alerts=%s factoryReset=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s manual=%s recent=%s planConfig=%s data=%s settings=%s planEdit=%s settingsConfig=%s status=%s config=%s start=%s stop=%s records=%s events=%s plans=%s skip=%s alerts=%s factoryReset=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     manualOk ? "ok" : "fail",
                     recentOk ? "ok" : "fail",
                     configPageOk ? "ok" : "fail",
                     dataOk ? "ok" : "fail",
                     settingsOk ? "ok" : "fail",
-                    debugOk ? "ok" : "fail",
                     planEditOk ? "ok" : "fail",
                     settingsConfigOk ? "ok" : "fail",
                     statusOk ? "ok" : "fail",
@@ -1657,9 +1625,7 @@ void begin() {
                     startOk ? "ok" : "fail",
                     stopOk ? "ok" : "fail",
                     recordsOk ? "ok" : "fail",
-                    recordsCsvOk ? "ok" : "fail",
                     eventsOk ? "ok" : "fail",
-                    eventsCsvOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
                     skipOk ? "ok" : "fail",
                     alertsOk ? "ok" : "fail",

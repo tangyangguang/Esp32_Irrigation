@@ -28,5 +28,5 @@
 
 ## 约束
 
-- 新增事件类型时，必须同时更新本文件、`EventStore::typeName()` 和相关 CSV/JSON 验证项。
-- 新增 `StopReason` 或 `ExecutionMode` 时，必须确认 `code` 的导出解释仍然准确。
+- 新增事件类型时，必须同时更新本文件、`EventStore::typeName()` 和相关 JSON 验证项。
+- 新增 `StopReason` 或 `ExecutionMode` 时，必须确认 `code` 的 JSON 输出解释仍然准确。

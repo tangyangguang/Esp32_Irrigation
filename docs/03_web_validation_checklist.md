@@ -43,19 +43,20 @@
 
 - 8 个计划都应显示。
 - 每个计划可单独保存启用状态、时间、R1/R2 时长、模式、循环天数和周期内执行日。
+- 循环开始日期应使用日期选择框；出厂默认且未启用、未执行过的计划在设备已同步时间时应默认显示今天。
 - Skip 应设置当天跳过；Unskip 应清除跳过。
 - 保存或跳过操作后 `/api/v1/events` 应出现 `plan_changed`。
 - `GET /api/v1/plans` 返回 8 个计划的原始配置字段。
 
-## 记录与导出
+## 记录与查询
 
 - 页面应显示最近浇水记录。
+- 页面不应显示 JSON 或 CSV 导出按钮。
 - 首次启动时记录文件应能自动初始化，启动过程不应触发 task watchdog。
 - `GET /api/v1/records?limit=10` 返回合法 JSON。
-- `GET /api/v1/records.csv` 下载 CSV，字段包含原始脉冲、校准快照和估算水量。
 - 页面应显示最近系统事件。
 - `GET /api/v1/events?limit=20` 返回合法 JSON。
-- `GET /api/v1/events.csv` 下载 CSV。
+- 顶部业务导航不应显示调试页；`GET /api/v1/status` 作为隐藏状态 API 保留。
 
 ## 异常与维护
 
