@@ -11,7 +11,6 @@
 #include "domain/FlowMeter.h"
 #include "domain/LeakMonitor.h"
 #include "domain/MaintenanceService.h"
-#include "domain/SafetyManager.h"
 #include "domain/ValveController.h"
 #include "domain/WateringSession.h"
 #include "storage/EventStore.h"
@@ -328,7 +327,7 @@ void writeCss() {
         ":root{color-scheme:light;--bg:#f7f8fa;--surface:#fff;--muted:#667085;--text:#17202a;--line:#d8dee6;--soft:#edf0f3;--primary:#146c5f;--ok:#087443;--warn:#a15c07;--danger:#b42318}"
         "*{box-sizing:border-box}body{--page-width:1100px;--page-margin:28px;max-width:none;margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif}.page-overview{--page-width:980px}.page-table{--page-width:1120px;--page-margin:36px}.page-form{--page-width:1040px}.page-settings{--page-width:860px}"
         "a{color:var(--primary);text-decoration:none}a:hover{text-decoration:underline}"
-        "body>nav,.footerbar,.info{width:min(var(--page-width),calc(100% - var(--page-margin)));margin-left:auto;margin-right:auto}body>nav{position:sticky;top:0;z-index:2;display:flex;gap:4px;align-items:center;overflow-x:auto;margin-top:0;margin-bottom:14px;padding:9px 10px;background:rgba(255,255,255,.98);border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}"
+        "body>nav{width:min(var(--page-width),calc(100% - var(--page-margin)));margin-left:auto;margin-right:auto;position:sticky;top:0;z-index:2;display:flex;gap:4px;align-items:center;overflow-x:auto;margin-top:0;margin-bottom:14px;padding:9px 10px;background:rgba(255,255,255,.98);border:1px solid var(--line);border-top:0;border-radius:0 0 8px 8px}"
         "body>nav a{display:inline-flex;align-items:center;flex:0 0 auto;min-height:34px;padding:0 10px;border-radius:6px;color:#344054;font-weight:600}body>nav a.active,body>nav a.current{background:#e7f1ef;color:var(--primary)}"
         ".shell{width:min(var(--page-width),calc(100% - var(--page-margin)));margin:0 auto;padding:6px 0 34px}"
         ".page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}h1,h2,h3,p{margin-top:0}h1{margin-bottom:4px;font-size:26px;line-height:1.25}.subtitle,.note{margin-bottom:0;color:var(--muted)}"
@@ -440,52 +439,9 @@ void writeWateringStatusPanel(const char* title) {
     Esp32BaseWeb::sendChunk("</div></div>");
 }
 
-const char* signalQuality(long rssi) {
-    if (rssi >= -60) return "优秀";
-    if (rssi >= -70) return "良好";
-    if (rssi >= -80) return "一般";
-    return "较弱";
-}
-
-void handleOverviewPage() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    sendHeader("总览", "page-overview");
-    writePageHead("总览", "只看系统状态、阀门状态和需要立即注意的信息。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>设备状态</h2><div class='overview-status'><div><span>设备</span><strong><span class='badge ok'>正常</span></strong></div><div><span>当前</span><strong>");
-    Esp32BaseWeb::sendChunk(WateringSession::isActive() ? "浇水中" : "空闲");
-    Esp32BaseWeb::sendChunk("</strong></div><div><span>WiFi</span><strong>");
-#if ESP32BASE_ENABLE_WIFI
-    Esp32BaseWeb::writeHtmlEscaped(Esp32BaseWiFi::ssid());
-    Esp32BaseWeb::sendChunk("</strong></div><div><span>信号</span><strong>");
-    Esp32BaseWeb::writeHtmlEscaped(signalQuality(Esp32BaseWiFi::rssi()));
-    Esp32BaseWeb::sendChunk(" (");
-    char rssi[16];
-    snprintf(rssi, sizeof(rssi), "%ld dBm", static_cast<long>(Esp32BaseWiFi::rssi()));
-    Esp32BaseWeb::writeHtmlEscaped(rssi);
-#else
-    Esp32BaseWeb::sendChunk("-");
-    Esp32BaseWeb::sendChunk("</strong></div><div><span>信号</span><strong>-");
-#endif
-    Esp32BaseWeb::sendChunk(")</strong></div></div></div>");
-    writeWateringStatusPanel("浇水状态");
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>异常</h2>");
-    if (LeakMonitor::hasAlert()) {
-        Esp32BaseWeb::sendChunk("<span class='badge danger'>存在异常</span><p class='note'>请确认现场状态，处理后清除提示。</p><form method='post' action='/api/v1/alerts/clear' data-confirm='确认现场已处理并解除异常提示？'><button>解除异常</button></form>");
-    } else {
-        Esp32BaseWeb::sendChunk("<span class='badge ok'>无当前异常</span><p class='note'>存在异常时在这里显示原因和状态，历史事件在记录页查看。</p>");
-    }
-    Esp32BaseWeb::sendChunk("</div></section>");
-    sendFooter();
-}
-
-void handleManualPage() {
-    if (!Esp32BaseWeb::checkAuth()) return;
+void writeManualStartPanel() {
     const SettingsStore::Settings& settings = SettingsStore::current();
-    sendHeader("手动浇水", "page-form");
-    writePageHead("手动浇水", "每路独立选择是否参与，本页统一开始；停止操作必须确认。");
-    Esp32BaseWeb::sendChunk("<section class='grid'>");
-    writeWateringStatusPanel("浇水状态");
-    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>启动浇水</h2><p class='inline-notice note'>上次操作：");
+    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>手动浇水</h2><p class='inline-notice note'>上次操作：");
     Esp32BaseWeb::writeHtmlEscaped(WateringSession::stopReasonName(WateringSession::lastStopReason()));
     Esp32BaseWeb::sendChunk("</p><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><div class='manual-mode'><div class='field'><label>执行模式</label><select name='mode'>");
     writeModeOptions(settings.defaultMode);
@@ -513,10 +469,48 @@ void handleManualPage() {
         Esp32BaseWeb::sendChunk("_min' type='number' min='1' max='240' value='");
         writeMinutesFromSeconds(settings.quickDurationSec[road - 1]);
         Esp32BaseWeb::sendChunk("'");
-        Esp32BaseWeb::sendChunk(SettingsStore::isRoadEnabled(road) ? "" : " disabled");
+        Esp32BaseWeb::sendChunk(enabled ? "" : " disabled");
         Esp32BaseWeb::sendChunk("><em>分钟</em></span></label></div></div>");
     }
-    Esp32BaseWeb::sendChunk("</div><div class='actions'><button>开始浇水</button></div></form></div></section>");
+    Esp32BaseWeb::sendChunk("</div><div class='actions'><button>开始浇水</button></div></form></div>");
+}
+
+const char* signalQuality(long rssi) {
+    if (rssi >= -60) return "优秀";
+    if (rssi >= -70) return "良好";
+    if (rssi >= -80) return "一般";
+    return "较弱";
+}
+
+void handleOverviewPage() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    sendHeader("首页", "page-overview");
+    writePageHead("首页", "查看当前状态，并执行即时浇水和停止操作。");
+    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>设备状态</h2><div class='overview-status'><div><span>设备</span><strong><span class='badge ok'>正常</span></strong></div><div><span>当前</span><strong>");
+    Esp32BaseWeb::sendChunk(WateringSession::isActive() ? "浇水中" : "空闲");
+    Esp32BaseWeb::sendChunk("</strong></div><div><span>WiFi</span><strong>");
+#if ESP32BASE_ENABLE_WIFI
+    Esp32BaseWeb::writeHtmlEscaped(Esp32BaseWiFi::ssid());
+    Esp32BaseWeb::sendChunk("</strong></div><div><span>信号</span><strong>");
+    Esp32BaseWeb::writeHtmlEscaped(signalQuality(Esp32BaseWiFi::rssi()));
+    Esp32BaseWeb::sendChunk(" (");
+    char rssi[16];
+    snprintf(rssi, sizeof(rssi), "%ld dBm", static_cast<long>(Esp32BaseWiFi::rssi()));
+    Esp32BaseWeb::writeHtmlEscaped(rssi);
+#else
+    Esp32BaseWeb::sendChunk("-");
+    Esp32BaseWeb::sendChunk("</strong></div><div><span>信号</span><strong>-");
+#endif
+    Esp32BaseWeb::sendChunk(")</strong></div></div></div>");
+    writeWateringStatusPanel("浇水状态");
+    writeManualStartPanel();
+    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>异常</h2>");
+    if (LeakMonitor::hasAlert()) {
+        Esp32BaseWeb::sendChunk("<span class='badge danger'>存在异常</span><p class='note'>请确认现场状态，处理后清除提示。</p><form method='post' action='/api/v1/alerts/clear' data-confirm='确认现场已处理并解除异常提示？'><button>解除异常</button></form>");
+    } else {
+        Esp32BaseWeb::sendChunk("<span class='badge ok'>无当前异常</span><p class='note'>存在异常时在这里显示原因和状态，历史事件在记录页查看。</p>");
+    }
+    Esp32BaseWeb::sendChunk("</div></section>");
     sendFooter();
 }
 
@@ -551,10 +545,18 @@ void writeCycleText(const PlanStore::Plan& plan) {
 const char* statusClass(const char* status) {
     if (strcmp(status, "已完成") == 0) return " ok";
     if (strcmp(status, "进行中") == 0) return " danger";
+    if (strcmp(status, "已跳过") == 0) return " warn";
     return "";
 }
 
-void writeRecentRows(int8_t offset, uint32_t ymd) {
+const char* dayLabel(int8_t offset) {
+    if (offset == 0) return "今天";
+    if (offset == 1) return "明天";
+    if (offset == 2) return "后天";
+    return "近期";
+}
+
+bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
     const uint16_t nowMinute = currentMinuteOfDay();
     bool any = false;
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
@@ -568,6 +570,10 @@ void writeRecentRows(int8_t offset, uint32_t ymd) {
         const bool pastToday = offset == 0 && plan.minuteOfDay < nowMinute;
         const char* status = completed ? "已完成" : (running ? "进行中" : (skipped ? "已跳过" : (pastToday ? "未执行" : "未开始")));
         Esp32BaseWeb::sendChunk("<tr><td>");
+        Esp32BaseWeb::writeHtmlEscaped(label);
+        Esp32BaseWeb::sendChunk("<span class='title-date'>");
+        writeYmd(ymd);
+        Esp32BaseWeb::sendChunk("</span></td><td>");
         writeMinuteOfDay(plan.minuteOfDay);
         Esp32BaseWeb::sendChunk("</td><td>计划 ");
         writeUInt(i + 1);
@@ -599,48 +605,31 @@ void writeRecentRows(int8_t offset, uint32_t ymd) {
         }
         Esp32BaseWeb::sendChunk("</td></tr>");
     }
-    if (!any) {
-        Esp32BaseWeb::sendChunk("<tr><td colspan='7'>无计划</td></tr>");
-    }
-}
-
-void writeRecentPanel(const char* label, int8_t offset) {
-    tm date = {};
-    const bool hasDate = localDateFromOffset(offset, &date);
-    const uint32_t ymd = hasDate ? makeYmd(date) : 0;
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><div class='panel-titlebar'><h2>");
-    Esp32BaseWeb::writeHtmlEscaped(label);
-    Esp32BaseWeb::sendChunk(" <span class='title-date'>");
-    if (hasDate) writeYmd(ymd); else Esp32BaseWeb::sendChunk("时间未同步");
-    Esp32BaseWeb::sendChunk("</span></h2>");
-    if (hasDate && offset >= 0) {
-        Esp32BaseWeb::sendChunk("<div class='panel-tools'><form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过");
-        Esp32BaseWeb::writeHtmlEscaped(label);
-        Esp32BaseWeb::sendChunk(offset == 0 ? "剩余未执行计划？" : "全部未执行计划？");
-        Esp32BaseWeb::sendChunk("'><input type='hidden' name='action' value='skip_day'><input type='hidden' name='ymd' value='");
-        writeUInt(ymd);
-        Esp32BaseWeb::sendChunk("'><input type='hidden' name='scope' value='");
-        Esp32BaseWeb::sendChunk(offset == 0 ? "remaining" : "all");
-        Esp32BaseWeb::sendChunk("'><button class='warn'>跳过");
-        Esp32BaseWeb::writeHtmlEscaped(label);
-        Esp32BaseWeb::sendChunk(offset == 0 ? "剩余" : "全部");
-        Esp32BaseWeb::sendChunk("</button></form></div>");
-    }
-    Esp32BaseWeb::sendChunk("</div><div class='table-wrap'><table class='action-table'><thead><tr><th>时间</th><th>计划</th><th>内容</th><th>模式</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody>");
-    if (hasDate) writeRecentRows(offset, ymd); else Esp32BaseWeb::sendChunk("<tr><td colspan='7'>时间未同步</td></tr>");
-    Esp32BaseWeb::sendChunk("</tbody></table></div></div>");
+    return any;
 }
 
 void handlePlansPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("近期计划", "page-table");
-    writePageHead("近期计划", "查看昨日、今日、明日、后天的计划执行状态。");
-    Esp32BaseWeb::sendChunk("<section class='grid'>");
-    writeRecentPanel("昨日", -1);
-    writeRecentPanel("今日", 0);
-    writeRecentPanel("明日", 1);
-    writeRecentPanel("后天", 2);
-    Esp32BaseWeb::sendChunk("</section>");
+    writePageHead("近期计划", "查看今天、明天、后天的计划执行状态，并按单次跳过未来未执行计划。");
+    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='table-wrap'><table class='action-table'><thead><tr><th>日期</th><th>时间</th><th>计划</th><th>内容</th><th>模式</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody>");
+    bool any = false;
+    bool timeSynced = true;
+    for (int8_t offset = 0; offset <= 2; ++offset) {
+        tm date = {};
+        if (!localDateFromOffset(offset, &date)) {
+            timeSynced = false;
+            break;
+        }
+        const uint32_t ymd = makeYmd(date);
+        any = writeRecentRows(dayLabel(offset), offset, ymd) || any;
+    }
+    if (!timeSynced) {
+        Esp32BaseWeb::sendChunk("<tr><td colspan='8'>时间未同步</td></tr>");
+    } else if (!any) {
+        Esp32BaseWeb::sendChunk("<tr><td colspan='8'>今天、明天、后天无计划</td></tr>");
+    }
+    Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
     sendFooter();
 }
 
@@ -893,8 +882,8 @@ void writeSettingEditModals() {
 void handleSettingsPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     const SettingsStore::Settings& s = SettingsStore::current();
-    sendHeader("设置", "page-settings");
-    writePageHead("设置", "查看当前灌溉参数，每次只修改一个参数。");
+    sendHeader("灌溉设置", "page-settings");
+    writePageHead("灌溉设置", "查看和修改水路、流量计量、默认浇水和安全检测参数。");
     char value[32];
     Esp32BaseWeb::sendChunk("<section class='grid'>");
     Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>灌溉设置</h2><div class='setting-list'>");
@@ -925,10 +914,6 @@ void handleSettingsPage() {
     snprintf(value, sizeof(value), "%u", static_cast<unsigned>(s.idleLeakPulseThreshold));
     writeSettingRow("idle_leak_pulse_threshold", "漏水脉冲阈值", value);
     Esp32BaseWeb::sendChunk("</div></div>");
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>维护</h2><div class='setting-list'>");
-    writeSettingReadOnlyRow("恢复出厂请求", SafetyManager::factoryResetRequested() ? "已由 BOOT 键请求" : "未请求", "BOOT 长按会直接恢复配置并重启");
-    writeSettingReadOnlyRow("恢复出厂状态", MaintenanceService::factoryResetPending() ? "等待重启执行" : "空闲", "执行时会先关闭所有阀门");
-    Esp32BaseWeb::sendChunk("</div><form method='post' action='/api/v1/maintenance/factory-reset' data-confirm='确认恢复出厂？设备会关闭阀门并重启。'><div class='field-grid' style='margin-top:12px'><div class='field'><label>确认文本</label><input name='confirm' maxlength='5' placeholder='RESET'></div><div class='field'><label>记录处理</label><select name='clear_records'><option value='0'>保留记录和事件</option><option value='1'>同时清空记录和事件</option></select></div></div><div class='actions'><button class='warn'>恢复出厂</button></div></form></div>");
     Esp32BaseWeb::sendChunk("</section>");
     writeSettingEditModals();
     writeSettingsModalScript();
@@ -937,8 +922,8 @@ void handleSettingsPage() {
 
 void handleDataPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
-    sendHeader("数据记录", "page-table");
-    writePageHead("数据记录", "查看什么时候浇水、实际执行多久、为什么结束。");
+    sendHeader("记录", "page-table");
+    writePageHead("记录", "查看历史浇水会话、每路实际执行情况和结束原因。");
     Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>浇水记录</h2></div><div class='table-wrap'><table><thead><tr><th>ID</th><th>来源</th><th>模式</th><th>结束原因</th><th>路</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
     auto recordCb = [](const RecordStore::Record& record, void*) {
         for (uint8_t road = 1; road <= 2; ++road) {
@@ -964,21 +949,6 @@ void handleDataPage() {
         }
     };
     (void)RecordStore::readLatest(0, 10, recordCb, nullptr);
-    Esp32BaseWeb::sendChunk("</tbody></table></div></div><div class='panel span-12'><div class='panel-titlebar'><h2>系统事件</h2></div><p class='note'>系统事件来自 EventStore，用于排查启动、配置变更、计划变更、浇水开始/停止/错误、漏水告警和告警解除。</p><div class='table-wrap'><table><thead><tr><th>ID</th><th>类型</th><th>来源</th><th>影响对象</th><th>说明</th></tr></thead><tbody>");
-    auto eventCb = [](const EventStore::Event& event, void*) {
-        Esp32BaseWeb::sendChunk("<tr><td>");
-        writeUInt(event.id);
-        Esp32BaseWeb::sendChunk("</td><td>");
-        Esp32BaseWeb::writeHtmlEscaped(EventStore::typeName(static_cast<EventStore::Type>(event.type)));
-        Esp32BaseWeb::sendChunk("</td><td>");
-        Esp32BaseWeb::writeHtmlEscaped(EventStore::sourceName(static_cast<EventStore::Source>(event.source)));
-        Esp32BaseWeb::sendChunk("</td><td>");
-        writeUInt(event.road);
-        Esp32BaseWeb::sendChunk("</td><td>");
-        Esp32BaseWeb::writeHtmlEscaped(event.text);
-        Esp32BaseWeb::sendChunk("</td></tr>");
-    };
-    (void)EventStore::readLatest(0, 20, eventCb, nullptr);
     Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
     sendFooter();
 }
@@ -1270,7 +1240,7 @@ void handleWaterStartApi() {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_watering_request\"}");
         return;
     }
-    redirectTo("/irrigation/manual");
+    redirectTo("/irrigation");
 }
 
 void handleWaterStopApi() {
@@ -1292,7 +1262,7 @@ void handleWaterStopApi() {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_road\"}");
         return;
     }
-    redirectTo("/irrigation/manual");
+    redirectTo("/irrigation");
 }
 
 void handleAlertsClearApi() {
@@ -1306,30 +1276,6 @@ void handleAlertsClearApi() {
     }
     LeakMonitor::clearAlerts(EventStore::SOURCE_WEB);
     redirectTo("/irrigation");
-}
-
-void handleFactoryResetApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
-        return;
-    }
-    if (MaintenanceService::factoryResetPending()) {
-        Esp32BaseWeb::sendJson(409, "{\"ok\":false,\"error\":\"factory_reset_pending\"}");
-        return;
-    }
-    char confirm[8] = "";
-    bool clearRecords = false;
-    (void)readBoolParam("clear_records", &clearRecords);
-    if (!Esp32BaseWeb::getParam("confirm", confirm, sizeof(confirm)) || strcmp(confirm, "RESET") != 0) {
-        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"confirmation_required\"}");
-        return;
-    }
-    if (!MaintenanceService::requestFactoryReset(clearRecords)) {
-        Esp32BaseWeb::sendJson(409, "{\"ok\":false,\"error\":\"factory_reset_pending\"}");
-        return;
-    }
-    redirectTo("/irrigation/settings");
 }
 
 void handlePlansApi() {
@@ -1593,12 +1539,11 @@ void handleEventsApi() {
 namespace IrrigationWeb {
 
 void begin() {
-    const bool overviewOk = Esp32BaseWeb::addPage("/irrigation", "总览", handleOverviewPage);
-    const bool manualOk = Esp32BaseWeb::addPage("/irrigation/manual", "手动", handleManualPage);
+    const bool overviewOk = Esp32BaseWeb::addPage("/irrigation", "首页", handleOverviewPage);
     const bool recentOk = Esp32BaseWeb::addPage("/irrigation/plans", "近期计划", handlePlansPage);
     const bool configPageOk = Esp32BaseWeb::addPage("/irrigation/plan-config", "计划配置", handlePlanConfigPage);
     const bool dataOk = Esp32BaseWeb::addPage("/irrigation/data", "记录", handleDataPage);
-    const bool settingsOk = Esp32BaseWeb::addPage("/irrigation/settings", "设置", handleSettingsPage);
+    const bool settingsOk = Esp32BaseWeb::addPage("/irrigation/settings", "灌溉设置", handleSettingsPage);
     const bool planEditOk = Esp32BaseWeb::addRoute("/irrigation/plan", Esp32BaseWeb::METHOD_GET, handlePlanEditPage);
     const bool settingsConfigOk = Esp32BaseWeb::addRoute("/irrigation/settings/config", Esp32BaseWeb::METHOD_POST, handleSettingsConfigForm);
     const bool statusOk = Esp32BaseWeb::addApi("/api/v1/status", handleStatusApi);
@@ -1610,10 +1555,8 @@ void begin() {
     const bool plansOk = Esp32BaseWeb::addApi("/api/v1/plans", handlePlansApi);
     const bool skipOk = Esp32BaseWeb::addApi("/api/v1/plans/skip", handlePlanSkipApi);
     const bool alertsOk = Esp32BaseWeb::addApi("/api/v1/alerts/clear", handleAlertsClearApi);
-    const bool factoryResetOk = Esp32BaseWeb::addApi("/api/v1/maintenance/factory-reset", handleFactoryResetApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s manual=%s recent=%s planConfig=%s data=%s settings=%s planEdit=%s settingsConfig=%s status=%s config=%s start=%s stop=%s records=%s events=%s plans=%s skip=%s alerts=%s factoryReset=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s recent=%s planConfig=%s data=%s settings=%s planEdit=%s settingsConfig=%s status=%s config=%s start=%s stop=%s records=%s events=%s plans=%s skip=%s alerts=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
-                    manualOk ? "ok" : "fail",
                     recentOk ? "ok" : "fail",
                     configPageOk ? "ok" : "fail",
                     dataOk ? "ok" : "fail",
@@ -1629,7 +1572,6 @@ void begin() {
                     plansOk ? "ok" : "fail",
                     skipOk ? "ok" : "fail",
                     alertsOk ? "ok" : "fail",
-                    factoryResetOk ? "ok" : "fail",
                     IrrigationVersion::FirmwareName);
 }
 
