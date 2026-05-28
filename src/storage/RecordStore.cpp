@@ -15,7 +15,7 @@ static constexpr const char* kLegacyKeyCount = "count";
 static constexpr const char* kLegacyKeyNextId = "next_id";
 static constexpr uint32_t kMagic = 0x49525245UL;
 static constexpr uint32_t kMetaMagic = 0x4952524DUL;
-static constexpr uint16_t kVersion = 2;
+static constexpr uint16_t kVersion = 3;
 static constexpr uint16_t kMetaVersion = 1;
 
 struct StoreMeta {
@@ -262,13 +262,43 @@ bool readLatest(uint16_t offset, uint16_t limit, ReadCallback callback, void* us
     return true;
 }
 
-const char* sourceName(Source source) {
+const char* taskTypeName(TaskType type) {
+    return type == TASK_PLAN ? "plan" : "manual";
+}
+
+const char* triggerSourceName(TriggerSource source) {
     switch (source) {
-        case SOURCE_BUTTON: return "button";
-        case SOURCE_WEB: return "web";
-        case SOURCE_PLAN: return "plan";
+        case SOURCE_WEB_PAGE: return "web_page";
+        case SOURCE_HTTP_API: return "http_api";
+        case SOURCE_LOCAL_BUTTON: return "local_button";
+        case SOURCE_PLAN_SCHEDULER: return "plan_scheduler";
+        case SOURCE_DURATION_REACHED: return "duration_reached";
+        case SOURCE_FLOW_ERROR: return "flow_error";
+        case SOURCE_LEAK_MONITOR: return "leak_monitor";
+        case SOURCE_FACTORY_RESET: return "factory_reset";
         case SOURCE_UNKNOWN:
         default: return "unknown";
+    }
+}
+
+const char* stopScopeName(StopScope scope) {
+    switch (scope) {
+        case SCOPE_ROAD: return "road";
+        case SCOPE_ALL: return "all";
+        case SCOPE_NONE:
+        default: return "none";
+    }
+}
+
+const char* resultName(Result result) {
+    switch (result) {
+        case RESULT_COMPLETED: return "completed";
+        case RESULT_USER_STOPPED: return "user_stopped";
+        case RESULT_FLOW_ERROR_STOPPED: return "flow_error_stopped";
+        case RESULT_LEAK_PROTECTED: return "leak_protected";
+        case RESULT_FACTORY_RESET_PROTECTED: return "factory_reset_protected";
+        case RESULT_NONE:
+        default: return "none";
     }
 }
 

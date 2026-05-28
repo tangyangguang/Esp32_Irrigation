@@ -11,19 +11,16 @@ namespace {
 
 static constexpr const char* kNamespace = "irr_cfg";
 static constexpr const char* kKeyRoadEnabledMask = "road_mask";
-static constexpr const char* kKeyDefaultMode = "mode";
-static constexpr const char* kKeyQuickR1 = "quick_r1";
-static constexpr const char* kKeyQuickR2 = "quick_r2";
+static constexpr const char* kKeyQuickPrefix = "quick";
 static constexpr const char* kKeyFlowTimeout = "flow_to";
 static constexpr const char* kKeyLeakWindow = "leak_win";
 static constexpr const char* kKeyLeakPulses = "leak_pulses";
 static constexpr const char* kKeyKeypadLocked = "key_lock";
-static constexpr const char* kDefaultRoadNames[] = {"Road 1", "Road 2"};
+static constexpr const char* kDefaultRoadNames[] = {"Road 1", "Road 2", "Road 3", "Road 4"};
 
 SettingsStore::Settings g_settings = {
     IrrigationPins::DefaultRoadEnabledMask,
-    SettingsStore::MODE_SIMULTANEOUS,
-    {300, 300},
+    {300, 300, 300, 300},
     10,
     10,
     3,
@@ -31,14 +28,15 @@ SettingsStore::Settings g_settings = {
     {
         {"Road 1", 450, 1000},
         {"Road 2", 450, 1000},
+        {"Road 3", 450, 1000},
+        {"Road 4", 450, 1000},
     },
 };
 
 SettingsStore::Settings defaultSettings() {
     SettingsStore::Settings settings = {
         IrrigationPins::DefaultRoadEnabledMask,
-        SettingsStore::MODE_SIMULTANEOUS,
-        {300, 300},
+        {300, 300, 300, 300},
         10,
         10,
         3,
@@ -46,18 +44,20 @@ SettingsStore::Settings defaultSettings() {
         {
             {"Road 1", 450, 1000},
             {"Road 2", 450, 1000},
+            {"Road 3", 450, 1000},
+            {"Road 4", 450, 1000},
         },
     };
     return settings;
 }
 
 uint8_t clampRoadMask(int32_t value) {
-    const uint8_t mask = static_cast<uint8_t>(value) & 0x03;
+    const uint8_t mask = static_cast<uint8_t>(value) & 0x0F;
     return mask == 0 ? IrrigationPins::DefaultRoadEnabledMask : mask;
 }
 
 bool validRoadMask(uint8_t value) {
-    return (value & 0x03) != 0 && (value & ~0x03) == 0;
+    return (value & 0x0F) != 0 && (value & ~0x0F) == 0;
 }
 
 bool validDuration(uint16_t value) {
@@ -102,13 +102,6 @@ uint16_t clampCalibration(int32_t value) {
     return static_cast<uint16_t>(value);
 }
 
-SettingsStore::ExecutionMode clampMode(int32_t value) {
-    if (value == SettingsStore::MODE_SEQUENTIAL) {
-        return SettingsStore::MODE_SEQUENTIAL;
-    }
-    return SettingsStore::MODE_SIMULTANEOUS;
-}
-
 uint16_t clampDuration(int32_t value) {
     if (value < 1 || value > 14400) {
         return 300;
@@ -143,9 +136,11 @@ namespace SettingsStore {
 
 void begin() {
     g_settings.roadEnabledMask = clampRoadMask(Esp32BaseConfig::getInt(kNamespace, kKeyRoadEnabledMask, IrrigationPins::DefaultRoadEnabledMask));
-    g_settings.defaultMode = clampMode(Esp32BaseConfig::getInt(kNamespace, kKeyDefaultMode, MODE_SIMULTANEOUS));
-    g_settings.quickDurationSec[0] = clampDuration(Esp32BaseConfig::getInt(kNamespace, kKeyQuickR1, 300));
-    g_settings.quickDurationSec[1] = clampDuration(Esp32BaseConfig::getInt(kNamespace, kKeyQuickR2, 300));
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        char key[12];
+        snprintf(key, sizeof(key), "%s%u", kKeyQuickPrefix, static_cast<unsigned>(i + 1));
+        g_settings.quickDurationSec[i] = clampDuration(Esp32BaseConfig::getInt(kNamespace, key, 300));
+    }
     g_settings.flowNoPulseTimeoutSec = clampFlowTimeout(Esp32BaseConfig::getInt(kNamespace, kKeyFlowTimeout, 10));
     g_settings.idleLeakWindowSec = clampLeakWindow(Esp32BaseConfig::getInt(kNamespace, kKeyLeakWindow, 10));
     g_settings.idleLeakPulseThreshold = clampLeakPulses(Esp32BaseConfig::getInt(kNamespace, kKeyLeakPulses, 3));
@@ -160,11 +155,12 @@ void begin() {
         roadKey(key, sizeof(key), road, "cal");
         g_settings.roads[i].calibrationX1000 = clampCalibration(Esp32BaseConfig::getInt(kNamespace, key, 1000));
     }
-    ESP32BASE_LOG_I("settings", "loaded roadMask=0x%02x mode=%s quick=%u/%u flowTimeout=%u keypadLocked=%s",
+    ESP32BASE_LOG_I("settings", "loaded roadMask=0x%02x quick=%u/%u/%u/%u flowTimeout=%u keypadLocked=%s",
                     static_cast<unsigned>(g_settings.roadEnabledMask),
-                    executionModeName(g_settings.defaultMode),
                     static_cast<unsigned>(g_settings.quickDurationSec[0]),
                     static_cast<unsigned>(g_settings.quickDurationSec[1]),
+                    static_cast<unsigned>(g_settings.quickDurationSec[2]),
+                    static_cast<unsigned>(g_settings.quickDurationSec[3]),
                     static_cast<unsigned>(g_settings.flowNoPulseTimeoutSec),
                     g_settings.keypadLocked ? "yes" : "no");
 }
@@ -203,34 +199,11 @@ bool isRoadEnabled(uint8_t road) {
     return (g_settings.roadEnabledMask & (1U << (road - 1))) != 0;
 }
 
-ExecutionMode defaultExecutionMode() {
-    return g_settings.defaultMode;
-}
-
-const char* executionModeName(ExecutionMode mode) {
-    return mode == MODE_SEQUENTIAL ? "sequential" : "simultaneous";
-}
-
-bool parseExecutionMode(const char* text, ExecutionMode* mode) {
-    if (!text || !mode) {
-        return false;
-    }
-    if (strcmp(text, "sequential") == 0 || strcmp(text, "seq") == 0) {
-        *mode = MODE_SEQUENTIAL;
-        return true;
-    }
-    if (strcmp(text, "simultaneous") == 0 || strcmp(text, "sim") == 0 || strcmp(text, "parallel") == 0) {
-        *mode = MODE_SIMULTANEOUS;
-        return true;
-    }
-    return false;
-}
-
 bool setEnabledRoads(uint8_t roads) {
     if (roads < 1 || roads > IrrigationPins::MaxRoads) {
         return false;
     }
-    return setRoadEnabledMask(roads >= 2 ? 0x03 : 0x01);
+    return setRoadEnabledMask(static_cast<uint8_t>((1U << roads) - 1U));
 }
 
 bool setRoadEnabled(uint8_t road, bool enabled) {
@@ -248,7 +221,7 @@ bool setRoadEnabled(uint8_t road, bool enabled) {
 }
 
 bool setRoadEnabledMask(uint8_t mask) {
-    mask &= 0x03;
+    mask &= 0x0F;
     if (!validRoadMask(mask)) {
         return false;
     }
@@ -262,28 +235,15 @@ bool setRoadEnabledMask(uint8_t mask) {
     return true;
 }
 
-bool setDefaultExecutionMode(ExecutionMode mode) {
-    if (mode != MODE_SIMULTANEOUS && mode != MODE_SEQUENTIAL) {
-        return false;
-    }
-    if (g_settings.defaultMode == mode) {
-        return true;
-    }
-    if (!Esp32BaseConfig::setInt(kNamespace, kKeyDefaultMode, static_cast<int32_t>(mode))) {
-        return false;
-    }
-    g_settings.defaultMode = mode;
-    return true;
-}
-
 bool setQuickDurationSec(uint8_t road, uint16_t seconds) {
-    if ((road != 1 && road != 2) || !validDuration(seconds)) {
+    if (road < 1 || road > IrrigationPins::MaxRoads || !validDuration(seconds)) {
         return false;
     }
     if (g_settings.quickDurationSec[road - 1] == seconds) {
         return true;
     }
-    const char* key = road == 1 ? kKeyQuickR1 : kKeyQuickR2;
+    char key[12];
+    snprintf(key, sizeof(key), "%s%u", kKeyQuickPrefix, static_cast<unsigned>(road));
     if (!Esp32BaseConfig::setInt(kNamespace, key, seconds)) {
         return false;
     }

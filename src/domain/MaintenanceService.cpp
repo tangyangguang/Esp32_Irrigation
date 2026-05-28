@@ -42,7 +42,7 @@ void handle() {
         return;
     }
 
-    WateringSession::stopAll(WateringSession::REASON_EMERGENCY_STOP, "factory reset");
+    WateringSession::stopAll(RecordStore::SOURCE_FACTORY_RESET, RecordStore::RESULT_FACTORY_RESET_PROTECTED, "factory reset");
     ValveController::allOff("factory reset");
 
     const bool settingsOk = SettingsStore::clear();

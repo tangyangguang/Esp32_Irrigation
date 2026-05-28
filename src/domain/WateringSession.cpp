@@ -7,22 +7,14 @@
 #include "domain/FlowMeter.h"
 #include "domain/ValveController.h"
 #include "storage/EventStore.h"
+#include "storage/SettingsStore.h"
 
 namespace {
 
 static constexpr uint32_t kStartupFlowGraceMs = 3000UL;
+static constexpr uint8_t kNoPlanSlot = 0xFF;
 
-struct SessionState {
-    bool active;
-    SettingsStore::ExecutionMode mode;
-    RecordStore::Source source;
-    WateringSession::RoadStatus roads[2];
-    WateringSession::StopReason lastStopReason;
-    uint32_t startedMs;
-    uint32_t endedMs;
-};
-
-SessionState g_session = {};
+WateringSession::RoadStatus g_roads[IrrigationPins::MaxRoads] = {};
 
 bool roadIndex(uint8_t road, uint8_t* index) {
     if (road < 1 || road > IrrigationPins::MaxRoads) {
@@ -32,125 +24,78 @@ bool roadIndex(uint8_t road, uint8_t* index) {
     return true;
 }
 
-bool hasRemainingWork() {
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        if (g_session.roads[i].state == WateringSession::ROAD_PENDING ||
-            g_session.roads[i].state == WateringSession::ROAD_RUNNING) {
-            return true;
-        }
-    }
-    return false;
-}
-
-EventStore::Source eventSource(RecordStore::Source source) {
+EventStore::Source eventSource(RecordStore::TriggerSource source) {
     switch (source) {
-        case RecordStore::SOURCE_BUTTON: return EventStore::SOURCE_BUTTON;
-        case RecordStore::SOURCE_WEB: return EventStore::SOURCE_WEB;
-        case RecordStore::SOURCE_PLAN: return EventStore::SOURCE_PLAN;
+        case RecordStore::SOURCE_LOCAL_BUTTON: return EventStore::SOURCE_BUTTON;
+        case RecordStore::SOURCE_WEB_PAGE:
+        case RecordStore::SOURCE_HTTP_API: return EventStore::SOURCE_WEB;
+        case RecordStore::SOURCE_PLAN_SCHEDULER: return EventStore::SOURCE_PLAN;
         case RecordStore::SOURCE_UNKNOWN:
         default: return EventStore::SOURCE_SYSTEM;
     }
 }
 
-void startRoadByIndex(uint8_t index, uint32_t now, const char* reason) {
-    const uint8_t road = index + 1;
-    const uint32_t pulses = FlowMeter::pulseCount(road);
-    g_session.roads[index].state = WateringSession::ROAD_RUNNING;
-    g_session.roads[index].startedPulseCount = pulses;
-    g_session.roads[index].lastPulseCount = pulses;
-    g_session.roads[index].lastPulseMs = now;
-    g_session.roads[index].startedMs = now;
-    g_session.roads[index].endedMs = 0;
-    ValveController::setRoad(road, true, reason);
+void resetRoad(uint8_t index) {
+    g_roads[index] = {};
+    g_roads[index].state = SettingsStore::isRoadEnabled(index + 1)
+        ? WateringSession::ROAD_IDLE
+        : WateringSession::ROAD_DISABLED;
+    g_roads[index].planSlot = kNoPlanSlot;
 }
 
-void finishRoadByIndex(uint8_t index, WateringSession::RoadState state, const char* reason) {
+void appendRecord(uint8_t index) {
+    const uint8_t road = index + 1;
+    RecordStore::Record record = {};
+    record.roadId = road;
+    record.taskType = static_cast<uint8_t>(g_roads[index].taskType);
+    record.startSource = static_cast<uint8_t>(g_roads[index].startSource);
+    record.stopSource = static_cast<uint8_t>(g_roads[index].stopSource);
+    record.stopScope = static_cast<uint8_t>(g_roads[index].stopScope);
+    record.result = static_cast<uint8_t>(g_roads[index].result);
+    record.planSlot = g_roads[index].planSlot;
+    record.enabledRoads = SettingsStore::enabledRoads();
+    record.targetSec = g_roads[index].targetSec;
+    record.pulsePerLiter = SettingsStore::current().roads[index].pulsePerLiter;
+    record.calibrationX1000 = SettingsStore::current().roads[index].calibrationX1000;
+    record.flowNoPulseTimeoutSec = SettingsStore::current().flowNoPulseTimeoutSec;
+    record.startedMs = g_roads[index].startedMs;
+    record.endedMs = g_roads[index].endedMs;
+    record.startedPulseCount = g_roads[index].startedPulseCount;
+    record.endedPulseCount = g_roads[index].lastPulseCount;
+    const uint32_t pulses = g_roads[index].lastPulseCount >= g_roads[index].startedPulseCount
+        ? g_roads[index].lastPulseCount - g_roads[index].startedPulseCount
+        : 0;
+    record.estimatedMilliliters = SettingsStore::estimateMilliliters(road, pulses);
+    if (!RecordStore::append(record)) {
+        ESP32BASE_LOG_W("water", "record append failed road=%u", static_cast<unsigned>(road));
+    }
+}
+
+void finishRoad(uint8_t index, WateringSession::RoadState state, RecordStore::TriggerSource stopSource, RecordStore::StopScope scope, RecordStore::Result result, const char* reason) {
     const uint8_t road = index + 1;
     const uint32_t pulses = FlowMeter::pulseCount(road);
-    g_session.roads[index].lastPulseCount = pulses;
-    if (g_session.roads[index].state == WateringSession::ROAD_RUNNING) {
+    g_roads[index].lastPulseCount = pulses;
+    if (g_roads[index].state == WateringSession::ROAD_RUNNING || g_roads[index].state == WateringSession::ROAD_STARTING) {
         ValveController::off(road, reason);
     }
-    g_session.roads[index].state = state;
-    g_session.roads[index].endedMs = millis();
-}
-
-WateringSession::StopReason finalReason(WateringSession::StopReason fallback) {
-    bool hasError = false;
-    bool hasDone = false;
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        if (g_session.roads[i].state == WateringSession::ROAD_ERROR) {
-            hasError = true;
-        } else if (g_session.roads[i].state == WateringSession::ROAD_DONE) {
-            hasDone = true;
-        }
-    }
-    if (hasError) {
-        return hasDone ? WateringSession::REASON_PARTIAL_ERROR : WateringSession::REASON_ERROR;
-    }
-    return fallback;
-}
-
-void appendRecord(WateringSession::StopReason reason) {
-    RecordStore::Record record = {};
-    record.sessionStartedMs = g_session.startedMs;
-    record.sessionEndedMs = g_session.endedMs;
-    record.source = static_cast<uint8_t>(g_session.source);
-    record.mode = static_cast<uint8_t>(g_session.mode);
-    record.stopReason = static_cast<uint8_t>(reason);
-    record.enabledRoads = SettingsStore::enabledRoads();
-    record.flowNoPulseTimeoutSec = SettingsStore::current().flowNoPulseTimeoutSec;
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        record.roads[i].state = static_cast<uint8_t>(g_session.roads[i].state);
-        record.roads[i].targetSec = g_session.roads[i].targetSec;
-        record.roads[i].pulsePerLiter = SettingsStore::current().roads[i].pulsePerLiter;
-        record.roads[i].calibrationX1000 = SettingsStore::current().roads[i].calibrationX1000;
-        record.roads[i].startedMs = g_session.roads[i].startedMs;
-        record.roads[i].endedMs = g_session.roads[i].endedMs;
-        record.roads[i].startedPulseCount = g_session.roads[i].startedPulseCount;
-        record.roads[i].endedPulseCount = g_session.roads[i].lastPulseCount;
-        const uint32_t pulses = g_session.roads[i].lastPulseCount >= g_session.roads[i].startedPulseCount
-            ? g_session.roads[i].lastPulseCount - g_session.roads[i].startedPulseCount
-            : 0;
-        record.roads[i].estimatedMilliliters = SettingsStore::estimateMilliliters(i + 1, pulses);
-    }
-    if (!RecordStore::append(record)) {
-        ESP32BASE_LOG_W("water", "record append failed");
-    }
-}
-
-void maybeFinishSession(WateringSession::StopReason reason) {
-    if (!g_session.active || hasRemainingWork()) {
-        return;
-    }
-    reason = finalReason(reason);
-    g_session.active = false;
-    g_session.endedMs = millis();
-    g_session.lastStopReason = reason;
-    appendRecord(reason);
-    const bool endedWithError = reason == WateringSession::REASON_ERROR || reason == WateringSession::REASON_PARTIAL_ERROR;
-    (void)EventStore::append(endedWithError ? EventStore::TYPE_WATER_ERROR : EventStore::TYPE_WATER_STOP,
-                             eventSource(g_session.source),
-                             0,
-                             static_cast<uint8_t>(reason),
-                             g_session.roads[0].targetSec,
-                             g_session.roads[1].targetSec,
-                             WateringSession::stopReasonName(reason));
-    ESP32BASE_LOG_I("water", "session ended reason=%s", WateringSession::stopReasonName(reason));
-}
-
-void startNextSequential(uint32_t now) {
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        if (g_session.roads[i].state == WateringSession::ROAD_RUNNING) {
-            return;
-        }
-    }
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        if (g_session.roads[i].state == WateringSession::ROAD_PENDING) {
-            startRoadByIndex(i, now, "sequential next");
-            return;
-        }
-    }
+    g_roads[index].state = state;
+    g_roads[index].endedMs = millis();
+    g_roads[index].stopSource = stopSource;
+    g_roads[index].stopScope = scope;
+    g_roads[index].result = result;
+    appendRecord(index);
+    const uint16_t targetSec = g_roads[index].targetSec;
+    const int32_t pulseDelta = g_roads[index].lastPulseCount >= g_roads[index].startedPulseCount
+        ? static_cast<int32_t>(g_roads[index].lastPulseCount - g_roads[index].startedPulseCount)
+        : 0;
+    (void)EventStore::append(result == RecordStore::RESULT_FLOW_ERROR_STOPPED ? EventStore::TYPE_WATER_ERROR : EventStore::TYPE_WATER_STOP,
+                             eventSource(stopSource),
+                             road,
+                             static_cast<uint8_t>(result),
+                             targetSec,
+                             pulseDelta,
+                             reason);
+    resetRoad(index);
 }
 
 }
@@ -158,25 +103,21 @@ void startNextSequential(uint32_t now) {
 namespace WateringSession {
 
 void begin() {
-    g_session = {};
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        g_session.roads[i].state = ROAD_IDLE;
+        resetRoad(i);
     }
 }
 
 void handle() {
-    if (!g_session.active) {
-        return;
-    }
-
     const uint32_t now = millis();
-    if (g_session.mode == SettingsStore::MODE_SEQUENTIAL) {
-        startNextSequential(now);
-    }
-
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        RoadStatus& road = g_session.roads[i];
+        RoadStatus& road = g_roads[i];
         if (road.state != ROAD_RUNNING) {
+            if (road.state == ROAD_DISABLED && SettingsStore::isRoadEnabled(i + 1)) {
+                resetRoad(i);
+            } else if (road.state == ROAD_IDLE && !SettingsStore::isRoadEnabled(i + 1)) {
+                resetRoad(i);
+            }
             continue;
         }
         const uint32_t pulses = FlowMeter::pulseCount(i + 1);
@@ -190,198 +131,105 @@ void handle() {
         const bool noPulseSinceStart = pulses == road.startedPulseCount;
         const uint32_t effectiveTimeoutMs = noPulseSinceStart && timeoutMs < kStartupFlowGraceMs ? kStartupFlowGraceMs : timeoutMs;
         if (noPulseMs >= effectiveTimeoutMs) {
-            finishRoadByIndex(i, ROAD_ERROR, "flow no pulse timeout");
-            (void)EventStore::append(EventStore::TYPE_WATER_ERROR,
-                                     eventSource(g_session.source),
-                                     i + 1,
-                                     REASON_ERROR,
-                                     static_cast<int32_t>(pulses - road.startedPulseCount),
-                                     SettingsStore::current().flowNoPulseTimeoutSec,
-                                     "flow no pulse");
-            ESP32BASE_LOG_W("water", "flow timeout road=%u timeout=%u pulses=%lu",
-                            static_cast<unsigned>(i + 1),
-                            static_cast<unsigned>(SettingsStore::current().flowNoPulseTimeoutSec),
-                            static_cast<unsigned long>(pulses - road.startedPulseCount));
+            finishRoad(i, ROAD_ERROR, RecordStore::SOURCE_FLOW_ERROR, RecordStore::SCOPE_ROAD, RecordStore::RESULT_FLOW_ERROR_STOPPED, "flow no pulse");
+            ESP32BASE_LOG_W("water", "flow timeout road=%u timeout=%u", static_cast<unsigned>(i + 1), static_cast<unsigned>(SettingsStore::current().flowNoPulseTimeoutSec));
             continue;
         }
         if (elapsedMs >= static_cast<uint32_t>(road.targetSec) * 1000UL) {
-            finishRoadByIndex(i, ROAD_DONE, "duration complete");
+            finishRoad(i, ROAD_DONE, RecordStore::SOURCE_DURATION_REACHED, RecordStore::SCOPE_ROAD, RecordStore::RESULT_COMPLETED, "duration complete");
         }
     }
-
-    if (g_session.mode == SettingsStore::MODE_SEQUENTIAL) {
-        startNextSequential(now);
-    }
-    maybeFinishSession(REASON_COMPLETED);
 }
 
-bool startManual(uint16_t road1Sec, uint16_t road2Sec, SettingsStore::ExecutionMode mode, RecordStore::Source source, const char* reason) {
-    const uint16_t requested[2] = {road1Sec, road2Sec};
-    bool any = false;
-
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        if (requested[i] == 0) {
-            continue;
-        }
-        if (requested[i] < 1 || requested[i] > 14400) {
-            ESP32BASE_LOG_W("water", "invalid duration road=%u sec=%u",
-                            static_cast<unsigned>(i + 1),
-                            static_cast<unsigned>(requested[i]));
-            return false;
-        }
-        if (!SettingsStore::isRoadEnabled(i + 1)) {
-            ESP32BASE_LOG_W("water", "road disabled road=%u", static_cast<unsigned>(i + 1));
-            return false;
-        }
-        any = true;
+bool startRoadTask(uint8_t road, uint16_t targetSec, RecordStore::TaskType taskType, RecordStore::TriggerSource startSource, uint8_t planSlot, const char* reason) {
+    uint8_t index = 0;
+    if (!roadIndex(road, &index) || !SettingsStore::isRoadEnabled(road) || targetSec < 1 || targetSec > 14400) {
+        ESP32BASE_LOG_W("water", "start rejected road=%u sec=%u", static_cast<unsigned>(road), static_cast<unsigned>(targetSec));
+        return false;
     }
-
-    if (!any) {
-        ESP32BASE_LOG_W("water", "manual start rejected empty request");
+    if (g_roads[index].state == ROAD_DISABLED) {
+        resetRoad(index);
+    }
+    if (g_roads[index].state != ROAD_IDLE) {
+        ESP32BASE_LOG_W("water", "start rejected road=%u sec=%u", static_cast<unsigned>(road), static_cast<unsigned>(targetSec));
         return false;
     }
 
-    if (g_session.active) {
-        stopAll(REASON_REPLACED, "manual replaced active session");
-    }
-
-    g_session = {};
-    g_session.active = true;
-    g_session.mode = mode;
-    g_session.source = source;
-    g_session.startedMs = millis();
-    g_session.lastStopReason = REASON_NONE;
-
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        g_session.roads[i].targetSec = requested[i];
-        g_session.roads[i].startedPulseCount = 0;
-        g_session.roads[i].lastPulseCount = 0;
-        g_session.roads[i].lastPulseMs = 0;
-        g_session.roads[i].startedMs = 0;
-        g_session.roads[i].endedMs = 0;
-        g_session.roads[i].state = requested[i] > 0 ? ROAD_PENDING : ROAD_IDLE;
-    }
-
-    if (g_session.mode == SettingsStore::MODE_SIMULTANEOUS) {
-        const uint32_t now = millis();
-        for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-            if (g_session.roads[i].state == ROAD_PENDING) {
-                startRoadByIndex(i, now, "manual simultaneous");
-            }
-        }
-    } else {
-        startNextSequential(millis());
-    }
-
-    ESP32BASE_LOG_I("water", "manual session started mode=%s r1=%u r2=%u reason=%s",
-                    SettingsStore::executionModeName(g_session.mode),
-                    static_cast<unsigned>(road1Sec),
-                    static_cast<unsigned>(road2Sec),
-                    reason ? reason : "");
+    g_roads[index] = {};
+    g_roads[index].state = ROAD_RUNNING;
+    g_roads[index].taskType = taskType;
+    g_roads[index].startSource = startSource;
+    g_roads[index].stopSource = RecordStore::SOURCE_UNKNOWN;
+    g_roads[index].stopScope = RecordStore::SCOPE_NONE;
+    g_roads[index].result = RecordStore::RESULT_NONE;
+    g_roads[index].planSlot = planSlot;
+    g_roads[index].targetSec = targetSec;
+    g_roads[index].startedMs = millis();
+    g_roads[index].startedPulseCount = FlowMeter::pulseCount(road);
+    g_roads[index].lastPulseCount = g_roads[index].startedPulseCount;
+    g_roads[index].lastPulseMs = g_roads[index].startedMs;
+    ValveController::setRoad(road, true, reason);
     (void)EventStore::append(EventStore::TYPE_WATER_START,
-                             eventSource(source),
-                             0,
-                             static_cast<uint8_t>(mode),
-                             road1Sec,
-                             road2Sec,
+                             eventSource(startSource),
+                             road,
+                             static_cast<uint8_t>(taskType),
+                             targetSec,
+                             planSlot,
                              reason);
     return true;
 }
 
-void stopAll(StopReason reason, const char* textReason) {
-    ValveController::allOff(textReason);
-    if (!g_session.active) {
-        g_session.lastStopReason = reason;
-        return;
-    }
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
-        if (g_session.roads[i].state == ROAD_RUNNING) {
-            const uint32_t pulses = FlowMeter::pulseCount(i + 1);
-            g_session.roads[i].lastPulseCount = pulses;
-        }
-        if (g_session.roads[i].state == ROAD_RUNNING || g_session.roads[i].state == ROAD_PENDING) {
-            g_session.roads[i].state = ROAD_STOPPED;
-            g_session.roads[i].endedMs = millis();
-        }
-    }
-    g_session.active = false;
-    g_session.endedMs = millis();
-    g_session.lastStopReason = reason;
-    appendRecord(reason);
-    ESP32BASE_LOG_I("water", "session stopped reason=%s detail=%s",
-                    stopReasonName(reason),
-                    textReason ? textReason : "");
-    (void)EventStore::append(EventStore::TYPE_WATER_STOP,
-                             eventSource(g_session.source),
-                             0,
-                             static_cast<uint8_t>(reason),
-                             g_session.roads[0].targetSec,
-                             g_session.roads[1].targetSec,
-                             textReason);
-}
-
-bool stopRoad(uint8_t road, StopReason reason, const char* textReason) {
+bool stopRoad(uint8_t road, RecordStore::TriggerSource stopSource, const char* reason) {
     uint8_t index = 0;
     if (!roadIndex(road, &index)) {
         return false;
     }
-    if (!g_session.active) {
-        const bool ok = ValveController::off(road, textReason);
-        if (ok) {
-            (void)EventStore::append(EventStore::TYPE_WATER_STOP,
-                                     EventStore::SOURCE_SYSTEM,
-                                     road,
-                                     static_cast<uint8_t>(reason),
-                                     0,
-                                     0,
-                                     textReason);
+    if (g_roads[index].state == ROAD_RUNNING || g_roads[index].state == ROAD_STARTING) {
+        finishRoad(index, ROAD_STOPPED, stopSource, RecordStore::SCOPE_ROAD, RecordStore::RESULT_USER_STOPPED, reason);
+        return true;
+    }
+    ValveController::off(road, reason);
+    return false;
+}
+
+void stopAll(RecordStore::TriggerSource stopSource, RecordStore::Result result, const char* reason) {
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        if (g_roads[i].state == ROAD_RUNNING || g_roads[i].state == ROAD_STARTING) {
+            finishRoad(i, ROAD_STOPPED, stopSource, RecordStore::SCOPE_ALL, result, reason);
+        } else {
+            ValveController::off(i + 1, reason);
         }
-        return ok;
     }
-    RoadStatus& status = g_session.roads[index];
-    if (status.state == ROAD_RUNNING || status.state == ROAD_PENDING) {
-        finishRoadByIndex(index, ROAD_STOPPED, textReason);
-        ESP32BASE_LOG_I("water", "road stopped road=%u reason=%s",
-                        static_cast<unsigned>(road),
-                        textReason ? textReason : "");
-        (void)EventStore::append(EventStore::TYPE_WATER_STOP,
-                                 eventSource(g_session.source),
-                                 road,
-                                 static_cast<uint8_t>(reason),
-                                 road == 1 ? status.targetSec : 0,
-                                 road == 2 ? status.targetSec : 0,
-                                 textReason);
-    } else {
-        ValveController::off(road, textReason);
-    }
-    maybeFinishSession(reason);
-    return true;
 }
 
 bool isActive() {
-    return g_session.active;
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        if (isRoadActive(i + 1)) {
+            return true;
+        }
+    }
+    return false;
 }
 
-RecordStore::Source source() {
-    return g_session.source;
-}
-
-SettingsStore::ExecutionMode mode() {
-    return g_session.mode;
+bool isRoadActive(uint8_t road) {
+    uint8_t index = 0;
+    return roadIndex(road, &index) && (g_roads[index].state == ROAD_RUNNING || g_roads[index].state == ROAD_STARTING);
 }
 
 const RoadStatus& roadStatus(uint8_t road) {
-    static RoadStatus invalid = {ROAD_IDLE, 0, 0, 0, 0, 0, 0};
+    static RoadStatus invalid = {};
     uint8_t index = 0;
     if (!roadIndex(road, &index)) {
+        invalid.state = ROAD_DISABLED;
         return invalid;
     }
-    return g_session.roads[index];
+    return g_roads[index];
 }
 
 const char* roadStateName(RoadState state) {
     switch (state) {
-        case ROAD_PENDING: return "pending";
+        case ROAD_DISABLED: return "disabled";
+        case ROAD_STARTING: return "starting";
         case ROAD_RUNNING: return "running";
         case ROAD_DONE: return "done";
         case ROAD_STOPPED: return "stopped";
@@ -389,24 +237,6 @@ const char* roadStateName(RoadState state) {
         case ROAD_IDLE:
         default: return "idle";
     }
-}
-
-const char* stopReasonName(StopReason reason) {
-    switch (reason) {
-        case REASON_COMPLETED: return "completed";
-        case REASON_MANUAL_STOP: return "manual_stop";
-        case REASON_EMERGENCY_STOP: return "emergency_stop";
-        case REASON_REPLACED: return "replaced";
-        case REASON_ERROR: return "error";
-        case REASON_SKIPPED: return "skipped";
-        case REASON_PARTIAL_ERROR: return "partial_error";
-        case REASON_NONE:
-        default: return "none";
-    }
-}
-
-StopReason lastStopReason() {
-    return g_session.lastStopReason;
 }
 
 }

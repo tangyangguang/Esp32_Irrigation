@@ -8,6 +8,7 @@
 #include "domain/ValveController.h"
 #include "domain/WateringSession.h"
 #include "storage/EventStore.h"
+#include "storage/RecordStore.h"
 #include "storage/SettingsStore.h"
 
 namespace {
@@ -20,7 +21,7 @@ struct RoadLeakState {
     bool alert;
 };
 
-RoadLeakState g_roads[2] = {};
+RoadLeakState g_roads[IrrigationPins::MaxRoads] = {};
 bool g_wasMonitoringAllowed = false;
 uint32_t g_monitoringAllowedSinceMs = 0;
 
@@ -38,9 +39,15 @@ void resetWindow(uint8_t index, uint32_t now) {
 }
 
 bool monitoringAllowed() {
-    return !WateringSession::isActive() &&
-           !ValveController::isOpen(ValveController::Road1) &&
-           !ValveController::isOpen(ValveController::Road2);
+    if (WateringSession::isActive()) {
+        return false;
+    }
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        if (ValveController::isOpen(road)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 }
@@ -86,6 +93,7 @@ void handle() {
         if (delta >= settings.idleLeakPulseThreshold) {
             const bool firstAlert = !g_roads[i].alert;
             g_roads[i].alert = true;
+            WateringSession::stopAll(RecordStore::SOURCE_LEAK_MONITOR, RecordStore::RESULT_LEAK_PROTECTED, "idle leak alert");
             ValveController::allOff("idle leak alert");
             if (firstAlert) {
                 (void)EventStore::append(EventStore::TYPE_LEAK_ALERT,

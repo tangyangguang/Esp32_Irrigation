@@ -10,10 +10,15 @@ namespace {
 static constexpr uint8_t kValvePins[] = {
     IrrigationPins::Valve1,
     IrrigationPins::Valve2,
+    IrrigationPins::Valve3,
+    IrrigationPins::Valve4,
 };
 
+static constexpr uint8_t kPwmChannels[] = {0, 1, 2, 3};
+
 static bool g_ready = false;
-static bool g_open[2] = {false, false};
+static bool g_open[IrrigationPins::MaxRoads] = {};
+static uint32_t g_openedMs[IrrigationPins::MaxRoads] = {};
 
 bool roadIndex(uint8_t road, uint8_t* index) {
     if (road < 1 || road > IrrigationPins::MaxRoads) {
@@ -24,8 +29,9 @@ bool roadIndex(uint8_t road, uint8_t* index) {
 }
 
 void writeValve(uint8_t index, bool open) {
-    digitalWrite(kValvePins[index], open ? HIGH : LOW);
+    ledcWrite(kPwmChannels[index], open ? 255 : 0);
     g_open[index] = open;
+    g_openedMs[index] = open ? millis() : 0;
 }
 
 bool canLog() {
@@ -39,12 +45,21 @@ namespace ValveController {
 void begin() {
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         pinMode(kValvePins[i], OUTPUT);
+        ledcSetup(kPwmChannels[i], IrrigationPins::ValvePwmFrequency, 8);
+        ledcAttachPin(kValvePins[i], kPwmChannels[i]);
         writeValve(i, false);
     }
     g_ready = true;
 }
 
 void handle() {
+    const uint32_t now = millis();
+    const uint32_t holdDuty = static_cast<uint32_t>(IrrigationPins::ValveHoldDutyPercent) * 255UL / 100UL;
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        if (g_open[i] && g_openedMs[i] != 0 && now - g_openedMs[i] >= IrrigationPins::ValvePullInMs) {
+            ledcWrite(kPwmChannels[i], holdDuty);
+        }
+    }
 }
 
 bool setRoad(uint8_t road, bool open, const char* reason) {
@@ -85,7 +100,7 @@ void allOff(const char* reason) {
         if (g_open[i]) {
             writeValve(i, false);
         } else {
-            digitalWrite(kValvePins[i], LOW);
+            ledcWrite(kPwmChannels[i], 0);
         }
     }
     if (canLog()) {

@@ -3,14 +3,12 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 #include <time.h>
 
 namespace {
 
 static constexpr const char* kNamespace = "irr_plan";
-PlanStore::Plan g_plans[PlanStore::MaxPlans] = {};
+PlanStore::Plan g_plans[PlanStore::TotalPlans] = {};
 
 void key(char* out, size_t len, uint8_t index, const char* name) {
     snprintf(out, len, "p%u_%s", static_cast<unsigned>(index), name);
@@ -35,19 +33,13 @@ uint16_t clampDuration(int32_t value) {
     return static_cast<uint16_t>(value);
 }
 
-SettingsStore::ExecutionMode clampMode(int32_t value) {
-    return value == SettingsStore::MODE_SEQUENTIAL
-        ? SettingsStore::MODE_SEQUENTIAL
-        : SettingsStore::MODE_SIMULTANEOUS;
-}
-
-PlanStore::Plan defaultPlan() {
+PlanStore::Plan defaultPlan(uint8_t road, uint8_t slot) {
     PlanStore::Plan plan = {};
+    plan.roadId = road;
+    plan.slotIndex = slot;
     plan.enabled = false;
     plan.minuteOfDay = 7 * 60;
-    plan.roadSec[0] = 300;
-    plan.roadSec[1] = 300;
-    plan.mode = SettingsStore::MODE_SIMULTANEOUS;
+    plan.durationSec = 300;
     plan.cycleDays = 1;
     plan.cycleMask = 0x01;
     plan.cycleStartYmd = PlanStore::DefaultCycleStartYmd;
@@ -96,27 +88,49 @@ bool ymdToTime(uint32_t ymd, time_t* out) {
 
 namespace PlanStore {
 
-void begin() {
-    for (uint8_t i = 0; i < MaxPlans; ++i) {
-        Plan plan = defaultPlan();
-        plan.enabled = getInt(i, "en", 0) == 1;
-        int32_t minute = getInt(i, "min", plan.minuteOfDay);
-        plan.minuteOfDay = minute >= 0 && minute < 1440 ? static_cast<uint16_t>(minute) : 7 * 60;
-        plan.roadSec[0] = clampDuration(getInt(i, "r1", plan.roadSec[0]));
-        plan.roadSec[1] = clampDuration(getInt(i, "r2", plan.roadSec[1]));
-        plan.mode = clampMode(getInt(i, "mode", SettingsStore::MODE_SIMULTANEOUS));
-        plan.cycleDays = clampCycleDays(getInt(i, "cycle_d", plan.cycleDays));
-        plan.cycleMask = clampCycleMask(getInt(i, "cycle_m", plan.cycleMask), plan.cycleDays);
-        plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", PlanStore::DefaultCycleStartYmd));
-        plan.lastRunYmd = static_cast<uint32_t>(getInt(i, "last", 0));
-        g_plans[i] = validate(plan) ? plan : defaultPlan();
+bool flatIndex(uint8_t road, uint8_t slot, uint8_t* index) {
+    if (!index || road < 1 || road > IrrigationPins::MaxRoads || slot >= MaxPlansPerRoad) {
+        return false;
     }
-    ESP32BASE_LOG_I("plans", "loaded max=%u", static_cast<unsigned>(MaxPlans));
+    *index = static_cast<uint8_t>((road - 1) * MaxPlansPerRoad + slot);
+    return true;
+}
+
+void begin() {
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
+            uint8_t i = 0;
+            (void)flatIndex(road, slot, &i);
+            Plan plan = defaultPlan(road, slot);
+            plan.enabled = getInt(i, "en", 0) == 1;
+            int32_t minute = getInt(i, "min", plan.minuteOfDay);
+            plan.minuteOfDay = minute >= 0 && minute < 1440 ? static_cast<uint16_t>(minute) : 7 * 60;
+            plan.durationSec = clampDuration(getInt(i, "dur", plan.durationSec));
+            plan.cycleDays = clampCycleDays(getInt(i, "cycle_d", plan.cycleDays));
+            plan.cycleMask = clampCycleMask(getInt(i, "cycle_m", plan.cycleMask), plan.cycleDays);
+            plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", DefaultCycleStartYmd));
+            plan.lastRunYmd = static_cast<uint32_t>(getInt(i, "last", 0));
+            g_plans[i] = validate(plan) ? plan : defaultPlan(road, slot);
+        }
+    }
+    ESP32BASE_LOG_I("plans", "loaded roads=%u perRoad=%u total=%u",
+                    static_cast<unsigned>(IrrigationPins::MaxRoads),
+                    static_cast<unsigned>(MaxPlansPerRoad),
+                    static_cast<unsigned>(TotalPlans));
 }
 
 const Plan& get(uint8_t index) {
-    static Plan invalid = defaultPlan();
-    if (index >= MaxPlans) {
+    static Plan invalid = defaultPlan(1, 0);
+    if (index >= TotalPlans) {
+        return invalid;
+    }
+    return g_plans[index];
+}
+
+const Plan& get(uint8_t road, uint8_t slot) {
+    uint8_t index = 0;
+    if (!flatIndex(road, slot, &index)) {
+        static Plan invalid = defaultPlan(1, 0);
         return invalid;
     }
     return g_plans[index];
@@ -126,22 +140,24 @@ bool clear() {
     if (!Esp32BaseConfig::clearNamespace(kNamespace)) {
         return false;
     }
-    for (uint8_t i = 0; i < MaxPlans; ++i) {
-        g_plans[i] = defaultPlan();
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
+            uint8_t index = 0;
+            (void)flatIndex(road, slot, &index);
+            g_plans[index] = defaultPlan(road, slot);
+        }
     }
     ESP32BASE_LOG_W("plans", "cleared to defaults");
     return true;
 }
 
 bool set(uint8_t index, const Plan& plan) {
-    if (index >= MaxPlans || !validate(plan)) {
+    if (index >= TotalPlans || !validate(plan)) {
         return false;
     }
     const bool ok = setInt(index, "en", plan.enabled ? 1 : 0) &&
                     setInt(index, "min", plan.minuteOfDay) &&
-                    setInt(index, "r1", plan.roadSec[0]) &&
-                    setInt(index, "r2", plan.roadSec[1]) &&
-                    setInt(index, "mode", static_cast<int32_t>(plan.mode)) &&
+                    setInt(index, "dur", plan.durationSec) &&
                     setInt(index, "cycle_d", plan.cycleDays) &&
                     setInt(index, "cycle_m", static_cast<int32_t>(plan.cycleMask)) &&
                     setInt(index, "cycle_s", static_cast<int32_t>(plan.cycleStartYmd)) &&
@@ -152,8 +168,13 @@ bool set(uint8_t index, const Plan& plan) {
     return ok;
 }
 
+bool set(uint8_t road, uint8_t slot, const Plan& plan) {
+    uint8_t index = 0;
+    return flatIndex(road, slot, &index) && set(index, plan);
+}
+
 bool setLastRunYmd(uint8_t index, uint32_t ymd) {
-    if (index >= MaxPlans) {
+    if (index >= TotalPlans) {
         return false;
     }
     if (!setInt(index, "last", static_cast<int32_t>(ymd))) {
@@ -163,25 +184,22 @@ bool setLastRunYmd(uint8_t index, uint32_t ymd) {
     return true;
 }
 
+bool setLastRunYmd(uint8_t road, uint8_t slot, uint32_t ymd) {
+    uint8_t index = 0;
+    return flatIndex(road, slot, &index) && setLastRunYmd(index, ymd);
+}
+
 bool validate(const Plan& plan) {
     time_t ignored = 0;
-    if (plan.minuteOfDay >= 1440 || plan.cycleDays < 1 || plan.cycleDays > 30 || plan.cycleMask == 0 ||
+    if (plan.roadId < 1 || plan.roadId > IrrigationPins::MaxRoads || plan.slotIndex >= MaxPlansPerRoad ||
+        plan.minuteOfDay >= 1440 || plan.cycleDays < 1 || plan.cycleDays > 30 || plan.cycleMask == 0 ||
         (plan.cycleMask & ~validCycleMask(plan.cycleDays)) != 0 || !ymdToTime(plan.cycleStartYmd, &ignored)) {
         return false;
     }
-    if (plan.mode != SettingsStore::MODE_SIMULTANEOUS && plan.mode != SettingsStore::MODE_SEQUENTIAL) {
+    if (plan.durationSec > 14400) {
         return false;
     }
-    bool any = false;
-    for (uint8_t i = 0; i < 2; ++i) {
-        if (plan.roadSec[i] > 14400) {
-            return false;
-        }
-        if (plan.roadSec[i] > 0) {
-            any = true;
-        }
-    }
-    return any || !plan.enabled;
+    return plan.durationSec > 0 || !plan.enabled;
 }
 
 bool shouldRunOnDate(const Plan& plan, uint32_t ymd) {

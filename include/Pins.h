@@ -3,11 +3,13 @@
 #include <stdint.h>
 
 namespace IrrigationPins {
-// Current hardware target is the new 1-2 road controller, not the older
-// 4-road EC11 design in old-docs/02. GPIO34/35 are input-only pins and require
-// external pull-ups when used with open-drain flow sensors such as YF-S201.
+// Fixed 4-road board configuration. GPIO34/35/36/39 are input-only pins and
+// require external pull-ups when used with open-drain flow sensors such as
+// YF-S201.
 static constexpr uint8_t Valve1 = 13;
 static constexpr uint8_t Valve2 = 14;
+static constexpr uint8_t Valve3 = 16;
+static constexpr uint8_t Valve4 = 27;
 
 static constexpr uint8_t StatusLed = 17;
 
@@ -26,8 +28,15 @@ static constexpr uint8_t FactoryResetButton = 0;
 
 static constexpr uint8_t Flow1 = 34;
 static constexpr uint8_t Flow2 = 35;
+static constexpr uint8_t Flow3 = 36;
+static constexpr uint8_t Flow4 = 39;
 
-static constexpr uint8_t MaxRoads = 2;
-// Bit mask, not road count: bit0 enables road 1, bit1 enables road 2.
+static constexpr uint8_t MaxRoads = 4;
+// Bit mask, not road count: bit0 enables road 1 ... bit3 enables road 4.
 static constexpr uint8_t DefaultRoadEnabledMask = 0x03;
+
+static constexpr uint32_t ValvePwmFrequency = 1000;
+static constexpr uint8_t ValvePullInDutyPercent = 100;
+static constexpr uint8_t ValveHoldDutyPercent = 70;
+static constexpr uint32_t ValvePullInMs = 5000UL;
 }

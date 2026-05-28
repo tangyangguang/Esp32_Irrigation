@@ -25,13 +25,13 @@ bool g_factoryResetRequested = false;
 
 void handleStopButtons() {
     if (g_stopAll.wasPressed()) {
-        WateringSession::stopAll(WateringSession::REASON_EMERGENCY_STOP, "button stop all");
+        WateringSession::stopAll(RecordStore::SOURCE_LOCAL_BUTTON, RecordStore::RESULT_USER_STOPPED, "button stop all");
     }
     if (g_road1.wasPressed()) {
-        WateringSession::stopRoad(ValveController::Road1, WateringSession::REASON_MANUAL_STOP, "button stop r1");
+        WateringSession::stopRoad(ValveController::Road1, RecordStore::SOURCE_LOCAL_BUTTON, "button stop r1");
     }
     if (g_road2.wasPressed()) {
-        WateringSession::stopRoad(ValveController::Road2, WateringSession::REASON_MANUAL_STOP, "button stop r2");
+        WateringSession::stopRoad(ValveController::Road2, RecordStore::SOURCE_LOCAL_BUTTON, "button stop r2");
     }
 }
 
@@ -48,9 +48,11 @@ void handleNormalButtons() {
 
     if (g_startOk.wasPressed()) {
         const SettingsStore::Settings& settings = SettingsStore::current();
-        const uint16_t road1Sec = SettingsStore::isRoadEnabled(1) ? settings.quickDurationSec[0] : 0;
-        const uint16_t road2Sec = SettingsStore::isRoadEnabled(2) ? settings.quickDurationSec[1] : 0;
-        WateringSession::startManual(road1Sec, road2Sec, settings.defaultMode, RecordStore::SOURCE_BUTTON, "button start");
+        for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+            if (SettingsStore::isRoadEnabled(road)) {
+                (void)WateringSession::startRoadTask(road, settings.quickDurationSec[road - 1], RecordStore::TASK_MANUAL, RecordStore::SOURCE_LOCAL_BUTTON, 0xFF, "button start");
+            }
+        }
     }
     if (g_menuBack.wasPressed()) {
         ESP32BASE_LOG_I("button", "menu_back pressed");

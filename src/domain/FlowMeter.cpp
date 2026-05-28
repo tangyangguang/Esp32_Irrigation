@@ -9,13 +9,15 @@ namespace {
 static constexpr uint8_t kFlowPins[] = {
     IrrigationPins::Flow1,
     IrrigationPins::Flow2,
+    IrrigationPins::Flow3,
+    IrrigationPins::Flow4,
 };
 
-volatile uint32_t g_pulses[2] = {0, 0};
+volatile uint32_t g_pulses[IrrigationPins::MaxRoads] = {};
 portMUX_TYPE g_pulseMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t g_lastSampleMs = 0;
-uint32_t g_lastSamplePulses[2] = {0, 0};
-uint32_t g_ratePerMinuteX1000[2] = {0, 0};
+uint32_t g_lastSamplePulses[IrrigationPins::MaxRoads] = {};
+uint32_t g_ratePerMinuteX1000[IrrigationPins::MaxRoads] = {};
 
 void IRAM_ATTR onFlow1Pulse() {
     portENTER_CRITICAL_ISR(&g_pulseMux);
@@ -26,6 +28,18 @@ void IRAM_ATTR onFlow1Pulse() {
 void IRAM_ATTR onFlow2Pulse() {
     portENTER_CRITICAL_ISR(&g_pulseMux);
     ++g_pulses[1];
+    portEXIT_CRITICAL_ISR(&g_pulseMux);
+}
+
+void IRAM_ATTR onFlow3Pulse() {
+    portENTER_CRITICAL_ISR(&g_pulseMux);
+    ++g_pulses[2];
+    portEXIT_CRITICAL_ISR(&g_pulseMux);
+}
+
+void IRAM_ATTR onFlow4Pulse() {
+    portENTER_CRITICAL_ISR(&g_pulseMux);
+    ++g_pulses[3];
     portEXIT_CRITICAL_ISR(&g_pulseMux);
 }
 
@@ -42,13 +56,16 @@ bool roadIndex(uint8_t road, uint8_t* index) {
 namespace FlowMeter {
 
 void begin() {
-    pinMode(kFlowPins[0], INPUT);
-    pinMode(kFlowPins[1], INPUT);
-    attachInterrupt(digitalPinToInterrupt(kFlowPins[0]), onFlow1Pulse, RISING);
-    attachInterrupt(digitalPinToInterrupt(kFlowPins[1]), onFlow2Pulse, RISING);
+    using Handler = void (*)();
+    static constexpr Handler handlers[] = {onFlow1Pulse, onFlow2Pulse, onFlow3Pulse, onFlow4Pulse};
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        pinMode(kFlowPins[i], INPUT);
+        attachInterrupt(digitalPinToInterrupt(kFlowPins[i]), handlers[i], RISING);
+    }
     g_lastSampleMs = millis();
-    g_lastSamplePulses[0] = pulseCount(1);
-    g_lastSamplePulses[1] = pulseCount(2);
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        g_lastSamplePulses[i] = pulseCount(i + 1);
+    }
 }
 
 void handle() {
@@ -57,7 +74,7 @@ void handle() {
     if (elapsedMs < 1000UL) {
         return;
     }
-    for (uint8_t i = 0; i < 2; ++i) {
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         const uint32_t pulses = pulseCount(i + 1);
         const uint32_t delta = pulses >= g_lastSamplePulses[i] ? pulses - g_lastSamplePulses[i] : 0;
         g_ratePerMinuteX1000[i] = elapsedMs > 0 ? static_cast<uint32_t>((static_cast<uint64_t>(delta) * 60000ULL * 1000ULL) / elapsedMs) : 0;

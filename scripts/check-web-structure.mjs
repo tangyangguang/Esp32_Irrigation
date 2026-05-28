@@ -5,7 +5,10 @@ const main = fs.readFileSync('src/main.cpp', 'utf8');
 const pins = fs.readFileSync('include/Pins.h', 'utf8');
 const settings = fs.readFileSync('src/storage/SettingsStore.cpp', 'utf8');
 const plans = fs.readFileSync('src/storage/PlanStore.cpp', 'utf8');
+const planHeader = fs.readFileSync('src/storage/PlanStore.h', 'utf8');
 const scheduler = fs.readFileSync('src/domain/WateringPlanScheduler.cpp', 'utf8');
+const session = fs.readFileSync('src/domain/WateringSession.h', 'utf8') + fs.readFileSync('src/domain/WateringSession.cpp', 'utf8');
+const records = fs.readFileSync('src/storage/RecordStore.h', 'utf8');
 
 function assert(condition, message) {
   if (!condition) {
@@ -34,13 +37,24 @@ assert(!web.includes('/api/v1/maintenance/factory-reset'), 'business web should 
 assert(!web.includes('writeRecentPanel("昨日"'), 'recent plans should not render yesterday as a separate panel');
 assert(!web.includes('writeRecentPanel("今日"'), 'recent plans should use a single table instead of per-day panels');
 assert(web.includes('<th>日期</th><th>时间</th><th>计划</th>'), 'recent plans should render a single date/time table');
+assert(pins.includes('MaxRoads = 4'), 'hardware model should expose four fixed roads');
 assert(pins.includes('DefaultRoadEnabledMask = 0x03'), 'default road mask should enable both roads');
+assert(pins.includes('Valve3 = 16') && pins.includes('Valve4 = 27'), 'road 3/4 valve PWM pins should be fixed');
+assert(pins.includes('Flow3 = 36') && pins.includes('Flow4 = 39'), 'road 3/4 flow input pins should be fixed');
+assert(pins.includes('ValveHoldDutyPercent = 70') && pins.includes('ValvePullInMs = 5000'), 'fixed PWM hold defaults should be documented in pins');
 assert(!settings.includes('0x01,\n    SettingsStore::MODE_SIMULTANEOUS'), 'settings defaults should not keep one-road mask');
+assert(!settings.includes('MODE_SEQUENTIAL'), 'sequential mode should be removed from settings');
 assert(settings.includes('return mask == 0 ? IrrigationPins::DefaultRoadEnabledMask : mask'), 'invalid road mask should fall back to the two-road default mask');
-assert(plans.includes('plan.roadSec[1] = 300'), 'default plans should include road 2');
+assert(planHeader.includes('MaxPlansPerRoad = 6'), 'plans should be six slots per road');
+assert(planHeader.includes('TotalPlans = IrrigationPins::MaxRoads * MaxPlansPerRoad'), 'total plans should derive from road count and per-road slots');
+assert(planHeader.includes('roadId') && planHeader.includes('slotIndex'), 'plan items should be bound to a single road slot');
+assert(!planHeader.includes('roadSec[2]'), 'plan model should not store two-road durations');
+assert(!plans.includes('plan.roadSec'), 'plan storage should not use two-road duration fields');
 assert(!web.includes('bool useR1 = true;\n    bool useR2 = false;'), 'manual start API should not hard-code road 1 only by default');
-assert(web.includes('SettingsStore::isRoadEnabled(1)') && web.includes('SettingsStore::isRoadEnabled(2)'), 'manual and plan web logic should consult enabled-road settings');
-assert(scheduler.includes('effectiveRoadSec') && scheduler.includes('plan no enabled roads'), 'scheduler should execute effective enabled-road plan content');
+assert(!session.includes('SessionState'), 'watering runtime should be road-level tasks, not a global session state');
+assert(session.includes('startRoadTask'), 'watering runtime should expose road-level task start');
+assert(records.includes('startSource') && records.includes('stopSource') && records.includes('result'), 'records should store objective start/stop sources and watering result');
+assert(scheduler.includes('TotalPlans') && scheduler.includes('startRoadTask'), 'scheduler should iterate per-road plan slots and start one road task');
 assert(web.includes('当前告警'), 'home alert panel should use current alert terminology');
 
 const navOrder = [

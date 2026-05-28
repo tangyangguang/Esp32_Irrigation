@@ -119,11 +119,6 @@ bool readBoolParam(const char* name, bool* value) {
     return false;
 }
 
-bool readModeParam(const char* name, SettingsStore::ExecutionMode* mode) {
-    char text[20] = "";
-    return Esp32BaseWeb::getParam(name, text, sizeof(text)) && SettingsStore::parseExecutionMode(text, mode);
-}
-
 bool readMinuteOfDayParam(const char* name, uint16_t* minuteOfDay) {
     char text[8] = "";
     if (!minuteOfDay || !Esp32BaseWeb::getParam(name, text, sizeof(text)) || strlen(text) != 5 || text[2] != ':') {
@@ -168,18 +163,25 @@ uint8_t countConfigFields() {
     uint8_t count = 0;
     const char* fields[] = {
         "road",
-        "default_mode",
         "quick_r1_min",
         "quick_r2_min",
+        "quick_r3_min",
+        "quick_r4_min",
         "flow_no_pulse_timeout_s",
         "idle_leak_window_s",
         "idle_leak_pulse_threshold",
         "r1_name",
         "r2_name",
+        "r3_name",
+        "r4_name",
         "r1_pulse_per_liter",
         "r2_pulse_per_liter",
+        "r3_pulse_per_liter",
+        "r4_pulse_per_liter",
         "r1_calibration_x1000",
         "r2_calibration_x1000",
+        "r3_calibration_x1000",
+        "r4_calibration_x1000",
     };
     for (const char* field : fields) {
         if (Esp32BaseWeb::hasParam(field)) {
@@ -216,18 +218,11 @@ uint8_t readLimitParam(uint8_t defaultLimit, uint8_t maxLimit) {
     return static_cast<uint8_t>(raw);
 }
 
-const char* modeLabel(SettingsStore::ExecutionMode mode) {
-    return mode == SettingsStore::MODE_SEQUENTIAL ? "顺序浇水" : "同时浇水";
-}
-
-const char* modeName(SettingsStore::ExecutionMode mode) {
-    return SettingsStore::executionModeName(mode);
-}
-
 const char* roadStateLabel(WateringSession::RoadState state) {
     switch (state) {
+        case WateringSession::ROAD_DISABLED: return "未启用";
         case WateringSession::ROAD_IDLE: return "关闭";
-        case WateringSession::ROAD_PENDING: return "等待";
+        case WateringSession::ROAD_STARTING: return "启动中";
         case WateringSession::ROAD_RUNNING: return "浇水中";
         case WateringSession::ROAD_DONE: return "完成";
         case WateringSession::ROAD_STOPPED: return "已停止";
@@ -299,14 +294,6 @@ void writeChecked(bool checked) {
     }
 }
 
-void writeModeOptions(SettingsStore::ExecutionMode selected) {
-    Esp32BaseWeb::sendChunk("<option value='simultaneous'");
-    writeSelected(selected == SettingsStore::MODE_SIMULTANEOUS);
-    Esp32BaseWeb::sendChunk(">同时浇水</option><option value='sequential'");
-    writeSelected(selected == SettingsStore::MODE_SEQUENTIAL);
-    Esp32BaseWeb::sendChunk(">顺序浇水</option>");
-}
-
 uint32_t flowRateLiterPerMinuteX100(uint8_t road) {
     if (road < 1 || road > IrrigationPins::MaxRoads) {
         return 0;
@@ -321,6 +308,44 @@ uint32_t flowRateLiterPerMinuteX100(uint8_t road) {
     return static_cast<uint32_t>(value / denominator);
 }
 
+uint8_t parseRoadFromKey(const char* key, const char* suffix) {
+    if (!key || !suffix || key[0] != 'r' || key[1] < '1' || key[1] > '4') {
+        return 0;
+    }
+    return strcmp(key + 2, suffix) == 0 ? static_cast<uint8_t>(key[1] - '0') : 0;
+}
+
+void writeRoadDisplayName(uint8_t road) {
+    const SettingsStore::Settings& s = SettingsStore::current();
+    if (road >= 1 && road <= IrrigationPins::MaxRoads && s.roads[road - 1].name[0] != '\0') {
+        Esp32BaseWeb::writeHtmlEscaped(s.roads[road - 1].name);
+        return;
+    }
+    Esp32BaseWeb::sendChunk("第 ");
+    writeUInt(road);
+    Esp32BaseWeb::sendChunk(" 路");
+}
+
+const char* valvePinName(uint8_t road) {
+    switch (road) {
+        case 1: return "GPIO13";
+        case 2: return "GPIO14";
+        case 3: return "GPIO16";
+        case 4: return "GPIO27";
+        default: return "-";
+    }
+}
+
+const char* flowPinName(uint8_t road) {
+    switch (road) {
+        case 1: return "GPIO34";
+        case 2: return "GPIO35";
+        case 3: return "GPIO36";
+        case 4: return "GPIO39";
+        default: return "-";
+    }
+}
+
 void writeCss() {
     Esp32BaseWeb::sendChunk(
         "<style>"
@@ -331,16 +356,16 @@ void writeCss() {
         ".grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;align-items:start}.panel{grid-column:span 12;min-width:0;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:8px}.span-4{grid-column:span 4}.span-6{grid-column:span 6}.span-8{grid-column:span 8}.span-12{grid-column:span 12}.panel h2{margin-bottom:12px;font-size:16px}.panel h3{margin:16px 0 8px;color:#475467;font-size:14px}"
         ".panel-titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.panel-titlebar h2{margin-bottom:0}.panel-tools,.actions{display:flex;flex-wrap:wrap;gap:8px}.panel-tools{justify-content:flex-end}.actions{margin-top:14px}.form-actions{justify-content:flex-end}.title-date{margin-left:8px;color:var(--muted);font-size:13px;font-weight:500}"
         ".overview-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.overview-status div{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:8px 10px;border:1px solid var(--soft);border-radius:6px;background:#f9fafb}.overview-status span,.matrix-head,.matrix-label{color:var(--muted)}.overview-status strong{overflow-wrap:anywhere}"
-        ".valve-matrix{display:grid;grid-template-columns:minmax(56px,.7fr) repeat(2,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.valve-matrix>*{min-width:0;padding:8px 10px;border-right:1px solid var(--soft);border-bottom:1px solid var(--soft)}.valve-matrix>:nth-child(3n){border-right:0}.valve-matrix>:nth-last-child(-n+3){border-bottom:0}.matrix-head{background:#f9fafb;font-size:13px;font-weight:650}.matrix-label{font-weight:650}.status-compact{grid-template-columns:1fr;margin-bottom:12px}.valve-action{display:flex;align-items:center;gap:8px;margin-top:12px}"
+        ".valve-matrix{display:grid;grid-template-columns:minmax(56px,.7fr) repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.valve-matrix>*{min-width:0;padding:8px 10px;border-right:1px solid var(--soft);border-bottom:1px solid var(--soft)}.valve-matrix>:nth-child(5n){border-right:0}.valve-matrix>:nth-last-child(-n+5){border-bottom:0}.matrix-head{background:#f9fafb;font-size:13px;font-weight:650}.matrix-label{font-weight:650}.status-compact{grid-template-columns:1fr;margin-bottom:12px}.valve-action{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}"
         ".badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;background:#f0f2f4;color:#475467;font-size:13px;font-weight:650;white-space:nowrap}.badge.ok{background:#e7f5ee;color:var(--ok)}.badge.warn{background:#fff5df;color:var(--warn)}.badge.danger{background:#fff0ee;color:var(--danger)}.badge.off{background:#f7f1e8;color:#875a20}"
         "input,select{min-width:0;width:100%;min-height:36px;padding:7px 9px;border:1px solid #cfd6df;border-radius:6px;background:#fff;color:var(--text);font:inherit}input[type=checkbox]{position:absolute;opacity:0;width:1px;min-height:0;margin:0;padding:0;border:0}input:disabled,select:disabled{color:#98a2b3;background:#f3f4f6}.field-grid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:12px 14px}.field{display:grid;gap:6px;min-width:0}.field label{color:#475467;font-size:13px;font-weight:650}.check-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}.check-item{position:relative;display:flex;align-items:center;justify-content:center;min-height:36px;padding:0 10px;border:1px solid var(--soft);border-radius:6px;background:#fff;color:#344054;font-weight:650}.check-item:has(input:checked){border-color:var(--primary);background:#e7f1ef;color:var(--primary)}"
-        ".manual-start{padding:12px}.manual-start form{display:grid;gap:12px}.manual-mode{display:grid;grid-template-columns:minmax(150px,240px) 1fr;gap:10px;align-items:end;padding:10px;border:1px solid var(--soft);border-radius:8px;background:#fbfcfc}.manual-mode .note{padding-bottom:7px}.manual-road-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.manual-road{display:grid;gap:9px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}.manual-road.off{background:#f8f9fa}.manual-road-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.manual-road-head strong{font-size:15px}.manual-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.manual-fields label{display:grid;gap:5px;color:#475467;font-size:13px;font-weight:650}.input-suffix{display:flex;align-items:center;border:1px solid #cfd6df;border-radius:6px;background:#fff;overflow:hidden}.input-suffix input{border:0;border-radius:0}.input-suffix em{padding:0 9px;color:var(--muted);font-style:normal;white-space:nowrap}.manual-road.off .input-suffix{background:#f3f4f6}.manual-road.off .input-suffix input{background:#f3f4f6}"
+        ".manual-start{padding:12px}.manual-start form{display:grid;gap:12px}.manual-road-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.manual-road{display:grid;gap:9px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}.manual-road.off{background:#f8f9fa}.manual-road-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.manual-road-head strong{font-size:15px}.manual-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.manual-fields label{display:grid;gap:5px;color:#475467;font-size:13px;font-weight:650}.input-suffix{display:flex;align-items:center;border:1px solid #cfd6df;border-radius:6px;background:#fff;overflow:hidden}.input-suffix input{border:0;border-radius:0}.input-suffix em{padding:0 9px;color:var(--muted);font-style:normal;white-space:nowrap}.manual-road.off .input-suffix{background:#f3f4f6}.manual-road.off .input-suffix input{background:#f3f4f6}"
         "button,.button,input[type=submit]{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 11px;border:1px solid var(--primary);border-radius:6px;background:var(--primary);color:#fff;font:inherit;font-weight:650;cursor:default}.button.secondary,button.secondary,input.secondary{border-color:#cfd6df;background:#fff;color:#344054}.button.warn,button.warn,input.warn{border-color:#cfd6df;background:#fff;color:#344054}button:disabled,input:disabled{border-color:#d0d5dd;background:#f2f4f7;color:#98a2b3}.input-suffix input,.input-suffix input:disabled{border:0;border-radius:0;margin:0}"
         ".table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:9px 10px;border-bottom:1px solid var(--soft);text-align:left;white-space:nowrap}th{background:#f9fafb;color:#475467;font-size:13px;font-weight:650}tr:last-child td{border-bottom:0}.action-table th:last-child,.action-table td:last-child{width:1%;text-align:center}.action-table td:last-child button,.action-table td:last-child input{min-width:82px}"
         ".setting-list{border:1px solid var(--line);border-radius:8px;overflow:hidden}.setting-row{display:grid;grid-template-columns:minmax(82px,1fr) minmax(80px,1fr) auto;gap:8px;align-items:center;min-width:0;padding:7px 9px;border-bottom:1px solid var(--soft);background:#fff}.setting-row:last-child{border-bottom:0}.setting-row span{color:var(--muted);font-weight:650}.setting-row strong{min-width:0;overflow-wrap:anywhere}.summary-line{margin-top:12px;padding:8px 10px;border-radius:6px;background:#f9fafb;color:#344054;font-weight:650}.json-box{margin:0;padding:14px;overflow-x:auto;border-radius:8px;background:#182230;color:#d6e4ff;font-size:13px}"
         ".modal[hidden]{display:none}.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:18px;background:rgba(15,23,42,.32)}.modal-card{width:min(420px,100%);padding:16px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 18px 40px rgba(15,23,42,.18)}.modal-card h2{margin-bottom:4px;font-size:18px}.modal-card .field-grid{grid-template-columns:1fr;margin-top:12px}.modal-card .actions{justify-content:flex-end}.modal-value{margin:6px 0 0;color:var(--muted)}"
-        "@media(max-width:980px){.span-4,.span-6,.span-8{grid-column:span 12}.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-mode{grid-template-columns:1fr}.manual-road-grid{grid-template-columns:1fr}}"
-        "@media(max-width:640px){.shell{padding-top:0;font-size:13px}.page-head{display:block;margin-bottom:14px}.shell h1{font-size:22px}.panel{padding:12px}.panel-titlebar{align-items:flex-start;flex-direction:column;gap:8px}.panel-tools{justify-content:flex-start}.field-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-status{grid-template-columns:1fr}.valve-matrix{grid-template-columns:minmax(48px,.6fr) repeat(2,minmax(82px,1fr))}.manual-fields{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr auto}.setting-row strong{grid-column:1}.setting-row a,.setting-row button{grid-column:2;grid-row:1/span 2}}"
+        "@media(max-width:980px){.span-4,.span-6,.span-8{grid-column:span 12}.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-road-grid{grid-template-columns:1fr}}"
+        "@media(max-width:640px){.shell{padding-top:0;font-size:13px}.page-head{display:block;margin-bottom:14px}.shell h1{font-size:22px}.panel{padding:12px}.panel-titlebar{align-items:flex-start;flex-direction:column;gap:8px}.panel-tools{justify-content:flex-start}.field-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-status{grid-template-columns:1fr}.valve-matrix{grid-template-columns:minmax(48px,.6fr) repeat(4,minmax(82px,1fr))}.manual-fields{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr auto}.setting-row strong{grid-column:1}.setting-row a,.setting-row button{grid-column:2;grid-row:1/span 2}}"
         "</style><script>document.addEventListener('submit',function(e){var f=e.target;if(!f||String(f.method).toLowerCase()!=='post')return;var raw=f.getAttribute('data-confirm');if(raw==='off')return;var msg=raw||'确认执行此操作？';if(!confirm(msg)){e.preventDefault();}});</script>");
 }
 
@@ -374,14 +399,19 @@ void writeWateringStatusPanel(const char* title) {
     Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>");
     Esp32BaseWeb::writeHtmlEscaped(title);
     Esp32BaseWeb::sendChunk("</h2><div class='overview-status status-compact'><div><span>当前浇水</span><strong>");
-    Esp32BaseWeb::writeHtmlEscaped(WateringSession::isActive() ? modeLabel(WateringSession::mode()) : "未运行");
-    Esp32BaseWeb::sendChunk("</strong></div></div><div class='valve-matrix' role='table'><div class='matrix-head'>项目</div><div class='matrix-head'>第 1 路</div><div class='matrix-head'>第 2 路</div>");
+    Esp32BaseWeb::writeHtmlEscaped(WateringSession::isActive() ? "浇水中" : "未运行");
+    Esp32BaseWeb::sendChunk("</strong></div></div><div class='valve-matrix' role='table'><div class='matrix-head'>项目</div>");
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        Esp32BaseWeb::sendChunk("<div class='matrix-head'>第 ");
+        writeUInt(road);
+        Esp32BaseWeb::sendChunk(" 路</div>");
+    }
     const char* labels[] = {"状态", "目标", "剩余", "水量", "流速"};
     for (uint8_t row = 0; row < 5; ++row) {
         Esp32BaseWeb::sendChunk("<div class='matrix-label'>");
         Esp32BaseWeb::sendChunk(labels[row]);
         Esp32BaseWeb::sendChunk("</div>");
-        for (uint8_t road = 1; road <= 2; ++road) {
+        for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
             const WateringSession::RoadStatus& status = WateringSession::roadStatus(road);
             const bool enabled = SettingsStore::isRoadEnabled(road);
             uint32_t remainingSec = 0;
@@ -416,13 +446,13 @@ void writeWateringStatusPanel(const char* title) {
     Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止全部浇水？'><input type='hidden' name='road' value='0'><button class='secondary'");
     Esp32BaseWeb::sendChunk(disabled);
     Esp32BaseWeb::sendChunk(">停止全部</button></form>");
-    for (uint8_t road = 1; road <= 2; ++road) {
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止第 ");
         writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路？'><input type='hidden' name='road' value='");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("'><button class='secondary'");
-        Esp32BaseWeb::sendChunk(active && SettingsStore::isRoadEnabled(road) ? "" : " disabled");
+        Esp32BaseWeb::sendChunk(WateringSession::isRoadActive(road) ? "" : " disabled");
         Esp32BaseWeb::sendChunk(">停止第 ");
         writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路</button></form>");
@@ -433,18 +463,16 @@ void writeWateringStatusPanel(const char* title) {
 
 void writeManualStartPanel() {
     const SettingsStore::Settings& settings = SettingsStore::current();
-    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>手动浇水</h2><p class='inline-notice note'>上次操作：");
-    Esp32BaseWeb::writeHtmlEscaped(WateringSession::stopReasonName(WateringSession::lastStopReason()));
-    Esp32BaseWeb::sendChunk("</p><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><div class='manual-mode'><div class='field'><label>执行模式</label><select name='mode'>");
-    writeModeOptions(settings.defaultMode);
-    Esp32BaseWeb::sendChunk("</select></div><p class='note'>同时模式会一起开阀，顺序模式按路号依次执行。</p></div><div class='manual-road-grid'>");
-    for (uint8_t road = 1; road <= 2; ++road) {
+    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>手动浇水</h2><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><div class='manual-road-grid'>");
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         const bool enabled = SettingsStore::isRoadEnabled(road);
         Esp32BaseWeb::sendChunk("<div class='manual-road");
         Esp32BaseWeb::sendChunk(enabled ? "" : " off");
         Esp32BaseWeb::sendChunk("'><div class='manual-road-head'><strong>第 ");
         writeUInt(road);
-        Esp32BaseWeb::sendChunk(" 路</strong><span class='badge");
+        Esp32BaseWeb::sendChunk(" 路 ");
+        writeRoadDisplayName(road);
+        Esp32BaseWeb::sendChunk("</strong><span class='badge");
         Esp32BaseWeb::sendChunk(enabled ? " ok" : " off");
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(enabled ? "已启用" : "未启用");
@@ -507,35 +535,29 @@ void handleOverviewPage() {
 }
 
 uint16_t effectivePlanRoadSec(const PlanStore::Plan& plan, uint8_t road) {
-    if (road < 1 || road > IrrigationPins::MaxRoads || !SettingsStore::isRoadEnabled(road)) {
+    if (road != plan.roadId || !SettingsStore::isRoadEnabled(road)) {
         return 0;
     }
-    return plan.roadSec[road - 1];
+    return plan.durationSec;
 }
 
 bool hasEffectivePlanRoad(const PlanStore::Plan& plan) {
-    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        if (effectivePlanRoadSec(plan, road) > 0) {
-            return true;
-        }
-    }
-    return false;
+    return effectivePlanRoadSec(plan, plan.roadId) > 0;
 }
 
 void writePlanContent(const PlanStore::Plan& plan, bool effectiveOnly = false) {
-    bool first = true;
-    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        const uint16_t seconds = effectiveOnly ? effectivePlanRoadSec(plan, road) : plan.roadSec[road - 1];
-        if (seconds == 0) continue;
-        if (!first) Esp32BaseWeb::sendChunk("，");
-        first = false;
-        Esp32BaseWeb::sendChunk("第 ");
-        writeUInt(road);
-        Esp32BaseWeb::sendChunk(" 路 ");
-        writeMinutesFromSeconds(seconds);
-        Esp32BaseWeb::sendChunk(" 分钟");
+    const uint16_t seconds = effectiveOnly ? effectivePlanRoadSec(plan, plan.roadId) : plan.durationSec;
+    if (seconds == 0) {
+        Esp32BaseWeb::sendChunk(effectiveOnly ? "当前无可执行水路" : "未设置");
+        return;
     }
-    if (first) Esp32BaseWeb::sendChunk(effectiveOnly ? "当前无可执行水路" : "未设置");
+    Esp32BaseWeb::sendChunk("第 ");
+    writeUInt(plan.roadId);
+    Esp32BaseWeb::sendChunk(" 路 ");
+    writeRoadDisplayName(plan.roadId);
+    Esp32BaseWeb::sendChunk(" ");
+    writeMinutesFromSeconds(seconds);
+    Esp32BaseWeb::sendChunk(" 分钟");
 }
 
 void writeCycleText(const PlanStore::Plan& plan) {
@@ -553,6 +575,7 @@ void writeCycleText(const PlanStore::Plan& plan) {
 
 const char* statusClass(const char* status) {
     if (strcmp(status, "已完成") == 0) return " ok";
+    if (strcmp(status, "已处理") == 0) return " ok";
     if (strcmp(status, "进行中") == 0) return " danger";
     if (strcmp(status, "已跳过") == 0) return " warn";
     if (strcmp(status, "不可执行") == 0) return " warn";
@@ -572,14 +595,15 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
         const bool skipped = PlanSkipStore::isSkipped(i, ymd);
-        const bool completed = plan.lastRunYmd == ymd;
-        const bool running = WateringSession::isActive() && WateringSession::source() == RecordStore::SOURCE_PLAN && offset == 0 && plan.minuteOfDay == nowMinute;
+        const bool handled = plan.lastRunYmd == ymd;
+        const WateringSession::RoadStatus& roadStatus = WateringSession::roadStatus(plan.roadId);
+        const bool running = offset == 0 && plan.minuteOfDay == nowMinute && WateringSession::isRoadActive(plan.roadId) && roadStatus.taskType == RecordStore::TASK_PLAN && roadStatus.planSlot == plan.slotIndex;
         const bool executable = hasEffectivePlanRoad(plan);
-        if (!plan.enabled && !completed && !running) continue;
+        if (!plan.enabled && !handled && !running) continue;
         if (plan.enabled && !PlanStore::shouldRunOnDate(plan, ymd)) continue;
         any = true;
         const bool pastToday = offset == 0 && plan.minuteOfDay < nowMinute;
-        const char* status = completed ? "已完成" : (running ? "进行中" : (skipped ? "已跳过" : (!executable ? "不可执行" : (pastToday ? "未执行" : "未开始"))));
+        const char* status = running ? "进行中" : (handled ? "已处理" : (skipped ? "已跳过" : (!executable ? "不可执行" : (pastToday ? "未执行" : "未开始"))));
         Esp32BaseWeb::sendChunk("<tr><td>");
         Esp32BaseWeb::writeHtmlEscaped(label);
         Esp32BaseWeb::sendChunk("<span class='title-date'>");
@@ -590,16 +614,14 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         writeUInt(i + 1);
         Esp32BaseWeb::sendChunk("</td><td>");
         writePlanContent(plan, true);
-        Esp32BaseWeb::sendChunk("</td><td>");
-        Esp32BaseWeb::writeHtmlEscaped(modeLabel(plan.mode));
         Esp32BaseWeb::sendChunk("</td><td><span class='badge");
         Esp32BaseWeb::sendChunk(statusClass(status));
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::writeHtmlEscaped(status);
         Esp32BaseWeb::sendChunk("</span></td><td>");
-        Esp32BaseWeb::sendChunk(completed ? "按计划完成" : (running ? "正在执行" : (skipped ? "已跳过这一次" : (!executable ? "无启用水路" : (pastToday ? "已过执行时间" : "等待执行")))));
+        Esp32BaseWeb::sendChunk(running ? "正在执行" : (handled ? "今日已触发处理" : (skipped ? "已跳过这一次" : (!executable ? "无启用水路" : (pastToday ? "已过执行时间" : "等待执行")))));
         Esp32BaseWeb::sendChunk("</td><td>");
-        if (plan.enabled && executable && !completed && !running && !pastToday && !skipped) {
+        if (plan.enabled && executable && !handled && !running && !pastToday && !skipped) {
             Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过本次计划？'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
             writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
@@ -623,7 +645,7 @@ void handlePlansPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("近期计划", "page-table");
     writePageHead("近期计划", "查看今天、明天、后天的计划执行状态，并按单次跳过未来未执行计划。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='table-wrap'><table class='action-table'><thead><tr><th>日期</th><th>时间</th><th>计划</th><th>内容</th><th>模式</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='table-wrap'><table class='action-table'><thead><tr><th>日期</th><th>时间</th><th>计划</th><th>内容</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody>");
     bool any = false;
     bool timeSynced = true;
     for (int8_t offset = 0; offset <= 2; ++offset) {
@@ -636,9 +658,9 @@ void handlePlansPage() {
         any = writeRecentRows(dayLabel(offset), offset, ymd) || any;
     }
     if (!timeSynced) {
-        Esp32BaseWeb::sendChunk("<tr><td colspan='8'>时间未同步</td></tr>");
+        Esp32BaseWeb::sendChunk("<tr><td colspan='7'>时间未同步</td></tr>");
     } else if (!any) {
-        Esp32BaseWeb::sendChunk("<tr><td colspan='8'>今天、明天、后天无计划</td></tr>");
+        Esp32BaseWeb::sendChunk("<tr><td colspan='7'>今天、明天、后天无计划</td></tr>");
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
     sendFooter();
@@ -655,16 +677,16 @@ void handlePlanConfigPage() {
         Esp32BaseWeb::sendChunk(plan.enabled ? " ok" : " off");
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(plan.enabled ? "启用" : "停用");
-        Esp32BaseWeb::sendChunk("</span></td><td>计划 ");
-        writeUInt(i + 1);
+        Esp32BaseWeb::sendChunk("</span></td><td>第 ");
+        writeUInt(plan.roadId);
+        Esp32BaseWeb::sendChunk(" 路 / 计划 ");
+        writeUInt(plan.slotIndex + 1);
         Esp32BaseWeb::sendChunk("</td><td>");
         writeMinuteOfDay(plan.minuteOfDay);
         Esp32BaseWeb::sendChunk("</td><td>");
         writeCycleText(plan);
         Esp32BaseWeb::sendChunk("</td><td>");
         writePlanContent(plan, true);
-        Esp32BaseWeb::sendChunk("，");
-        Esp32BaseWeb::writeHtmlEscaped(modeLabel(plan.mode));
         Esp32BaseWeb::sendChunk("</td><td><a class='button secondary' href='/irrigation/plan?edit=");
         writeUInt(i);
         Esp32BaseWeb::sendChunk("'>修改</a></td></tr>");
@@ -700,46 +722,25 @@ void handlePlanEditPage() {
     writePageHead("编辑计划", "编辑单个计划的固定配置，保存后用于后续自动浇水。");
     Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans' data-confirm='确认保存计划？'><input type='hidden' name='index' value='");
     writeUInt(index);
-    Esp32BaseWeb::sendChunk("'><section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>计划 ");
-    writeUInt(index + 1);
+    Esp32BaseWeb::sendChunk("'><section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>第 ");
+    writeUInt(plan.roadId);
+    Esp32BaseWeb::sendChunk(" 路 / 计划 ");
+    writeUInt(plan.slotIndex + 1);
     Esp32BaseWeb::sendChunk("</h2><a class='button secondary' href='/irrigation/plan-config'>返回计划配置</a></div></div><div class='panel span-12'><h2>计划状态</h2><div class='field-grid'><div class='field'><label>启用状态</label><select name='enabled'><option value='0'");
     writeSelected(!plan.enabled);
     Esp32BaseWeb::sendChunk(">停用</option><option value='1'");
     writeSelected(plan.enabled);
     Esp32BaseWeb::sendChunk(">启用</option></select></div><div class='field'><label>执行时间</label><input name='time' type='time' value='");
     writeMinuteOfDay(plan.minuteOfDay);
-    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>执行模式</label><select name='mode'>");
-    writeModeOptions(plan.mode);
-    Esp32BaseWeb::sendChunk("</select></div></div></div><div class='panel span-12'><h2>浇水路配置</h2><div class='valve-matrix config-matrix'><div class='matrix-head'>项目</div><div class='matrix-head'>第 1 路</div><div class='matrix-head'>第 2 路</div><div class='matrix-label'>参与</div>");
-    for (uint8_t road = 1; road <= 2; ++road) {
-        const bool roadEnabled = SettingsStore::isRoadEnabled(road);
-        const uint16_t seconds = roadEnabled ? plan.roadSec[road - 1] : 0;
-        Esp32BaseWeb::sendChunk("<div><select name='r");
-        writeUInt(road);
-        Esp32BaseWeb::sendChunk("_enabled'");
-        Esp32BaseWeb::sendChunk(roadEnabled ? "" : " disabled");
-        Esp32BaseWeb::sendChunk("><option value='1'");
-        writeSelected(seconds > 0);
-        Esp32BaseWeb::sendChunk(">浇水</option><option value='0'");
-        writeSelected(seconds == 0);
-        Esp32BaseWeb::sendChunk(">");
-        Esp32BaseWeb::sendChunk(roadEnabled ? "不浇水" : "未启用");
-        Esp32BaseWeb::sendChunk("</option></select></div>");
-    }
-    Esp32BaseWeb::sendChunk("<div class='matrix-label'>时长</div>");
-    for (uint8_t road = 1; road <= 2; ++road) {
-        const bool roadEnabled = SettingsStore::isRoadEnabled(road);
-        const uint16_t seconds = roadEnabled ? plan.roadSec[road - 1] : 0;
-        Esp32BaseWeb::sendChunk("<div><input name='r");
-        writeUInt(road);
-        Esp32BaseWeb::sendChunk("_min' type='number' min='0' max='240' value='");
-        writeMinutesFromSeconds(seconds);
-        Esp32BaseWeb::sendChunk("'");
-        Esp32BaseWeb::sendChunk(roadEnabled ? "" : " disabled");
-        Esp32BaseWeb::sendChunk("></div>");
-    }
+    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>水路</label><input disabled value='第 ");
+    writeUInt(plan.roadId);
+    Esp32BaseWeb::sendChunk(" 路 ");
+    writeRoadDisplayName(plan.roadId);
+    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>浇水时长</label><span class='input-suffix'><input name='duration_min' type='number' min='1' max='240' value='");
+    writeMinutesFromSeconds(plan.durationSec);
+    Esp32BaseWeb::sendChunk("'><em>分钟</em></span></div></div></div>");
     const uint32_t editCycleStartYmd = cycleStartYmdForEdit(plan);
-    Esp32BaseWeb::sendChunk("</div></div><div class='panel span-12'><h2>循环规则</h2><div class='field-grid'><div class='field'><label>循环天数</label><input id='cycleDays' name='cycle_days' type='number' min='1' max='30' value='");
+    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>循环规则</h2><div class='field-grid'><div class='field'><label>循环天数</label><input id='cycleDays' name='cycle_days' type='number' min='1' max='30' value='");
     writeUInt(plan.cycleDays);
     Esp32BaseWeb::sendChunk("'></div><div class='field'><label>循环开始日期</label><input name='cycle_start_ymd' type='date' value='");
     writeYmd(editCycleStartYmd);
@@ -804,12 +805,8 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
     Esp32BaseWeb::sendChunk("：");
     Esp32BaseWeb::writeHtmlEscaped(currentValue);
     Esp32BaseWeb::sendChunk("</p><form method='post' action='/irrigation/settings/config' data-confirm='确认保存设置？'><div class='field-grid'>");
-    if (strcmp(edit, "default_mode") == 0) {
-        Esp32BaseWeb::sendChunk("<div class='field'><label>默认模式</label><select name='default_mode'>");
-        writeModeOptions(s.defaultMode);
-        Esp32BaseWeb::sendChunk("</select></div>");
-    } else if (strcmp(edit, "r1_enabled") == 0 || strcmp(edit, "r2_enabled") == 0) {
-        const uint8_t road = strcmp(edit, "r1_enabled") == 0 ? 1 : 2;
+    uint8_t road = parseRoadFromKey(edit, "_enabled");
+    if (road > 0) {
         Esp32BaseWeb::sendChunk("<input type='hidden' name='road' value='");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("'><div class='field'><label>启用状态</label><select name='enabled'><option value='1'");
@@ -817,29 +814,26 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
         Esp32BaseWeb::sendChunk(">已启用</option><option value='0'");
         writeSelected(!SettingsStore::isRoadEnabled(road));
         Esp32BaseWeb::sendChunk(">未启用</option></select></div>");
-    } else if (strcmp(edit, "r1_name") == 0 || strcmp(edit, "r2_name") == 0) {
-        const uint8_t road = strcmp(edit, "r1_name") == 0 ? 1 : 2;
+    } else if ((road = parseRoadFromKey(edit, "_name")) > 0) {
         Esp32BaseWeb::sendChunk("<div class='field'><label>名称</label><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_name' maxlength='11' value='");
         Esp32BaseWeb::writeHtmlEscaped(s.roads[road - 1].name);
         Esp32BaseWeb::sendChunk("'></div>");
-    } else if (strcmp(edit, "quick_r1_min") == 0 || strcmp(edit, "quick_r2_min") == 0) {
-        const uint8_t road = strcmp(edit, "quick_r1_min") == 0 ? 1 : 2;
+    } else if (strncmp(edit, "quick_r", 7) == 0 && edit[7] >= '1' && edit[7] <= '4' && strcmp(edit + 8, "_min") == 0) {
+        road = static_cast<uint8_t>(edit[7] - '0');
         Esp32BaseWeb::sendChunk("<div class='field'><label>默认时长（分钟）</label><input name='quick_r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='1' max='240' value='");
         writeMinutesFromSeconds(s.quickDurationSec[road - 1]);
         Esp32BaseWeb::sendChunk("'></div>");
-    } else if (strcmp(edit, "r1_pulse_per_liter") == 0 || strcmp(edit, "r2_pulse_per_liter") == 0) {
-        const uint8_t road = strcmp(edit, "r1_pulse_per_liter") == 0 ? 1 : 2;
+    } else if ((road = parseRoadFromKey(edit, "_pulse_per_liter")) > 0) {
         Esp32BaseWeb::sendChunk("<div class='field'><label>每升脉冲</label><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_pulse_per_liter' type='number' min='1' max='10000' value='");
         writeUInt(s.roads[road - 1].pulsePerLiter);
         Esp32BaseWeb::sendChunk("'></div>");
-    } else if (strcmp(edit, "r1_calibration_x1000") == 0 || strcmp(edit, "r2_calibration_x1000") == 0) {
-        const uint8_t road = strcmp(edit, "r1_calibration_x1000") == 0 ? 1 : 2;
+    } else if ((road = parseRoadFromKey(edit, "_calibration_x1000")) > 0) {
         Esp32BaseWeb::sendChunk("<div class='field'><label>校准系数</label><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_calibration_x1000' type='number' min='100' max='10000' value='");
@@ -873,18 +867,29 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
 void writeSettingEditModals() {
     const SettingsStore::Settings& s = SettingsStore::current();
     char value[32];
-    writeSettingEditModal("default_mode", "默认模式", modeLabel(s.defaultMode));
-    for (uint8_t road = 1; road <= 2; ++road) {
+    char key[32];
+    char title[32];
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         const SettingsStore::RoadConfig& r = s.roads[road - 1];
+        snprintf(key, sizeof(key), "r%u_enabled", static_cast<unsigned>(road));
+        snprintf(title, sizeof(title), "第 %u 路启用状态", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%s", SettingsStore::isRoadEnabled(road) ? "已启用" : "未启用");
-        writeSettingEditModal(road == 1 ? "r1_enabled" : "r2_enabled", road == 1 ? "第 1 路启用状态" : "第 2 路启用状态", value);
-        writeSettingEditModal(road == 1 ? "r1_name" : "r2_name", road == 1 ? "第 1 路名称" : "第 2 路名称", r.name);
+        writeSettingEditModal(key, title, value);
+        snprintf(key, sizeof(key), "r%u_name", static_cast<unsigned>(road));
+        snprintf(title, sizeof(title), "第 %u 路名称", static_cast<unsigned>(road));
+        writeSettingEditModal(key, title, r.name);
+        snprintf(key, sizeof(key), "quick_r%u_min", static_cast<unsigned>(road));
+        snprintf(title, sizeof(title), "第 %u 路默认时长", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%u 分钟", static_cast<unsigned>(s.quickDurationSec[road - 1] / 60U));
-        writeSettingEditModal(road == 1 ? "quick_r1_min" : "quick_r2_min", road == 1 ? "第 1 路默认时长" : "第 2 路默认时长", value);
+        writeSettingEditModal(key, title, value);
+        snprintf(key, sizeof(key), "r%u_pulse_per_liter", static_cast<unsigned>(road));
+        snprintf(title, sizeof(title), "第 %u 路每升脉冲", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%u pulse/L", static_cast<unsigned>(r.pulsePerLiter));
-        writeSettingEditModal(road == 1 ? "r1_pulse_per_liter" : "r2_pulse_per_liter", road == 1 ? "第 1 路每升脉冲" : "第 2 路每升脉冲", value);
+        writeSettingEditModal(key, title, value);
+        snprintf(key, sizeof(key), "r%u_calibration_x1000", static_cast<unsigned>(road));
+        snprintf(title, sizeof(title), "第 %u 路校准系数", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%u", static_cast<unsigned>(r.calibrationX1000));
-        writeSettingEditModal(road == 1 ? "r1_calibration_x1000" : "r2_calibration_x1000", road == 1 ? "第 1 路校准系数" : "第 2 路校准系数", value);
+        writeSettingEditModal(key, title, value);
     }
     snprintf(value, sizeof(value), "%u 秒", static_cast<unsigned>(s.flowNoPulseTimeoutSec));
     writeSettingEditModal("flow_no_pulse_timeout_s", "无脉冲超时", value);
@@ -904,21 +909,29 @@ void handleSettingsPage() {
     Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>灌溉设置</h2><div class='setting-list'>");
     snprintf(value, sizeof(value), "%u 路", static_cast<unsigned>(SettingsStore::enabledRoads()));
     writeSettingReadOnlyRow("已启用路数", value, "由各路启用状态计算");
-    writeSettingRow("default_mode", "默认模式", modeLabel(s.defaultMode));
+    writeSettingReadOnlyRow("阀门 PWM", "启动 5 秒后 70%", "固定硬件策略");
     Esp32BaseWeb::sendChunk("</div></div>");
-    for (uint8_t road = 1; road <= 2; ++road) {
+    char key[32];
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         const SettingsStore::RoadConfig& r = s.roads[road - 1];
         Esp32BaseWeb::sendChunk("<div class='panel span-6'><h2>第 ");
         writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路配置</h2><div class='setting-list'>");
-        writeSettingRow(road == 1 ? "r1_enabled" : "r2_enabled", "启用状态", SettingsStore::isRoadEnabled(road) ? "已启用" : "未启用");
-        writeSettingRow(road == 1 ? "r1_name" : "r2_name", "名称", r.name);
+        snprintf(key, sizeof(key), "r%u_enabled", static_cast<unsigned>(road));
+        writeSettingRow(key, "启用状态", SettingsStore::isRoadEnabled(road) ? "已启用" : "未启用");
+        snprintf(key, sizeof(key), "r%u_name", static_cast<unsigned>(road));
+        writeSettingRow(key, "名称", r.name);
+        writeSettingReadOnlyRow("阀门引脚", valvePinName(road), "固定硬件配置");
+        writeSettingReadOnlyRow("流量引脚", flowPinName(road), "固定硬件配置");
+        snprintf(key, sizeof(key), "quick_r%u_min", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%u 分钟", static_cast<unsigned>(s.quickDurationSec[road - 1] / 60U));
-        writeSettingRow(road == 1 ? "quick_r1_min" : "quick_r2_min", "默认时长", value);
+        writeSettingRow(key, "默认时长", value);
+        snprintf(key, sizeof(key), "r%u_pulse_per_liter", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%u pulse/L", static_cast<unsigned>(r.pulsePerLiter));
-        writeSettingRow(road == 1 ? "r1_pulse_per_liter" : "r2_pulse_per_liter", "每升脉冲", value);
+        writeSettingRow(key, "每升脉冲", value);
+        snprintf(key, sizeof(key), "r%u_calibration_x1000", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%u", static_cast<unsigned>(r.calibrationX1000));
-        writeSettingRow(road == 1 ? "r1_calibration_x1000" : "r2_calibration_x1000", "校准系数", value);
+        writeSettingRow(key, "校准系数", value);
         Esp32BaseWeb::sendChunk("</div></div>");
     }
     Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>水流检测</h2><div class='setting-list'>");
@@ -938,30 +951,29 @@ void handleSettingsPage() {
 void handleDataPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("历史记录", "page-table");
-    writePageHead("历史记录", "查看历史浇水会话、每路实际执行情况和结束原因。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>浇水记录</h2></div><div class='table-wrap'><table><thead><tr><th>ID</th><th>来源</th><th>模式</th><th>结束原因</th><th>路</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
+    writePageHead("历史记录", "查看每一次浇水任务的来源、停止来源、执行结果和实际水量。");
+    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>浇水记录</h2></div><div class='table-wrap'><table><thead><tr><th>ID</th><th>路</th><th>任务</th><th>启动来源</th><th>停止来源</th><th>结果</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
     auto recordCb = [](const RecordStore::Record& record, void*) {
-        for (uint8_t road = 1; road <= 2; ++road) {
-            const RecordStore::RoadRecord& rr = record.roads[road - 1];
-            const uint32_t actualSec = rr.endedMs >= rr.startedMs && rr.startedMs > 0 ? (rr.endedMs - rr.startedMs) / 1000UL : 0;
-            Esp32BaseWeb::sendChunk("<tr><td>");
-            writeUInt(record.id);
-            Esp32BaseWeb::sendChunk("</td><td>");
-            Esp32BaseWeb::writeHtmlEscaped(RecordStore::sourceName(static_cast<RecordStore::Source>(record.source)));
-            Esp32BaseWeb::sendChunk("</td><td>");
-            Esp32BaseWeb::writeHtmlEscaped(modeLabel(static_cast<SettingsStore::ExecutionMode>(record.mode)));
-            Esp32BaseWeb::sendChunk("</td><td>");
-            Esp32BaseWeb::writeHtmlEscaped(WateringSession::stopReasonName(static_cast<WateringSession::StopReason>(record.stopReason)));
-            Esp32BaseWeb::sendChunk("</td><td>第 ");
-            writeUInt(road);
-            Esp32BaseWeb::sendChunk(" 路</td><td>");
-            writeMinutesFromSeconds(rr.targetSec);
-            Esp32BaseWeb::sendChunk(" 分钟</td><td>");
-            writeUInt(actualSec);
-            Esp32BaseWeb::sendChunk(" 秒</td><td>");
-            writeLitersFromMl(rr.estimatedMilliliters);
-            Esp32BaseWeb::sendChunk("</td></tr>");
-        }
+        const uint32_t actualSec = record.endedMs >= record.startedMs && record.startedMs > 0 ? (record.endedMs - record.startedMs) / 1000UL : 0;
+        Esp32BaseWeb::sendChunk("<tr><td>");
+        writeUInt(record.id);
+        Esp32BaseWeb::sendChunk("</td><td>第 ");
+        writeUInt(record.roadId);
+        Esp32BaseWeb::sendChunk(" 路</td><td>");
+        Esp32BaseWeb::writeHtmlEscaped(RecordStore::taskTypeName(static_cast<RecordStore::TaskType>(record.taskType)));
+        Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::writeHtmlEscaped(RecordStore::triggerSourceName(static_cast<RecordStore::TriggerSource>(record.startSource)));
+        Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::writeHtmlEscaped(RecordStore::triggerSourceName(static_cast<RecordStore::TriggerSource>(record.stopSource)));
+        Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::writeHtmlEscaped(RecordStore::resultName(static_cast<RecordStore::Result>(record.result)));
+        Esp32BaseWeb::sendChunk("</td><td>");
+        writeMinutesFromSeconds(record.targetSec);
+        Esp32BaseWeb::sendChunk(" 分钟</td><td>");
+        writeUInt(actualSec);
+        Esp32BaseWeb::sendChunk(" 秒</td><td>");
+        writeLitersFromMl(record.estimatedMilliliters);
+        Esp32BaseWeb::sendChunk("</td></tr>");
     };
     (void)RecordStore::readLatest(0, 10, recordCb, nullptr);
     Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
@@ -974,35 +986,34 @@ void writeSettingsJson() {
     writeUInt(SettingsStore::enabledRoads());
     Esp32BaseWeb::sendChunk(",\"road_enabled_mask\":");
     writeUInt(SettingsStore::roadEnabledMask());
-    Esp32BaseWeb::sendChunk(",\"default_mode\":\"");
-    Esp32BaseWeb::writeJsonEscaped(modeName(s.defaultMode));
-    Esp32BaseWeb::sendChunk("\",\"flow_no_pulse_timeout_s\":");
+    Esp32BaseWeb::sendChunk(",\"flow_no_pulse_timeout_s\":");
     writeUInt(s.flowNoPulseTimeoutSec);
     Esp32BaseWeb::sendChunk(",\"idle_leak_window_s\":");
     writeUInt(s.idleLeakWindowSec);
     Esp32BaseWeb::sendChunk(",\"idle_leak_pulse_threshold\":");
     writeUInt(s.idleLeakPulseThreshold);
-    Esp32BaseWeb::sendChunk(",\"roads\":{\"r1\":{\"enabled\":");
-    writeBool(SettingsStore::isRoadEnabled(1));
-    Esp32BaseWeb::sendChunk(",\"name\":\"");
-    Esp32BaseWeb::writeJsonEscaped(s.roads[0].name);
-    Esp32BaseWeb::sendChunk("\",\"quick_duration_sec\":");
-    writeUInt(s.quickDurationSec[0]);
-    Esp32BaseWeb::sendChunk(",\"pulse_per_liter\":");
-    writeUInt(s.roads[0].pulsePerLiter);
-    Esp32BaseWeb::sendChunk(",\"calibration_x1000\":");
-    writeUInt(s.roads[0].calibrationX1000);
-    Esp32BaseWeb::sendChunk("},\"r2\":{\"enabled\":");
-    writeBool(SettingsStore::isRoadEnabled(2));
-    Esp32BaseWeb::sendChunk(",\"name\":\"");
-    Esp32BaseWeb::writeJsonEscaped(s.roads[1].name);
-    Esp32BaseWeb::sendChunk("\",\"quick_duration_sec\":");
-    writeUInt(s.quickDurationSec[1]);
-    Esp32BaseWeb::sendChunk(",\"pulse_per_liter\":");
-    writeUInt(s.roads[1].pulsePerLiter);
-    Esp32BaseWeb::sendChunk(",\"calibration_x1000\":");
-    writeUInt(s.roads[1].calibrationX1000);
-    Esp32BaseWeb::sendChunk("}}}");
+    Esp32BaseWeb::sendChunk(",\"roads\":{");
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        if (road > 1) Esp32BaseWeb::sendChunk(",");
+        Esp32BaseWeb::sendChunk("\"r");
+        writeUInt(road);
+        Esp32BaseWeb::sendChunk("\":{\"enabled\":");
+        writeBool(SettingsStore::isRoadEnabled(road));
+        Esp32BaseWeb::sendChunk(",\"name\":\"");
+        Esp32BaseWeb::writeJsonEscaped(s.roads[road - 1].name);
+        Esp32BaseWeb::sendChunk("\",\"valve_pin\":\"");
+        Esp32BaseWeb::writeJsonEscaped(valvePinName(road));
+        Esp32BaseWeb::sendChunk("\",\"flow_pin\":\"");
+        Esp32BaseWeb::writeJsonEscaped(flowPinName(road));
+        Esp32BaseWeb::sendChunk("\",\"quick_duration_sec\":");
+        writeUInt(s.quickDurationSec[road - 1]);
+        Esp32BaseWeb::sendChunk(",\"pulse_per_liter\":");
+        writeUInt(s.roads[road - 1].pulsePerLiter);
+        Esp32BaseWeb::sendChunk(",\"calibration_x1000\":");
+        writeUInt(s.roads[road - 1].calibrationX1000);
+        Esp32BaseWeb::sendChunk("}");
+    }
+    Esp32BaseWeb::sendChunk("}}");
 }
 
 void writeRoadJson(uint8_t road) {
@@ -1026,14 +1037,14 @@ void writeRoadJson(uint8_t road) {
 void writeWateringJson() {
     Esp32BaseWeb::sendChunk("\"watering\":{\"active\":");
     writeBool(WateringSession::isActive());
-    Esp32BaseWeb::sendChunk(",\"mode\":\"");
-    Esp32BaseWeb::writeJsonEscaped(modeName(WateringSession::mode()));
-    Esp32BaseWeb::sendChunk("\",\"last_stop_reason\":\"");
-    Esp32BaseWeb::writeJsonEscaped(WateringSession::stopReasonName(WateringSession::lastStopReason()));
-    Esp32BaseWeb::sendChunk("\",\"roads\":{\"r1\":");
-    writeRoadJson(1);
-    Esp32BaseWeb::sendChunk(",\"r2\":");
-    writeRoadJson(2);
+    Esp32BaseWeb::sendChunk(",\"roads\":{");
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        if (road > 1) Esp32BaseWeb::sendChunk(",");
+        Esp32BaseWeb::sendChunk("\"r");
+        writeUInt(road);
+        Esp32BaseWeb::sendChunk("\":");
+        writeRoadJson(road);
+    }
     Esp32BaseWeb::sendChunk("}}");
 }
 
@@ -1044,13 +1055,13 @@ void writePlanJson(uint8_t index, const PlanStore::Plan& p) {
     writeBool(p.enabled);
     Esp32BaseWeb::sendChunk(",\"minute_of_day\":");
     writeUInt(p.minuteOfDay);
-    Esp32BaseWeb::sendChunk(",\"road_sec\":{\"r1\":");
-    writeUInt(p.roadSec[0]);
-    Esp32BaseWeb::sendChunk(",\"r2\":");
-    writeUInt(p.roadSec[1]);
-    Esp32BaseWeb::sendChunk("},\"mode\":\"");
-    Esp32BaseWeb::writeJsonEscaped(modeName(p.mode));
-    Esp32BaseWeb::sendChunk("\",\"cycle_days\":");
+    Esp32BaseWeb::sendChunk(",\"road_id\":");
+    writeUInt(p.roadId);
+    Esp32BaseWeb::sendChunk(",\"slot_index\":");
+    writeUInt(p.slotIndex);
+    Esp32BaseWeb::sendChunk(",\"duration_sec\":");
+    writeUInt(p.durationSec);
+    Esp32BaseWeb::sendChunk(",\"cycle_days\":");
     writeUInt(p.cycleDays);
     Esp32BaseWeb::sendChunk(",\"cycle_mask\":");
     writeUInt(p.cycleMask);
@@ -1142,35 +1153,38 @@ bool saveConfigFromRequest(const char** error) {
     if (Esp32BaseWeb::hasParam("road")) {
         uint16_t road = 0;
         ok = readUIntParam("road", &road) && readBoolParam("enabled", &boolValue) && SettingsStore::setRoadEnabled(static_cast<uint8_t>(road), boolValue);
-    } else if (Esp32BaseWeb::hasParam("default_mode")) {
-        SettingsStore::ExecutionMode mode = SettingsStore::MODE_SIMULTANEOUS;
-        ok = readModeParam("default_mode", &mode) && SettingsStore::setDefaultExecutionMode(mode);
-    } else if (Esp32BaseWeb::hasParam("quick_r1_min")) {
-        uint16_t seconds = 0;
-        ok = readDurationSecondsParam("quick_r1_min", &seconds) && SettingsStore::setQuickDurationSec(1, seconds);
-    } else if (Esp32BaseWeb::hasParam("quick_r2_min")) {
-        uint16_t seconds = 0;
-        ok = readDurationSecondsParam("quick_r2_min", &seconds) && SettingsStore::setQuickDurationSec(2, seconds);
     } else if (Esp32BaseWeb::hasParam("flow_no_pulse_timeout_s")) {
         ok = readUIntParam("flow_no_pulse_timeout_s", &value) && value <= 60 && SettingsStore::setFlowNoPulseTimeoutSec(static_cast<uint8_t>(value));
     } else if (Esp32BaseWeb::hasParam("idle_leak_window_s")) {
         ok = readUIntParam("idle_leak_window_s", &value) && value <= 60 && SettingsStore::setIdleLeakWindowSec(static_cast<uint8_t>(value));
     } else if (Esp32BaseWeb::hasParam("idle_leak_pulse_threshold")) {
         ok = readUIntParam("idle_leak_pulse_threshold", &value) && value <= 100 && SettingsStore::setIdleLeakPulseThreshold(static_cast<uint8_t>(value));
-    } else if (Esp32BaseWeb::hasParam("r1_name")) {
-        ok = Esp32BaseWeb::getParam("r1_name", text, sizeof(text)) && SettingsStore::setRoadName(1, text);
-    } else if (Esp32BaseWeb::hasParam("r2_name")) {
-        ok = Esp32BaseWeb::getParam("r2_name", text, sizeof(text)) && SettingsStore::setRoadName(2, text);
-    } else if (Esp32BaseWeb::hasParam("r1_pulse_per_liter")) {
-        ok = readUIntParam("r1_pulse_per_liter", &value) && SettingsStore::setRoadPulsePerLiter(1, value);
-    } else if (Esp32BaseWeb::hasParam("r2_pulse_per_liter")) {
-        ok = readUIntParam("r2_pulse_per_liter", &value) && SettingsStore::setRoadPulsePerLiter(2, value);
-    } else if (Esp32BaseWeb::hasParam("r1_calibration_x1000")) {
-        ok = readUIntParam("r1_calibration_x1000", &value) && SettingsStore::setRoadCalibrationX1000(1, value);
-    } else if (Esp32BaseWeb::hasParam("r2_calibration_x1000")) {
-        ok = readUIntParam("r2_calibration_x1000", &value) && SettingsStore::setRoadCalibrationX1000(2, value);
     } else {
         ok = false;
+        for (uint8_t road = 1; road <= IrrigationPins::MaxRoads && !ok; ++road) {
+            char key[32];
+            snprintf(key, sizeof(key), "quick_r%u_min", static_cast<unsigned>(road));
+            if (Esp32BaseWeb::hasParam(key)) {
+                uint16_t seconds = 0;
+                ok = readDurationSecondsParam(key, &seconds) && SettingsStore::setQuickDurationSec(road, seconds);
+                break;
+            }
+            snprintf(key, sizeof(key), "r%u_name", static_cast<unsigned>(road));
+            if (Esp32BaseWeb::hasParam(key)) {
+                ok = Esp32BaseWeb::getParam(key, text, sizeof(text)) && SettingsStore::setRoadName(road, text);
+                break;
+            }
+            snprintf(key, sizeof(key), "r%u_pulse_per_liter", static_cast<unsigned>(road));
+            if (Esp32BaseWeb::hasParam(key)) {
+                ok = readUIntParam(key, &value) && SettingsStore::setRoadPulsePerLiter(road, value);
+                break;
+            }
+            snprintf(key, sizeof(key), "r%u_calibration_x1000", static_cast<unsigned>(road));
+            if (Esp32BaseWeb::hasParam(key)) {
+                ok = readUIntParam(key, &value) && SettingsStore::setRoadCalibrationX1000(road, value);
+                break;
+            }
+        }
     }
     if (!ok) {
         if (error) {
@@ -1233,25 +1247,26 @@ void handleWaterStartApi() {
     if (rejectIfFactoryResetPending()) {
         return;
     }
-    uint16_t r1Min = 0;
-    uint16_t r2Min = 0;
-    bool useR1 = SettingsStore::isRoadEnabled(1);
-    bool useR2 = SettingsStore::isRoadEnabled(2);
-    SettingsStore::ExecutionMode mode = SettingsStore::defaultExecutionMode();
-    (void)readBoolParam("r1_enabled", &useR1);
-    (void)readBoolParam("r2_enabled", &useR2);
-    if ((useR1 && (!readUIntParam("r1_min", &r1Min) || r1Min < 1 || r1Min > 240)) ||
-        (useR2 && (!readUIntParam("r2_min", &r2Min) || r2Min < 1 || r2Min > 240))) {
-        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
-        return;
+    bool anyRequested = false;
+    bool anyStarted = false;
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        bool useRoad = SettingsStore::isRoadEnabled(road);
+        char key[16];
+        snprintf(key, sizeof(key), "r%u_enabled", static_cast<unsigned>(road));
+        (void)readBoolParam(key, &useRoad);
+        if (!useRoad) {
+            continue;
+        }
+        anyRequested = true;
+        snprintf(key, sizeof(key), "r%u_min", static_cast<unsigned>(road));
+        uint16_t minutes = 0;
+        if (!readUIntParam(key, &minutes) || minutes < 1 || minutes > 240) {
+            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
+            return;
+        }
+        anyStarted = WateringSession::startRoadTask(road, minutesToSeconds(minutes), RecordStore::TASK_MANUAL, RecordStore::SOURCE_WEB_PAGE, 0xFF, "web manual") || anyStarted;
     }
-    if (Esp32BaseWeb::hasParam("mode") && !readModeParam("mode", &mode)) {
-        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_mode\"}");
-        return;
-    }
-    const uint16_t r1Sec = useR1 ? minutesToSeconds(r1Min) : 0;
-    const uint16_t r2Sec = useR2 ? minutesToSeconds(r2Min) : 0;
-    if (!WateringSession::startManual(r1Sec, r2Sec, mode, RecordStore::SOURCE_WEB, "web manual")) {
+    if (!anyRequested || !anyStarted) {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_watering_request\"}");
         return;
     }
@@ -1264,15 +1279,12 @@ void handleWaterStopApi() {
         sendMethodNotAllowed("POST");
         return;
     }
-    if (rejectIfFactoryResetPending()) {
-        return;
-    }
     uint16_t road = 0;
     (void)readUIntParam("road", &road);
     if (road == 0) {
-        WateringSession::stopAll(WateringSession::REASON_MANUAL_STOP, "web stop all");
-    } else if (road <= 2) {
-        WateringSession::stopRoad(static_cast<uint8_t>(road), WateringSession::REASON_MANUAL_STOP, "web stop road");
+        WateringSession::stopAll(RecordStore::SOURCE_WEB_PAGE, RecordStore::RESULT_USER_STOPPED, "web stop all");
+    } else if (road <= IrrigationPins::MaxRoads) {
+        WateringSession::stopRoad(static_cast<uint8_t>(road), RecordStore::SOURCE_WEB_PAGE, "web stop road");
     } else {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_road\"}");
         return;
@@ -1328,37 +1340,13 @@ void handlePlansApi() {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_time\"}");
         return;
     }
-    if (Esp32BaseWeb::hasParam("r1_min")) {
+    if (Esp32BaseWeb::hasParam("duration_min")) {
         uint16_t seconds = 0;
-        if (!readPlanDurationSecondsParam("r1_min", &seconds)) {
+        if (!readDurationSecondsParam("duration_min", &seconds)) {
             Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
             return;
         }
-        plan.roadSec[0] = seconds;
-    }
-    if (Esp32BaseWeb::hasParam("r2_min")) {
-        uint16_t seconds = 0;
-        if (!readPlanDurationSecondsParam("r2_min", &seconds)) {
-            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
-            return;
-        }
-        plan.roadSec[1] = seconds;
-    }
-    bool useRoad = false;
-    if (readBoolParam("r1_enabled", &useRoad) && !useRoad) plan.roadSec[0] = 0;
-    if (readBoolParam("r2_enabled", &useRoad) && !useRoad) plan.roadSec[1] = 0;
-    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        if (!SettingsStore::isRoadEnabled(road)) {
-            plan.roadSec[road - 1] = 0;
-        }
-    }
-    SettingsStore::ExecutionMode mode = plan.mode;
-    if (Esp32BaseWeb::hasParam("mode")) {
-        if (!readModeParam("mode", &mode)) {
-            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_mode\"}");
-            return;
-        }
-        plan.mode = mode;
+        plan.durationSec = seconds;
     }
     if (Esp32BaseWeb::hasParam("cycle_days")) {
         if (!readUIntParam("cycle_days", &value) || value < 1 || value > 30) {
@@ -1440,55 +1428,49 @@ void writeRecordJson(const RecordStore::Record& record, void* user) {
     bool* first = static_cast<bool*>(user);
     if (!*first) Esp32BaseWeb::sendChunk(",");
     *first = false;
+    const uint32_t pulses = record.endedPulseCount >= record.startedPulseCount ? record.endedPulseCount - record.startedPulseCount : 0;
+    const uint32_t actualSec = record.endedMs >= record.startedMs && record.startedMs > 0 ? (record.endedMs - record.startedMs) / 1000UL : 0;
     Esp32BaseWeb::sendChunk("{\"id\":");
     writeUInt(record.id);
-    Esp32BaseWeb::sendChunk(",\"session_started_ms\":");
-    writeUInt(record.sessionStartedMs);
-    Esp32BaseWeb::sendChunk(",\"session_ended_ms\":");
-    writeUInt(record.sessionEndedMs);
-    Esp32BaseWeb::sendChunk(",\"source\":\"");
-    Esp32BaseWeb::writeJsonEscaped(RecordStore::sourceName(static_cast<RecordStore::Source>(record.source)));
-    Esp32BaseWeb::sendChunk("\",\"mode\":\"");
-    Esp32BaseWeb::writeJsonEscaped(modeName(static_cast<SettingsStore::ExecutionMode>(record.mode)));
-    Esp32BaseWeb::sendChunk("\",\"stop_reason\":\"");
-    Esp32BaseWeb::writeJsonEscaped(WateringSession::stopReasonName(static_cast<WateringSession::StopReason>(record.stopReason)));
-    Esp32BaseWeb::sendChunk("\",\"enabled_roads\":");
+    Esp32BaseWeb::sendChunk(",\"road_id\":");
+    writeUInt(record.roadId);
+    Esp32BaseWeb::sendChunk(",\"task_type\":\"");
+    Esp32BaseWeb::writeJsonEscaped(RecordStore::taskTypeName(static_cast<RecordStore::TaskType>(record.taskType)));
+    Esp32BaseWeb::sendChunk("\",\"start_source\":\"");
+    Esp32BaseWeb::writeJsonEscaped(RecordStore::triggerSourceName(static_cast<RecordStore::TriggerSource>(record.startSource)));
+    Esp32BaseWeb::sendChunk("\",\"stop_source\":\"");
+    Esp32BaseWeb::writeJsonEscaped(RecordStore::triggerSourceName(static_cast<RecordStore::TriggerSource>(record.stopSource)));
+    Esp32BaseWeb::sendChunk("\",\"stop_scope\":\"");
+    Esp32BaseWeb::writeJsonEscaped(RecordStore::stopScopeName(static_cast<RecordStore::StopScope>(record.stopScope)));
+    Esp32BaseWeb::sendChunk("\",\"result\":\"");
+    Esp32BaseWeb::writeJsonEscaped(RecordStore::resultName(static_cast<RecordStore::Result>(record.result)));
+    Esp32BaseWeb::sendChunk("\",\"plan_slot\":");
+    writeUInt(record.planSlot);
+    Esp32BaseWeb::sendChunk(",\"enabled_roads\":");
     writeUInt(record.enabledRoads);
     Esp32BaseWeb::sendChunk(",\"flow_no_pulse_timeout_s\":");
     writeUInt(record.flowNoPulseTimeoutSec);
-    Esp32BaseWeb::sendChunk(",\"roads\":[");
-    for (uint8_t road = 1; road <= 2; ++road) {
-        if (road > 1) Esp32BaseWeb::sendChunk(",");
-        const RecordStore::RoadRecord& rr = record.roads[road - 1];
-        const uint32_t pulses = rr.endedPulseCount >= rr.startedPulseCount ? rr.endedPulseCount - rr.startedPulseCount : 0;
-        const uint32_t actualSec = rr.endedMs >= rr.startedMs && rr.startedMs > 0 ? (rr.endedMs - rr.startedMs) / 1000UL : 0;
-        Esp32BaseWeb::sendChunk("{\"road\":");
-        writeUInt(road);
-        Esp32BaseWeb::sendChunk(",\"state\":\"");
-        Esp32BaseWeb::writeJsonEscaped(WateringSession::roadStateName(static_cast<WateringSession::RoadState>(rr.state)));
-        Esp32BaseWeb::sendChunk("\",\"target_sec\":");
-        writeUInt(rr.targetSec);
-        Esp32BaseWeb::sendChunk(",\"actual_sec\":");
-        writeUInt(actualSec);
-        Esp32BaseWeb::sendChunk(",\"started_ms\":");
-        writeUInt(rr.startedMs);
-        Esp32BaseWeb::sendChunk(",\"ended_ms\":");
-        writeUInt(rr.endedMs);
-        Esp32BaseWeb::sendChunk(",\"started_pulses\":");
-        writeUInt(rr.startedPulseCount);
-        Esp32BaseWeb::sendChunk(",\"ended_pulses\":");
-        writeUInt(rr.endedPulseCount);
-        Esp32BaseWeb::sendChunk(",\"pulses\":");
-        writeUInt(pulses);
-        Esp32BaseWeb::sendChunk(",\"pulse_per_liter\":");
-        writeUInt(rr.pulsePerLiter);
-        Esp32BaseWeb::sendChunk(",\"calibration_x1000\":");
-        writeUInt(rr.calibrationX1000);
-        Esp32BaseWeb::sendChunk(",\"estimated_ml\":");
-        writeUInt(rr.estimatedMilliliters);
-        Esp32BaseWeb::sendChunk("}");
-    }
-    Esp32BaseWeb::sendChunk("]}");
+    Esp32BaseWeb::sendChunk(",\"target_sec\":");
+    writeUInt(record.targetSec);
+    Esp32BaseWeb::sendChunk(",\"actual_sec\":");
+    writeUInt(actualSec);
+    Esp32BaseWeb::sendChunk(",\"started_ms\":");
+    writeUInt(record.startedMs);
+    Esp32BaseWeb::sendChunk(",\"ended_ms\":");
+    writeUInt(record.endedMs);
+    Esp32BaseWeb::sendChunk(",\"started_pulses\":");
+    writeUInt(record.startedPulseCount);
+    Esp32BaseWeb::sendChunk(",\"ended_pulses\":");
+    writeUInt(record.endedPulseCount);
+    Esp32BaseWeb::sendChunk(",\"pulses\":");
+    writeUInt(pulses);
+    Esp32BaseWeb::sendChunk(",\"pulse_per_liter\":");
+    writeUInt(record.pulsePerLiter);
+    Esp32BaseWeb::sendChunk(",\"calibration_x1000\":");
+    writeUInt(record.calibrationX1000);
+    Esp32BaseWeb::sendChunk(",\"estimated_ml\":");
+    writeUInt(record.estimatedMilliliters);
+    Esp32BaseWeb::sendChunk("}");
 }
 
 void handleRecordsApi() {

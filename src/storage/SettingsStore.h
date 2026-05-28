@@ -4,11 +4,6 @@
 
 namespace SettingsStore {
 
-enum ExecutionMode : uint8_t {
-    MODE_SIMULTANEOUS = 0,
-    MODE_SEQUENTIAL = 1,
-};
-
 struct RoadConfig {
     char name[12];
     uint16_t pulsePerLiter;
@@ -16,15 +11,14 @@ struct RoadConfig {
 };
 
 struct Settings {
-    // Bit mask, not count: bit0 enables road 1, bit1 enables road 2.
+    // Bit mask, not count: bit0 enables road 1 ... bit3 enables road 4.
     uint8_t roadEnabledMask;
-    ExecutionMode defaultMode;
-    uint16_t quickDurationSec[2];
+    uint16_t quickDurationSec[4];
     uint8_t flowNoPulseTimeoutSec;
     uint8_t idleLeakWindowSec;
     uint8_t idleLeakPulseThreshold;
     bool keypadLocked;
-    RoadConfig roads[2];
+    RoadConfig roads[4];
 };
 
 void begin();
@@ -34,14 +28,10 @@ bool clear();
 uint8_t enabledRoads();
 uint8_t roadEnabledMask();
 bool isRoadEnabled(uint8_t road);
-ExecutionMode defaultExecutionMode();
-const char* executionModeName(ExecutionMode mode);
-bool parseExecutionMode(const char* text, ExecutionMode* mode);
 
 bool setEnabledRoads(uint8_t roads);
 bool setRoadEnabled(uint8_t road, bool enabled);
 bool setRoadEnabledMask(uint8_t mask);
-bool setDefaultExecutionMode(ExecutionMode mode);
 bool setQuickDurationSec(uint8_t road, uint16_t seconds);
 bool setFlowNoPulseTimeoutSec(uint8_t seconds);
 bool setIdleLeakWindowSec(uint8_t seconds);
