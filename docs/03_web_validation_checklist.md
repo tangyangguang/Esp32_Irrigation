@@ -10,6 +10,14 @@
 - 业务导航不应显示单独的手动页或调试页。
 - 底部应保留 Esp32Base 默认页脚导航：`Status`、`Logs`、`App Config`、`System`。
 
+## UI baseline
+
+- 业务页面应由 `Esp32BaseWeb::sendHeader()` 自动加载 `/esp32base/ui.css`，不应注入整套业务自定义 CSS。
+- 页面标题、面板、提示、指标、配置行、表格、表单网格和分页应优先使用 Esp32Base UI helper 或 baseline class。
+- 业务页不应使用旧 `shell`、`grid/span-*`、`badge`、`modal`、`table-wrap`、`field-grid` 等自定义页面结构。
+- 所有改变状态的页面表单都必须使用 POST，并带浏览器二次确认和 `once()` 防重复提交。
+- 修改前可运行 `node scripts/check-web-structure.mjs`，确认结构红线仍被自动检查覆盖。
+
 ## 状态 API
 
 - `GET /api/v1/status` 返回合法 JSON。

@@ -17,7 +17,36 @@ function assert(condition, message) {
 }
 
 assert(main.includes('Esp32BaseWeb::setDeviceName("首页")'), 'home label should be 首页');
-assert(web.includes('Esp32BaseWeb::setHeadExtraCallback(writeCss)'), 'business CSS should be injected through Esp32Base head callback');
+assert(!web.includes('void writeCss()'), 'business pages should not keep a copied CSS baseline');
+assert(!web.includes('Esp32BaseWeb::setHeadExtraCallback(writeCss)'), 'business pages should not inject a full custom CSS baseline');
+assert(!web.includes("document.body.className"), 'business pages should not override the Esp32Base body/page model');
+assert(!web.includes("<main class='shell'>"), 'business pages should not wrap Esp32Base pages in a custom shell');
+assert(!web.includes('.shell'), 'business CSS shell should be removed');
+assert(!web.includes('.grid{'), 'business CSS grid system should be removed');
+assert(!web.includes('.badge'), 'business status badges should use Esp32Base tag/notice classes');
+assert(!web.includes('.modal'), 'settings editing should not depend on a custom modal system');
+assert(!web.includes("class='grid'"), 'business pages should use Esp32Base panel flow instead of a custom grid wrapper');
+assert(!web.includes("class='panel span-"), 'business panels should not use custom span classes');
+assert(!web.includes("class='table-wrap'"), 'business tables should use Esp32Base tablewrap class, not table-wrap');
+assert(!web.includes("class='field-grid'"), 'business forms should use Esp32Base fieldgrid class, not field-grid');
+assert(!web.includes("data-confirm"), 'business POST forms should use explicit confirm() in onsubmit');
+assert(!web.includes("Esp32BaseWeb::sendInfoRowCompactForm("), 'business POST row forms need explicit confirm(), so do not use the no-confirm helper');
+assert(web.includes('Esp32BaseWeb::sendPageTitle('), 'business pages should use Esp32Base page title helper');
+assert(web.includes('Esp32BaseWeb::beginPanel('), 'business pages should use Esp32Base panel helper');
+assert(web.includes('Esp32BaseWeb::sendNotice('), 'business pages should use Esp32Base notice helper');
+assert(web.includes('Esp32BaseWeb::beginMetricGrid()'), 'business overview should use Esp32Base metric grid helper');
+assert(web.includes('Esp32BaseWeb::sendInfoRowCompact'), 'business configuration/status rows should use Esp32Base compact row helpers');
+assert(web.includes("class='tablewrap'"), 'business tables should use Esp32Base tablewrap class');
+assert(web.includes("class='fieldgrid'"), 'business forms should use Esp32Base fieldgrid class');
+for (const marker of ["method='post'", 'method="post"']) {
+  let index = web.indexOf(marker);
+  while (index !== -1) {
+    const snippet = web.slice(index, index + 700);
+    assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
+    assert(snippet.includes('once(this)'), `POST form must prevent duplicate submission near offset ${index}`);
+    index = web.indexOf(marker, index + marker.length);
+  }
+}
 assert(main.includes('Esp32BaseWeb::setSystemNavMode(Esp32BaseWeb::SYSTEM_NAV_SECTION)'), 'system navigation should use Esp32Base default compact footer section');
 assert(!main.includes('Esp32BaseWeb::setBuiltinLabel'), 'system footer labels should remain Esp32Base defaults');
 const pio = fs.readFileSync('platformio.ini', 'utf8');

@@ -356,40 +356,12 @@ const char* flowPinName(uint8_t road) {
     }
 }
 
-void writeCss() {
-    Esp32BaseWeb::sendChunk(
-        "<style>"
-        ":root{color-scheme:light;--bg:#f7f8fa;--surface:#fff;--muted:#667085;--text:#17202a;--line:#d8dee6;--soft:#edf0f3;--primary:#146c5f;--ok:#087443;--warn:#a15c07;--danger:#b42318}"
-        ".shell,.shell *{box-sizing:border-box}.shell{--page-width:1040px;width:100%;max-width:var(--page-width);margin:0 auto;padding:6px 0 34px;color:var(--text);font-size:14px;line-height:1.5}.page-overview .shell{--page-width:980px}.page-table .shell{--page-width:1040px}.page-form .shell{--page-width:1040px}.page-settings .shell{--page-width:860px}"
-        ".shell a{color:var(--primary);text-decoration:none}.shell a:hover{text-decoration:underline}"
-        ".page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:14px}.shell h1,.shell h2,.shell h3,.shell p{margin-top:0}.shell h1{margin-bottom:4px;font-size:26px;line-height:1.25}.subtitle,.note{margin-bottom:0;color:var(--muted)}"
-        ".grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:12px;align-items:start}.panel{grid-column:span 12;min-width:0;padding:14px;background:var(--surface);border:1px solid var(--line);border-radius:8px}.span-4{grid-column:span 4}.span-6{grid-column:span 6}.span-8{grid-column:span 8}.span-12{grid-column:span 12}.panel h2{margin-bottom:12px;font-size:16px}.panel h3{margin:16px 0 8px;color:#475467;font-size:14px}"
-        ".panel-titlebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.panel-titlebar h2{margin-bottom:0}.panel-tools,.actions{display:flex;flex-wrap:wrap;gap:8px}.panel-tools{justify-content:flex-end}.actions{margin-top:14px}.form-actions{justify-content:flex-end}.title-date{margin-left:8px;color:var(--muted);font-size:13px;font-weight:500}"
-        ".overview-status{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.overview-status div{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;padding:8px 10px;border:1px solid var(--soft);border-radius:6px;background:#f9fafb}.overview-status span,.matrix-head,.matrix-label{color:var(--muted)}.overview-status strong{overflow-wrap:anywhere}"
-        ".valve-matrix{display:grid;grid-template-columns:minmax(56px,.7fr) repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:8px;overflow:hidden}.valve-matrix>*{min-width:0;padding:8px 10px;border-right:1px solid var(--soft);border-bottom:1px solid var(--soft)}.valve-matrix>:nth-child(5n){border-right:0}.valve-matrix>:nth-last-child(-n+5){border-bottom:0}.matrix-head{background:#f9fafb;font-size:13px;font-weight:650}.matrix-label{font-weight:650}.status-compact{grid-template-columns:1fr;margin-bottom:12px}.valve-action{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:12px}"
-        ".badge{display:inline-flex;align-items:center;min-height:24px;padding:2px 8px;border-radius:999px;background:#f0f2f4;color:#475467;font-size:13px;font-weight:650;white-space:nowrap}.badge.ok{background:#e7f5ee;color:var(--ok)}.badge.warn{background:#fff5df;color:var(--warn)}.badge.danger{background:#fff0ee;color:var(--danger)}.badge.off{background:#f7f1e8;color:#875a20}"
-        "input,select{min-width:0;width:100%;min-height:36px;padding:7px 9px;border:1px solid #cfd6df;border-radius:6px;background:#fff;color:var(--text);font:inherit}input[type=checkbox]{position:absolute;opacity:0;width:1px;min-height:0;margin:0;padding:0;border:0}input:disabled,select:disabled{color:#98a2b3;background:#f3f4f6}.field-grid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:12px 14px}.field{display:grid;gap:6px;min-width:0}.field label{color:#475467;font-size:13px;font-weight:650}.check-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}.check-item{position:relative;display:flex;align-items:center;justify-content:center;min-height:36px;padding:0 10px;border:1px solid var(--soft);border-radius:6px;background:#fff;color:#344054;font-weight:650}.check-item:has(input:checked){border-color:var(--primary);background:#e7f1ef;color:var(--primary)}"
-        ".manual-start{padding:12px}.manual-start form{display:grid;gap:12px}.manual-road-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.manual-road{display:grid;gap:9px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}.manual-road.off{background:#f8f9fa}.manual-road-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.manual-road-head strong{font-size:15px}.manual-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}.manual-fields label{display:grid;gap:5px;color:#475467;font-size:13px;font-weight:650}.input-suffix{display:flex;align-items:center;border:1px solid #cfd6df;border-radius:6px;background:#fff;overflow:hidden}.input-suffix input{border:0;border-radius:0}.input-suffix em{padding:0 9px;color:var(--muted);font-style:normal;white-space:nowrap}.manual-road.off .input-suffix{background:#f3f4f6}.manual-road.off .input-suffix input{background:#f3f4f6}"
-        "button,.button,input[type=submit]{display:inline-flex;align-items:center;justify-content:center;min-height:32px;padding:0 11px;border:1px solid var(--primary);border-radius:6px;background:var(--primary);color:#fff;font:inherit;font-weight:650;cursor:default}.button.secondary,button.secondary,input.secondary{border-color:#cfd6df;background:#fff;color:#344054}.button.warn,button.warn,input.warn{border-color:#cfd6df;background:#fff;color:#344054}button:disabled,input:disabled{border-color:#d0d5dd;background:#f2f4f7;color:#98a2b3}.input-suffix input,.input-suffix input:disabled{border:0;border-radius:0;margin:0}"
-        ".table-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:#fff}table{width:100%;border-collapse:collapse;background:#fff}th,td{padding:9px 10px;border-bottom:1px solid var(--soft);text-align:left;white-space:nowrap}th{background:#f9fafb;color:#475467;font-size:13px;font-weight:650}tr:last-child td{border-bottom:0}.action-table th:last-child,.action-table td:last-child{width:1%;text-align:center}.action-table td:last-child button,.action-table td:last-child input{min-width:82px}"
-        ".setting-list{border:1px solid var(--line);border-radius:8px;overflow:hidden}.setting-row{display:grid;grid-template-columns:minmax(82px,1fr) minmax(80px,1fr) auto;gap:8px;align-items:center;min-width:0;padding:7px 9px;border-bottom:1px solid var(--soft);background:#fff}.setting-row:last-child{border-bottom:0}.setting-row span{color:var(--muted);font-weight:650}.setting-row strong{min-width:0;overflow-wrap:anywhere}.summary-line{margin-top:12px;padding:8px 10px;border-radius:6px;background:#f9fafb;color:#344054;font-weight:650}.json-box{margin:0;padding:14px;overflow-x:auto;border-radius:8px;background:#182230;color:#d6e4ff;font-size:13px}"
-        ".modal[hidden]{display:none}.modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;padding:18px;background:rgba(15,23,42,.32)}.modal-card{width:min(420px,100%);padding:16px;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 18px 40px rgba(15,23,42,.18)}.modal-card h2{margin-bottom:4px;font-size:18px}.modal-card .field-grid{grid-template-columns:1fr;margin-top:12px}.modal-card .actions{justify-content:flex-end}.modal-value{margin:6px 0 0;color:var(--muted)}"
-        "@media(max-width:980px){.span-4,.span-6,.span-8{grid-column:span 12}.field-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.manual-road-grid{grid-template-columns:1fr}}"
-        "@media(max-width:640px){.shell{padding-top:0;font-size:13px}.page-head{display:block;margin-bottom:14px}.shell h1{font-size:22px}.panel{padding:12px}.panel-titlebar{align-items:flex-start;flex-direction:column;gap:8px}.panel-tools{justify-content:flex-start}.field-grid{grid-template-columns:1fr}.check-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.overview-status{grid-template-columns:1fr}.valve-matrix{grid-template-columns:minmax(48px,.6fr) repeat(4,minmax(82px,1fr))}.manual-fields{grid-template-columns:1fr}.setting-row{grid-template-columns:1fr auto}.setting-row strong{grid-column:1}.setting-row a,.setting-row button{grid-column:2;grid-row:1/span 2}}"
-        "</style><script>document.addEventListener('submit',function(e){var f=e.target;if(!f||String(f.method).toLowerCase()!=='post')return;var raw=f.getAttribute('data-confirm');if(raw==='off')return;var msg=raw||'确认执行此操作？';if(!confirm(msg)){e.preventDefault();}});</script>");
-}
-
 void sendHeader(const char* title, const char* pageClass) {
-    Esp32BaseWeb::setHeadExtraCallback(writeCss);
+    (void)pageClass;
     Esp32BaseWeb::sendHeader(title);
-    Esp32BaseWeb::setHeadExtraCallback(nullptr);
-    Esp32BaseWeb::sendChunk("<script>document.body.className='");
-    Esp32BaseWeb::writeHtmlEscaped(pageClass);
-    Esp32BaseWeb::sendChunk("';</script><main class='shell'>");
 }
 
 void sendFooter() {
-    Esp32BaseWeb::sendChunk("</main>");
     Esp32BaseWeb::sendFooter();
 }
 
@@ -398,29 +370,24 @@ void redirectTo(const char* path) {
 }
 
 void writePageHead(const char* title, const char* subtitle) {
-    Esp32BaseWeb::sendChunk("<header class='page-head'><div><h1>");
-    Esp32BaseWeb::writeHtmlEscaped(title);
-    Esp32BaseWeb::sendChunk("</h1><p class='subtitle'>");
-    Esp32BaseWeb::writeHtmlEscaped(subtitle);
-    Esp32BaseWeb::sendChunk("</p></div></header>");
+    Esp32BaseWeb::sendPageTitle(title, subtitle);
 }
 
 void writeWateringStatusPanel(const char* title) {
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>");
-    Esp32BaseWeb::writeHtmlEscaped(title);
-    Esp32BaseWeb::sendChunk("</h2><div class='overview-status status-compact'><div><span>当前浇水</span><strong>");
-    Esp32BaseWeb::writeHtmlEscaped(WateringSession::isActive() ? "浇水中" : "未运行");
-    Esp32BaseWeb::sendChunk("</strong></div></div><div class='valve-matrix' role='table'><div class='matrix-head'>项目</div>");
+    Esp32BaseWeb::beginPanel(title);
+    Esp32BaseWeb::sendInfoRowCompact("当前浇水", "各路独立计时、计量和停止。", WateringSession::isActive() ? "浇水中" : "未运行");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>项目</th>");
     for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        Esp32BaseWeb::sendChunk("<div class='matrix-head'>第 ");
+        Esp32BaseWeb::sendChunk("<th>第 ");
         writeUInt(road);
-        Esp32BaseWeb::sendChunk(" 路</div>");
+        Esp32BaseWeb::sendChunk(" 路</th>");
     }
+    Esp32BaseWeb::sendChunk("</tr></thead><tbody>");
     const char* labels[] = {"状态", "目标", "剩余", "水量", "流速"};
     for (uint8_t row = 0; row < 5; ++row) {
-        Esp32BaseWeb::sendChunk("<div class='matrix-label'>");
+        Esp32BaseWeb::sendChunk("<tr><th>");
         Esp32BaseWeb::sendChunk(labels[row]);
-        Esp32BaseWeb::sendChunk("</div>");
+        Esp32BaseWeb::sendChunk("</th>");
         for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
             const WateringSession::RoadStatus& status = WateringSession::roadStatus(road);
             const bool enabled = SettingsStore::isRoadEnabled(road);
@@ -430,7 +397,7 @@ void writeWateringStatusPanel(const char* title) {
                 remainingSec = elapsed < status.targetSec ? status.targetSec - elapsed : 0;
             }
             const uint32_t pulses = status.lastPulseCount >= status.startedPulseCount ? status.lastPulseCount - status.startedPulseCount : 0;
-            Esp32BaseWeb::sendChunk("<div><strong>");
+            Esp32BaseWeb::sendChunk("<td>");
             if (!enabled && row > 0) {
                 Esp32BaseWeb::sendChunk("-");
             } else if (row == 0) {
@@ -447,46 +414,49 @@ void writeWateringStatusPanel(const char* title) {
                 writeFixed2FromX100(flowRateLiterPerMinuteX100(road));
                 Esp32BaseWeb::sendChunk(" L/min");
             }
-            Esp32BaseWeb::sendChunk("</strong></div>");
+            Esp32BaseWeb::sendChunk("</td>");
         }
+        Esp32BaseWeb::sendChunk("</tr>");
     }
-    Esp32BaseWeb::sendChunk("</div><div class='valve-action'>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div><div class='actions'>");
     const bool active = WateringSession::isActive();
     const char* disabled = active ? "" : " disabled";
-    Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止全部浇水？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='road' value='0'><button class='secondary'");
+    Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' onsubmit=\"return confirm('确认停止全部浇水？')&&once(this)\"><input type='hidden' name='source' value='web_page'><input type='hidden' name='road' value='0'><button type='submit'");
     Esp32BaseWeb::sendChunk(disabled);
     Esp32BaseWeb::sendChunk(">停止全部</button></form>");
     for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止第 ");
+        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' onsubmit=\"return confirm('确认停止第 ");
         writeUInt(road);
-        Esp32BaseWeb::sendChunk(" 路？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='road' value='");
+        Esp32BaseWeb::sendChunk(" 路？')&&once(this)\"><input type='hidden' name='source' value='web_page'><input type='hidden' name='road' value='");
         writeUInt(road);
-        Esp32BaseWeb::sendChunk("'><button class='secondary'");
+        Esp32BaseWeb::sendChunk("'><button type='submit'");
         Esp32BaseWeb::sendChunk(WateringSession::isRoadActive(road) ? "" : " disabled");
         Esp32BaseWeb::sendChunk(">停止第 ");
         writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路</button></form>");
     }
-    Esp32BaseWeb::sendChunk(active ? "" : "<span class='note'>当前未运行，停止不可用。</span>");
-    Esp32BaseWeb::sendChunk("</div></div>");
+    Esp32BaseWeb::sendChunk("</div>");
+    if (!active) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "当前未运行", "停止操作会在有水路运行时启用。");
+    }
+    Esp32BaseWeb::endPanel();
 }
 
 void writeManualStartPanel() {
     const SettingsStore::Settings& settings = SettingsStore::current();
-    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>手动浇水</h2><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><input type='hidden' name='source' value='web_page'><div class='manual-road-grid'>");
+    Esp32BaseWeb::beginPanel("手动浇水");
+    Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/water/start' onsubmit=\"return confirm('确认开始手动浇水？')&&once(this)\"><input type='hidden' name='source' value='web_page'><div class='fieldgrid'>");
     for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         const bool enabled = SettingsStore::isRoadEnabled(road);
-        Esp32BaseWeb::sendChunk("<div class='manual-road");
-        Esp32BaseWeb::sendChunk(enabled ? "" : " off");
-        Esp32BaseWeb::sendChunk("'><div class='manual-road-head'><strong>第 ");
+        Esp32BaseWeb::sendChunk("<p class='field med'><label>第 ");
         writeUInt(road);
         Esp32BaseWeb::sendChunk(" 路 ");
         writeRoadDisplayName(road);
-        Esp32BaseWeb::sendChunk("</strong><span class='badge");
-        Esp32BaseWeb::sendChunk(enabled ? " ok" : " off");
+        Esp32BaseWeb::sendChunk("</label><span class='tag");
+        Esp32BaseWeb::sendChunk(enabled ? " ok" : "");
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(enabled ? "已启用" : "未启用");
-        Esp32BaseWeb::sendChunk("</span></div><div class='manual-fields'><label><span>参与</span><select name='r");
+        Esp32BaseWeb::sendChunk("</span><select name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_enabled'");
         Esp32BaseWeb::sendChunk(enabled ? "" : " disabled");
@@ -494,15 +464,16 @@ void writeManualStartPanel() {
         writeSelected(!enabled);
         Esp32BaseWeb::sendChunk(">");
         Esp32BaseWeb::sendChunk(enabled ? "不浇水" : "未启用");
-        Esp32BaseWeb::sendChunk("</option></select></label><label><span>时长</span><span class='input-suffix'><input name='r");
+        Esp32BaseWeb::sendChunk("</option></select><small>选择是否参与本次手动浇水。</small></p><p class='field short'><label>时长</label><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='1' max='240' value='");
         writeMinutesFromSeconds(settings.quickDurationSec[road - 1]);
         Esp32BaseWeb::sendChunk("'");
         Esp32BaseWeb::sendChunk(enabled ? "" : " disabled");
-        Esp32BaseWeb::sendChunk("><em>分钟</em></span></label></div></div>");
+        Esp32BaseWeb::sendChunk("><small>分钟，范围 1-240。</small></p>");
     }
-    Esp32BaseWeb::sendChunk("</div><div class='actions'><button>开始浇水</button></div></form></div>");
+    Esp32BaseWeb::sendChunk("</div><div class='actions'><input type='submit' value='开始浇水'></div></form>");
+    Esp32BaseWeb::endPanel();
 }
 
 const char* signalQuality(long rssi) {
@@ -516,31 +487,34 @@ void handleOverviewPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("首页", "page-overview");
     writePageHead("首页", "查看当前状态，并执行即时浇水和停止操作。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>设备状态</h2><div class='overview-status'><div><span>设备</span><strong><span class='badge ok'>正常</span></strong></div><div><span>当前</span><strong>");
-    Esp32BaseWeb::sendChunk(WateringSession::isActive() ? "浇水中" : "空闲");
-    Esp32BaseWeb::sendChunk("</strong></div><div><span>WiFi</span><strong>");
+    Esp32BaseWeb::beginPanel("设备状态");
+    Esp32BaseWeb::sendNotice(LeakMonitor::hasAlert() ? Esp32BaseWeb::UI_WARN : Esp32BaseWeb::UI_OK,
+                             LeakMonitor::hasAlert() ? "存在当前告警" : "设备正常",
+                             LeakMonitor::hasAlert() ? "请确认现场状态，处理后再清除提示。" : "当前安全状态正常。");
+    Esp32BaseWeb::beginMetricGrid();
+    Esp32BaseWeb::sendMetric("设备", LeakMonitor::hasAlert() ? "告警" : "正常");
+    Esp32BaseWeb::sendMetric("当前", WateringSession::isActive() ? "浇水中" : "空闲");
 #if ESP32BASE_ENABLE_WIFI
-    Esp32BaseWeb::writeHtmlEscaped(Esp32BaseWiFi::ssid());
-    Esp32BaseWeb::sendChunk("</strong></div><div><span>信号</span><strong>");
-    Esp32BaseWeb::writeHtmlEscaped(signalQuality(Esp32BaseWiFi::rssi()));
-    Esp32BaseWeb::sendChunk(" (");
     char rssi[16];
     snprintf(rssi, sizeof(rssi), "%ld dBm", static_cast<long>(Esp32BaseWiFi::rssi()));
-    Esp32BaseWeb::writeHtmlEscaped(rssi);
+    Esp32BaseWeb::sendMetric("WiFi", Esp32BaseWiFi::ssid());
+    Esp32BaseWeb::sendMetric("信号", signalQuality(Esp32BaseWiFi::rssi()), rssi);
 #else
-    Esp32BaseWeb::sendChunk("-");
-    Esp32BaseWeb::sendChunk("</strong></div><div><span>信号</span><strong>-");
+    Esp32BaseWeb::sendMetric("WiFi", "-");
+    Esp32BaseWeb::sendMetric("信号", "-");
 #endif
-    Esp32BaseWeb::sendChunk(")</strong></div></div></div>");
+    Esp32BaseWeb::endMetricGrid();
+    Esp32BaseWeb::endPanel();
     writeWateringStatusPanel("浇水状态");
     writeManualStartPanel();
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>当前告警</h2>");
+    Esp32BaseWeb::beginPanel("当前告警");
     if (LeakMonitor::hasAlert()) {
-        Esp32BaseWeb::sendChunk("<span class='badge danger'>存在异常</span><p class='note'>请确认现场状态，处理后清除提示。</p><form method='post' action='/api/v1/alerts/clear' data-confirm='确认现场已处理并解除异常提示？'><button>解除异常</button></form>");
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER, "存在异常", "请确认现场状态，处理后清除提示。");
+        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/alerts/clear' onsubmit=\"return confirm('确认现场已处理并解除异常提示？')&&once(this)\"><div class='actions'><input class='danger' type='submit' value='解除异常'></div></form>");
     } else {
-        Esp32BaseWeb::sendChunk("<span class='badge ok'>无当前异常</span><p class='note'>存在异常时在这里显示当前原因和状态；设备级诊断请查看基础库日志。</p>");
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_OK, "无当前异常", "存在异常时在这里显示当前原因和状态；设备级诊断请查看基础库日志。");
     }
-    Esp32BaseWeb::sendChunk("</div></section>");
+    Esp32BaseWeb::endPanel();
     sendFooter();
 }
 
@@ -652,15 +626,15 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         const char* status = running ? "进行中" : (hasPlanResult ? planResultStatus(planResult) : (handled ? "已处理" : (skipped ? "已跳过" : (!executable ? "不可执行" : (pastToday ? "未执行" : "未开始")))));
         Esp32BaseWeb::sendChunk("<tr><td>");
         Esp32BaseWeb::writeHtmlEscaped(label);
-        Esp32BaseWeb::sendChunk("<span class='title-date'>");
+        Esp32BaseWeb::sendChunk("<br><small class='muted'>");
         writeYmd(ymd);
-        Esp32BaseWeb::sendChunk("</span></td><td>");
+        Esp32BaseWeb::sendChunk("</small></td><td>");
         writeMinuteOfDay(plan.minuteOfDay);
         Esp32BaseWeb::sendChunk("</td><td>计划 ");
         writeUInt(i + 1);
         Esp32BaseWeb::sendChunk("</td><td>");
         writePlanContent(plan, true);
-        Esp32BaseWeb::sendChunk("</td><td><span class='badge");
+        Esp32BaseWeb::sendChunk("</td><td><span class='tag");
         Esp32BaseWeb::sendChunk(hasPlanResult ? planResultStatusClass(planResult) : statusClass(status));
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::writeHtmlEscaped(status);
@@ -672,17 +646,17 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         }
         Esp32BaseWeb::sendChunk("</td><td>");
         if (plan.enabled && executable && !handled && !running && !pastToday && !skipped) {
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过本次计划？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
+            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' onsubmit=\"return confirm('确认跳过本次计划？')&&once(this)\"><input type='hidden' name='source' value='web_page'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
             writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
             writeUInt(ymd);
-            Esp32BaseWeb::sendChunk("'><button class='warn'>跳过本次</button></form>");
+            Esp32BaseWeb::sendChunk("'><input type='submit' value='跳过本次'></form>");
         } else if (skipped) {
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认取消跳过本次计划？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='action' value='clear_skip'><input type='hidden' name='index' value='");
+            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' onsubmit=\"return confirm('确认取消跳过本次计划？')&&once(this)\"><input type='hidden' name='source' value='web_page'><input type='hidden' name='action' value='clear_skip'><input type='hidden' name='index' value='");
             writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
             writeUInt(ymd);
-            Esp32BaseWeb::sendChunk("'><button class='secondary'>取消跳过</button></form>");
+            Esp32BaseWeb::sendChunk("'><input type='submit' value='取消跳过'></form>");
         } else {
             Esp32BaseWeb::sendChunk("-");
         }
@@ -695,7 +669,8 @@ void handlePlansPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("近期计划", "page-table");
     writePageHead("近期计划", "查看今天、明天、后天的计划执行状态，并按单次跳过未来未执行计划。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='table-wrap'><table class='action-table'><thead><tr><th>日期</th><th>时间</th><th>计划</th><th>内容</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::beginPanel("近期计划");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>日期</th><th>时间</th><th>计划</th><th>内容</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody>");
     bool any = false;
     bool timeSynced = true;
     for (int8_t offset = 0; offset <= 2; ++offset) {
@@ -712,7 +687,8 @@ void handlePlansPage() {
     } else if (!any) {
         Esp32BaseWeb::sendChunk("<tr><td colspan='7'>今天、明天、后天无计划</td></tr>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::endPanel();
     sendFooter();
 }
 
@@ -720,11 +696,12 @@ void handlePlanConfigPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     sendHeader("计划配置", "page-table");
     writePageHead("计划配置", "这里只修改计划内容；执行结果在近期计划和历史记录页查看。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><h2>计划列表</h2><div class='table-wrap'><table><thead><tr><th>状态</th><th>计划</th><th>时间</th><th>循环规则</th><th>内容</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::beginPanel("计划列表");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>状态</th><th>计划</th><th>时间</th><th>循环规则</th><th>内容</th><th>操作</th></tr></thead><tbody>");
     for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
         const PlanStore::Plan& plan = PlanStore::get(i);
-        Esp32BaseWeb::sendChunk("<tr><td><span class='badge");
-        Esp32BaseWeb::sendChunk(plan.enabled ? " ok" : " off");
+        Esp32BaseWeb::sendChunk("<tr><td><span class='tag");
+        Esp32BaseWeb::sendChunk(plan.enabled ? " ok" : "");
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(plan.enabled ? "启用" : "停用");
         Esp32BaseWeb::sendChunk("</span></td><td>第 ");
@@ -737,11 +714,12 @@ void handlePlanConfigPage() {
         writeCycleText(plan);
         Esp32BaseWeb::sendChunk("</td><td>");
         writePlanContent(plan, true);
-        Esp32BaseWeb::sendChunk("</td><td><a class='button secondary' href='/irrigation/plan?edit=");
+        Esp32BaseWeb::sendChunk("</td><td><a class='btnlink info' href='/irrigation/plan?edit=");
         writeUInt(i);
         Esp32BaseWeb::sendChunk("'>修改</a></td></tr>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::endPanel();
     sendFooter();
 }
 
@@ -770,33 +748,33 @@ void handlePlanEditPage() {
     const PlanStore::Plan& plan = PlanStore::get(index);
     sendHeader("编辑计划", "page-form");
     writePageHead("编辑计划", "编辑单个计划的固定配置，保存后用于后续自动浇水。");
-    Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans' data-confirm='确认保存计划？'><input type='hidden' name='index' value='");
+    char planTitle[40];
+    snprintf(planTitle, sizeof(planTitle), "第 %u 路 / 计划 %u", static_cast<unsigned>(plan.roadId), static_cast<unsigned>(plan.slotIndex + 1));
+    Esp32BaseWeb::beginPanel("计划编辑");
+    Esp32BaseWeb::sendInfoRowCompactLink("计划位置", "每一路固定 6 个计划槽，计划只绑定一个水路。", planTitle, "/irrigation/plan-config", "返回");
+    Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/plans' onsubmit=\"return confirm('确认保存计划？')&&once(this)\"><input type='hidden' name='index' value='");
     writeUInt(index);
-    Esp32BaseWeb::sendChunk("'><section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>第 ");
-    writeUInt(plan.roadId);
-    Esp32BaseWeb::sendChunk(" 路 / 计划 ");
-    writeUInt(plan.slotIndex + 1);
-    Esp32BaseWeb::sendChunk("</h2><a class='button secondary' href='/irrigation/plan-config'>返回计划配置</a></div></div><div class='panel span-12'><h2>计划状态</h2><div class='field-grid'><div class='field'><label>启用状态</label><select name='enabled'><option value='0'");
+    Esp32BaseWeb::sendChunk("'><h3>计划状态</h3><div class='fieldgrid'><p class='field short'><label>启用状态</label><select name='enabled'><option value='0'");
     writeSelected(!plan.enabled);
     Esp32BaseWeb::sendChunk(">停用</option><option value='1'");
     writeSelected(plan.enabled);
-    Esp32BaseWeb::sendChunk(">启用</option></select></div><div class='field'><label>执行时间</label><input name='time' type='time' value='");
+    Esp32BaseWeb::sendChunk(">启用</option></select><small>是否参与自动调度。</small></p><p class='field short'><label>执行时间</label><input name='time' type='time' value='");
     writeMinuteOfDay(plan.minuteOfDay);
-    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>水路</label><input disabled value='第 ");
+    Esp32BaseWeb::sendChunk("'><small>按设备本地时间执行。</small></p><p class='field med'><label>水路</label><input disabled value='第 ");
     writeUInt(plan.roadId);
     Esp32BaseWeb::sendChunk(" 路 ");
     writeRoadDisplayName(plan.roadId);
-    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>浇水时长</label><span class='input-suffix'><input name='duration_min' type='number' min='1' max='240' value='");
+    Esp32BaseWeb::sendChunk("'><small>固定计划槽所属水路。</small></p><p class='field short'><label>浇水时长</label><input name='duration_min' type='number' min='1' max='240' value='");
     writeMinutesFromSeconds(plan.durationSec);
-    Esp32BaseWeb::sendChunk("'><em>分钟</em></span></div></div></div>");
+    Esp32BaseWeb::sendChunk("'><small>分钟，范围 1-240。</small></p></div>");
     const uint32_t editCycleStartYmd = cycleStartYmdForEdit(plan);
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>循环规则</h2><div class='field-grid'><div class='field'><label>循环天数</label><input id='cycleDays' name='cycle_days' type='number' min='1' max='30' value='");
+    Esp32BaseWeb::sendChunk("<h3>循环规则</h3><div class='fieldgrid'><p class='field short'><label>循环天数</label><input id='cycleDays' name='cycle_days' type='number' min='1' max='30' value='");
     writeUInt(plan.cycleDays);
-    Esp32BaseWeb::sendChunk("'></div><div class='field'><label>循环开始日期</label><input name='cycle_start_ymd' type='date' value='");
+    Esp32BaseWeb::sendChunk("'><small>范围 1-30 天。</small></p><p class='field med'><label>循环开始日期</label><input name='cycle_start_ymd' type='date' value='");
     writeYmd(editCycleStartYmd);
-    Esp32BaseWeb::sendChunk("'></div></div><h3>循环执行日</h3><div class='check-grid' id='cycleDayList'>");
+    Esp32BaseWeb::sendChunk("'><small>作为第 1 天计算循环。</small></p></div><h3>循环执行日</h3><div class='radioopts' id='cycleDayList'>");
     for (uint8_t i = 0; i < 30; ++i) {
-        Esp32BaseWeb::sendChunk("<label class='check-item' data-day='");
+        Esp32BaseWeb::sendChunk("<label data-day='");
         writeUInt(i + 1);
         Esp32BaseWeb::sendChunk("'><input type='checkbox' name='d");
         writeUInt(i);
@@ -806,89 +784,112 @@ void handlePlanEditPage() {
         writeUInt(i + 1);
         Esp32BaseWeb::sendChunk(" 天</label>");
     }
-    Esp32BaseWeb::sendChunk("</div><p class='note'>计划只使用循环规则：每天浇水是 1 天循环；浇 2 天停 1 天是 3 天循环并执行第 1、2 天；每周固定日期是 7 天循环。</p></div><div class='panel span-12'><div class='actions form-actions'><a class='button secondary' href='/irrigation/plan-config'>返回计划配置</a><button>保存计划</button></div></div></section></form><script>(function(){var n=document.getElementById('cycleDays');var list=document.getElementById('cycleDayList');function sync(){var max=Math.max(1,Math.min(30,parseInt(n.value||'1',10)||1));n.value=max;list.querySelectorAll('[data-day]').forEach(function(item){var show=parseInt(item.dataset.day,10)<=max;item.style.display=show?'flex':'none';if(!show){var c=item.querySelector('input');if(c)c.checked=false;}});}if(n&&list){n.addEventListener('input',sync);sync();}})();</script>");
+    Esp32BaseWeb::sendChunk("</div><p><small class='muted'>计划只使用循环规则：每天浇水是 1 天循环；浇 2 天停 1 天是 3 天循环并执行第 1、2 天；每周固定日期是 7 天循环。</small></p><div class='actions'><input type='button' value='返回计划配置' onclick=\"location.href='/irrigation/plan-config'\"><input type='submit' value='保存计划'></div></form><script>(function(){var n=document.getElementById('cycleDays');var list=document.getElementById('cycleDayList');function sync(){var max=Math.max(1,Math.min(30,parseInt(n.value||'1',10)||1));n.value=max;list.querySelectorAll('[data-day]').forEach(function(item){var show=parseInt(item.dataset.day,10)<=max;item.style.display=show?'flex':'none';if(!show){var c=item.querySelector('input');if(c)c.checked=false;}});}if(n&&list){n.addEventListener('input',sync);sync();}})();</script>");
+    Esp32BaseWeb::endPanel();
     sendFooter();
 }
 
 void writeSettingRow(const char* key, const char* label, const char* value) {
-    Esp32BaseWeb::sendChunk("<div class='setting-row'><span>");
-    Esp32BaseWeb::writeHtmlEscaped(label);
-    Esp32BaseWeb::sendChunk("</span><strong>");
-    Esp32BaseWeb::writeHtmlEscaped(value);
-    Esp32BaseWeb::sendChunk("</strong><button type='button' class='secondary' data-setting-open='setting-");
-    Esp32BaseWeb::writeHtmlEscaped(key);
-    Esp32BaseWeb::sendChunk("'>修改</button></div>");
+    char href[96];
+    snprintf(href, sizeof(href), "/irrigation/settings?edit=%s", key ? key : "");
+    Esp32BaseWeb::sendInfoRowCompactLink(label, "点击修改该业务参数。", value, href, "修改");
 }
 
 void writeSettingReadOnlyRow(const char* label, const char* value, const char* note) {
-    Esp32BaseWeb::sendChunk("<div class='setting-row'><span>");
-    Esp32BaseWeb::writeHtmlEscaped(label);
-    Esp32BaseWeb::sendChunk("</span><strong>");
-    Esp32BaseWeb::writeHtmlEscaped(value);
-    Esp32BaseWeb::sendChunk("</strong><small class='note'>");
-    Esp32BaseWeb::writeHtmlEscaped(note);
-    Esp32BaseWeb::sendChunk("</small></div>");
+    Esp32BaseWeb::sendInfoRowCompact(label, note, value);
 }
 
-void writeSettingsModalScript() {
-    Esp32BaseWeb::sendChunk(
-        "<script>(function(){"
-        "function closeAll(){document.querySelectorAll('.modal').forEach(function(m){m.hidden=true;});}"
-        "document.addEventListener('click',function(e){"
-        "var open=e.target.closest('[data-setting-open]');"
-        "if(open){var m=document.getElementById(open.getAttribute('data-setting-open'));if(m){m.hidden=false;var f=m.querySelector('input,select,button');if(f)f.focus();}return;}"
-        "if(e.target.matches('[data-setting-close]')||e.target.classList.contains('modal'))closeAll();"
-        "});"
-        "document.addEventListener('keydown',function(e){if(e.key==='Escape')closeAll();});"
-        "})();</script>");
+uint8_t parseQuickDurationKey(const char* key) {
+    if (!key || strncmp(key, "quick_r", 7) != 0 || key[7] < '1' || key[7] > '4' || strcmp(key + 8, "_min") != 0) {
+        return 0;
+    }
+    return static_cast<uint8_t>(key[7] - '0');
 }
 
-void writeSettingEditModal(const char* edit, const char* title, const char* currentValue) {
-    if (!edit || edit[0] == '\0') {
-        return;
+bool describeSettingEdit(const char* edit, char* title, size_t titleLen, char* currentValue, size_t valueLen) {
+    if (!edit || edit[0] == '\0' || !title || !currentValue) {
+        return false;
     }
     const SettingsStore::Settings& s = SettingsStore::current();
-    Esp32BaseWeb::sendChunk("<div class='modal' id='setting-");
-    Esp32BaseWeb::writeHtmlEscaped(edit);
-    Esp32BaseWeb::sendChunk("' hidden><div class='modal-card' role='dialog' aria-modal='true'><h2>修改参数</h2><p class='modal-value'>");
-    Esp32BaseWeb::writeHtmlEscaped(title);
-    Esp32BaseWeb::sendChunk("：");
-    Esp32BaseWeb::writeHtmlEscaped(currentValue);
-    Esp32BaseWeb::sendChunk("</p><form method='post' action='/irrigation/settings/config' data-confirm='确认保存设置？'><div class='field-grid'>");
+    uint8_t road = 0;
+    if ((road = parseRoadFromKey(edit, "_enabled")) > 0) {
+        snprintf(title, titleLen, "第 %u 路启用状态", static_cast<unsigned>(road));
+        snprintf(currentValue, valueLen, "%s", SettingsStore::isRoadEnabled(road) ? "已启用" : "未启用");
+        return true;
+    }
+    if ((road = parseRoadFromKey(edit, "_name")) > 0) {
+        snprintf(title, titleLen, "第 %u 路名称", static_cast<unsigned>(road));
+        snprintf(currentValue, valueLen, "%s", s.roads[road - 1].name[0] ? s.roads[road - 1].name : "未命名");
+        return true;
+    }
+    if ((road = parseQuickDurationKey(edit)) > 0) {
+        snprintf(title, titleLen, "第 %u 路默认时长", static_cast<unsigned>(road));
+        snprintf(currentValue, valueLen, "%u 分钟", static_cast<unsigned>(s.quickDurationSec[road - 1] / 60U));
+        return true;
+    }
+    if ((road = parseRoadFromKey(edit, "_pulse_per_liter")) > 0) {
+        snprintf(title, titleLen, "第 %u 路每升脉冲", static_cast<unsigned>(road));
+        snprintf(currentValue, valueLen, "%u pulse/L", static_cast<unsigned>(s.roads[road - 1].pulsePerLiter));
+        return true;
+    }
+    if ((road = parseRoadFromKey(edit, "_calibration_x1000")) > 0) {
+        snprintf(title, titleLen, "第 %u 路校准系数", static_cast<unsigned>(road));
+        snprintf(currentValue, valueLen, "%u", static_cast<unsigned>(s.roads[road - 1].calibrationX1000));
+        return true;
+    }
+    if (strcmp(edit, "flow_no_pulse_timeout_s") == 0) {
+        snprintf(title, titleLen, "无脉冲超时");
+        snprintf(currentValue, valueLen, "%u 秒", static_cast<unsigned>(s.flowNoPulseTimeoutSec));
+        return true;
+    }
+    if (strcmp(edit, "idle_leak_window_s") == 0) {
+        snprintf(title, titleLen, "漏水窗口");
+        snprintf(currentValue, valueLen, "%u 秒", static_cast<unsigned>(s.idleLeakWindowSec));
+        return true;
+    }
+    if (strcmp(edit, "idle_leak_pulse_threshold") == 0) {
+        snprintf(title, titleLen, "漏水脉冲阈值");
+        snprintf(currentValue, valueLen, "%u", static_cast<unsigned>(s.idleLeakPulseThreshold));
+        return true;
+    }
+    return false;
+}
+
+void writeSettingEditFields(const char* edit) {
+    const SettingsStore::Settings& s = SettingsStore::current();
     uint8_t road = parseRoadFromKey(edit, "_enabled");
     if (road > 0) {
         Esp32BaseWeb::sendChunk("<input type='hidden' name='road' value='");
         writeUInt(road);
-        Esp32BaseWeb::sendChunk("'><div class='field'><label>启用状态</label><select name='enabled'><option value='1'");
+        Esp32BaseWeb::sendChunk("'><p class='field med'><label>启用状态</label><select name='enabled'><option value='1'");
         writeSelected(SettingsStore::isRoadEnabled(road));
         Esp32BaseWeb::sendChunk(">已启用</option><option value='0'");
         writeSelected(!SettingsStore::isRoadEnabled(road));
-        Esp32BaseWeb::sendChunk(">未启用</option></select></div>");
+        Esp32BaseWeb::sendChunk(">未启用</option></select><small>停用后该路不会被手动或计划任务启动。</small></p>");
     } else if ((road = parseRoadFromKey(edit, "_name")) > 0) {
-        Esp32BaseWeb::sendChunk("<div class='field'><label>名称</label><input name='r");
+        Esp32BaseWeb::sendChunk("<p class='field med'><label>名称</label><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_name' maxlength='11' value='");
         Esp32BaseWeb::writeHtmlEscaped(s.roads[road - 1].name);
-        Esp32BaseWeb::sendChunk("'></div>");
-    } else if (strncmp(edit, "quick_r", 7) == 0 && edit[7] >= '1' && edit[7] <= '4' && strcmp(edit + 8, "_min") == 0) {
-        road = static_cast<uint8_t>(edit[7] - '0');
-        Esp32BaseWeb::sendChunk("<div class='field'><label>默认时长（分钟）</label><input name='quick_r");
+        Esp32BaseWeb::sendChunk("'><small>用于页面和记录展示。</small></p>");
+    } else if ((road = parseQuickDurationKey(edit)) > 0) {
+        Esp32BaseWeb::sendChunk("<p class='field short'><label>默认时长</label><input name='quick_r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_min' type='number' min='1' max='240' value='");
         writeMinutesFromSeconds(s.quickDurationSec[road - 1]);
-        Esp32BaseWeb::sendChunk("'></div>");
+        Esp32BaseWeb::sendChunk("'><small>分钟，范围 1-240。</small></p>");
     } else if ((road = parseRoadFromKey(edit, "_pulse_per_liter")) > 0) {
-        Esp32BaseWeb::sendChunk("<div class='field'><label>每升脉冲</label><input name='r");
+        Esp32BaseWeb::sendChunk("<p class='field short'><label>每升脉冲</label><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_pulse_per_liter' type='number' min='1' max='10000' value='");
         writeUInt(s.roads[road - 1].pulsePerLiter);
-        Esp32BaseWeb::sendChunk("'></div>");
+        Esp32BaseWeb::sendChunk("'><small>流量计 pulse/L。</small></p>");
     } else if ((road = parseRoadFromKey(edit, "_calibration_x1000")) > 0) {
-        Esp32BaseWeb::sendChunk("<div class='field'><label>校准系数</label><input name='r");
+        Esp32BaseWeb::sendChunk("<p class='field short'><label>校准系数</label><input name='r");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("_calibration_x1000' type='number' min='100' max='10000' value='");
         writeUInt(s.roads[road - 1].calibrationX1000);
-        Esp32BaseWeb::sendChunk("'></div>");
+        Esp32BaseWeb::sendChunk("'><small>1000 表示 1.000 倍。</small></p>");
     } else if (strcmp(edit, "flow_no_pulse_timeout_s") == 0 || strcmp(edit, "idle_leak_window_s") == 0 || strcmp(edit, "idle_leak_pulse_threshold") == 0) {
         uint16_t current = s.flowNoPulseTimeoutSec;
         const char* label = "无脉冲超时";
@@ -901,7 +902,7 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
             label = "漏水脉冲阈值";
             max = 100;
         }
-        Esp32BaseWeb::sendChunk("<div class='field'><label>");
+        Esp32BaseWeb::sendChunk("<p class='field short'><label>");
         Esp32BaseWeb::writeHtmlEscaped(label);
         Esp32BaseWeb::sendChunk("</label><input name='");
         Esp32BaseWeb::writeHtmlEscaped(edit);
@@ -909,44 +910,31 @@ void writeSettingEditModal(const char* edit, const char* title, const char* curr
         writeUInt(max);
         Esp32BaseWeb::sendChunk("' value='");
         writeUInt(current);
-        Esp32BaseWeb::sendChunk("'></div>");
+        Esp32BaseWeb::sendChunk("'><small>范围 1-");
+        writeUInt(max);
+        Esp32BaseWeb::sendChunk("。</small></p>");
     }
-    Esp32BaseWeb::sendChunk("</div><div class='actions'><button type='button' class='secondary' data-setting-close>取消</button><button>保存</button></div></form></div></div>");
 }
 
-void writeSettingEditModals() {
-    const SettingsStore::Settings& s = SettingsStore::current();
-    char value[32];
-    char key[32];
-    char title[32];
-    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        const SettingsStore::RoadConfig& r = s.roads[road - 1];
-        snprintf(key, sizeof(key), "r%u_enabled", static_cast<unsigned>(road));
-        snprintf(title, sizeof(title), "第 %u 路启用状态", static_cast<unsigned>(road));
-        snprintf(value, sizeof(value), "%s", SettingsStore::isRoadEnabled(road) ? "已启用" : "未启用");
-        writeSettingEditModal(key, title, value);
-        snprintf(key, sizeof(key), "r%u_name", static_cast<unsigned>(road));
-        snprintf(title, sizeof(title), "第 %u 路名称", static_cast<unsigned>(road));
-        writeSettingEditModal(key, title, r.name);
-        snprintf(key, sizeof(key), "quick_r%u_min", static_cast<unsigned>(road));
-        snprintf(title, sizeof(title), "第 %u 路默认时长", static_cast<unsigned>(road));
-        snprintf(value, sizeof(value), "%u 分钟", static_cast<unsigned>(s.quickDurationSec[road - 1] / 60U));
-        writeSettingEditModal(key, title, value);
-        snprintf(key, sizeof(key), "r%u_pulse_per_liter", static_cast<unsigned>(road));
-        snprintf(title, sizeof(title), "第 %u 路每升脉冲", static_cast<unsigned>(road));
-        snprintf(value, sizeof(value), "%u pulse/L", static_cast<unsigned>(r.pulsePerLiter));
-        writeSettingEditModal(key, title, value);
-        snprintf(key, sizeof(key), "r%u_calibration_x1000", static_cast<unsigned>(road));
-        snprintf(title, sizeof(title), "第 %u 路校准系数", static_cast<unsigned>(road));
-        snprintf(value, sizeof(value), "%u", static_cast<unsigned>(r.calibrationX1000));
-        writeSettingEditModal(key, title, value);
+void writeSettingEditPanel(const char* edit) {
+    if (!edit || edit[0] == '\0') {
+        return;
     }
-    snprintf(value, sizeof(value), "%u 秒", static_cast<unsigned>(s.flowNoPulseTimeoutSec));
-    writeSettingEditModal("flow_no_pulse_timeout_s", "无脉冲超时", value);
-    snprintf(value, sizeof(value), "%u 秒", static_cast<unsigned>(s.idleLeakWindowSec));
-    writeSettingEditModal("idle_leak_window_s", "漏水窗口", value);
-    snprintf(value, sizeof(value), "%u", static_cast<unsigned>(s.idleLeakPulseThreshold));
-    writeSettingEditModal("idle_leak_pulse_threshold", "漏水脉冲阈值", value);
+    char title[48];
+    char currentValue[64];
+    if (!describeSettingEdit(edit, title, sizeof(title), currentValue, sizeof(currentValue))) {
+        Esp32BaseWeb::beginPanel("修改设置");
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "未知设置项", "请返回设置列表重新选择需要修改的项目。");
+        Esp32BaseWeb::sendInfoRowCompactLink("设置列表", "返回可编辑的灌溉业务参数。", nullptr, "/irrigation/settings", "返回");
+        Esp32BaseWeb::endPanel();
+        return;
+    }
+    Esp32BaseWeb::beginPanel("修改设置");
+    Esp32BaseWeb::sendInfoRowCompact("当前项目", title, currentValue);
+    Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/irrigation/settings/config' onsubmit=\"return confirm('确认保存设置？')&&once(this)\"><div class='fieldgrid'>");
+    writeSettingEditFields(edit);
+    Esp32BaseWeb::sendChunk("</div><div class='actions'><input type='button' value='取消' onclick=\"location.href='/irrigation/settings'\"><input type='submit' value='保存'></div></form>");
+    Esp32BaseWeb::endPanel();
 }
 
 void handleSettingsPage() {
@@ -954,23 +942,24 @@ void handleSettingsPage() {
     const SettingsStore::Settings& s = SettingsStore::current();
     sendHeader("灌溉设置", "page-settings");
     writePageHead("灌溉设置", "查看和修改水路、流量计量、默认浇水和安全检测参数。");
+    char edit[32] = "";
+    (void)Esp32BaseWeb::getParam("edit", edit, sizeof(edit));
     char value[32];
-    Esp32BaseWeb::sendChunk("<section class='grid'>");
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>灌溉设置</h2><div class='setting-list'>");
+    Esp32BaseWeb::beginPanel("灌溉设置");
     snprintf(value, sizeof(value), "%u 路", static_cast<unsigned>(SettingsStore::enabledRoads()));
     writeSettingReadOnlyRow("已启用路数", value, "由各路启用状态计算");
     writeSettingReadOnlyRow("阀门 PWM", "启动 5 秒后 70%", "固定硬件策略");
-    Esp32BaseWeb::sendChunk("</div></div>");
+    Esp32BaseWeb::endPanel();
     char key[32];
     for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         const SettingsStore::RoadConfig& r = s.roads[road - 1];
-        Esp32BaseWeb::sendChunk("<div class='panel span-6'><h2>第 ");
-        writeUInt(road);
-        Esp32BaseWeb::sendChunk(" 路配置</h2><div class='setting-list'>");
+        char panelTitle[24];
+        snprintf(panelTitle, sizeof(panelTitle), "第 %u 路配置", static_cast<unsigned>(road));
+        Esp32BaseWeb::beginPanel(panelTitle);
         snprintf(key, sizeof(key), "r%u_enabled", static_cast<unsigned>(road));
         writeSettingRow(key, "启用状态", SettingsStore::isRoadEnabled(road) ? "已启用" : "未启用");
         snprintf(key, sizeof(key), "r%u_name", static_cast<unsigned>(road));
-        writeSettingRow(key, "名称", r.name);
+        writeSettingRow(key, "名称", r.name[0] ? r.name : "未命名");
         writeSettingReadOnlyRow("阀门引脚", valvePinName(road), "固定硬件配置");
         writeSettingReadOnlyRow("流量引脚", flowPinName(road), "固定硬件配置");
         snprintf(key, sizeof(key), "quick_r%u_min", static_cast<unsigned>(road));
@@ -982,28 +971,46 @@ void handleSettingsPage() {
         snprintf(key, sizeof(key), "r%u_calibration_x1000", static_cast<unsigned>(road));
         snprintf(value, sizeof(value), "%u", static_cast<unsigned>(r.calibrationX1000));
         writeSettingRow(key, "校准系数", value);
-        Esp32BaseWeb::sendChunk("</div></div>");
+        Esp32BaseWeb::endPanel();
     }
-    Esp32BaseWeb::sendChunk("<div class='panel span-12'><h2>水流检测</h2><div class='setting-list'>");
+    Esp32BaseWeb::beginPanel("水流检测");
     snprintf(value, sizeof(value), "%u 秒", static_cast<unsigned>(s.flowNoPulseTimeoutSec));
     writeSettingRow("flow_no_pulse_timeout_s", "无脉冲超时", value);
     snprintf(value, sizeof(value), "%u 秒", static_cast<unsigned>(s.idleLeakWindowSec));
     writeSettingRow("idle_leak_window_s", "漏水窗口", value);
     snprintf(value, sizeof(value), "%u", static_cast<unsigned>(s.idleLeakPulseThreshold));
     writeSettingRow("idle_leak_pulse_threshold", "漏水脉冲阈值", value);
-    Esp32BaseWeb::sendChunk("</div></div>");
-    Esp32BaseWeb::sendChunk("</section>");
-    writeSettingEditModals();
-    writeSettingsModalScript();
+    Esp32BaseWeb::endPanel();
+    writeSettingEditPanel(edit);
     sendFooter();
 }
 
 void handleDataPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
+    uint16_t page = 1;
+    uint16_t perPage = 10;
+    if (Esp32BaseWeb::hasParam("page") && (!readUIntParam("page", &page) || page == 0)) {
+        page = 1;
+    }
+    if (Esp32BaseWeb::hasParam("per") && (!readUIntParam("per", &perPage) || (perPage != 10 && perPage != 20 && perPage != 50))) {
+        perPage = 10;
+    }
+    const uint16_t total = RecordStore::count();
+    const uint16_t totalPages = total == 0 ? 1 : static_cast<uint16_t>((total + perPage - 1) / perPage);
+    if (page > totalPages) {
+        page = totalPages;
+    }
+    const uint16_t offset = static_cast<uint16_t>((page - 1) * perPage);
     sendHeader("历史记录", "page-table");
     writePageHead("历史记录", "查看每一次浇水任务的来源、停止来源、执行结果和实际水量。");
-    Esp32BaseWeb::sendChunk("<section class='grid'><div class='panel span-12'><div class='panel-titlebar'><h2>浇水记录</h2></div><div class='table-wrap'><table><thead><tr><th>ID</th><th>路</th><th>任务</th><th>启动来源</th><th>停止来源</th><th>结果</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
-    auto recordCb = [](const RecordStore::Record& record, void*) {
+    Esp32BaseWeb::beginPanel("浇水记录");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>ID</th><th>路</th><th>任务</th><th>启动来源</th><th>停止来源</th><th>结果</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody>");
+    uint16_t rendered = 0;
+    auto recordCb = [](const RecordStore::Record& record, void* user) {
+        uint16_t* renderedRows = static_cast<uint16_t*>(user);
+        if (renderedRows) {
+            ++(*renderedRows);
+        }
         const uint32_t actualSec = record.endedMs >= record.startedMs && record.startedMs > 0 ? (record.endedMs - record.startedMs) / 1000UL : 0;
         Esp32BaseWeb::sendChunk("<tr><td>");
         writeUInt(record.id);
@@ -1016,7 +1023,11 @@ void handleDataPage() {
         Esp32BaseWeb::sendChunk("</td><td>");
         Esp32BaseWeb::writeHtmlEscaped(RecordStore::triggerSourceName(static_cast<RecordStore::TriggerSource>(record.stopSource)));
         Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::sendChunk("<span class='tag");
+        Esp32BaseWeb::sendChunk(record.result == RecordStore::RESULT_COMPLETED ? " ok" : (record.result == RecordStore::RESULT_NONE ? "" : " warn"));
+        Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::writeHtmlEscaped(RecordStore::resultName(static_cast<RecordStore::Result>(record.result)));
+        Esp32BaseWeb::sendChunk("</span>");
         Esp32BaseWeb::sendChunk("</td><td>");
         writeMinutesFromSeconds(record.targetSec);
         Esp32BaseWeb::sendChunk(" 分钟</td><td>");
@@ -1025,8 +1036,14 @@ void handleDataPage() {
         writeLitersFromMl(record.estimatedMilliliters);
         Esp32BaseWeb::sendChunk("</td></tr>");
     };
-    (void)RecordStore::readLatest(0, 10, recordCb, nullptr);
-    Esp32BaseWeb::sendChunk("</tbody></table></div></div></section>");
+    (void)RecordStore::readLatest(offset, perPage, recordCb, &rendered);
+    if (rendered == 0) {
+        Esp32BaseWeb::sendChunk("<tr><td colspan='9'><span class='muted'>暂无浇水记录</span></td></tr>");
+    }
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::Pagination pagination = {"/irrigation/data", nullptr, page, perPage, total};
+    Esp32BaseWeb::sendPagination(pagination);
+    Esp32BaseWeb::endPanel();
     sendFooter();
 }
 
