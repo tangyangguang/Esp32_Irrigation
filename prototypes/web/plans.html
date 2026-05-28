@@ -8,50 +8,15 @@
 </head>
 <body class="page-table">
   <nav class="topnav">
-    <a href="dashboard.html">总览</a>
-    <a href="manual.html">手动</a>
+    <a href="dashboard.html">首页</a>
     <a class="active" href="plans.html">近期计划</a>
+    <a href="records.html">历史记录</a>
     <a href="plan-config.html">计划配置</a>
-    <a href="records.html">记录</a>
-    <a href="settings.html">设置</a>
+    <a href="settings.html">灌溉设置</a>
   </nav>
   <main class="shell">
-    <header class="page-head">
-      <div>
-        <h1>近期计划</h1>
-        <p class="subtitle">查看昨日、今日、明日、后天的计划执行状态。</p>
-      </div>
-    </header>
-
-    <section class="grid">
-      <div class="panel span-12">
-        <div class="panel-titlebar">
-          <h2>昨日 <span class="title-date">2026-05-08</span></h2>
-        </div>
-        <div class="table-wrap"><table class="action-table"><thead><tr><th>时间</th><th>计划</th><th>内容</th><th>模式</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody><tr><td>07:00</td><td>计划 1</td><td>第 1 路 5 分钟</td><td>同时浇水</td><td><span class="badge ok">已完成</span></td><td>实际 5 分钟，1.240 L</td><td>-</td></tr></tbody></table></div>
-      </div>
-      <div class="panel span-12">
-        <div class="panel-titlebar">
-          <h2>今日 <span class="title-date">2026-05-09</span></h2>
-          <div class="panel-tools"><button class="warn" onclick="return confirm('确认跳过今日剩余未执行计划？已完成和进行中计划不受影响。')">跳过今日剩余</button></div>
-        </div>
-        <div class="table-wrap"><table class="action-table"><thead><tr><th>时间</th><th>计划</th><th>内容</th><th>模式</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody><tr><td>07:00</td><td>计划 1</td><td>第 1 路 5 分钟</td><td>同时浇水</td><td><span class="badge ok">已完成</span></td><td>按计划完成</td><td>-</td></tr><tr><td>20:00</td><td>计划 3</td><td>第 1 路 4 分钟</td><td>同时浇水</td><td><span class="badge">未开始</span></td><td>等待执行</td><td><button class="warn" onclick="return confirm('确认跳过今天 20:00 的计划 3？')">跳过本次</button></td></tr></tbody></table></div>
-      </div>
-      <div class="panel span-12">
-        <div class="panel-titlebar">
-          <h2>明日 <span class="title-date">2026-05-10</span></h2>
-          <div class="panel-tools"><button class="warn" onclick="return confirm('确认跳过明日全部未执行计划？')">跳过明日全部</button></div>
-        </div>
-        <div class="table-wrap"><table class="action-table"><thead><tr><th>时间</th><th>计划</th><th>内容</th><th>模式</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody><tr><td>07:00</td><td>计划 1</td><td>第 1 路 5 分钟</td><td>同时浇水</td><td><span class="badge">未开始</span></td><td>等待执行</td><td><button class="warn" onclick="return confirm('确认跳过明天 07:00 的计划 1？')">跳过本次</button></td></tr><tr><td>18:30</td><td>计划 2</td><td>第 1 路 3 分钟</td><td>顺序浇水</td><td><span class="badge">已跳过</span></td><td>已跳过明日这一次</td><td><button class="secondary" onclick="return confirm('确认取消跳过明天 18:30 的计划 2？')">取消跳过</button></td></tr></tbody></table></div>
-      </div>
-      <div class="panel span-12">
-        <div class="panel-titlebar">
-          <h2>后天 <span class="title-date">2026-05-11</span></h2>
-          <div class="panel-tools"><button class="warn" onclick="return confirm('确认跳过后天全部未执行计划？')">跳过后天全部</button></div>
-        </div>
-        <div class="table-wrap"><table class="action-table"><thead><tr><th>时间</th><th>计划</th><th>内容</th><th>模式</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody><tr><td>07:00</td><td>计划 1</td><td>第 1 路 5 分钟</td><td>同时浇水</td><td><span class="badge">未开始</span></td><td>等待执行</td><td><button class="warn" onclick="return confirm('确认跳过后天 07:00 的计划 1？')">跳过本次</button></td></tr></tbody></table></div>
-      </div>
-    </section>
+    <header class="page-head"><div><h1>近期计划</h1><p class="subtitle">显示今天、明天、后天的计划展开结果和触发结果。</p></div></header>
+    <section class="grid"><div class="panel span-12"><div class="table-wrap"><table class="action-table"><thead><tr><th>日期</th><th>时间</th><th>计划</th><th>内容</th><th>状态</th><th>说明</th><th>操作</th></tr></thead><tbody><tr><td>今天 <span class="title-date">2026-05-28</span></td><td>07:00</td><td>第 1 路 / 计划 1</td><td>第 1 路 5 分钟</td><td><span class="badge ok">已启动</span></td><td>计划触发结果：已启动</td><td>-</td></tr><tr><td>今天 <span class="title-date">2026-05-28</span></td><td>20:00</td><td>第 2 路 / 计划 3</td><td>第 2 路 4 分钟</td><td><span class="badge">未开始</span></td><td>等待执行</td><td><button class="warn" onclick="return confirm('确认跳过本次计划？')">跳过本次</button></td></tr><tr><td>明天 <span class="title-date">2026-05-29</span></td><td>07:00</td><td>第 1 路 / 计划 2</td><td>第 1 路 3 分钟</td><td><span class="badge warn">已跳过</span></td><td>计划触发结果：已手动跳过</td><td><button class="secondary" onclick="return confirm('确认取消跳过？')">取消跳过</button></td></tr><tr><td>后天 <span class="title-date">2026-05-30</span></td><td>07:00</td><td>第 3 路 / 计划 1</td><td>当前无可执行水路</td><td><span class="badge warn">未执行</span></td><td>计划触发结果：水路停用跳过</td><td>-</td></tr></tbody></table></div></div></section>
   </main>
 </body>
 </html>

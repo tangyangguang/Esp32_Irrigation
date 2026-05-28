@@ -55,6 +55,10 @@ assert(!session.includes('SessionState'), 'watering runtime should be road-level
 assert(session.includes('startRoadTask'), 'watering runtime should expose road-level task start');
 assert(records.includes('startSource') && records.includes('stopSource') && records.includes('result'), 'records should store objective start/stop sources and watering result');
 assert(scheduler.includes('TotalPlans') && scheduler.includes('startRoadTask'), 'scheduler should iterate per-road plan slots and start one road task');
+assert(fs.existsSync('src/storage/PlanResultStore.h'), 'plan trigger results should have a dedicated store');
+assert(web.includes('addApi("/api/v1/plans/recent"'), 'recent plans API should expose plan trigger results');
+assert(web.includes('SOURCE_HTTP_API'), 'direct water API calls should be recorded as http api source');
+assert(web.includes('\\",\\"roads\\":['), 'manual start API should return per-road results');
 assert(web.includes('当前告警'), 'home alert panel should use current alert terminology');
 
 const navOrder = [

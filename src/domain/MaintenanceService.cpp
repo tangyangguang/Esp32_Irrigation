@@ -7,6 +7,7 @@
 #include "domain/ValveController.h"
 #include "domain/WateringSession.h"
 #include "storage/EventStore.h"
+#include "storage/PlanResultStore.h"
 #include "storage/PlanStore.h"
 #include "storage/RecordStore.h"
 #include "storage/SettingsStore.h"
@@ -47,22 +48,24 @@ void handle() {
 
     const bool settingsOk = SettingsStore::clear();
     const bool plansOk = PlanStore::clear();
+    const bool planResultsOk = PlanResultStore::clear();
     const bool recordsOk = !g_clearRecords || RecordStore::clear();
     if (!g_clearRecords) {
         (void)EventStore::append(EventStore::TYPE_FACTORY_RESET_EXECUTED,
                                  g_requestSource,
                                  0,
                                  0,
-                                 settingsOk && plansOk && recordsOk ? 1 : 0,
+                                 settingsOk && plansOk && planResultsOk && recordsOk ? 1 : 0,
                                  0,
                                  "factory reset");
     }
     const bool eventsOk = !g_clearRecords || EventStore::clear();
     SafetyManager::clearFactoryResetRequest();
 
-    ESP32BASE_LOG_W("maintenance", "factory reset settings=%s plans=%s records=%s events=%s clearRecords=%s",
+    ESP32BASE_LOG_W("maintenance", "factory reset settings=%s plans=%s planResults=%s records=%s events=%s clearRecords=%s",
                     settingsOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
+                    planResultsOk ? "ok" : "fail",
                     recordsOk ? "ok" : "fail",
                     eventsOk ? "ok" : "fail",
                     g_clearRecords ? "yes" : "no");

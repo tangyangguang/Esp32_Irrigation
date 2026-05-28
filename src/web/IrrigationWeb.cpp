@@ -14,6 +14,7 @@
 #include "domain/ValveController.h"
 #include "domain/WateringSession.h"
 #include "storage/EventStore.h"
+#include "storage/PlanResultStore.h"
 #include "storage/PlanSkipStore.h"
 #include "storage/PlanStore.h"
 #include "storage/RecordStore.h"
@@ -117,6 +118,15 @@ bool readBoolParam(const char* name, bool* value) {
         return true;
     }
     return false;
+}
+
+bool isWebPageSourceParam() {
+    char text[16] = "";
+    return Esp32BaseWeb::getParam("source", text, sizeof(text)) && strcmp(text, "web_page") == 0;
+}
+
+RecordStore::TriggerSource requestTriggerSource() {
+    return isWebPageSourceParam() ? RecordStore::SOURCE_WEB_PAGE : RecordStore::SOURCE_HTTP_API;
 }
 
 bool readMinuteOfDayParam(const char* name, uint16_t* minuteOfDay) {
@@ -443,13 +453,13 @@ void writeWateringStatusPanel(const char* title) {
     Esp32BaseWeb::sendChunk("</div><div class='valve-action'>");
     const bool active = WateringSession::isActive();
     const char* disabled = active ? "" : " disabled";
-    Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止全部浇水？'><input type='hidden' name='road' value='0'><button class='secondary'");
+    Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止全部浇水？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='road' value='0'><button class='secondary'");
     Esp32BaseWeb::sendChunk(disabled);
     Esp32BaseWeb::sendChunk(">停止全部</button></form>");
     for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/water/stop' data-confirm='确认停止第 ");
         writeUInt(road);
-        Esp32BaseWeb::sendChunk(" 路？'><input type='hidden' name='road' value='");
+        Esp32BaseWeb::sendChunk(" 路？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='road' value='");
         writeUInt(road);
         Esp32BaseWeb::sendChunk("'><button class='secondary'");
         Esp32BaseWeb::sendChunk(WateringSession::isRoadActive(road) ? "" : " disabled");
@@ -463,7 +473,7 @@ void writeWateringStatusPanel(const char* title) {
 
 void writeManualStartPanel() {
     const SettingsStore::Settings& settings = SettingsStore::current();
-    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>手动浇水</h2><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><div class='manual-road-grid'>");
+    Esp32BaseWeb::sendChunk("<div class='panel span-12 manual-start'><h2>手动浇水</h2><form method='post' action='/api/v1/water/start' data-confirm='确认开始手动浇水？'><input type='hidden' name='source' value='web_page'><div class='manual-road-grid'>");
     for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         const bool enabled = SettingsStore::isRoadEnabled(road);
         Esp32BaseWeb::sendChunk("<div class='manual-road");
@@ -582,6 +592,40 @@ const char* statusClass(const char* status) {
     return "";
 }
 
+const char* planResultStatus(PlanResultStore::Result result) {
+    switch (result) {
+        case PlanResultStore::RESULT_STARTED: return "已启动";
+        case PlanResultStore::RESULT_SKIPPED_MANUAL: return "已跳过";
+        case PlanResultStore::RESULT_SKIPPED_ROAD_DISABLED:
+        case PlanResultStore::RESULT_SKIPPED_ROAD_BUSY:
+        case PlanResultStore::RESULT_REJECTED:
+        case PlanResultStore::RESULT_CONFIG_INVALID:
+        case PlanResultStore::RESULT_FACTORY_RESET_PENDING:
+        case PlanResultStore::RESULT_LEAK_ALERT:
+            return "未执行";
+        case PlanResultStore::RESULT_NONE:
+        default:
+            return "";
+    }
+}
+
+const char* planResultStatusClass(PlanResultStore::Result result) {
+    switch (result) {
+        case PlanResultStore::RESULT_STARTED: return " ok";
+        case PlanResultStore::RESULT_SKIPPED_MANUAL: return " warn";
+        case PlanResultStore::RESULT_SKIPPED_ROAD_DISABLED:
+        case PlanResultStore::RESULT_SKIPPED_ROAD_BUSY:
+        case PlanResultStore::RESULT_REJECTED:
+        case PlanResultStore::RESULT_CONFIG_INVALID:
+        case PlanResultStore::RESULT_FACTORY_RESET_PENDING:
+        case PlanResultStore::RESULT_LEAK_ALERT:
+            return " warn";
+        case PlanResultStore::RESULT_NONE:
+        default:
+            return "";
+    }
+}
+
 const char* dayLabel(int8_t offset) {
     if (offset == 0) return "今天";
     if (offset == 1) return "明天";
@@ -596,6 +640,8 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         const PlanStore::Plan& plan = PlanStore::get(i);
         const bool skipped = PlanSkipStore::isSkipped(i, ymd);
         const bool handled = plan.lastRunYmd == ymd;
+        PlanResultStore::Result planResult = PlanResultStore::RESULT_NONE;
+        const bool hasPlanResult = PlanResultStore::getResult(i, ymd, &planResult);
         const WateringSession::RoadStatus& roadStatus = WateringSession::roadStatus(plan.roadId);
         const bool running = offset == 0 && plan.minuteOfDay == nowMinute && WateringSession::isRoadActive(plan.roadId) && roadStatus.taskType == RecordStore::TASK_PLAN && roadStatus.planSlot == plan.slotIndex;
         const bool executable = hasEffectivePlanRoad(plan);
@@ -603,7 +649,7 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         if (plan.enabled && !PlanStore::shouldRunOnDate(plan, ymd)) continue;
         any = true;
         const bool pastToday = offset == 0 && plan.minuteOfDay < nowMinute;
-        const char* status = running ? "进行中" : (handled ? "已处理" : (skipped ? "已跳过" : (!executable ? "不可执行" : (pastToday ? "未执行" : "未开始"))));
+        const char* status = running ? "进行中" : (hasPlanResult ? planResultStatus(planResult) : (handled ? "已处理" : (skipped ? "已跳过" : (!executable ? "不可执行" : (pastToday ? "未执行" : "未开始")))));
         Esp32BaseWeb::sendChunk("<tr><td>");
         Esp32BaseWeb::writeHtmlEscaped(label);
         Esp32BaseWeb::sendChunk("<span class='title-date'>");
@@ -615,20 +661,24 @@ bool writeRecentRows(const char* label, int8_t offset, uint32_t ymd) {
         Esp32BaseWeb::sendChunk("</td><td>");
         writePlanContent(plan, true);
         Esp32BaseWeb::sendChunk("</td><td><span class='badge");
-        Esp32BaseWeb::sendChunk(statusClass(status));
+        Esp32BaseWeb::sendChunk(hasPlanResult ? planResultStatusClass(planResult) : statusClass(status));
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::writeHtmlEscaped(status);
         Esp32BaseWeb::sendChunk("</span></td><td>");
-        Esp32BaseWeb::sendChunk(running ? "正在执行" : (handled ? "今日已触发处理" : (skipped ? "已跳过这一次" : (!executable ? "无启用水路" : (pastToday ? "已过执行时间" : "等待执行")))));
+        if (hasPlanResult) {
+            Esp32BaseWeb::writeHtmlEscaped(PlanResultStore::resultLabel(planResult));
+        } else {
+            Esp32BaseWeb::sendChunk(running ? "正在执行" : (handled ? "今日已触发处理" : (skipped ? "已跳过这一次" : (!executable ? "无启用水路" : (pastToday ? "已过执行时间" : "等待执行")))));
+        }
         Esp32BaseWeb::sendChunk("</td><td>");
         if (plan.enabled && executable && !handled && !running && !pastToday && !skipped) {
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过本次计划？'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
+            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认跳过本次计划？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='action' value='skip_once'><input type='hidden' name='index' value='");
             writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
             writeUInt(ymd);
             Esp32BaseWeb::sendChunk("'><button class='warn'>跳过本次</button></form>");
         } else if (skipped) {
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认取消跳过本次计划？'><input type='hidden' name='action' value='clear_skip'><input type='hidden' name='index' value='");
+            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/plans/skip' data-confirm='确认取消跳过本次计划？'><input type='hidden' name='source' value='web_page'><input type='hidden' name='action' value='clear_skip'><input type='hidden' name='index' value='");
             writeUInt(i);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='ymd' value='");
             writeUInt(ymd);
@@ -1072,6 +1122,57 @@ void writePlanJson(uint8_t index, const PlanStore::Plan& p) {
     Esp32BaseWeb::sendChunk("}");
 }
 
+bool writeRecentPlanJson(uint8_t index, const char* label, int8_t offset, uint32_t ymd, bool* first) {
+    const PlanStore::Plan& plan = PlanStore::get(index);
+    const bool skipped = PlanSkipStore::isSkipped(index, ymd);
+    const bool handled = plan.lastRunYmd == ymd;
+    PlanResultStore::Result planResult = PlanResultStore::RESULT_NONE;
+    const bool hasPlanResult = PlanResultStore::getResult(index, ymd, &planResult);
+    const WateringSession::RoadStatus& roadStatus = WateringSession::roadStatus(plan.roadId);
+    const uint16_t nowMinute = currentMinuteOfDay();
+    const bool running = offset == 0 && plan.minuteOfDay == nowMinute && WateringSession::isRoadActive(plan.roadId) && roadStatus.taskType == RecordStore::TASK_PLAN && roadStatus.planSlot == plan.slotIndex;
+    const bool shouldRun = plan.enabled && PlanStore::shouldRunOnDate(plan, ymd);
+    const bool executable = hasEffectivePlanRoad(plan);
+    if (!plan.enabled && !handled && !running) return false;
+    if (plan.enabled && !shouldRun) return false;
+    const bool pastToday = offset == 0 && plan.minuteOfDay < nowMinute;
+    const char* status = running ? "running" : (hasPlanResult ? PlanResultStore::resultName(planResult) : (handled ? "handled" : (skipped ? "skipped" : (!executable ? "not_executable" : (pastToday ? "missed" : "pending")))));
+    if (!*first) Esp32BaseWeb::sendChunk(",");
+    *first = false;
+    Esp32BaseWeb::sendChunk("{\"date_label\":\"");
+    Esp32BaseWeb::writeJsonEscaped(label);
+    Esp32BaseWeb::sendChunk("\",\"ymd\":");
+    writeUInt(ymd);
+    Esp32BaseWeb::sendChunk(",\"index\":");
+    writeUInt(index);
+    Esp32BaseWeb::sendChunk(",\"road_id\":");
+    writeUInt(plan.roadId);
+    Esp32BaseWeb::sendChunk(",\"slot_index\":");
+    writeUInt(plan.slotIndex);
+    Esp32BaseWeb::sendChunk(",\"minute_of_day\":");
+    writeUInt(plan.minuteOfDay);
+    Esp32BaseWeb::sendChunk(",\"enabled\":");
+    writeBool(plan.enabled);
+    Esp32BaseWeb::sendChunk(",\"should_run\":");
+    writeBool(shouldRun);
+    Esp32BaseWeb::sendChunk(",\"skipped\":");
+    writeBool(skipped);
+    Esp32BaseWeb::sendChunk(",\"handled\":");
+    writeBool(handled);
+    Esp32BaseWeb::sendChunk(",\"running\":");
+    writeBool(running);
+    Esp32BaseWeb::sendChunk(",\"executable\":");
+    writeBool(executable);
+    Esp32BaseWeb::sendChunk(",\"status\":\"");
+    Esp32BaseWeb::writeJsonEscaped(status);
+    Esp32BaseWeb::sendChunk("\",\"plan_result\":\"");
+    Esp32BaseWeb::writeJsonEscaped(PlanResultStore::resultName(planResult));
+    Esp32BaseWeb::sendChunk("\",\"plan_result_label\":\"");
+    Esp32BaseWeb::writeJsonEscaped(PlanResultStore::resultLabel(planResult));
+    Esp32BaseWeb::sendChunk("\"}");
+    return true;
+}
+
 void handleStatusApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
@@ -1247,30 +1348,67 @@ void handleWaterStartApi() {
     if (rejectIfFactoryResetPending()) {
         return;
     }
+    const bool pageRequest = isWebPageSourceParam();
+    const RecordStore::TriggerSource source = requestTriggerSource();
     bool anyRequested = false;
     bool anyStarted = false;
+    bool anyInvalid = false;
+    const char* result[IrrigationPins::MaxRoads] = {};
+    uint16_t requestedSec[IrrigationPins::MaxRoads] = {};
     for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
         bool useRoad = SettingsStore::isRoadEnabled(road);
         char key[16];
         snprintf(key, sizeof(key), "r%u_enabled", static_cast<unsigned>(road));
         (void)readBoolParam(key, &useRoad);
         if (!useRoad) {
+            result[road - 1] = "not_requested";
             continue;
         }
         anyRequested = true;
+        if (!SettingsStore::isRoadEnabled(road)) {
+            result[road - 1] = "disabled";
+            continue;
+        }
         snprintf(key, sizeof(key), "r%u_min", static_cast<unsigned>(road));
         uint16_t minutes = 0;
         if (!readUIntParam(key, &minutes) || minutes < 1 || minutes > 240) {
-            Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_duration\"}");
-            return;
+            result[road - 1] = "invalid_duration";
+            anyInvalid = true;
+            continue;
         }
-        anyStarted = WateringSession::startRoadTask(road, minutesToSeconds(minutes), RecordStore::TASK_MANUAL, RecordStore::SOURCE_WEB_PAGE, 0xFF, "web manual") || anyStarted;
+        requestedSec[road - 1] = minutesToSeconds(minutes);
+        if (WateringSession::isRoadActive(road)) {
+            result[road - 1] = "busy";
+            continue;
+        }
+        const bool started = WateringSession::startRoadTask(road, requestedSec[road - 1], RecordStore::TASK_MANUAL, source, 0xFF, pageRequest ? "web page manual" : "http api manual");
+        result[road - 1] = started ? "started" : "rejected";
+        anyStarted = started || anyStarted;
     }
-    if (!anyRequested || !anyStarted) {
-        Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_watering_request\"}");
+    if (pageRequest && anyStarted) {
+        redirectTo("/irrigation");
         return;
     }
-    redirectTo("/irrigation");
+    beginJson(anyStarted ? 200 : 400);
+    Esp32BaseWeb::sendChunk("{\"ok\":");
+    writeBool(anyStarted);
+    Esp32BaseWeb::sendChunk(",\"error\":\"");
+    Esp32BaseWeb::writeJsonEscaped(anyStarted ? "" : (anyInvalid ? "invalid_duration" : (anyRequested ? "no_road_started" : "no_road_requested")));
+    Esp32BaseWeb::sendChunk("\",\"source\":\"");
+    Esp32BaseWeb::writeJsonEscaped(RecordStore::triggerSourceName(source));
+    Esp32BaseWeb::sendChunk("\",\"roads\":[");
+    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
+        if (road > 1) Esp32BaseWeb::sendChunk(",");
+        Esp32BaseWeb::sendChunk("{\"road\":");
+        writeUInt(road);
+        Esp32BaseWeb::sendChunk(",\"result\":\"");
+        Esp32BaseWeb::writeJsonEscaped(result[road - 1] ? result[road - 1] : "not_requested");
+        Esp32BaseWeb::sendChunk("\",\"target_sec\":");
+        writeUInt(requestedSec[road - 1]);
+        Esp32BaseWeb::sendChunk("}");
+    }
+    Esp32BaseWeb::sendChunk("]}");
+    endJson();
 }
 
 void handleWaterStopApi() {
@@ -1281,15 +1419,31 @@ void handleWaterStopApi() {
     }
     uint16_t road = 0;
     (void)readUIntParam("road", &road);
+    const bool pageRequest = isWebPageSourceParam();
+    const RecordStore::TriggerSource source = requestTriggerSource();
+    bool stopped = false;
     if (road == 0) {
-        WateringSession::stopAll(RecordStore::SOURCE_WEB_PAGE, RecordStore::RESULT_USER_STOPPED, "web stop all");
+        stopped = WateringSession::isActive();
+        WateringSession::stopAll(source, RecordStore::RESULT_USER_STOPPED, pageRequest ? "web page stop all" : "http api stop all");
     } else if (road <= IrrigationPins::MaxRoads) {
-        WateringSession::stopRoad(static_cast<uint8_t>(road), RecordStore::SOURCE_WEB_PAGE, "web stop road");
+        stopped = WateringSession::stopRoad(static_cast<uint8_t>(road), source, pageRequest ? "web page stop road" : "http api stop road");
     } else {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_road\"}");
         return;
     }
-    redirectTo("/irrigation");
+    if (pageRequest) {
+        redirectTo("/irrigation");
+        return;
+    }
+    beginJson();
+    Esp32BaseWeb::sendChunk("{\"ok\":true,\"stopped\":");
+    writeBool(stopped);
+    Esp32BaseWeb::sendChunk(",\"road\":");
+    writeUInt(road);
+    Esp32BaseWeb::sendChunk(",\"source\":\"");
+    Esp32BaseWeb::writeJsonEscaped(RecordStore::triggerSourceName(source));
+    Esp32BaseWeb::sendChunk("\"}");
+    endJson();
 }
 
 void handleAlertsClearApi() {
@@ -1372,6 +1526,33 @@ void handlePlansApi() {
     redirectTo("/irrigation/plan-config");
 }
 
+void handleRecentPlansApi() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
+        sendMethodNotAllowed("GET");
+        return;
+    }
+    beginJson();
+    Esp32BaseWeb::sendChunk("{\"plans\":[");
+    bool first = true;
+    bool timeSynced = true;
+    for (int8_t offset = 0; offset <= 2; ++offset) {
+        tm date = {};
+        if (!localDateFromOffset(offset, &date)) {
+            timeSynced = false;
+            break;
+        }
+        const uint32_t ymd = makeYmd(date);
+        for (uint8_t i = 0; i < PlanStore::MaxPlans; ++i) {
+            (void)writeRecentPlanJson(i, dayLabel(offset), offset, ymd, &first);
+        }
+    }
+    Esp32BaseWeb::sendChunk("],\"time_synced\":");
+    writeBool(timeSynced);
+    Esp32BaseWeb::sendChunk("}");
+    endJson();
+}
+
 void handlePlanSkipApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
@@ -1383,6 +1564,7 @@ void handlePlanSkipApi() {
     }
     char action[16] = "";
     uint32_t ymd = 0;
+    const bool pageRequest = isWebPageSourceParam();
     if (!Esp32BaseWeb::getParam("action", action, sizeof(action)) || !readU32Param("ymd", &ymd)) {
         Esp32BaseWeb::sendJson(400, "{\"ok\":false,\"error\":\"invalid_skip_request\"}");
         return;
@@ -1392,9 +1574,13 @@ void handlePlanSkipApi() {
         uint16_t index = 0;
         ok = readUIntParam("index", &index) && index < PlanStore::MaxPlans;
         if (ok) {
-            ok = strcmp(action, "skip_once") == 0
-                ? PlanSkipStore::setSkipped(static_cast<uint8_t>(index), ymd)
-                : PlanSkipStore::clearSkipped(static_cast<uint8_t>(index), ymd);
+            if (strcmp(action, "skip_once") == 0) {
+                ok = PlanSkipStore::setSkipped(static_cast<uint8_t>(index), ymd) &&
+                     PlanResultStore::setResult(static_cast<uint8_t>(index), ymd, PlanResultStore::RESULT_SKIPPED_MANUAL);
+            } else {
+                ok = PlanSkipStore::clearSkipped(static_cast<uint8_t>(index), ymd) &&
+                     PlanResultStore::clearResult(static_cast<uint8_t>(index), ymd);
+            }
         }
     } else if (strcmp(action, "skip_day") == 0) {
         char scope[12] = "all";
@@ -1411,7 +1597,9 @@ void handlePlanSkipApi() {
             const PlanStore::Plan& plan = PlanStore::get(i);
             if (!plan.enabled || !PlanStore::shouldRunOnDate(plan, ymd) || plan.lastRunYmd == ymd) continue;
             if (remaining && plan.minuteOfDay <= nowMinute) continue;
-            ok = PlanSkipStore::setSkipped(i, ymd) && ok;
+            ok = PlanSkipStore::setSkipped(i, ymd) &&
+                 PlanResultStore::setResult(i, ymd, PlanResultStore::RESULT_SKIPPED_MANUAL) &&
+                 ok;
         }
     } else {
         ok = false;
@@ -1421,7 +1609,11 @@ void handlePlanSkipApi() {
         return;
     }
     (void)EventStore::append(EventStore::TYPE_PLAN_CHANGED, EventStore::SOURCE_WEB, 0, 0, static_cast<int32_t>(ymd), 0, action);
-    redirectTo("/irrigation/plans");
+    if (pageRequest) {
+        redirectTo("/irrigation/plans");
+        return;
+    }
+    Esp32BaseWeb::sendJson(200, "{\"ok\":true}");
 }
 
 void writeRecordJson(const RecordStore::Record& record, void* user) {
@@ -1555,9 +1747,10 @@ void begin() {
     const bool recordsOk = Esp32BaseWeb::addApi("/api/v1/records", handleRecordsApi);
     const bool eventsOk = Esp32BaseWeb::addApi("/api/v1/events", handleEventsApi);
     const bool plansOk = Esp32BaseWeb::addApi("/api/v1/plans", handlePlansApi);
+    const bool recentPlansOk = Esp32BaseWeb::addApi("/api/v1/plans/recent", handleRecentPlansApi);
     const bool skipOk = Esp32BaseWeb::addApi("/api/v1/plans/skip", handlePlanSkipApi);
     const bool alertsOk = Esp32BaseWeb::addApi("/api/v1/alerts/clear", handleAlertsClearApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s recent=%s planConfig=%s data=%s settings=%s planEdit=%s settingsConfig=%s status=%s config=%s start=%s stop=%s records=%s events=%s plans=%s skip=%s alerts=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s recent=%s planConfig=%s data=%s settings=%s planEdit=%s settingsConfig=%s status=%s config=%s start=%s stop=%s records=%s events=%s plans=%s recentPlans=%s skip=%s alerts=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     recentOk ? "ok" : "fail",
                     configPageOk ? "ok" : "fail",
@@ -1572,6 +1765,7 @@ void begin() {
                     recordsOk ? "ok" : "fail",
                     eventsOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
+                    recentPlansOk ? "ok" : "fail",
                     skipOk ? "ok" : "fail",
                     alertsOk ? "ok" : "fail",
                     IrrigationVersion::FirmwareName);

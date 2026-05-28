@@ -3,125 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>设置 - 原型</title>
+  <title>灌溉设置 - 原型</title>
   <link rel="stylesheet" href="assets/prototype.css">
 </head>
 <body class="page-form page-settings">
   <nav class="topnav">
-    <a href="dashboard.html">总览</a>
-    <a href="manual.html">手动</a>
+    <a href="dashboard.html">首页</a>
     <a href="plans.html">近期计划</a>
+    <a href="records.html">历史记录</a>
     <a href="plan-config.html">计划配置</a>
-    <a href="records.html">记录</a>
-    <a class="active" href="settings.html">设置</a>
+    <a class="active" href="settings.html">灌溉设置</a>
   </nav>
   <main class="shell">
-    <header class="page-head">
-      <div>
-        <h1>设置</h1>
-        <p class="subtitle">查看当前灌溉参数，每次只修改一个参数。</p>
-      </div>
-    </header>
-
+    <header class="page-head"><div><h1>灌溉设置</h1><p class="subtitle">配置水路启用、名称、固定引脚、流量和安全阈值。</p></div></header>
     <section class="grid">
-      <div class="panel span-6">
-        <h2>灌溉设置</h2>
-        <div class="setting-list">
-          <div class="setting-row">
-            <span>已启用路数</span>
-            <strong>1 路</strong>
-            <em>由各路启用状态计算</em>
-          </div>
-          <div class="setting-row">
-            <span>默认模式</span>
-            <strong>同时浇水</strong>
-            <button class="secondary">修改</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel span-6">
-        <h2>水流检测</h2>
-        <div class="setting-list">
-          <div class="setting-row">
-            <span>无脉冲超时</span>
-            <strong>10 秒</strong>
-            <button class="secondary">修改</button>
-          </div>
-          <div class="setting-row">
-            <span>漏水窗口</span>
-            <strong>10 秒</strong>
-            <button class="secondary">修改</button>
-          </div>
-          <div class="setting-row">
-            <span>漏水脉冲阈值</span>
-            <strong>3</strong>
-            <button class="secondary">修改</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel span-6">
-        <h2>第 1 路配置</h2>
-        <div class="setting-list">
-          <div class="setting-row">
-            <span>启用状态</span>
-            <strong>已启用</strong>
-            <button class="secondary">修改</button>
-          </div>
-          <div class="setting-row">
-            <span>名称</span>
-            <strong>Road 1</strong>
-            <button class="secondary">修改</button>
-          </div>
-          <div class="setting-row">
-            <span>默认时长</span>
-            <strong>5 分钟</strong>
-            <button class="secondary">修改</button>
-          </div>
-          <div class="setting-row">
-            <span>每升脉冲</span>
-            <strong>450 pulse/L</strong>
-            <button class="secondary">修改</button>
-          </div>
-          <div class="setting-row">
-            <span>校准系数</span>
-            <strong>1000</strong>
-            <button class="secondary">修改</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="panel span-6">
-        <h2>第 2 路配置</h2>
-        <div class="setting-list">
-          <div class="setting-row">
-            <span>启用状态</span>
-            <strong>未启用</strong>
-            <button class="secondary">修改</button>
-          </div>
-          <div class="setting-row">
-            <span>名称</span>
-            <strong>Road 2</strong>
-            <button class="secondary" disabled>修改</button>
-          </div>
-          <div class="setting-row">
-            <span>默认时长</span>
-            <strong>5 分钟</strong>
-            <button class="secondary" disabled>修改</button>
-          </div>
-          <div class="setting-row">
-            <span>每升脉冲</span>
-            <strong>450 pulse/L</strong>
-            <button class="secondary" disabled>修改</button>
-          </div>
-          <div class="setting-row">
-            <span>校准系数</span>
-            <strong>1000</strong>
-            <button class="secondary" disabled>修改</button>
-          </div>
-        </div>
-      </div>
+      <div class="panel span-12"><h2>灌溉设置</h2><div class="setting-list"><div class="setting-row"><span>已启用路数</span><strong>2 路</strong><em>由各路启用状态计算</em></div><div class="setting-row"><span>阀门 PWM</span><strong>启动 5 秒后 70%</strong><em>固定硬件策略</em></div></div></div>
+      <div class="panel span-6"><h2>第 1 路配置</h2><div class="setting-list"><div class="setting-row"><span>启用状态</span><strong>已启用</strong><button class="secondary">修改</button></div><div class="setting-row"><span>名称</span><strong>Road 1</strong><button class="secondary">修改</button></div><div class="setting-row"><span>阀门引脚</span><strong>GPIO13</strong><em>固定</em></div><div class="setting-row"><span>流量引脚</span><strong>GPIO34</strong><em>固定</em></div><div class="setting-row"><span>默认时长</span><strong>5 分钟</strong><button class="secondary">修改</button></div></div></div>
+      <div class="panel span-6"><h2>第 2 路配置</h2><div class="setting-list"><div class="setting-row"><span>启用状态</span><strong>已启用</strong><button class="secondary">修改</button></div><div class="setting-row"><span>名称</span><strong>Road 2</strong><button class="secondary">修改</button></div><div class="setting-row"><span>阀门引脚</span><strong>GPIO14</strong><em>固定</em></div><div class="setting-row"><span>流量引脚</span><strong>GPIO35</strong><em>固定</em></div><div class="setting-row"><span>默认时长</span><strong>5 分钟</strong><button class="secondary">修改</button></div></div></div>
+      <div class="panel span-6"><h2>第 3 路配置</h2><div class="setting-list"><div class="setting-row"><span>启用状态</span><strong>未启用</strong><button class="secondary">修改</button></div><div class="setting-row"><span>阀门引脚</span><strong>GPIO16</strong><em>固定</em></div><div class="setting-row"><span>流量引脚</span><strong>GPIO36</strong><em>固定</em></div></div></div>
+      <div class="panel span-6"><h2>第 4 路配置</h2><div class="setting-list"><div class="setting-row"><span>启用状态</span><strong>未启用</strong><button class="secondary">修改</button></div><div class="setting-row"><span>阀门引脚</span><strong>GPIO27</strong><em>固定</em></div><div class="setting-row"><span>流量引脚</span><strong>GPIO39</strong><em>固定</em></div></div></div>
+      <div class="panel span-12"><h2>水流检测</h2><div class="setting-list"><div class="setting-row"><span>无脉冲超时</span><strong>10 秒</strong><button class="secondary">修改</button></div><div class="setting-row"><span>漏水窗口</span><strong>10 秒</strong><button class="secondary">修改</button></div><div class="setting-row"><span>漏水脉冲阈值</span><strong>3</strong><button class="secondary">修改</button></div></div></div>
     </section>
   </main>
 </body>

@@ -10,6 +10,7 @@
 #include "domain/WateringPlanScheduler.h"
 #include "domain/WateringSession.h"
 #include "storage/PlanStore.h"
+#include "storage/PlanResultStore.h"
 #include "storage/PlanSkipStore.h"
 #include "storage/EventStore.h"
 #include "storage/RecordStore.h"
@@ -101,6 +102,7 @@ void begin() {
     SettingsStore::begin();
     PlanStore::begin();
     PlanSkipStore::begin();
+    PlanResultStore::begin();
     RecordStore::begin();
     EventStore::begin();
     FlowMeter::begin();

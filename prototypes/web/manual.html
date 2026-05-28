@@ -3,95 +3,25 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>手动浇水 - 原型</title>
+  <title>手动浇水已合并 - 原型</title>
   <link rel="stylesheet" href="assets/prototype.css">
 </head>
-<body class="page-form">
+<body>
   <nav class="topnav">
-    <a href="dashboard.html">总览</a>
-    <a class="active" href="manual.html">手动</a>
+    <a class="active" href="dashboard.html">首页</a>
     <a href="plans.html">近期计划</a>
+    <a href="records.html">历史记录</a>
     <a href="plan-config.html">计划配置</a>
-    <a href="records.html">记录</a>
-    <a href="settings.html">设置</a>
+    <a href="settings.html">灌溉设置</a>
   </nav>
   <main class="shell">
     <header class="page-head">
       <div>
-        <h1>手动浇水</h1>
-        <p class="subtitle">每路独立选择是否参与，本页统一开始；停止操作必须确认。</p>
+        <h1>手动浇水已合并到首页</h1>
+        <p class="subtitle">真实固件不再注册单独的手动页面；请在首页查看 4 路状态并执行手动启动或停止。</p>
       </div>
+      <a class="button" href="dashboard.html">打开首页原型</a>
     </header>
-
-    <section class="grid">
-      <div class="panel span-4">
-        <h2>浇水状态</h2>
-        <div class="overview-status status-compact">
-          <div><span>当前浇水</span><strong>未运行</strong></div>
-        </div>
-        <div class="valve-matrix" role="table" aria-label="浇水状态">
-          <div class="matrix-head" role="columnheader">项目</div>
-          <div class="matrix-head" role="columnheader">第 1 路</div>
-          <div class="matrix-head" role="columnheader">第 2 路</div>
-          <div class="matrix-label" role="rowheader">状态</div>
-          <strong>关闭</strong>
-          <strong>未启用</strong>
-          <div class="matrix-label" role="rowheader">目标</div>
-          <strong>0 分钟</strong>
-          <strong>-</strong>
-          <div class="matrix-label" role="rowheader">剩余</div>
-          <strong>0 分钟</strong>
-          <strong>-</strong>
-          <div class="matrix-label" role="rowheader">水量</div>
-          <strong>0.000 L</strong>
-          <strong>-</strong>
-          <div class="matrix-label" role="rowheader">流速</div>
-          <strong>0.00 L/min</strong>
-          <strong>-</strong>
-        </div>
-        <div class="valve-action valve-action-row">
-          <button class="danger" disabled>停止全部</button>
-          <button class="danger" disabled>停止第 1 路</button>
-          <button class="danger" disabled>停止第 2 路</button>
-        </div>
-      </div>
-
-      <div class="panel span-8 manual-start">
-        <h2>启动浇水</h2>
-        <div class="notice inline-notice">
-          <strong>上次操作</strong>
-          <p class="note">已停止第 1 路，当前设备空闲。</p>
-        </div>
-        <form>
-          <div class="manual-mode">
-            <div class="field">
-              <label>执行模式</label>
-              <select><option>同时浇水</option><option>顺序浇水</option></select>
-            </div>
-            <p class="note">同时模式会一起开阀，顺序模式按路号依次执行。</p>
-          </div>
-          <div class="manual-road-grid">
-            <div class="manual-road">
-              <div class="manual-road-head"><strong>第 1 路</strong><span class="badge ok">已启用</span></div>
-              <div class="manual-fields">
-                <label><span>参与</span><select><option>浇水</option><option>不浇水</option></select></label>
-                <label><span>时长</span><span class="input-suffix"><input value="5" inputmode="decimal" aria-label="第 1 路时长"><em>分钟</em></span></label>
-              </div>
-            </div>
-            <div class="manual-road off">
-              <div class="manual-road-head"><strong>第 2 路</strong><span class="badge off">未启用</span></div>
-              <div class="manual-fields">
-                <label><span>参与</span><select disabled><option>未启用</option></select></label>
-                <label><span>时长</span><span class="input-suffix"><input value="5" disabled aria-label="第 2 路时长"><em>分钟</em></span></label>
-              </div>
-            </div>
-          </div>
-          <div class="actions">
-            <button onclick="return confirm('确认开始手动浇水？')">开始浇水</button>
-          </div>
-        </form>
-      </div>
-    </section>
   </main>
 </body>
 </html>

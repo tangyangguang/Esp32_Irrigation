@@ -4,8 +4,11 @@
 #include <Esp32Base.h>
 #include <time.h>
 
+#include "domain/LeakMonitor.h"
+#include "domain/MaintenanceService.h"
 #include "domain/WateringSession.h"
 #include "storage/EventStore.h"
+#include "storage/PlanResultStore.h"
 #include "storage/PlanSkipStore.h"
 #include "storage/PlanStore.h"
 #include "storage/RecordStore.h"
@@ -59,21 +62,37 @@ void appendPlanResult(uint8_t index, const PlanStore::Plan& plan, const char* re
 }
 
 void triggerPlan(uint8_t index, const PlanStore::Plan& plan, uint32_t today) {
+    if (MaintenanceService::factoryResetPending()) {
+        (void)PlanResultStore::setResult(index, today, PlanResultStore::RESULT_FACTORY_RESET_PENDING);
+        appendPlanResult(index, plan, "plan skipped factory reset pending");
+        markPlanHandled(index, today);
+        return;
+    }
+    if (LeakMonitor::hasAlert()) {
+        (void)PlanResultStore::setResult(index, today, PlanResultStore::RESULT_LEAK_ALERT);
+        appendPlanResult(index, plan, "plan skipped leak alert");
+        markPlanHandled(index, today);
+        return;
+    }
     if (!SettingsStore::isRoadEnabled(plan.roadId)) {
+        (void)PlanResultStore::setResult(index, today, PlanResultStore::RESULT_SKIPPED_ROAD_DISABLED);
         appendPlanResult(index, plan, "plan skipped road disabled");
         markPlanHandled(index, today);
         return;
     }
     if (WateringSession::isRoadActive(plan.roadId)) {
+        (void)PlanResultStore::setResult(index, today, PlanResultStore::RESULT_SKIPPED_ROAD_BUSY);
         appendPlanResult(index, plan, "plan skipped road busy");
         markPlanHandled(index, today);
         return;
     }
     if (!WateringSession::startRoadTask(plan.roadId, plan.durationSec, RecordStore::TASK_PLAN, RecordStore::SOURCE_PLAN_SCHEDULER, plan.slotIndex, "plan")) {
+        (void)PlanResultStore::setResult(index, today, PlanResultStore::RESULT_REJECTED);
         appendPlanResult(index, plan, "plan rejected");
         markPlanHandled(index, today);
         return;
     }
+    (void)PlanResultStore::setResult(index, today, PlanResultStore::RESULT_STARTED);
     appendPlanResult(index, plan, "plan started", 1);
     markPlanHandled(index, today);
 }

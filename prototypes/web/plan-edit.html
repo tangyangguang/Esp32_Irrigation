@@ -8,12 +8,11 @@
 </head>
 <body class="page-form">
   <nav class="topnav">
-    <a href="dashboard.html">总览</a>
-    <a href="manual.html">手动</a>
+    <a href="dashboard.html">首页</a>
     <a href="plans.html">近期计划</a>
+    <a href="records.html">历史记录</a>
     <a class="active" href="plan-config.html">计划配置</a>
-    <a href="records.html">记录</a>
-    <a href="settings.html">设置</a>
+    <a href="settings.html">灌溉设置</a>
   </nav>
   <main class="shell">
     <header class="page-head">
@@ -26,23 +25,12 @@
 
     <section class="grid">
       <div class="panel span-8">
-        <h2>计划 1</h2>
+        <h2>第 1 路 / 计划 1</h2>
         <div class="field-grid">
           <div class="field"><label>启用状态</label><select><option>停用</option><option>启用</option></select></div>
           <div class="field"><label>执行时间</label><input type="time" value="07:00"></div>
-          <div class="field"><label>执行模式</label><select><option>同时浇水</option><option>顺序浇水</option></select></div>
-        </div>
-        <h3>按路配置</h3>
-        <div class="valve-matrix config-matrix" role="table" aria-label="按路配置">
-          <div class="matrix-head" role="columnheader">项目</div>
-          <div class="matrix-head" role="columnheader">第 1 路</div>
-          <div class="matrix-head" role="columnheader">第 2 路</div>
-          <div class="matrix-label" role="rowheader">参与</div>
-          <select><option>浇水</option><option>不浇水</option></select>
-          <select><option>不浇水</option><option>浇水</option></select>
-          <div class="matrix-label" role="rowheader">时长</div>
-          <input value="5" inputmode="decimal" aria-label="第 1 路时长">
-          <input value="0" inputmode="decimal" aria-label="第 2 路时长">
+          <div class="field"><label>水路</label><input value="第 1 路" disabled></div>
+          <div class="field"><label>目标时长</label><input value="5" inputmode="decimal"></div>
         </div>
         <h3>循环规则</h3>
         <div class="field-grid">

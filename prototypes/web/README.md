@@ -6,32 +6,32 @@
 
 ## 当前版本
 
-本版按实际使用频率组织导航：
+本版按当前固件页面组织导航：
 
-`总览 / 手动 / 近期计划 / 计划配置 / 记录 / 设置`
+`首页 / 近期计划 / 历史记录 / 计划配置 / 灌溉设置`
 
 ## 页面清单
 
 - `index.html`：原型入口和评审状态。
-- `dashboard.html`：总览，只展示设备状态、浇水状态、停止操作和异常提示。
-- `manual.html`：查看浇水状态、按路选择时长并开始手动浇水。
-- `plans.html`：近期计划，展示昨日、今日、明日、后天的计划执行状态，并处理跳过某次或某天计划。
+- `dashboard.html`：首页，展示设备状态、4 路浇水状态、手动启动、停止操作和异常提示。
+- `manual.html`：历史占位页，说明手动浇水已合并到首页。
+- `plans.html`：近期计划，展示今天、明天、后天的计划执行状态和计划触发结果。
 - `plan-config.html`：计划配置，展示计划列表和修改入口。
-- `plan-edit.html`：编辑执行时间、循环规则、执行模式和每路时长。
-- `records.html`：浇水记录和系统事件。
-- `settings.html`：灌溉业务参数，每次只修改一个参数。
+- `plan-edit.html`：编辑单一路计划的执行时间、循环规则和目标时长。
+- `records.html`：浇水任务历史记录。
+- `settings.html`：水路启用、名称、固定引脚、流量和安全阈值。
 
 ## 原型到真实路由
 
 | 原型文件 | 当前真实路由 | 说明 |
 |---|---|---|
-| `dashboard.html` | `/irrigation` | 业务总览。 |
-| `manual.html` | `/irrigation/manual` | 手动浇水。 |
+| `dashboard.html` | `/irrigation` | 首页和手动浇水。 |
+| `manual.html` | 无真实路由 | 手动浇水已合并到首页。 |
 | `plans.html` | `/irrigation/plans` | 近期计划和跳过操作。 |
 | `plan-config.html` | `/irrigation/plan-config` | 计划列表。 |
 | `plan-edit.html` | `/irrigation/plan?edit=<index>` | 单条计划编辑。 |
-| `records.html` | `/irrigation/data` | 记录、事件。 |
-| `settings.html` | `/irrigation/settings` | 灌溉业务设置和恢复出厂入口。 |
+| `records.html` | `/irrigation/data` | 历史浇水记录。 |
+| `settings.html` | `/irrigation/settings` | 灌溉业务设置。 |
 | `index.html` | 无直接运行路由 | 原型入口。 |
 
 ## 设计原则
