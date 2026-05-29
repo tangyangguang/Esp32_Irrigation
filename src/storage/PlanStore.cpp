@@ -35,6 +35,7 @@ uint16_t clampDuration(int32_t value) {
 
 PlanStore::Plan defaultPlan(uint8_t road, uint8_t slot) {
     PlanStore::Plan plan = {};
+    plan.exists = false;
     plan.roadId = road;
     plan.slotIndex = slot;
     plan.enabled = false;
@@ -102,6 +103,7 @@ void begin() {
             uint8_t i = 0;
             (void)flatIndex(road, slot, &i);
             Plan plan = defaultPlan(road, slot);
+            plan.exists = getInt(i, "exists", 0) == 1;
             plan.enabled = getInt(i, "en", 0) == 1;
             int32_t minute = getInt(i, "min", plan.minuteOfDay);
             plan.minuteOfDay = minute >= 0 && minute < 1440 ? static_cast<uint16_t>(minute) : 7 * 60;
@@ -151,11 +153,45 @@ bool clear() {
     return true;
 }
 
+bool create(uint8_t road, uint8_t* index) {
+    if (road < 1 || road > IrrigationPins::MaxRoads) {
+        return false;
+    }
+    for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
+        uint8_t i = 0;
+        (void)flatIndex(road, slot, &i);
+        if (g_plans[i].exists) {
+            continue;
+        }
+        Plan plan = defaultPlan(road, slot);
+        plan.exists = true;
+        if (!set(i, plan)) {
+            return false;
+        }
+        if (index) {
+            *index = i;
+        }
+        return true;
+    }
+    return false;
+}
+
+bool remove(uint8_t index) {
+    if (index >= TotalPlans) {
+        return false;
+    }
+    const uint8_t road = g_plans[index].roadId;
+    const uint8_t slot = g_plans[index].slotIndex;
+    Plan plan = defaultPlan(road, slot);
+    return set(index, plan);
+}
+
 bool set(uint8_t index, const Plan& plan) {
     if (index >= TotalPlans || !validate(plan)) {
         return false;
     }
-    const bool ok = setInt(index, "en", plan.enabled ? 1 : 0) &&
+    const bool ok = setInt(index, "exists", plan.exists ? 1 : 0) &&
+                    setInt(index, "en", plan.enabled ? 1 : 0) &&
                     setInt(index, "min", plan.minuteOfDay) &&
                     setInt(index, "dur", plan.durationSec) &&
                     setInt(index, "cycle_d", plan.cycleDays) &&
@@ -174,7 +210,7 @@ bool set(uint8_t road, uint8_t slot, const Plan& plan) {
 }
 
 bool setLastRunYmd(uint8_t index, uint32_t ymd) {
-    if (index >= TotalPlans) {
+    if (index >= TotalPlans || !g_plans[index].exists) {
         return false;
     }
     if (!setInt(index, "last", static_cast<int32_t>(ymd))) {
@@ -189,8 +225,36 @@ bool setLastRunYmd(uint8_t road, uint8_t slot, uint32_t ymd) {
     return flatIndex(road, slot, &index) && setLastRunYmd(index, ymd);
 }
 
+uint8_t countForRoad(uint8_t road) {
+    if (road < 1 || road > IrrigationPins::MaxRoads) {
+        return 0;
+    }
+    uint8_t total = 0;
+    for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
+        uint8_t index = 0;
+        (void)flatIndex(road, slot, &index);
+        if (g_plans[index].exists) {
+            ++total;
+        }
+    }
+    return total;
+}
+
+uint8_t count() {
+    uint8_t total = 0;
+    for (uint8_t i = 0; i < TotalPlans; ++i) {
+        if (g_plans[i].exists) {
+            ++total;
+        }
+    }
+    return total;
+}
+
 bool validate(const Plan& plan) {
     time_t ignored = 0;
+    if (!plan.exists && plan.enabled) {
+        return false;
+    }
     if (plan.roadId < 1 || plan.roadId > IrrigationPins::MaxRoads || plan.slotIndex >= MaxPlansPerRoad ||
         plan.minuteOfDay >= 1440 || plan.cycleDays < 1 || plan.cycleDays > 30 || plan.cycleMask == 0 ||
         (plan.cycleMask & ~validCycleMask(plan.cycleDays)) != 0 || !ymdToTime(plan.cycleStartYmd, &ignored)) {
@@ -205,7 +269,7 @@ bool validate(const Plan& plan) {
 bool shouldRunOnDate(const Plan& plan, uint32_t ymd) {
     time_t start = 0;
     time_t target = 0;
-    if (!plan.enabled || !ymdToTime(plan.cycleStartYmd, &start) || !ymdToTime(ymd, &target) || target < start) {
+    if (!plan.exists || !plan.enabled || !ymdToTime(plan.cycleStartYmd, &start) || !ymdToTime(ymd, &target) || target < start) {
         return false;
     }
     const uint32_t days = static_cast<uint32_t>((target - start) / 86400L);

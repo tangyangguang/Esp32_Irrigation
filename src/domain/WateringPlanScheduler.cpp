@@ -36,7 +36,7 @@ bool readLocalTime(tm* out) {
 }
 
 bool shouldTrigger(uint8_t index, const PlanStore::Plan& plan, uint16_t minuteOfDay, uint32_t today) {
-    if (!plan.enabled || plan.minuteOfDay != minuteOfDay || plan.lastRunYmd == today || PlanSkipStore::isSkipped(index, today)) {
+    if (!plan.exists || !plan.enabled || plan.minuteOfDay != minuteOfDay || plan.lastRunYmd == today || PlanSkipStore::isSkipped(index, today)) {
         return false;
     }
     if (g_lastTriggeredYmd[index] == today && g_lastTriggeredMinute[index] == minuteOfDay) {
