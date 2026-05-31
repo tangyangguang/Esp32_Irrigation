@@ -8,7 +8,9 @@
 namespace {
 
 static constexpr const char* kNamespace = "irr_sys";
-static constexpr const char* kGroup = "system";
+static constexpr const char* kGroupManual = "manual";
+static constexpr const char* kGroupSchedule = "schedule";
+static constexpr const char* kGroupSafety = "safety";
 static constexpr const char* kKeyMaxDuration = "max_dur";
 static constexpr const char* kKeyGrace = "grace";
 static constexpr const char* kKeyManualDefault = "manual_def";
@@ -125,19 +127,21 @@ void registerAppConfig() {
     Esp32BaseAppConfig::setTitle("系统配置");
     Esp32BaseAppConfig::setPageValidateCallback(validateAppConfigPage);
     Esp32BaseAppConfig::setSaveCallback(onAppConfigSave);
-    (void)Esp32BaseAppConfig::addGroup({kGroup, "系统参数"});
+    (void)Esp32BaseAppConfig::addGroup({kGroupManual, "手动浇水"});
+    (void)Esp32BaseAppConfig::addGroup({kGroupSchedule, "计划调度"});
+    (void)Esp32BaseAppConfig::addGroup({kGroupSafety, "安全保护"});
     const Irrigation::SystemConfig def = defaults();
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyMaxDuration, "最大出水秒", static_cast<int32_t>(def.maxWateringDurationSec), 60, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyGrace, "调度宽限秒", def.scheduleGraceSec, 1, 60, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyManualDefault, "手动默认秒", static_cast<int32_t>(def.manualDefaultDurationSec), 1, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[0], "预设 1 秒", static_cast<int32_t>(def.durationPresets[0]), 1, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[1], "预设 2 秒", static_cast<int32_t>(def.durationPresets[1]), 1, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[2], "预设 3 秒", static_cast<int32_t>(def.durationPresets[2]), 1, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[3], "预设 4 秒", static_cast<int32_t>(def.durationPresets[3]), 1, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[4], "预设 5 秒", static_cast<int32_t>(def.durationPresets[4]), 1, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[5], "预设 6 秒", static_cast<int32_t>(def.durationPresets[5]), 1, 86400, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyLeakWindow, "漏水窗口秒", def.idleLeakWindowSec, 1, 300, 1, "s", nullptr, false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyLeakPulse, "漏水脉冲", def.idleLeakPulseThreshold, 1, 1000, 1, nullptr, nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyMaxDuration, "单次最长秒", static_cast<int32_t>(def.maxWateringDurationSec), 60, 86400, 1, "s", "限制手动和计划单次连续出水时长。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSchedule, kNamespace, kKeyGrace, "调度宽限秒", def.scheduleGraceSec, 1, 60, 1, "s", "计划到点后允许补跑的秒数。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kKeyManualDefault, "手动默认秒", static_cast<int32_t>(def.manualDefaultDurationSec), 1, 86400, 1, "s", "首页手动浇水默认填入的时长。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetKeys[0], "预设 1 秒", static_cast<int32_t>(def.durationPresets[0]), 1, 86400, 1, "s", "手动浇水快捷时长，可在首页选择。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetKeys[1], "预设 2 秒", static_cast<int32_t>(def.durationPresets[1]), 1, 86400, 1, "s", "手动浇水快捷时长，可在首页选择。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetKeys[2], "预设 3 秒", static_cast<int32_t>(def.durationPresets[2]), 1, 86400, 1, "s", "手动浇水快捷时长，可在首页选择。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetKeys[3], "预设 4 秒", static_cast<int32_t>(def.durationPresets[3]), 1, 86400, 1, "s", "手动浇水快捷时长，可在首页选择。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetKeys[4], "预设 5 秒", static_cast<int32_t>(def.durationPresets[4]), 1, 86400, 1, "s", "手动浇水快捷时长，可在首页选择。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetKeys[5], "预设 6 秒", static_cast<int32_t>(def.durationPresets[5]), 1, 86400, 1, "s", "手动浇水快捷时长，可在首页选择。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakWindow, "漏水窗口秒", def.idleLeakWindowSec, 1, 300, 1, "s", "待机漏水检测的统计窗口。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakPulse, "漏水脉冲", def.idleLeakPulseThreshold, 1, 1000, 1, nullptr, "窗口内达到该脉冲数触发漏水告警。", false, nullptr});
 #endif
 }
 

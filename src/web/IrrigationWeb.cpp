@@ -107,6 +107,11 @@ bool readBool(const char* name, bool* value) {
     return false;
 }
 
+bool readCheckbox(const char* name) {
+    bool value = false;
+    return Esp32BaseWeb::hasParam(name) && readBool(name, &value) && value;
+}
+
 bool readZoneId(uint8_t* zoneId) {
     return readU8("zoneId", zoneId) && Irrigation::validZoneId(*zoneId);
 }
@@ -563,14 +568,13 @@ void handleOverviewPage() {
         }
     }
 
-    char enabledText[16];
     char runningText[16];
     char startableText[16];
+    char errorText[16];
     char safetyText[24];
-    char limitText[32];
-    snprintf(enabledText, sizeof(enabledText), "%u / %u", static_cast<unsigned>(enabledCount), static_cast<unsigned>(Irrigation::MaxZones));
-    snprintf(runningText, sizeof(runningText), "%u", static_cast<unsigned>(runningCount));
+    snprintf(runningText, sizeof(runningText), "%u / %u", static_cast<unsigned>(runningCount), static_cast<unsigned>(enabledCount));
     snprintf(startableText, sizeof(startableText), "%u", static_cast<unsigned>(startableCount));
+    snprintf(errorText, sizeof(errorText), "%u", static_cast<unsigned>(errorCount));
     if (ZoneManager::leakAlertActive()) {
         strlcpy(safetyText, "漏水告警", sizeof(safetyText));
     } else if (errorCount > 0) {
@@ -578,15 +582,13 @@ void handleOverviewPage() {
     } else {
         strlcpy(safetyText, "正常", sizeof(safetyText));
     }
-    formatDurationHuman(SystemConfigStore::current().maxWateringDurationSec, limitText, sizeof(limitText));
 
     Esp32BaseWeb::beginPanel("关键指标");
     Esp32BaseWeb::beginMetricGrid();
     Esp32BaseWeb::sendMetric("系统安全", safetyText, ZoneManager::leakAlertActive() ? "需要现场确认" : "无全局漏水告警");
-    Esp32BaseWeb::sendMetric("启用水路", enabledText, "首页仅展示启用水路");
-    Esp32BaseWeb::sendMetric("正在浇水", runningText, runningCount > 0 ? "可在水路状态中停止" : "当前无执行任务");
+    Esp32BaseWeb::sendMetric("正在浇水", runningText, "当前执行数 / 有效水路数");
+    Esp32BaseWeb::sendMetric("异常水路", errorText, errorCount > 0 ? "可在水路状态中清除" : "无锁定异常");
     Esp32BaseWeb::sendMetric("可手动启动", startableText, "显示在手动浇水启动区");
-    Esp32BaseWeb::sendMetric("单次上限", limitText, "手动和计划共同受限");
     Esp32BaseWeb::endMetricGrid();
     Esp32BaseWeb::endPanel();
 
@@ -645,7 +647,7 @@ void handleOverviewPage() {
     Esp32BaseWeb::endPanel();
 
     Esp32BaseWeb::beginPanel("手动浇水启动");
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>水路</th><th>建议时长</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>水路</th><th>启动设置</th></tr></thead><tbody>");
     bool wroteManual = false;
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         const Irrigation::ZoneStatus status = ZoneManager::status(zoneId);
@@ -656,8 +658,6 @@ void handleOverviewPage() {
         wroteManual = true;
         Esp32BaseWeb::sendChunk("<tr><td>");
         Esp32BaseWeb::writeHtmlEscaped(config.name);
-        Esp32BaseWeb::sendChunk("</td><td>");
-        writeDurationHuman(SystemConfigStore::current().manualDefaultDurationSec);
         Esp32BaseWeb::sendChunk("</td><td><div class='fsactions'>");
         Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/zone/start' onsubmit=\"return confirm('确认手动启动该水路？')&&once(this)\">");
         writeOnePostHidden("source", "web_page");
@@ -666,10 +666,21 @@ void handleOverviewPage() {
         writeUInt(SystemConfigStore::current().maxWateringDurationSec / 60UL);
         Esp32BaseWeb::sendChunk("' value='");
         writeUInt(durationMinutesForUi(SystemConfigStore::current().manualDefaultDurationSec));
-        Esp32BaseWeb::sendChunk("'><input class='fsaction' type='submit' value='启动'></form></div></td></tr>");
+        Esp32BaseWeb::sendChunk("'><select onchange='this.form.durationMin.value=this.value'>");
+        for (uint8_t i = 0; i < 6; ++i) {
+            const uint32_t presetMin = durationMinutesForUi(SystemConfigStore::current().durationPresets[i]);
+            Esp32BaseWeb::sendChunk("<option value='");
+            writeUInt(presetMin);
+            Esp32BaseWeb::sendChunk("'>");
+            writeUInt(presetMin);
+            Esp32BaseWeb::sendChunk(" 分钟</option>");
+        }
+        Esp32BaseWeb::sendChunk("</select><input class='fsaction' type='submit' value='启动'></form></div><small>可输入 1 到 ");
+        writeUInt(SystemConfigStore::current().maxWateringDurationSec / 60UL);
+        Esp32BaseWeb::sendChunk(" 分钟，或选择快捷时长。</small></td></tr>");
     }
     if (!wroteManual) {
-        Esp32BaseWeb::sendChunk("<tr><td colspan='3'>当前没有可手动启动的水路</td></tr>");
+        Esp32BaseWeb::sendChunk("<tr><td colspan='2'>当前没有可手动启动的水路</td></tr>");
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div>");
     Esp32BaseWeb::endPanel();
@@ -706,8 +717,14 @@ void handlePlansPage() {
     if (!Esp32BaseWeb::checkAuth()) return;
     pageHeader("计划");
     Esp32BaseWeb::sendPageTitle("计划", "每个 Zone 最多 6 条计划。");
+    bool wroteZone = false;
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
-        Esp32BaseWeb::beginPanel(ZoneManager::config(zoneId).name);
+        const Irrigation::ZoneConfig& zone = ZoneManager::config(zoneId);
+        if (!zone.enabled) {
+            continue;
+        }
+        wroteZone = true;
+        Esp32BaseWeb::beginPanel(zone.name);
         Esp32BaseWeb::sendChunk("<div class='actions'>");
         if (PlanStore::countForZone(zoneId) < Irrigation::MaxPlansPerZone) {
             Esp32BaseWeb::sendChunk("<a class='btnlink compact' href='/irrigation/plan?zoneId=");
@@ -729,6 +746,11 @@ void handlePlansPage() {
             Esp32BaseWeb::sendChunk("<tr><td colspan='6'>暂无计划</td></tr>");
         }
         Esp32BaseWeb::sendChunk("</tbody></table></div>");
+        Esp32BaseWeb::endPanel();
+    }
+    if (!wroteZone) {
+        Esp32BaseWeb::beginPanel("计划");
+        Esp32BaseWeb::sendChunk("<p class='muted'>暂无启用水路。请先到水路管理中启用需要使用的水路。</p>");
         Esp32BaseWeb::endPanel();
     }
     pageFooter();
@@ -755,7 +777,9 @@ bool applyPlanForm(Irrigation::PlanDefinition& plan, const char** error) {
         *error = "invalid_name";
         return false;
     }
-    if (Esp32BaseWeb::hasParam("enabled") && !readBool("enabled", &plan.enabled)) {
+    if (Esp32BaseWeb::hasParam("enabledPresent")) {
+        plan.enabled = readCheckbox("enabled");
+    } else if (Esp32BaseWeb::hasParam("enabled") && !readBool("enabled", &plan.enabled)) {
         *error = "invalid_enabled";
         return false;
     }
@@ -806,24 +830,22 @@ void writePlanForm(const Irrigation::PlanDefinition& plan, bool creating) {
     writeUInt(plan.cycleMask);
     Esp32BaseWeb::sendChunk("'><input type='hidden' name='durationSec' value='");
     writeUInt(plan.durationSec);
-    Esp32BaseWeb::sendChunk("'><div class='fieldgrid'>"
+    Esp32BaseWeb::sendChunk("'><input type='hidden' name='enabledPresent' value='1'><div class='fieldgrid'>"
                             "<p class='field med'><label>名称</label><input name='name' maxlength='31' value='");
     Esp32BaseWeb::writeHtmlEscaped(plan.name);
-    Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>状态</label><select name='enabled'><option value='0'");
-    Esp32BaseWeb::sendChunk(plan.enabled ? "" : " selected");
-    Esp32BaseWeb::sendChunk(">停用</option><option value='1'");
-    Esp32BaseWeb::sendChunk(plan.enabled ? " selected" : "");
-    Esp32BaseWeb::sendChunk(">启用</option></select></p><p class='field short'><label>开始时间</label><input name='time' type='time' value='");
+    Esp32BaseWeb::sendChunk("'><small>用于在计划列表和浇水记录中识别这条计划。</small></p><p class='field short'><label><input type='checkbox' name='enabled' value='1'");
+    Esp32BaseWeb::sendChunk(plan.enabled ? " checked" : "");
+    Esp32BaseWeb::sendChunk("> 启用计划</label><small>勾选后计划才会按时间自动执行。</small></p><p class='field short'><label>开始时间</label><input name='time' type='time' value='");
     writeTime(plan.timeHour, plan.timeMinute);
-    Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>浇水时长（分钟）</label><input name='durationMin' type='number' min='1' max='");
+    Esp32BaseWeb::sendChunk("'><small>每天到达该时间时检查是否需要执行。</small></p><p class='field short'><label>浇水时长（分钟）</label><input name='durationMin' type='number' min='1' max='");
     writeUInt(SystemConfigStore::current().maxWateringDurationSec / 60UL);
     Esp32BaseWeb::sendChunk("' value='");
     writeUInt(durationMinutesForUi(plan.durationSec));
-    Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>循环天数</label><input name='cycleDays' type='number' min='1' max='30' value='");
+    Esp32BaseWeb::sendChunk("'><small>单次浇水时长，受系统单次上限约束。</small></p><p class='field short'><label>循环天数</label><input name='cycleDays' type='number' min='1' max='30' value='");
     writeUInt(plan.cycleDays);
-    Esp32BaseWeb::sendChunk("' oninput='irrPlanCycle(this.form)'></p><p class='field short'><label>起始日期</label><input name='cycleStartYmd' type='date' value='");
+    Esp32BaseWeb::sendChunk("' oninput='irrPlanCycle(this.form)'><small>例如 3 天循环会显示第 1、2、3 天可选。</small></p><p class='field short'><label>起始日期</label><input name='cycleStartYmd' type='date' value='");
     writeYmdInput(plan.cycleStartYmd);
-    Esp32BaseWeb::sendChunk("'></p><div class='field full'><label>执行日</label><div class='radioopts'>");
+    Esp32BaseWeb::sendChunk("'><small>用于计算当前处于循环中的第几天。</small></p><div class='field full'><label>执行日</label><div class='radioopts'>");
     for (uint8_t i = 0; i < 30; ++i) {
         Esp32BaseWeb::sendChunk("<label data-cycle-day='");
         writeUInt(i);
@@ -839,7 +861,7 @@ void writePlanForm(const Irrigation::PlanDefinition& plan, bool creating) {
         writeUInt(i + 1);
         Esp32BaseWeb::sendChunk(" 天</label>");
     }
-    Esp32BaseWeb::sendChunk("</div></div></div><div class='actions'><input type='submit' value='保存'><a class='btnlink secondary' href='/irrigation/plans'>返回</a></div></form>"
+    Esp32BaseWeb::sendChunk("</div><small>勾选循环周期中需要浇水的日期。</small></div></div><div class='actions'><input type='submit' value='保存'><a class='btnlink secondary' href='/irrigation/plans'>返回</a></div></form>"
                             "<script>"
                             "function irrPlanCycle(f){var n=parseInt(f.cycleDays.value||'0',10),ds=f.querySelectorAll('[data-cycle-day]');for(var i=0;i<ds.length;i++){ds[i].hidden=i>=n;}}"
                             "function irrPlanPrepare(f){var m=parseInt(f.durationMin.value||'0',10),n=parseInt(f.cycleDays.value||'0',10),mask=0,ds=f.querySelectorAll('[data-cycle-day]');if(!m||m<1){alert('浇水时长无效');return false;}f.durationSec.value=String(m*60);if(!n||n<1||n>30){alert('循环天数无效');return false;}for(var i=0;i<n&&i<ds.length;i++){if(ds[i].querySelector('input').checked)mask|=(1<<i);}if(!mask){alert('至少选择一个执行日');return false;}f.cycleMask.value=String(mask);return true;}"
@@ -892,25 +914,21 @@ void handleSettingsPage() {
         Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/zone/config' onsubmit=\"return confirm('确认保存水路配置？')&&once(this)\">");
         writeOnePostHidden("source", "web_page");
         writeHiddenU32("zoneId", editZoneId);
-        Esp32BaseWeb::sendChunk("<div class='fieldgrid'><p class='field med'><label>名称</label><input name='name' maxlength='31' value='");
+        Esp32BaseWeb::sendChunk("<input type='hidden' name='enabledPresent' value='1'><input type='hidden' name='suppressErrorPresent' value='1'><div class='fieldgrid'><p class='field med'><label>名称</label><input name='name' maxlength='31' value='");
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
-        Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>启用</label><select name='enabled'><option value='0'");
-        Esp32BaseWeb::sendChunk(zone.enabled ? "" : " selected");
-        Esp32BaseWeb::sendChunk(">停用</option><option value='1'");
-        Esp32BaseWeb::sendChunk(zone.enabled ? " selected" : "");
-        Esp32BaseWeb::sendChunk(">启用</option></select></p><p class='field short'><label>每升脉冲</label><input name='pulsePerLiter' type='number' min='1' max='10000' value='");
+        Esp32BaseWeb::sendChunk("'><small>显示在首页、计划和记录中的水路名称。</small></p><p class='field med'><label><input type='checkbox' name='enabled' value='1'");
+        Esp32BaseWeb::sendChunk(zone.enabled ? " checked" : "");
+        Esp32BaseWeb::sendChunk("> 启用水路</label><small>未启用的水路不会出现在首页和计划业务页面，也不能启动浇水。</small></p><p class='field short'><label>每升脉冲</label><input name='pulsePerLiter' type='number' min='1' max='10000' value='");
         writeUInt(zone.pulsePerLiter);
-        Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>校准 x1000</label><input name='calibrationX1000' type='number' min='100' max='10000' value='");
+        Esp32BaseWeb::sendChunk("'><small>流量计每通过 1 升水产生的脉冲数，用于估算水量。</small></p><p class='field short'><label>校准 x1000</label><input name='calibrationX1000' type='number' min='100' max='10000' value='");
         writeUInt(zone.calibrationX1000);
-        Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>启动超时秒</label><input name='startTimeoutSec' type='number' min='1' max='300' value='");
+        Esp32BaseWeb::sendChunk("'><small>水量估算修正系数，1000 表示不修正。</small></p><p class='field short'><label>启动超时秒</label><input name='startTimeoutSec' type='number' min='1' max='300' value='");
         writeUInt(zone.startTimeoutSec);
-        Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>无脉冲超时秒</label><input name='flowNoPulseTimeoutSec' type='number' min='1' max='300' value='");
+        Esp32BaseWeb::sendChunk("'><small>开阀后在该时间内没有检测到水流，判定启动异常。</small></p><p class='field short'><label>无脉冲超时秒</label><input name='flowNoPulseTimeoutSec' type='number' min='1' max='300' value='");
         writeUInt(zone.flowNoPulseTimeoutSec);
-        Esp32BaseWeb::sendChunk("'></p><p class='field short'><label>抑制流量错误</label><select name='suppressError'><option value='0'");
-        Esp32BaseWeb::sendChunk(zone.suppressError ? "" : " selected");
-        Esp32BaseWeb::sendChunk(">否</option><option value='1'");
-        Esp32BaseWeb::sendChunk(zone.suppressError ? " selected" : "");
-        Esp32BaseWeb::sendChunk(">是</option></select></p></div><div class='actions'><input type='submit' value='保存水路配置'><a class='btnlink secondary' href='/irrigation/zones'>返回列表</a></div></form>");
+        Esp32BaseWeb::sendChunk("'><small>运行中超过该时间没有新脉冲，判定断流异常。</small></p><p class='field full'><label><input type='checkbox' name='suppressError' value='1'");
+        Esp32BaseWeb::sendChunk(zone.suppressError ? " checked" : "");
+        Esp32BaseWeb::sendChunk("> 流量异常只记录，不锁定水路</label><small>勾选后，启动无水流或运行中断流只写入记录，不把水路锁定为异常；未勾选时会锁定异常，需要人工清除。</small></p></div><div class='actions'><input type='submit' value='保存水路配置'><a class='btnlink secondary' href='/irrigation/zones'>返回列表</a></div></form>");
         Esp32BaseWeb::endPanel();
         pageFooter();
         return;
@@ -1261,18 +1279,41 @@ void handleZoneConfigApi() {
         return;
     }
     Irrigation::ZoneConfig zone = ZoneConfigStore::get(zoneId);
-    if (Esp32BaseWeb::hasParam("name") && !Esp32BaseWeb::getParam("name", zone.name, sizeof(zone.name))) sendError(400, "invalid_name");
-    else if (Esp32BaseWeb::hasParam("enabled") && !readBool("enabled", &zone.enabled)) sendError(400, "invalid_enabled");
-    else if (Esp32BaseWeb::hasParam("pulsePerLiter") && !readU16("pulsePerLiter", &zone.pulsePerLiter)) sendError(400, "invalid_pulse_per_liter");
-    else if (Esp32BaseWeb::hasParam("calibrationX1000") && !readU16("calibrationX1000", &zone.calibrationX1000)) sendError(400, "invalid_calibration");
-    else if (Esp32BaseWeb::hasParam("startTimeoutSec") && !readU16("startTimeoutSec", &zone.startTimeoutSec)) sendError(400, "invalid_start_timeout");
-    else if (Esp32BaseWeb::hasParam("flowNoPulseTimeoutSec") && !readU16("flowNoPulseTimeoutSec", &zone.flowNoPulseTimeoutSec)) sendError(400, "invalid_no_pulse_timeout");
-    else if (Esp32BaseWeb::hasParam("suppressError") && !readBool("suppressError", &zone.suppressError)) sendError(400, "invalid_suppress_error");
-    else if (!ZoneConfigStore::set(zoneId, zone)) sendError(400, "invalid_zone_config");
-    else {
-        (void)ZoneManager::reloadZone(zoneId);
-        redirectOrOk("/irrigation/zones");
+    const char* error = nullptr;
+    if (Esp32BaseWeb::hasParam("name") && !Esp32BaseWeb::getParam("name", zone.name, sizeof(zone.name))) {
+        error = "invalid_name";
+    } else if (Esp32BaseWeb::hasParam("enabledPresent")) {
+        zone.enabled = readCheckbox("enabled");
+    } else if (Esp32BaseWeb::hasParam("enabled") && !readBool("enabled", &zone.enabled)) {
+        error = "invalid_enabled";
     }
+    if (!error && Esp32BaseWeb::hasParam("pulsePerLiter") && !readU16("pulsePerLiter", &zone.pulsePerLiter)) {
+        error = "invalid_pulse_per_liter";
+    }
+    if (!error && Esp32BaseWeb::hasParam("calibrationX1000") && !readU16("calibrationX1000", &zone.calibrationX1000)) {
+        error = "invalid_calibration";
+    }
+    if (!error && Esp32BaseWeb::hasParam("startTimeoutSec") && !readU16("startTimeoutSec", &zone.startTimeoutSec)) {
+        error = "invalid_start_timeout";
+    }
+    if (!error && Esp32BaseWeb::hasParam("flowNoPulseTimeoutSec") && !readU16("flowNoPulseTimeoutSec", &zone.flowNoPulseTimeoutSec)) {
+        error = "invalid_no_pulse_timeout";
+    }
+    if (!error && Esp32BaseWeb::hasParam("suppressErrorPresent")) {
+        zone.suppressError = readCheckbox("suppressError");
+    } else if (!error && Esp32BaseWeb::hasParam("suppressError") && !readBool("suppressError", &zone.suppressError)) {
+        error = "invalid_suppress_error";
+    }
+    if (error) {
+        sendError(400, error);
+        return;
+    }
+    if (!ZoneConfigStore::set(zoneId, zone)) {
+        sendError(400, "invalid_zone_config");
+        return;
+    }
+    (void)ZoneManager::reloadZone(zoneId);
+    redirectOrOk("/irrigation/zones");
 }
 
 void handleZoneClearErrorApi() {
