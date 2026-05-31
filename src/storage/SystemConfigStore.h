@@ -5,6 +5,8 @@
 namespace SystemConfigStore {
 
 void begin();
+void registerAppConfig();
+void reload();
 const Irrigation::SystemConfig& current();
 bool set(const Irrigation::SystemConfig& config);
 bool clear();

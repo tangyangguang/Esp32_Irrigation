@@ -96,6 +96,10 @@ void beginHardwareSafety() {
     ValveController::allOff("early boot");
 }
 
+void registerAppConfig() {
+    SystemConfigStore::registerAppConfig();
+}
+
 void begin() {
     EventStore::begin();
     RecordStore::begin();

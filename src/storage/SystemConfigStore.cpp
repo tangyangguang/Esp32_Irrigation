@@ -8,15 +8,19 @@
 namespace {
 
 static constexpr const char* kNamespace = "irr_sys";
-static constexpr const char* kKeyConfig = "cfg";
-static constexpr uint32_t kMagic = 0x49535953UL;
-static constexpr uint16_t kVersion = 1;
-
-struct StoredSystemConfig {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t size;
-    Irrigation::SystemConfig data;
+static constexpr const char* kGroup = "system";
+static constexpr const char* kKeyMaxDuration = "max_dur";
+static constexpr const char* kKeyGrace = "grace";
+static constexpr const char* kKeyManualDefault = "manual_def";
+static constexpr const char* kKeyLeakWindow = "leak_win";
+static constexpr const char* kKeyLeakPulse = "leak_pulse";
+static constexpr const char* kPresetKeys[] = {
+    "preset0",
+    "preset1",
+    "preset2",
+    "preset3",
+    "preset4",
+    "preset5",
 };
 
 Irrigation::SystemConfig g_config = {};
@@ -33,40 +37,116 @@ Irrigation::SystemConfig defaults() {
     return config;
 }
 
-StoredSystemConfig wrap(const Irrigation::SystemConfig& config) {
-    StoredSystemConfig stored = {};
-    stored.magic = kMagic;
-    stored.version = kVersion;
-    stored.size = sizeof(stored);
-    stored.data = config;
-    return stored;
+uint32_t readU32(const char* key, uint32_t def) {
+    return static_cast<uint32_t>(Esp32BaseConfig::getInt(kNamespace, key, static_cast<int32_t>(def)));
 }
 
-bool validStored(const StoredSystemConfig& stored) {
-    return stored.magic == kMagic &&
-           stored.version == kVersion &&
-           stored.size == sizeof(stored) &&
-           SystemConfigStore::validate(stored.data);
+bool writeU32(const char* key, uint32_t value) {
+    return Esp32BaseConfig::setInt(kNamespace, key, static_cast<int32_t>(value));
+}
+
+Irrigation::SystemConfig readStored() {
+    Irrigation::SystemConfig config = defaults();
+    config.maxWateringDurationSec = readU32(kKeyMaxDuration, config.maxWateringDurationSec);
+    config.scheduleGraceSec = static_cast<uint16_t>(readU32(kKeyGrace, config.scheduleGraceSec));
+    config.manualDefaultDurationSec = readU32(kKeyManualDefault, config.manualDefaultDurationSec);
+    for (uint8_t i = 0; i < 6; ++i) {
+        config.durationPresets[i] = readU32(kPresetKeys[i], config.durationPresets[i]);
+    }
+    config.idleLeakWindowSec = static_cast<uint16_t>(readU32(kKeyLeakWindow, config.idleLeakWindowSec));
+    config.idleLeakPulseThreshold = static_cast<uint16_t>(readU32(kKeyLeakPulse, config.idleLeakPulseThreshold));
+    return SystemConfigStore::validate(config) ? config : defaults();
+}
+
+bool submittedInt(const char* key, uint32_t* out) {
+    int32_t raw = 0;
+    if (!out || !Esp32BaseAppConfig::submittedInt(kNamespace, key, raw) || raw < 0) {
+        return false;
+    }
+    *out = static_cast<uint32_t>(raw);
+    return true;
+}
+
+bool validateAppConfigPage(char* error, size_t errorLen) {
+    Irrigation::SystemConfig config = {};
+    if (!submittedInt(kKeyMaxDuration, &config.maxWateringDurationSec) ||
+        !submittedInt(kKeyManualDefault, &config.manualDefaultDurationSec)) {
+        strlcpy(error, "System duration values are invalid.", errorLen);
+        return false;
+    }
+    uint32_t value = 0;
+    if (!submittedInt(kKeyGrace, &value)) {
+        strlcpy(error, "Schedule grace is invalid.", errorLen);
+        return false;
+    }
+    config.scheduleGraceSec = static_cast<uint16_t>(value);
+    for (uint8_t i = 0; i < 6; ++i) {
+        if (!submittedInt(kPresetKeys[i], &config.durationPresets[i])) {
+            strlcpy(error, "Duration presets are invalid.", errorLen);
+            return false;
+        }
+    }
+    if (!submittedInt(kKeyLeakWindow, &value)) {
+        strlcpy(error, "Leak window is invalid.", errorLen);
+        return false;
+    }
+    config.idleLeakWindowSec = static_cast<uint16_t>(value);
+    if (!submittedInt(kKeyLeakPulse, &value)) {
+        strlcpy(error, "Leak pulse threshold is invalid.", errorLen);
+        return false;
+    }
+    config.idleLeakPulseThreshold = static_cast<uint16_t>(value);
+    if (!SystemConfigStore::validate(config)) {
+        strlcpy(error, "Manual duration and presets must be within the max watering duration.", errorLen);
+        return false;
+    }
+    return true;
+}
+
+void onAppConfigSave(const Esp32BaseAppConfig::SaveSummary& summary) {
+    if (summary.savedCount > 0) {
+        SystemConfigStore::reload();
+        (void)EventStore::append(Irrigation::EventType::SYSTEM_CONFIG_CHANGED,
+                                 Irrigation::EventSource::WEB,
+                                 0,
+                                 0,
+                                 static_cast<int32_t>(SystemConfigStore::current().maxWateringDurationSec),
+                                 SystemConfigStore::current().scheduleGraceSec,
+                                 "system app config saved");
+    }
 }
 
 }
 
 namespace SystemConfigStore {
 
+void registerAppConfig() {
+#if ESP32BASE_ENABLE_APP_CONFIG
+    Esp32BaseAppConfig::setTitle("系统配置");
+    Esp32BaseAppConfig::setPageValidateCallback(validateAppConfigPage);
+    Esp32BaseAppConfig::setSaveCallback(onAppConfigSave);
+    (void)Esp32BaseAppConfig::addGroup({kGroup, "系统参数"});
+    const Irrigation::SystemConfig def = defaults();
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyMaxDuration, "最大出水秒", static_cast<int32_t>(def.maxWateringDurationSec), 60, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyGrace, "调度宽限秒", def.scheduleGraceSec, 1, 60, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyManualDefault, "手动默认秒", static_cast<int32_t>(def.manualDefaultDurationSec), 1, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[0], "预设 1 秒", static_cast<int32_t>(def.durationPresets[0]), 1, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[1], "预设 2 秒", static_cast<int32_t>(def.durationPresets[1]), 1, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[2], "预设 3 秒", static_cast<int32_t>(def.durationPresets[2]), 1, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[3], "预设 4 秒", static_cast<int32_t>(def.durationPresets[3]), 1, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[4], "预设 5 秒", static_cast<int32_t>(def.durationPresets[4]), 1, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kPresetKeys[5], "预设 6 秒", static_cast<int32_t>(def.durationPresets[5]), 1, 86400, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyLeakWindow, "漏水窗口秒", def.idleLeakWindowSec, 1, 300, 1, "s", nullptr, false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroup, kNamespace, kKeyLeakPulse, "漏水脉冲", def.idleLeakPulseThreshold, 1, 1000, 1, nullptr, nullptr, false, nullptr});
+#endif
+}
+
 void begin() {
-    g_config = defaults();
-    StoredSystemConfig stored = {};
-    if (Esp32BaseConfig::getPod(kNamespace, kKeyConfig, stored) && validStored(stored)) {
-        g_config = stored.data;
-        return;
-    }
-    (void)EventStore::append(Irrigation::EventType::SYSTEM_CONFIG_CHANGED,
-                             Irrigation::EventSource::SYSTEM,
-                             0,
-                             0,
-                             0,
-                             0,
-                             "system config defaults");
+    reload();
+}
+
+void reload() {
+    g_config = readStored();
 }
 
 const Irrigation::SystemConfig& current() {
@@ -98,8 +178,16 @@ bool set(const Irrigation::SystemConfig& config) {
     if (!validate(config)) {
         return false;
     }
-    const StoredSystemConfig stored = wrap(config);
-    if (!Esp32BaseConfig::setPod(kNamespace, kKeyConfig, stored)) {
+    bool ok = true;
+    ok = writeU32(kKeyMaxDuration, config.maxWateringDurationSec) && ok;
+    ok = writeU32(kKeyGrace, config.scheduleGraceSec) && ok;
+    ok = writeU32(kKeyManualDefault, config.manualDefaultDurationSec) && ok;
+    for (uint8_t i = 0; i < 6; ++i) {
+        ok = writeU32(kPresetKeys[i], config.durationPresets[i]) && ok;
+    }
+    ok = writeU32(kKeyLeakWindow, config.idleLeakWindowSec) && ok;
+    ok = writeU32(kKeyLeakPulse, config.idleLeakPulseThreshold) && ok;
+    if (!ok) {
         return false;
     }
     g_config = config;

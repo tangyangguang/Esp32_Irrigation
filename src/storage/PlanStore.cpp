@@ -228,6 +228,11 @@ bool clear() {
 }
 
 bool create(uint8_t zoneId, Irrigation::PlanDefinition* out) {
+    Irrigation::PlanDefinition draft = {};
+    return create(zoneId, draft, out);
+}
+
+bool create(uint8_t zoneId, const Irrigation::PlanDefinition& draft, Irrigation::PlanDefinition* out) {
     if (!Irrigation::validZoneId(zoneId)) {
         return false;
     }
@@ -242,8 +247,30 @@ bool create(uint8_t zoneId, Irrigation::PlanDefinition* out) {
         plan.planId = allocatePlanId();
         snprintf(plan.name, sizeof(plan.name), "计划 %u", static_cast<unsigned>(slot + 1));
         plan.enabled = false;
-        plan.cycleStartYmd = currentYmd();
+        if (draft.exists && draft.name[0] != '\0') {
+            strlcpy(plan.name, draft.name, sizeof(plan.name));
+        }
+        if (draft.exists) {
+            plan.enabled = draft.enabled;
+        }
+        if (draft.exists && draft.timeHour <= 23 && draft.timeMinute <= 59) {
+            plan.timeHour = draft.timeHour;
+            plan.timeMinute = draft.timeMinute;
+        }
+        if (draft.exists && draft.durationSec > 0) {
+            plan.durationSec = draft.durationSec;
+        }
+        if (draft.exists && draft.cycleDays > 0) {
+            plan.cycleDays = draft.cycleDays;
+        }
+        if (draft.exists && draft.cycleMask > 0) {
+            plan.cycleMask = draft.cycleMask;
+        }
+        plan.cycleStartYmd = draft.exists && draft.cycleStartYmd >= 20000101UL ? draft.cycleStartYmd : currentYmd();
         plan.createdAt = currentEpoch();
+        if (!validate(plan)) {
+            return false;
+        }
         if (!saveSlot(index, plan) || !saveMeta()) {
             return false;
         }

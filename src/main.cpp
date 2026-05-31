@@ -13,6 +13,7 @@ void setup() {
     Esp32BaseWeb::setHomePath("/irrigation");
     Esp32BaseWeb::setHomeMode(Esp32BaseWeb::HOME_COMBINED);
     Esp32BaseWeb::setSystemNavMode(Esp32BaseWeb::SYSTEM_NAV_SECTION);
+    IrrigationApp::registerAppConfig();
 
     Esp32Base::begin();
 
