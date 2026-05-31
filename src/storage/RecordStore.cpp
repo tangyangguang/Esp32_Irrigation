@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Esp32Base.h>
+#include <stdlib.h>
 
 namespace {
 
@@ -73,19 +74,14 @@ void loadMeta() {
 
 bool createEmptyStore() {
     const uint32_t total = fileSizeBytes();
-    uint8_t zeros[256] = {};
-    if (!Esp32BaseFs::writeBytes(kPath, nullptr, 0)) {
+    uint8_t* zeros = static_cast<uint8_t*>(calloc(total, 1));
+    if (!zeros) {
         return false;
     }
-    for (uint32_t offset = 0; offset < total; offset += sizeof(zeros)) {
-        const uint32_t remaining = total - offset;
-        const size_t chunk = remaining < sizeof(zeros) ? static_cast<size_t>(remaining) : sizeof(zeros);
-        if (!Esp32BaseFs::appendBytes(kPath, zeros, chunk)) {
-            return false;
-        }
-        delay(0);
-    }
-    return Esp32BaseFs::fileSize(kPath) == static_cast<int64_t>(total);
+    const bool ok = Esp32BaseFs::writeBytes(kPath, zeros, total) &&
+                    Esp32BaseFs::fileSize(kPath) == static_cast<int64_t>(total);
+    free(zeros);
+    return ok;
 }
 
 bool ensureStoreFile() {

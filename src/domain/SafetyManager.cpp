@@ -92,6 +92,10 @@ void handle() {
     handleNormalButtons();
 
     if (g_factoryReset.wasLongPressed()) {
+        if (!g_lock.isDown()) {
+            ESP32BASE_LOG_W("safety", "factory reset gpio0 long press ignored: lock button not held");
+            return;
+        }
         g_factoryResetRequested = true;
         (void)EventStore::append(Irrigation::EventType::FACTORY_RESET_REQUESTED,
                                  Irrigation::EventSource::BUTTON,
@@ -99,8 +103,8 @@ void handle() {
                                  0,
                                  0,
                                  0,
-                                 "gpio0 long press");
-        ESP32BASE_LOG_W("safety", "factory reset requested by gpio0 long press");
+                                 "lock+gpio0 long press");
+        ESP32BASE_LOG_W("safety", "factory reset requested by lock+gpio0 long press");
     }
 }
 
