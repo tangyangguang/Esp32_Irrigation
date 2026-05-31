@@ -2,7 +2,6 @@
 
 #include <Arduino.h>
 #include <Esp32Base.h>
-#include <stdlib.h>
 #include <string.h>
 
 namespace {
@@ -11,12 +10,9 @@ static constexpr const char* kPath = "/irr_events.bin";
 static constexpr const char* kNamespace = "irr_evt";
 static constexpr const char* kKeyInitialized = "init";
 static constexpr const char* kKeyMeta = "meta";
-static constexpr const char* kLegacyKeyHead = "head";
-static constexpr const char* kLegacyKeyCount = "count";
-static constexpr const char* kLegacyKeyNextId = "next_id";
 static constexpr uint32_t kMagic = 0x49524556UL;
 static constexpr uint32_t kMetaMagic = 0x4952454DUL;
-static constexpr uint16_t kVersion = 1;
+static constexpr uint16_t kVersion = 2;
 static constexpr uint16_t kMetaVersion = 1;
 
 struct StoreMeta {
@@ -39,31 +35,6 @@ uint32_t fileSizeBytes() {
     return static_cast<uint32_t>(sizeof(EventStore::Event)) * EventStore::Capacity;
 }
 
-uint16_t clampIndex(int32_t value) {
-    if (value < 0 || value >= EventStore::Capacity) {
-        return 0;
-    }
-    return static_cast<uint16_t>(value);
-}
-
-uint16_t clampCount(int32_t value) {
-    if (value < 0) {
-        return 0;
-    }
-    if (value > EventStore::Capacity) {
-        return EventStore::Capacity;
-    }
-    return static_cast<uint16_t>(value);
-}
-
-bool validMeta(const StoreMeta& meta) {
-    return meta.magic == kMetaMagic &&
-           meta.version == kMetaVersion &&
-           meta.head < EventStore::Capacity &&
-           meta.count <= EventStore::Capacity &&
-           meta.nextId != 0;
-}
-
 StoreMeta makeMeta() {
     StoreMeta meta = {};
     meta.magic = kMetaMagic;
@@ -72,6 +43,14 @@ StoreMeta makeMeta() {
     meta.count = g_count;
     meta.nextId = g_nextId == 0 ? 1 : g_nextId;
     return meta;
+}
+
+bool validMeta(const StoreMeta& meta) {
+    return meta.magic == kMetaMagic &&
+           meta.version == kMetaVersion &&
+           meta.head < EventStore::Capacity &&
+           meta.count <= EventStore::Capacity &&
+           meta.nextId != 0;
 }
 
 bool saveMeta() {
@@ -87,13 +66,9 @@ void loadMeta() {
         g_nextId = meta.nextId;
         return;
     }
-
-    g_head = clampIndex(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyHead, 0));
-    g_count = clampCount(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyCount, 0));
-    g_nextId = static_cast<uint32_t>(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyNextId, 1));
-    if (g_nextId == 0) {
-        g_nextId = 1;
-    }
+    g_head = 0;
+    g_count = 0;
+    g_nextId = 1;
     (void)saveMeta();
 }
 
@@ -101,16 +76,12 @@ bool createEmptyStore() {
     const uint32_t total = fileSizeBytes();
     uint8_t zeros[256] = {};
     if (!Esp32BaseFs::writeBytes(kPath, nullptr, 0)) {
-        ESP32BASE_LOG_W("events", "create store failed open");
         return false;
     }
     for (uint32_t offset = 0; offset < total; offset += sizeof(zeros)) {
         const uint32_t remaining = total - offset;
         const size_t chunk = remaining < sizeof(zeros) ? static_cast<size_t>(remaining) : sizeof(zeros);
         if (!Esp32BaseFs::appendBytes(kPath, zeros, chunk)) {
-            ESP32BASE_LOG_W("events", "create store failed offset=%lu bytes=%u",
-                            static_cast<unsigned long>(offset),
-                            static_cast<unsigned>(chunk));
             return false;
         }
         delay(0);
@@ -170,15 +141,10 @@ void begin() {
         ESP32BASE_LOG_W("events", "event store not ready");
         return;
     }
-
     loadMeta();
-    ESP32BASE_LOG_I("events", "ready count=%u head=%u next=%lu",
-                    static_cast<unsigned>(g_count),
-                    static_cast<unsigned>(g_head),
-                    static_cast<unsigned long>(g_nextId));
 }
 
-bool append(Type type, Source source, uint8_t road, uint8_t code, int32_t value1, int32_t value2, const char* text) {
+bool append(Irrigation::EventType type, Irrigation::EventSource source, uint8_t zoneId, uint8_t code, int32_t value1, int32_t value2, const char* text) {
     if (!g_ready && !ensureStoreFile()) {
         return false;
     }
@@ -193,7 +159,7 @@ bool append(Type type, Source source, uint8_t road, uint8_t code, int32_t value1
     stored.epoch = currentEpoch();
     stored.type = static_cast<uint8_t>(type);
     stored.source = static_cast<uint8_t>(source);
-    stored.road = road;
+    stored.zoneId = zoneId;
     stored.code = code;
     stored.value1 = value1;
     stored.value2 = value2;
@@ -203,9 +169,6 @@ bool append(Type type, Source source, uint8_t road, uint8_t code, int32_t value1
 
     const uint32_t offset = static_cast<uint32_t>(g_head) * sizeof(stored);
     if (!Esp32BaseFs::writeBytesAt(kPath, offset, reinterpret_cast<const uint8_t*>(&stored), sizeof(stored))) {
-        ESP32BASE_LOG_W("events", "append failed id=%lu index=%u",
-                        static_cast<unsigned long>(stored.id),
-                        static_cast<unsigned>(g_head));
         return false;
     }
 
@@ -217,7 +180,6 @@ bool append(Type type, Source source, uint8_t road, uint8_t code, int32_t value1
     if (g_nextId == 0) {
         g_nextId = 1;
     }
-
     return saveMeta();
 }
 
@@ -234,13 +196,8 @@ bool clear() {
     g_head = 0;
     g_count = 0;
     g_nextId = nextId;
-    if (!saveMeta()) {
-        g_ready = false;
-        return false;
-    }
-    g_ready = true;
-    ESP32BASE_LOG_W("events", "cleared");
-    return true;
+    g_ready = saveMeta();
+    return g_ready;
 }
 
 uint16_t count() {
@@ -259,45 +216,45 @@ bool readLatest(uint16_t offset, uint16_t limit, ReadCallback callback, void* us
     if (remaining > limit) {
         remaining = limit;
     }
-
     for (uint16_t i = 0; i < remaining; ++i) {
         const uint16_t reverseIndex = static_cast<uint16_t>(offset + i + 1);
-        uint16_t index = g_head >= reverseIndex
+        const uint16_t index = g_head >= reverseIndex
             ? static_cast<uint16_t>(g_head - reverseIndex)
             : static_cast<uint16_t>(Capacity + g_head - reverseIndex);
         Event event = {};
-        if (!readAtIndex(index, &event)) {
-            continue;
+        if (readAtIndex(index, &event)) {
+            callback(event, user);
         }
-        callback(event, user);
     }
     return true;
 }
 
-const char* typeName(Type type) {
+const char* typeName(Irrigation::EventType type) {
     switch (type) {
-        case TYPE_BOOT: return "boot";
-        case TYPE_CONFIG_CHANGED: return "config_changed";
-        case TYPE_PLAN_CHANGED: return "plan_changed";
-        case TYPE_WATER_START: return "water_start";
-        case TYPE_WATER_STOP: return "water_stop";
-        case TYPE_WATER_ERROR: return "water_error";
-        case TYPE_LEAK_ALERT: return "leak_alert";
-        case TYPE_ALERT_CLEAR: return "alert_clear";
-        case TYPE_FACTORY_RESET_REQUESTED: return "factory_reset_requested";
-        case TYPE_FACTORY_RESET_EXECUTED: return "factory_reset_executed";
-        case TYPE_WIFI_STATUS_CHANGED: return "wifi_status_changed";
-        case TYPE_OTA_STATUS_CHANGED: return "ota_status_changed";
+        case Irrigation::EventType::BOOT: return "boot";
+        case Irrigation::EventType::ZONE_CONFIG_CHANGED: return "zone_config_changed";
+        case Irrigation::EventType::SYSTEM_CONFIG_CHANGED: return "system_config_changed";
+        case Irrigation::EventType::PLAN_CHANGED: return "plan_changed";
+        case Irrigation::EventType::PLAN_OBSERVED: return "plan_observed";
+        case Irrigation::EventType::WATER_START: return "water_start";
+        case Irrigation::EventType::WATER_FINISH: return "water_finish";
+        case Irrigation::EventType::WATER_ERROR: return "water_error";
+        case Irrigation::EventType::LEAK_ALERT: return "leak_alert";
+        case Irrigation::EventType::ALERT_CLEARED: return "alert_cleared";
+        case Irrigation::EventType::FACTORY_RESET_REQUESTED: return "factory_reset_requested";
+        case Irrigation::EventType::FACTORY_RESET_EXECUTED: return "factory_reset_executed";
+        case Irrigation::EventType::WIFI_STATUS_CHANGED: return "wifi_status_changed";
+        case Irrigation::EventType::OTA_STATUS_CHANGED: return "ota_status_changed";
         default: return "unknown";
     }
 }
 
-const char* sourceName(Source source) {
+const char* sourceName(Irrigation::EventSource source) {
     switch (source) {
-        case SOURCE_BUTTON: return "button";
-        case SOURCE_WEB: return "web";
-        case SOURCE_PLAN: return "plan";
-        case SOURCE_SYSTEM:
+        case Irrigation::EventSource::BUTTON: return "button";
+        case Irrigation::EventSource::WEB: return "web";
+        case Irrigation::EventSource::PLAN: return "plan";
+        case Irrigation::EventSource::SYSTEM:
         default: return "system";
     }
 }

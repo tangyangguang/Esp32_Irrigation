@@ -4,17 +4,16 @@
 #include <Esp32Base.h>
 
 #include "Pins.h"
-#include "domain/ValveController.h"
-#include "domain/WateringSession.h"
+#include "domain/ZoneManager.h"
 #include "io/ButtonInput.h"
 #include "storage/EventStore.h"
-#include "storage/SettingsStore.h"
+#include "storage/SystemConfigStore.h"
 
 namespace {
 
 ButtonInput g_stopAll(IrrigationPins::StopAllButton);
-ButtonInput g_road1(IrrigationPins::Road1UpButton);
-ButtonInput g_road2(IrrigationPins::Road2DownButton);
+ButtonInput g_zone1(IrrigationPins::Road1UpButton);
+ButtonInput g_zone2(IrrigationPins::Road2DownButton);
 ButtonInput g_startOk(IrrigationPins::StartOkButton);
 ButtonInput g_menuBack(IrrigationPins::MenuBackButton);
 ButtonInput g_lock(IrrigationPins::LockButton);
@@ -25,13 +24,17 @@ bool g_factoryResetRequested = false;
 
 void handleStopButtons() {
     if (g_stopAll.wasPressed()) {
-        WateringSession::stopAll(RecordStore::SOURCE_LOCAL_BUTTON, RecordStore::RESULT_USER_STOPPED, "button stop all");
+        (void)ZoneManager::stopAll(Irrigation::StopSource::LOCAL_BUTTON);
     }
-    if (g_road1.wasPressed()) {
-        WateringSession::stopRoad(ValveController::Road1, RecordStore::SOURCE_LOCAL_BUTTON, "button stop r1");
+    if (g_zone1.wasPressed()) {
+        if (!ZoneManager::stopZone(1, Irrigation::StopSource::LOCAL_BUTTON)) {
+            (void)ZoneManager::startManual(1, SystemConfigStore::current().manualDefaultDurationSec, Irrigation::StartSource::LOCAL_BUTTON);
+        }
     }
-    if (g_road2.wasPressed()) {
-        WateringSession::stopRoad(ValveController::Road2, RecordStore::SOURCE_LOCAL_BUTTON, "button stop r2");
+    if (g_zone2.wasPressed()) {
+        if (!ZoneManager::stopZone(2, Irrigation::StopSource::LOCAL_BUTTON)) {
+            (void)ZoneManager::startManual(2, SystemConfigStore::current().manualDefaultDurationSec, Irrigation::StartSource::LOCAL_BUTTON);
+        }
     }
 }
 
@@ -47,10 +50,9 @@ void handleNormalButtons() {
     }
 
     if (g_startOk.wasPressed()) {
-        const SettingsStore::Settings& settings = SettingsStore::current();
-        for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-            if (SettingsStore::isRoadEnabled(road)) {
-                (void)WateringSession::startRoadTask(road, settings.quickDurationSec[road - 1], RecordStore::TASK_MANUAL, RecordStore::SOURCE_LOCAL_BUTTON, 0xFF, "button start");
+        for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+            if (ZoneManager::config(zoneId).enabled) {
+                (void)ZoneManager::startManual(zoneId, SystemConfigStore::current().manualDefaultDurationSec, Irrigation::StartSource::LOCAL_BUTTON);
             }
         }
     }
@@ -64,26 +66,23 @@ void handleNormalButtons() {
 namespace SafetyManager {
 
 void begin() {
-    g_locked = SettingsStore::current().keypadLocked;
-    ValveController::begin();
-    ValveController::allOff("safety begin");
-
+    g_locked = false;
+    g_factoryResetRequested = false;
     g_stopAll.begin();
-    g_road1.begin();
-    g_road2.begin();
+    g_zone1.begin();
+    g_zone2.begin();
     g_startOk.begin();
     g_menuBack.begin();
     g_lock.begin();
     g_factoryReset.begin();
-
     ESP32BASE_LOG_I("safety", "ready locked=%s", g_locked ? "yes" : "no");
 }
 
 void handle() {
     const uint32_t now = millis();
     g_stopAll.handle(now);
-    g_road1.handle(now);
-    g_road2.handle(now);
+    g_zone1.handle(now);
+    g_zone2.handle(now);
     g_startOk.handle(now);
     g_menuBack.handle(now);
     g_lock.handle(now);
@@ -94,8 +93,8 @@ void handle() {
 
     if (g_factoryReset.wasLongPressed()) {
         g_factoryResetRequested = true;
-        (void)EventStore::append(EventStore::TYPE_FACTORY_RESET_REQUESTED,
-                                 EventStore::SOURCE_BUTTON,
+        (void)EventStore::append(Irrigation::EventType::FACTORY_RESET_REQUESTED,
+                                 Irrigation::EventSource::BUTTON,
                                  0,
                                  0,
                                  0,
@@ -113,19 +112,14 @@ bool setLocked(bool locked) {
     if (g_locked == locked) {
         return true;
     }
-    if (!SettingsStore::setKeypadLocked(locked)) {
-        ESP32BASE_LOG_W("safety", "keypad lock save failed");
-        return false;
-    }
     g_locked = locked;
-    (void)EventStore::append(EventStore::TYPE_CONFIG_CHANGED,
-                             EventStore::SOURCE_BUTTON,
+    (void)EventStore::append(Irrigation::EventType::ZONE_CONFIG_CHANGED,
+                             Irrigation::EventSource::BUTTON,
                              0,
                              0,
                              locked ? 1 : 0,
                              0,
                              "keypad lock");
-    ESP32BASE_LOG_I("safety", "keypad %s", g_locked ? "locked" : "unlocked");
     return true;
 }
 

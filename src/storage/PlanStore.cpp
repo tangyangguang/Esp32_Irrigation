@@ -3,65 +3,129 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
 #include <stdio.h>
+#include <string.h>
 #include <time.h>
+
+#include "storage/EventStore.h"
+#include "storage/ZoneConfigStore.h"
 
 namespace {
 
 static constexpr const char* kNamespace = "irr_plan";
-PlanStore::Plan g_plans[PlanStore::TotalPlans] = {};
+static constexpr const char* kKeyMeta = "meta";
+static constexpr uint32_t kMetaMagic = 0x49504D45UL;
+static constexpr uint16_t kMetaVersion = 1;
+static constexpr uint32_t kPlanMagic = 0x49504C4EUL;
+static constexpr uint16_t kPlanVersion = 1;
 
-void key(char* out, size_t len, uint8_t index, const char* name) {
-    snprintf(out, len, "p%u_%s", static_cast<unsigned>(index), name);
+struct PlanMeta {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    uint32_t nextPlanId;
+};
+
+struct StoredPlan {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    Irrigation::PlanDefinition data;
+};
+
+Irrigation::PlanDefinition g_plans[Irrigation::TotalPlanSlots] = {};
+uint32_t g_nextPlanId = 1;
+Irrigation::PlanDefinition g_invalid = {};
+
+void key(char* out, size_t len, uint8_t index) {
+    snprintf(out, len, "p%u", static_cast<unsigned>(index));
 }
 
-int32_t getInt(uint8_t index, const char* name, int32_t def) {
-    char k[16];
-    key(k, sizeof(k), index, name);
-    return Esp32BaseConfig::getInt(kNamespace, k, def);
-}
-
-bool setInt(uint8_t index, const char* name, int32_t value) {
-    char k[16];
-    key(k, sizeof(k), index, name);
-    return Esp32BaseConfig::setInt(kNamespace, k, value);
-}
-
-uint16_t clampDuration(int32_t value) {
-    if (value < 0 || value > 14400) {
-        return 0;
+bool flatIndex(uint8_t zoneId, uint8_t slotIndex, uint8_t* index) {
+    if (!index || !Irrigation::validZoneId(zoneId) || slotIndex >= Irrigation::MaxPlansPerZone) {
+        return false;
     }
-    return static_cast<uint16_t>(value);
+    *index = static_cast<uint8_t>((zoneId - 1) * Irrigation::MaxPlansPerZone + slotIndex);
+    return true;
 }
 
-PlanStore::Plan defaultPlan(uint8_t road, uint8_t slot) {
-    PlanStore::Plan plan = {};
+Irrigation::PlanDefinition defaultPlan(uint8_t zoneId, uint8_t slotIndex) {
+    Irrigation::PlanDefinition plan = {};
     plan.exists = false;
-    plan.roadId = road;
-    plan.slotIndex = slot;
+    plan.planId = 0;
+    plan.zoneId = zoneId;
+    plan.slotIndex = slotIndex;
     plan.enabled = false;
-    plan.minuteOfDay = 7 * 60;
+    plan.timeHour = 7;
+    plan.timeMinute = 0;
     plan.durationSec = 300;
     plan.cycleDays = 1;
     plan.cycleMask = 0x01;
     plan.cycleStartYmd = PlanStore::DefaultCycleStartYmd;
+    plan.createdAt = 0;
     return plan;
 }
 
-uint8_t clampCycleDays(int32_t value) {
-    if (value < 1 || value > 30) {
-        return 1;
+PlanMeta makeMeta() {
+    PlanMeta meta = {};
+    meta.magic = kMetaMagic;
+    meta.version = kMetaVersion;
+    meta.size = sizeof(meta);
+    meta.nextPlanId = g_nextPlanId == 0 ? 1 : g_nextPlanId;
+    return meta;
+}
+
+bool validMeta(const PlanMeta& meta) {
+    return meta.magic == kMetaMagic &&
+           meta.version == kMetaVersion &&
+           meta.size == sizeof(meta) &&
+           meta.nextPlanId != 0;
+}
+
+bool saveMeta() {
+    const PlanMeta meta = makeMeta();
+    return Esp32BaseConfig::setPod(kNamespace, kKeyMeta, meta);
+}
+
+StoredPlan wrap(const Irrigation::PlanDefinition& plan) {
+    StoredPlan stored = {};
+    stored.magic = kPlanMagic;
+    stored.version = kPlanVersion;
+    stored.size = sizeof(stored);
+    stored.data = plan;
+    return stored;
+}
+
+bool validStored(const StoredPlan& stored) {
+    return stored.magic == kPlanMagic &&
+           stored.version == kPlanVersion &&
+           stored.size == sizeof(stored) &&
+           PlanStore::validate(stored.data);
+}
+
+uint32_t currentEpoch() {
+#if ESP32BASE_ENABLE_NTP
+    return Esp32BaseNtp::isTimeSynced() ? static_cast<uint32_t>(Esp32BaseNtp::timestamp()) : 0;
+#else
+    return 0;
+#endif
+}
+
+uint32_t currentYmd() {
+#if ESP32BASE_ENABLE_NTP
+    if (!Esp32BaseNtp::isTimeSynced()) {
+        return PlanStore::DefaultCycleStartYmd;
     }
-    return static_cast<uint8_t>(value);
-}
-
-uint32_t validCycleMask(uint8_t days) {
-    return days >= 32 ? 0xFFFFFFFFUL : ((1UL << days) - 1UL);
-}
-
-uint32_t clampCycleMask(int32_t value, uint8_t days) {
-    const uint32_t allowed = validCycleMask(days);
-    const uint32_t mask = static_cast<uint32_t>(value) & allowed;
-    return mask == 0 ? 0x01 : mask;
+    const time_t now = static_cast<time_t>(Esp32BaseNtp::timestamp());
+    tm local = {};
+    if (localtime_r(&now, &local) == nullptr) {
+        return PlanStore::DefaultCycleStartYmd;
+    }
+    return static_cast<uint32_t>(local.tm_year + 1900) * 10000UL +
+           static_cast<uint32_t>(local.tm_mon + 1) * 100UL +
+           static_cast<uint32_t>(local.tm_mday);
+#else
+    return PlanStore::DefaultCycleStartYmd;
+#endif
 }
 
 bool ymdToTime(uint32_t ymd, time_t* out) {
@@ -72,6 +136,7 @@ bool ymdToTime(uint32_t ymd, time_t* out) {
     value.tm_year = static_cast<int>(ymd / 10000UL) - 1900;
     value.tm_mon = static_cast<int>((ymd / 100UL) % 100UL) - 1;
     value.tm_mday = static_cast<int>(ymd % 100UL);
+    value.tm_hour = 12;
     *out = mktime(&value);
     if (*out <= 0) {
         return false;
@@ -80,160 +145,203 @@ bool ymdToTime(uint32_t ymd, time_t* out) {
     if (localtime_r(out, &normalized) == nullptr) {
         return false;
     }
-    return normalized.tm_year == static_cast<int>(ymd / 10000UL) - 1900 &&
-           normalized.tm_mon == static_cast<int>((ymd / 100UL) % 100UL) - 1 &&
-           normalized.tm_mday == static_cast<int>(ymd % 100UL);
+    return normalized.tm_year == value.tm_year &&
+           normalized.tm_mon == value.tm_mon &&
+           normalized.tm_mday == value.tm_mday;
+}
+
+uint32_t validCycleMask(uint8_t days) {
+    return days >= 32 ? 0xFFFFFFFFUL : ((1UL << days) - 1UL);
+}
+
+bool planIdExists(uint32_t planId) {
+    if (planId == 0) {
+        return false;
+    }
+    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
+        if (g_plans[i].exists && g_plans[i].planId == planId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+uint32_t allocatePlanId() {
+    if (g_nextPlanId == 0) {
+        g_nextPlanId = 1;
+    }
+    while (planIdExists(g_nextPlanId)) {
+        ++g_nextPlanId;
+        if (g_nextPlanId == 0) {
+            g_nextPlanId = 1;
+        }
+    }
+    return g_nextPlanId++;
+}
+
+bool saveSlot(uint8_t index, const Irrigation::PlanDefinition& plan) {
+    char k[8];
+    key(k, sizeof(k), index);
+    const StoredPlan stored = wrap(plan);
+    return Esp32BaseConfig::setPod(kNamespace, k, stored);
 }
 
 }
 
 namespace PlanStore {
 
-bool flatIndex(uint8_t road, uint8_t slot, uint8_t* index) {
-    if (!index || road < 1 || road > IrrigationPins::MaxRoads || slot >= MaxPlansPerRoad) {
-        return false;
-    }
-    *index = static_cast<uint8_t>((road - 1) * MaxPlansPerRoad + slot);
-    return true;
-}
-
 void begin() {
-    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
-            uint8_t i = 0;
-            (void)flatIndex(road, slot, &i);
-            Plan plan = defaultPlan(road, slot);
-            plan.exists = getInt(i, "exists", 0) == 1;
-            plan.enabled = getInt(i, "en", 0) == 1;
-            int32_t minute = getInt(i, "min", plan.minuteOfDay);
-            plan.minuteOfDay = minute >= 0 && minute < 1440 ? static_cast<uint16_t>(minute) : 7 * 60;
-            plan.durationSec = clampDuration(getInt(i, "dur", plan.durationSec));
-            plan.cycleDays = clampCycleDays(getInt(i, "cycle_d", plan.cycleDays));
-            plan.cycleMask = clampCycleMask(getInt(i, "cycle_m", plan.cycleMask), plan.cycleDays);
-            plan.cycleStartYmd = static_cast<uint32_t>(getInt(i, "cycle_s", DefaultCycleStartYmd));
-            plan.lastRunYmd = static_cast<uint32_t>(getInt(i, "last", 0));
-            g_plans[i] = validate(plan) ? plan : defaultPlan(road, slot);
+    g_nextPlanId = 1;
+    PlanMeta meta = {};
+    if (Esp32BaseConfig::getPod(kNamespace, kKeyMeta, meta) && validMeta(meta)) {
+        g_nextPlanId = meta.nextPlanId;
+    }
+    for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+        for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
+            uint8_t index = 0;
+            (void)flatIndex(zoneId, slot, &index);
+            g_plans[index] = defaultPlan(zoneId, slot);
+            char k[8];
+            key(k, sizeof(k), index);
+            StoredPlan stored = {};
+            if (Esp32BaseConfig::getPod(kNamespace, k, stored) && validStored(stored)) {
+                g_plans[index] = stored.data;
+            }
         }
     }
-    ESP32BASE_LOG_I("plans", "loaded roads=%u perRoad=%u total=%u",
-                    static_cast<unsigned>(IrrigationPins::MaxRoads),
-                    static_cast<unsigned>(MaxPlansPerRoad),
-                    static_cast<unsigned>(TotalPlans));
-}
-
-const Plan& get(uint8_t index) {
-    static Plan invalid = defaultPlan(1, 0);
-    if (index >= TotalPlans) {
-        return invalid;
-    }
-    return g_plans[index];
-}
-
-const Plan& get(uint8_t road, uint8_t slot) {
-    uint8_t index = 0;
-    if (!flatIndex(road, slot, &index)) {
-        static Plan invalid = defaultPlan(1, 0);
-        return invalid;
-    }
-    return g_plans[index];
+    (void)saveMeta();
 }
 
 bool clear() {
     if (!Esp32BaseConfig::clearNamespace(kNamespace)) {
         return false;
     }
-    for (uint8_t road = 1; road <= IrrigationPins::MaxRoads; ++road) {
-        for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
+    g_nextPlanId = 1;
+    for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+        for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
             uint8_t index = 0;
-            (void)flatIndex(road, slot, &index);
-            g_plans[index] = defaultPlan(road, slot);
+            (void)flatIndex(zoneId, slot, &index);
+            g_plans[index] = defaultPlan(zoneId, slot);
         }
     }
-    ESP32BASE_LOG_W("plans", "cleared to defaults");
-    return true;
+    return saveMeta();
 }
 
-bool create(uint8_t road, uint8_t* index) {
-    if (road < 1 || road > IrrigationPins::MaxRoads) {
+bool create(uint8_t zoneId, Irrigation::PlanDefinition* out) {
+    if (!Irrigation::validZoneId(zoneId)) {
         return false;
     }
-    for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
-        uint8_t i = 0;
-        (void)flatIndex(road, slot, &i);
-        if (g_plans[i].exists) {
+    for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
+        uint8_t index = 0;
+        (void)flatIndex(zoneId, slot, &index);
+        if (g_plans[index].exists) {
             continue;
         }
-        Plan plan = defaultPlan(road, slot);
+        Irrigation::PlanDefinition plan = defaultPlan(zoneId, slot);
         plan.exists = true;
-        if (!set(i, plan)) {
+        plan.planId = allocatePlanId();
+        snprintf(plan.name, sizeof(plan.name), "计划 %u", static_cast<unsigned>(slot + 1));
+        plan.enabled = false;
+        plan.cycleStartYmd = currentYmd();
+        plan.createdAt = currentEpoch();
+        if (!saveSlot(index, plan) || !saveMeta()) {
             return false;
         }
-        if (index) {
-            *index = i;
+        g_plans[index] = plan;
+        if (out) {
+            *out = plan;
         }
+        (void)EventStore::append(Irrigation::EventType::PLAN_CHANGED,
+                                 Irrigation::EventSource::WEB,
+                                 zoneId,
+                                 1,
+                                 static_cast<int32_t>(plan.planId),
+                                 slot,
+                                 "plan created");
         return true;
     }
     return false;
 }
 
-bool remove(uint8_t index) {
-    if (index >= TotalPlans) {
-        return false;
+bool remove(uint32_t planId) {
+    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
+        if (!g_plans[i].exists || g_plans[i].planId != planId) {
+            continue;
+        }
+        const uint8_t zoneId = g_plans[i].zoneId;
+        const uint8_t slot = g_plans[i].slotIndex;
+        Irrigation::PlanDefinition plan = defaultPlan(zoneId, slot);
+        if (!saveSlot(i, plan)) {
+            return false;
+        }
+        g_plans[i] = plan;
+        (void)EventStore::append(Irrigation::EventType::PLAN_CHANGED,
+                                 Irrigation::EventSource::WEB,
+                                 zoneId,
+                                 2,
+                                 static_cast<int32_t>(planId),
+                                 slot,
+                                 "plan deleted");
+        return true;
     }
-    const uint8_t road = g_plans[index].roadId;
-    const uint8_t slot = g_plans[index].slotIndex;
-    Plan plan = defaultPlan(road, slot);
-    return set(index, plan);
+    return false;
 }
 
-bool set(uint8_t index, const Plan& plan) {
-    if (index >= TotalPlans || !validate(plan)) {
+bool set(uint32_t planId, const Irrigation::PlanDefinition& plan) {
+    if (planId == 0 || plan.planId != planId || !validate(plan)) {
         return false;
     }
-    const bool ok = setInt(index, "exists", plan.exists ? 1 : 0) &&
-                    setInt(index, "en", plan.enabled ? 1 : 0) &&
-                    setInt(index, "min", plan.minuteOfDay) &&
-                    setInt(index, "dur", plan.durationSec) &&
-                    setInt(index, "cycle_d", plan.cycleDays) &&
-                    setInt(index, "cycle_m", static_cast<int32_t>(plan.cycleMask)) &&
-                    setInt(index, "cycle_s", static_cast<int32_t>(plan.cycleStartYmd)) &&
-                    setInt(index, "last", static_cast<int32_t>(plan.lastRunYmd));
-    if (ok) {
-        g_plans[index] = plan;
+    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
+        if (!g_plans[i].exists || g_plans[i].planId != planId) {
+            continue;
+        }
+        if (g_plans[i].zoneId != plan.zoneId || g_plans[i].slotIndex != plan.slotIndex) {
+            return false;
+        }
+        if (!saveSlot(i, plan)) {
+            return false;
+        }
+        g_plans[i] = plan;
+        (void)EventStore::append(Irrigation::EventType::PLAN_CHANGED,
+                                 Irrigation::EventSource::WEB,
+                                 plan.zoneId,
+                                 3,
+                                 static_cast<int32_t>(planId),
+                                 plan.enabled ? 1 : 0,
+                                 "plan saved");
+        return true;
     }
-    return ok;
+    return false;
 }
 
-bool set(uint8_t road, uint8_t slot, const Plan& plan) {
+bool getById(uint32_t planId, Irrigation::PlanDefinition* out) {
+    if (!out || planId == 0) {
+        return false;
+    }
+    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
+        if (g_plans[i].exists && g_plans[i].planId == planId) {
+            *out = g_plans[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+const Irrigation::PlanDefinition& getBySlot(uint8_t zoneId, uint8_t slotIndex) {
     uint8_t index = 0;
-    return flatIndex(road, slot, &index) && set(index, plan);
-}
-
-bool setLastRunYmd(uint8_t index, uint32_t ymd) {
-    if (index >= TotalPlans || !g_plans[index].exists) {
-        return false;
+    if (!flatIndex(zoneId, slotIndex, &index)) {
+        return g_invalid;
     }
-    if (!setInt(index, "last", static_cast<int32_t>(ymd))) {
-        return false;
-    }
-    g_plans[index].lastRunYmd = ymd;
-    return true;
+    return g_plans[index];
 }
 
-bool setLastRunYmd(uint8_t road, uint8_t slot, uint32_t ymd) {
-    uint8_t index = 0;
-    return flatIndex(road, slot, &index) && setLastRunYmd(index, ymd);
-}
-
-uint8_t countForRoad(uint8_t road) {
-    if (road < 1 || road > IrrigationPins::MaxRoads) {
+uint8_t countForZone(uint8_t zoneId) {
+    if (!Irrigation::validZoneId(zoneId)) {
         return 0;
     }
     uint8_t total = 0;
-    for (uint8_t slot = 0; slot < MaxPlansPerRoad; ++slot) {
-        uint8_t index = 0;
-        (void)flatIndex(road, slot, &index);
-        if (g_plans[index].exists) {
+    for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
+        if (getBySlot(zoneId, slot).exists) {
             ++total;
         }
     }
@@ -242,7 +350,7 @@ uint8_t countForRoad(uint8_t road) {
 
 uint8_t count() {
     uint8_t total = 0;
-    for (uint8_t i = 0; i < TotalPlans; ++i) {
+    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
         if (g_plans[i].exists) {
             ++total;
         }
@@ -250,23 +358,30 @@ uint8_t count() {
     return total;
 }
 
-bool validate(const Plan& plan) {
+bool validate(const Irrigation::PlanDefinition& plan) {
     time_t ignored = 0;
-    if (!plan.exists && plan.enabled) {
+    if (!Irrigation::validZoneId(plan.zoneId) || plan.slotIndex >= Irrigation::MaxPlansPerZone) {
         return false;
     }
-    if (plan.roadId < 1 || plan.roadId > IrrigationPins::MaxRoads || plan.slotIndex >= MaxPlansPerRoad ||
-        plan.minuteOfDay >= 1440 || plan.cycleDays < 1 || plan.cycleDays > 30 || plan.cycleMask == 0 ||
-        (plan.cycleMask & ~validCycleMask(plan.cycleDays)) != 0 || !ymdToTime(plan.cycleStartYmd, &ignored)) {
+    if (!plan.exists) {
+        return plan.planId == 0 && !plan.enabled;
+    }
+    if (plan.planId == 0 || !ZoneConfigStore::validateName(plan.name)) {
         return false;
     }
-    if (plan.durationSec > 14400) {
+    if (plan.timeHour > 23 || plan.timeMinute > 59 || plan.durationSec < 1) {
         return false;
     }
-    return plan.durationSec > 0 || !plan.enabled;
+    if (plan.cycleDays < 1 || plan.cycleDays > 30 || plan.cycleMask == 0) {
+        return false;
+    }
+    if ((plan.cycleMask & ~validCycleMask(plan.cycleDays)) != 0) {
+        return false;
+    }
+    return ymdToTime(plan.cycleStartYmd, &ignored);
 }
 
-bool shouldRunOnDate(const Plan& plan, uint32_t ymd) {
+bool shouldRunOnDate(const Irrigation::PlanDefinition& plan, uint32_t ymd) {
     time_t start = 0;
     time_t target = 0;
     if (!plan.exists || !plan.enabled || !ymdToTime(plan.cycleStartYmd, &start) || !ymdToTime(ymd, &target) || target < start) {
@@ -275,6 +390,10 @@ bool shouldRunOnDate(const Plan& plan, uint32_t ymd) {
     const uint32_t days = static_cast<uint32_t>((target - start) / 86400L);
     const uint8_t dayInCycle = static_cast<uint8_t>(days % plan.cycleDays);
     return (plan.cycleMask & (1UL << dayInCycle)) != 0;
+}
+
+uint32_t nextPlanId() {
+    return g_nextPlanId;
 }
 
 }

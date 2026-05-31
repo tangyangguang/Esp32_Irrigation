@@ -1,8 +1,7 @@
 #include "storage/RecordStore.h"
 
+#include <Arduino.h>
 #include <Esp32Base.h>
-#include <stdlib.h>
-#include <string.h>
 
 namespace {
 
@@ -10,12 +9,9 @@ static constexpr const char* kPath = "/irr_records.bin";
 static constexpr const char* kNamespace = "irr_rec";
 static constexpr const char* kKeyInitialized = "init";
 static constexpr const char* kKeyMeta = "meta";
-static constexpr const char* kLegacyKeyHead = "head";
-static constexpr const char* kLegacyKeyCount = "count";
-static constexpr const char* kLegacyKeyNextId = "next_id";
 static constexpr uint32_t kMagic = 0x49525245UL;
 static constexpr uint32_t kMetaMagic = 0x4952524DUL;
-static constexpr uint16_t kVersion = 3;
+static constexpr uint16_t kVersion = 4;
 static constexpr uint16_t kMetaVersion = 1;
 
 struct StoreMeta {
@@ -35,32 +31,7 @@ uint32_t g_nextId = 1;
 bool g_ready = false;
 
 uint32_t fileSizeBytes() {
-    return static_cast<uint32_t>(sizeof(RecordStore::Record)) * RecordStore::Capacity;
-}
-
-uint16_t clampIndex(int32_t value) {
-    if (value < 0 || value >= RecordStore::Capacity) {
-        return 0;
-    }
-    return static_cast<uint16_t>(value);
-}
-
-uint16_t clampCount(int32_t value) {
-    if (value < 0) {
-        return 0;
-    }
-    if (value > RecordStore::Capacity) {
-        return RecordStore::Capacity;
-    }
-    return static_cast<uint16_t>(value);
-}
-
-bool validMeta(const StoreMeta& meta) {
-    return meta.magic == kMetaMagic &&
-           meta.version == kMetaVersion &&
-           meta.head < RecordStore::Capacity &&
-           meta.count <= RecordStore::Capacity &&
-           meta.nextId != 0;
+    return static_cast<uint32_t>(sizeof(RecordStore::WateringRecord)) * RecordStore::Capacity;
 }
 
 StoreMeta makeMeta() {
@@ -71,6 +42,14 @@ StoreMeta makeMeta() {
     meta.count = g_count;
     meta.nextId = g_nextId == 0 ? 1 : g_nextId;
     return meta;
+}
+
+bool validMeta(const StoreMeta& meta) {
+    return meta.magic == kMetaMagic &&
+           meta.version == kMetaVersion &&
+           meta.head < RecordStore::Capacity &&
+           meta.count <= RecordStore::Capacity &&
+           meta.nextId != 0;
 }
 
 bool saveMeta() {
@@ -86,13 +65,9 @@ void loadMeta() {
         g_nextId = meta.nextId;
         return;
     }
-
-    g_head = clampIndex(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyHead, 0));
-    g_count = clampCount(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyCount, 0));
-    g_nextId = static_cast<uint32_t>(Esp32BaseConfig::getInt(kNamespace, kLegacyKeyNextId, 1));
-    if (g_nextId == 0) {
-        g_nextId = 1;
-    }
+    g_head = 0;
+    g_count = 0;
+    g_nextId = 1;
     (void)saveMeta();
 }
 
@@ -100,16 +75,12 @@ bool createEmptyStore() {
     const uint32_t total = fileSizeBytes();
     uint8_t zeros[256] = {};
     if (!Esp32BaseFs::writeBytes(kPath, nullptr, 0)) {
-        ESP32BASE_LOG_W("records", "create store failed open");
         return false;
     }
     for (uint32_t offset = 0; offset < total; offset += sizeof(zeros)) {
         const uint32_t remaining = total - offset;
         const size_t chunk = remaining < sizeof(zeros) ? static_cast<size_t>(remaining) : sizeof(zeros);
         if (!Esp32BaseFs::appendBytes(kPath, zeros, chunk)) {
-            ESP32BASE_LOG_W("records", "create store failed offset=%lu bytes=%u",
-                            static_cast<unsigned long>(offset),
-                            static_cast<unsigned>(chunk));
             return false;
         }
         delay(0);
@@ -139,12 +110,12 @@ bool ensureStoreFile() {
     return created;
 }
 
-bool readAtIndex(uint16_t index, RecordStore::Record* record) {
+bool readAtIndex(uint16_t index, RecordStore::WateringRecord* record) {
     if (!record || index >= RecordStore::Capacity) {
         return false;
     }
     size_t readLen = 0;
-    const uint32_t offset = static_cast<uint32_t>(index) * sizeof(RecordStore::Record);
+    const uint32_t offset = static_cast<uint32_t>(index) * sizeof(RecordStore::WateringRecord);
     if (!Esp32BaseFs::readBytesAt(kPath, offset, reinterpret_cast<uint8_t*>(record), sizeof(*record), &readLen)) {
         return false;
     }
@@ -161,34 +132,23 @@ void begin() {
         ESP32BASE_LOG_W("records", "record store not ready");
         return;
     }
-
     loadMeta();
-    ESP32BASE_LOG_I("records", "ready count=%u head=%u next=%lu",
-                    static_cast<unsigned>(g_count),
-                    static_cast<unsigned>(g_head),
-                    static_cast<unsigned long>(g_nextId));
 }
 
-bool append(const Record& record) {
+bool append(const WateringRecord& record) {
     if (!g_ready && !ensureStoreFile()) {
         return false;
     }
     g_ready = true;
-
-    Record stored = record;
+    WateringRecord stored = record;
     stored.magic = kMagic;
     stored.version = kVersion;
     stored.size = sizeof(stored);
-    stored.id = g_nextId;
-
+    stored.recordId = g_nextId;
     const uint32_t offset = static_cast<uint32_t>(g_head) * sizeof(stored);
     if (!Esp32BaseFs::writeBytesAt(kPath, offset, reinterpret_cast<const uint8_t*>(&stored), sizeof(stored))) {
-        ESP32BASE_LOG_W("records", "append failed id=%lu index=%u",
-                        static_cast<unsigned long>(stored.id),
-                        static_cast<unsigned>(g_head));
         return false;
     }
-
     g_head = static_cast<uint16_t>((g_head + 1) % Capacity);
     if (g_count < Capacity) {
         ++g_count;
@@ -197,16 +157,11 @@ bool append(const Record& record) {
     if (g_nextId == 0) {
         g_nextId = 1;
     }
-
-    const bool metaOk = saveMeta();
-    ESP32BASE_LOG_I("records", "append id=%lu result=%s",
-                    static_cast<unsigned long>(stored.id),
-                    metaOk ? "ok" : "meta_failed");
-    return metaOk;
+    return saveMeta();
 }
 
 bool clear() {
-    const uint32_t nextId = g_nextId == 0 ? 1 : g_nextId;
+    const uint32_t next = g_nextId == 0 ? 1 : g_nextId;
     if (!Esp32BaseConfig::clearNamespace(kNamespace)) {
         return false;
     }
@@ -217,14 +172,9 @@ bool clear() {
     (void)Esp32BaseConfig::setInt(kNamespace, kKeyInitialized, 1);
     g_head = 0;
     g_count = 0;
-    g_nextId = nextId;
-    if (!saveMeta()) {
-        g_ready = false;
-        return false;
-    }
-    g_ready = true;
-    ESP32BASE_LOG_W("records", "cleared");
-    return true;
+    g_nextId = next;
+    g_ready = saveMeta();
+    return g_ready;
 }
 
 uint16_t count() {
@@ -247,59 +197,17 @@ bool readLatest(uint16_t offset, uint16_t limit, ReadCallback callback, void* us
     if (remaining > limit) {
         remaining = limit;
     }
-
     for (uint16_t i = 0; i < remaining; ++i) {
         const uint16_t reverseIndex = static_cast<uint16_t>(offset + i + 1);
-        uint16_t index = g_head >= reverseIndex
+        const uint16_t index = g_head >= reverseIndex
             ? static_cast<uint16_t>(g_head - reverseIndex)
             : static_cast<uint16_t>(Capacity + g_head - reverseIndex);
-        Record record = {};
-        if (!readAtIndex(index, &record)) {
-            continue;
+        WateringRecord record = {};
+        if (readAtIndex(index, &record)) {
+            callback(record, user);
         }
-        callback(record, user);
     }
     return true;
-}
-
-const char* taskTypeName(TaskType type) {
-    return type == TASK_PLAN ? "plan" : "manual";
-}
-
-const char* triggerSourceName(TriggerSource source) {
-    switch (source) {
-        case SOURCE_WEB_PAGE: return "web_page";
-        case SOURCE_HTTP_API: return "http_api";
-        case SOURCE_LOCAL_BUTTON: return "local_button";
-        case SOURCE_PLAN_SCHEDULER: return "plan_scheduler";
-        case SOURCE_DURATION_REACHED: return "duration_reached";
-        case SOURCE_FLOW_ERROR: return "flow_error";
-        case SOURCE_LEAK_MONITOR: return "leak_monitor";
-        case SOURCE_FACTORY_RESET: return "factory_reset";
-        case SOURCE_UNKNOWN:
-        default: return "unknown";
-    }
-}
-
-const char* stopScopeName(StopScope scope) {
-    switch (scope) {
-        case SCOPE_ROAD: return "road";
-        case SCOPE_ALL: return "all";
-        case SCOPE_NONE:
-        default: return "none";
-    }
-}
-
-const char* resultName(Result result) {
-    switch (result) {
-        case RESULT_COMPLETED: return "completed";
-        case RESULT_USER_STOPPED: return "user_stopped";
-        case RESULT_FLOW_ERROR_STOPPED: return "flow_error_stopped";
-        case RESULT_LEAK_PROTECTED: return "leak_protected";
-        case RESULT_FACTORY_RESET_PROTECTED: return "factory_reset_protected";
-        case RESULT_NONE:
-        default: return "none";
-    }
 }
 
 }

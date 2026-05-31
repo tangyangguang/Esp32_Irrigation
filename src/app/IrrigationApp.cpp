@@ -1,23 +1,21 @@
 #include "app/IrrigationApp.h"
 
 #include <Esp32Base.h>
+#include <string.h>
 
 #include "domain/FlowMeter.h"
-#include "domain/LeakMonitor.h"
 #include "domain/MaintenanceService.h"
 #include "domain/SafetyManager.h"
 #include "domain/ValveController.h"
-#include "domain/WateringPlanScheduler.h"
-#include "domain/WateringSession.h"
-#include "storage/PlanStore.h"
-#include "storage/PlanResultStore.h"
-#include "storage/PlanSkipStore.h"
+#include "domain/ZoneManager.h"
 #include "storage/EventStore.h"
+#include "storage/PlanStore.h"
 #include "storage/RecordStore.h"
-#include "storage/SettingsStore.h"
+#include "storage/ScheduleSkipStore.h"
+#include "storage/SystemConfigStore.h"
+#include "storage/ZoneConfigStore.h"
+#include "storage/ZoneErrorStore.h"
 #include "web/IrrigationWeb.h"
-
-#include <string.h>
 
 namespace IrrigationApp {
 
@@ -49,8 +47,8 @@ void appendBaseEvent(const char* event, const char* data, void*) {
         strcmp(event, Esp32BaseWiFi::EVENT_DISCONNECTED) == 0 ||
         strcmp(event, Esp32BaseWiFi::EVENT_CONFIG_PORTAL) == 0 ||
         strcmp(event, Esp32BaseWiFi::EVENT_FAILED) == 0) {
-        (void)EventStore::append(EventStore::TYPE_WIFI_STATUS_CHANGED,
-                                 EventStore::SOURCE_SYSTEM,
+        (void)EventStore::append(Irrigation::EventType::WIFI_STATUS_CHANGED,
+                                 Irrigation::EventSource::SYSTEM,
                                  0,
                                  wifiStateCode(),
                                  Esp32BaseWiFi::rssi(),
@@ -64,8 +62,8 @@ void appendBaseEvent(const char* event, const char* data, void*) {
         strcmp(event, Esp32BaseOta::EVENT_SUCCESS) == 0 ||
         strcmp(event, Esp32BaseOta::EVENT_FAILED) == 0) {
         const char* text = strcmp(event, Esp32BaseOta::EVENT_FAILED) == 0 ? Esp32BaseOta::lastError() : event;
-        (void)EventStore::append(EventStore::TYPE_OTA_STATUS_CHANGED,
-                                 EventStore::SOURCE_SYSTEM,
+        (void)EventStore::append(Irrigation::EventType::OTA_STATUS_CHANGED,
+                                 Irrigation::EventSource::SYSTEM,
                                  0,
                                  otaStatusCode(),
                                  Esp32BaseOta::bytesProcessed(),
@@ -99,45 +97,42 @@ void beginHardwareSafety() {
 }
 
 void begin() {
-    SettingsStore::begin();
-    PlanStore::begin();
-    PlanSkipStore::begin();
-    PlanResultStore::begin();
-    RecordStore::begin();
     EventStore::begin();
+    RecordStore::begin();
+    SystemConfigStore::begin();
+    ZoneConfigStore::begin();
+    ZoneErrorStore::begin();
+    PlanStore::begin();
+    ScheduleSkipStore::begin();
     FlowMeter::begin();
+    ZoneManager::begin();
     SafetyManager::begin();
-    WateringSession::begin();
-    WateringPlanScheduler::begin();
-    LeakMonitor::begin();
     MaintenanceService::begin();
     IrrigationWeb::begin();
     subscribeBaseEvents();
-    (void)EventStore::append(EventStore::TYPE_BOOT,
-                             EventStore::SOURCE_SYSTEM,
+    (void)EventStore::append(Irrigation::EventType::BOOT,
+                             Irrigation::EventSource::SYSTEM,
                              0,
                              Esp32BaseWatchdog::wasWatchdogReset() ? 1 : 0,
                              Esp32BaseSystem::bootCount(),
                              Esp32BaseSystem::restartLogCount(),
                              Esp32BaseSystem::resetReason());
 #if ESP32BASE_ENABLE_WIFI
-    (void)EventStore::append(EventStore::TYPE_WIFI_STATUS_CHANGED,
-                             EventStore::SOURCE_SYSTEM,
+    (void)EventStore::append(Irrigation::EventType::WIFI_STATUS_CHANGED,
+                             Irrigation::EventSource::SYSTEM,
                              0,
                              wifiStateCode(),
                              Esp32BaseWiFi::rssi(),
                              0,
                              Esp32BaseWiFi::stateName());
 #endif
-    ESP32BASE_LOG_I("irrigation", "application shell ready");
+    ESP32BASE_LOG_I("irrigation", "application ready");
 }
 
 void handle() {
     FlowMeter::handle();
+    ZoneManager::handle();
     SafetyManager::handle();
-    WateringSession::handle();
-    WateringPlanScheduler::handle();
-    LeakMonitor::handle();
     ValveController::handle();
     MaintenanceService::handle();
 }
