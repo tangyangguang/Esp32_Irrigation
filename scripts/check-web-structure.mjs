@@ -124,6 +124,8 @@ assert(!scheduler.includes('lastRunYmd'), 'scheduler should not use persistent l
 
 assert(records.includes('planNameSnapshot') && records.includes('startedEpoch') && records.includes('startedUptimeMs'), 'records should be self-contained with plan name, epoch, and uptime');
 assert(records.includes('configSnapshot') && records.includes('startTimeoutSec') && records.includes('flowNoPulseTimeoutSec'), 'records should include config snapshot timeout fields');
+assert(records.includes('createFixedFile') && read('src/storage/EventStore.cpp').includes('createFixedFile'), 'fixed-capacity binary stores should use Esp32BaseFs::createFixedFile');
+assert(!records.includes('calloc') && !read('src/storage/EventStore.cpp').includes('calloc'), 'fixed-capacity binary stores should not allocate full files on heap');
 
 assert(web.includes('/api/v1/zone/start') && web.includes('zoneId'), 'web API should use fixed endpoint plus zoneId parameter');
 assert(web.includes('/api/v1/plan/update') && web.includes('planId'), 'plan API should use fixed endpoint plus planId parameter');
