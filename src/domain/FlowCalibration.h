@@ -58,11 +58,28 @@ struct Recommendation {
     SampleError errors[MaxSamples];
 };
 
+struct StatusSnapshot {
+    State state;
+    uint8_t activeZoneId;
+    uint32_t startedMs;
+    uint32_t maxCaptureMs;
+    uint32_t elapsedMs;
+    uint32_t remainingMs;
+    uint32_t currentPulses;
+    uint8_t sampleCapacity;
+    bool pendingExists;
+    uint8_t pendingZoneId;
+    uint32_t pendingDurationMs;
+    uint32_t pendingTotalPulses;
+    uint16_t pendingDetailCapturedPulses;
+};
+
 void begin();
 void handle(const Irrigation::SystemConfig& config);
 bool active();
 State state();
 uint8_t activeZoneId();
+void status(StatusSnapshot* out);
 const char* lastError();
 bool start(uint8_t zoneId, const Irrigation::SystemConfig& config);
 bool stop();

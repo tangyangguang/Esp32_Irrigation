@@ -487,6 +487,36 @@ uint8_t activeZoneId() {
     return g_activeZoneId;
 }
 
+void status(StatusSnapshot* out) {
+    if (!out) {
+        return;
+    }
+    *out = {};
+    out->state = g_state;
+    out->activeZoneId = g_activeZoneId;
+    out->startedMs = g_startedMs;
+    out->maxCaptureMs = g_maxCaptureMs;
+    out->sampleCapacity = g_sampleCapacity;
+    if (g_state == State::CAPTURING) {
+        const uint32_t now = millis();
+        out->elapsedMs = now - g_startedMs;
+        out->remainingMs = out->elapsedMs >= g_maxCaptureMs ? 0 : g_maxCaptureMs - out->elapsedMs;
+        const uint32_t pulses = FlowMeter::pulseCount(g_activeZoneId);
+        out->currentPulses = pulses >= g_startedPulseCount ? pulses - g_startedPulseCount : 0;
+        return;
+    }
+    if (g_state == State::WAITING_ACTUAL && g_pending.exists) {
+        out->pendingExists = true;
+        out->pendingZoneId = g_pending.zoneId;
+        out->pendingDurationMs = g_pending.durationMs;
+        out->pendingTotalPulses = g_pending.totalPulses;
+        out->pendingDetailCapturedPulses = g_pending.detailCapturedPulses;
+        out->activeZoneId = g_pending.zoneId;
+        out->elapsedMs = g_pending.durationMs;
+        out->currentPulses = g_pending.totalPulses;
+    }
+}
+
 const char* lastError() {
     return g_lastError;
 }
