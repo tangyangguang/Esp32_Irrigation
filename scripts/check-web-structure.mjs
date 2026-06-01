@@ -340,6 +340,13 @@ assert(web.includes('硬件引脚') && web.includes('阀门控制 GPIO') && web.
 assert(!web.includes('流量 GPIO'), 'zone pages should not use the ambiguous flow GPIO label');
 assert(!web.includes('<th>阀门 GPIO</th>') && !web.includes('<th>流量计输入 GPIO</th>'), 'zone list should not expose hardware pin columns');
 assert(web.includes('<th>启动超时</th><th>无脉冲超时</th>'), 'zone list should show user-relevant timeout settings');
+{
+  const zoneEdit = functionBody(web, 'handleSettingsPage');
+  const styleCall = zoneEdit.indexOf('writeFlowParameterLineStyle()');
+  const paramLineCall = zoneEdit.indexOf('writeFlowParameterLine(zone.flow)');
+  assert(styleCall !== -1 && paramLineCall !== -1 && styleCall < paramLineCall,
+         'zone edit page must load flow parameter line styles before rendering current flow parameters');
+}
 assert(!web.includes('/esp32base/app-events.csv') && !web.includes('基础库存储视图'), 'business event page should not show low-level App Events storage links');
 assert(!web.includes('<th>ID</th><th>等级</th><th>运行时间'), 'business event page should not show a separate uptime column');
 assert(web.includes('writeEventTimeHuman(event)'), 'business event page should show real time, falling back to boot count plus uptime only when real time is unavailable');

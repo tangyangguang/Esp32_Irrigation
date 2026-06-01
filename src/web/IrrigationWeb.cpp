@@ -512,6 +512,15 @@ bool readFlowParameters(Irrigation::FlowParameters* out) {
     return true;
 }
 
+void writeFlowParameterLineStyle() {
+    Esp32BaseWeb::sendChunk("<style>"
+                            ".calibration-param-line{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;align-items:baseline}"
+                            ".calibration-param-line .param{display:flex;gap:5px;align-items:baseline;min-width:0;color:var(--eb-muted);font-size:13px;white-space:nowrap}"
+                            ".calibration-param-line .value{color:var(--eb-ink);font-weight:500}"
+                            "@media(max-width:720px){.calibration-param-line{grid-template-columns:1fr}}"
+                            "</style>");
+}
+
 void writeFlowParameterLine(const Irrigation::FlowParameters& params) {
     Esp32BaseWeb::sendChunk("<div class='calibration-param-line'><span class='param'><span>启动脉冲</span><span class='value'>");
     writeUInt(params.startupPulseLimit);
@@ -1756,6 +1765,7 @@ void handleSettingsPage() {
         const Irrigation::ZoneConfig& zone = ZoneManager::config(editZoneId);
         pageHeader("水路编辑");
         Esp32BaseWeb::sendPageTitle("水路编辑", "设置水路名称、是否使用和异常处理方式。流量估算参数在流量校准页通过候选参数应用。");
+        writeFlowParameterLineStyle();
         Esp32BaseWeb::beginPanel(zone.name);
         Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/zone/config' onsubmit=\"return confirm('确认保存水路配置？')&&once(this)\">");
         writeOnePostHidden("source", "web_page");
@@ -1823,6 +1833,7 @@ void handleCalibrationPage() {
     if (FlowCalibration::lastError()[0] != '\0') {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "校准提示", FlowCalibration::lastError());
     }
+    writeFlowParameterLineStyle();
     Esp32BaseWeb::sendChunk("<style>"
                             ".calibration-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 12px}"
                             ".calibration-metrics .metric b{font-weight:600}"
@@ -1836,9 +1847,6 @@ void handleCalibrationPage() {
                             ".calibration-param-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}"
                             ".calibration-param-head h4{margin:0;font-size:.92rem;font-weight:500;color:var(--eb-muted)}"
                             ".calibration-param-head form{margin:0}"
-                            ".calibration-param-line{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;align-items:baseline}"
-                            ".calibration-param-line .param{display:flex;gap:5px;align-items:baseline;min-width:0;color:var(--eb-muted);font-size:13px;white-space:nowrap}"
-                            ".calibration-param-line .value{color:var(--eb-ink);font-weight:500}"
                             ".calibration-param-card.candidate,.calibration-param-card.previous{font-size:13px}"
                             ".calibration-param-card.candidate .calibration-param-line .param,.calibration-param-card.previous .calibration-param-line .param{font-size:12px}"
                             ".calibration-param-note{margin:8px 0 0;color:var(--eb-muted);font-size:12px;line-height:1.45}"
@@ -1863,7 +1871,7 @@ void handleCalibrationPage() {
                             ".calibration-copy-fill label{display:block;margin:0 0 6px;color:var(--eb-muted);font-size:13px}"
                             ".calibration-fill-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}"
                             ".calibration-fill-row select{width:auto;margin:0}"
-                            "@media(max-width:720px){.calibration-workflow{grid-template-columns:1fr}.calibration-zone-grid{grid-template-columns:1fr}.calibration-param-line{grid-template-columns:1fr}.calibration-candidate-dialog .field.short{grid-column:1/-1}}"
+                            "@media(max-width:720px){.calibration-workflow{grid-template-columns:1fr}.calibration-zone-grid{grid-template-columns:1fr}.calibration-candidate-dialog .field.short{grid-column:1/-1}}"
                             "</style>");
     writeFlowParameterLifecyclePanel();
 
