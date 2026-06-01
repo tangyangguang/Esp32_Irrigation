@@ -25,6 +25,7 @@
 | `record_store_recovered` | `warn` | `storage` | `meta_rebuilt` | `system:irrigation` | `code`/`value1` 为恢复后记录数、`value2` 为下一个记录 ID | 启动时从当前格式定长记录文件重建浇水记录元数据。旧格式迁移不属于当前实现。 |
 | `record_store_fault` | `error` | `storage` | `meta_save_failed` / `append_failed` | `system:irrigation` / `zone:<id>` | `meta_save_failed`：`code`/`value2` 为槽位、`value1` 为记录 ID；`append_failed`：`code` 为 `TaskResult`、`value1` 为水路号、`value2` 为计划 ID | 浇水记录写入或记录元数据保存失败。任务状态机仍完成关阀和安全处理，但历史记录可能缺失。 |
 | `config_schema_reset` | `warn` | `storage` | `format_changed` | `config:zones` / `config:plans` | `code`/`value1` 为被忽略的无效存储条目数量 | 已保存的水路或计划配置格式与当前固件不匹配，相关条目已按当前默认值加载；首页会显示用户可见提示。 |
+| `web_route_fault` | `error` | `web` | `registration_failed` | `system:irrigation` | `code`/`value1` 为注册失败的业务路由数量 | 业务页面或 API 路由注册失败，通常意味着路由容量或注册流程异常。 |
 | `flow_fault` | `error` | `monitor` | `flow_start_timeout` / `flow_no_pulse_timeout` | `zone:<id>` | `code` 为 `TaskResult`；`value1` 目标秒；`value2` 脉冲数；`value3` 是否锁定 | 浇水任务因启动无水流或运行中断流停止。 |
 | `leak_detected` | `error` | `monitor` | `idle_flow` | `zone:<id>` | `value1` 实际脉冲数；`value2` 阈值；`value3` 窗口秒 | 某一路待机状态检测到异常流量，疑似漏水、阀门粘连或流量计输入干扰。 |
 | `zone_locked` | `error` | `monitor` | 水路异常原因 | `zone:<id>` | `code` 为 `ZoneErrorCode`；`value1` 为 `TaskResult` | 水路进入异常锁定，需要人工清除。 |

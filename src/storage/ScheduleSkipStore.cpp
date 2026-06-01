@@ -2,7 +2,8 @@
 
 #include <Esp32Base.h>
 #include <stdio.h>
-#include <time.h>
+
+#include "storage/PlanStore.h"
 
 namespace {
 
@@ -28,12 +29,8 @@ void key(char* out, size_t len, uint8_t index) {
     snprintf(out, len, "s%u", static_cast<unsigned>(index));
 }
 
-bool validYmd(uint32_t ymd) {
-    return ymd >= 20000101UL;
-}
-
 int find(uint32_t planId, uint32_t ymd) {
-    if (planId == 0 || !validYmd(ymd)) {
+    if (planId == 0 || !PlanStore::validYmd(ymd)) {
         return -1;
     }
     for (uint8_t i = 0; i < g_count; ++i) {
@@ -67,12 +64,46 @@ bool saveMeta() {
     return Esp32BaseConfig::setPod(kNamespace, kKeyMeta, meta);
 }
 
-bool persistAll() {
-    bool ok = saveMeta();
-    for (uint8_t i = 0; i < ScheduleSkipStore::Capacity; ++i) {
-        char k[8];
-        key(k, sizeof(k), i);
-        ok = Esp32BaseConfig::setPod(kNamespace, k, g_entries[i]) && ok;
+bool saveEntry(uint8_t index) {
+    if (index >= ScheduleSkipStore::Capacity) {
+        return false;
+    }
+    char k[8];
+    key(k, sizeof(k), index);
+    return Esp32BaseConfig::setPod(kNamespace, k, g_entries[index]);
+}
+
+bool removeAt(uint8_t index) {
+    if (index >= g_count) {
+        return false;
+    }
+    const uint8_t last = static_cast<uint8_t>(g_count - 1);
+    bool ok = true;
+    if (index != last) {
+        g_entries[index] = g_entries[last];
+        ok = saveEntry(index) && ok;
+    }
+    g_entries[last] = {};
+    --g_count;
+    ok = saveEntry(last) && ok;
+    if (g_head >= g_count) {
+        g_head = 0;
+    }
+    return saveMeta() && ok;
+}
+
+bool pruneBefore(uint32_t ymd) {
+    if (!PlanStore::validYmd(ymd)) {
+        return true;
+    }
+    bool ok = true;
+    uint8_t i = 0;
+    while (i < g_count) {
+        if (!PlanStore::validYmd(g_entries[i].ymd) || g_entries[i].ymd < ymd) {
+            ok = removeAt(i) && ok;
+        } else {
+            ++i;
+        }
     }
     return ok;
 }
@@ -89,13 +120,21 @@ void begin() {
         g_count = meta.count;
         g_head = meta.head;
     }
+    uint8_t loaded = 0;
     for (uint8_t i = 0; i < g_count; ++i) {
         char k[8];
         key(k, sizeof(k), i);
         SkipEntry entry = {};
-        if (Esp32BaseConfig::getPod(kNamespace, k, entry) && entry.planId != 0 && validYmd(entry.ymd) && find(entry.planId, entry.ymd) < 0) {
-            g_entries[i] = entry;
+        if (Esp32BaseConfig::getPod(kNamespace, k, entry) && entry.planId != 0 && PlanStore::validYmd(entry.ymd) && find(entry.planId, entry.ymd) < 0) {
+            g_entries[loaded++] = entry;
         }
+    }
+    g_count = loaded;
+    uint32_t today = 0;
+    if (PlanStore::currentYmd(&today)) {
+        (void)pruneBefore(today);
+    } else {
+        (void)saveMeta();
     }
 }
 
@@ -116,13 +155,13 @@ bool isSkipped(uint32_t planId, uint32_t ymd) {
 }
 
 bool skip(uint32_t planId, uint32_t ymd, Irrigation::SkipReason reason) {
-    if (planId == 0 || !validYmd(ymd)) {
+    if (planId == 0 || !PlanStore::validYmd(ymd)) {
         return false;
     }
     int pos = find(planId, ymd);
     if (pos >= 0) {
         g_entries[pos].reason = reason;
-        return persistAll();
+        return saveEntry(static_cast<uint8_t>(pos));
     }
     if (g_count < Capacity) {
         pos = g_count++;
@@ -131,7 +170,7 @@ bool skip(uint32_t planId, uint32_t ymd, Irrigation::SkipReason reason) {
         g_head = static_cast<uint8_t>((g_head + 1) % Capacity);
     }
     g_entries[pos] = {planId, ymd, reason, {0, 0, 0}};
-    return persistAll();
+    return saveEntry(static_cast<uint8_t>(pos)) && saveMeta();
 }
 
 bool unskip(uint32_t planId, uint32_t ymd) {
@@ -139,15 +178,7 @@ bool unskip(uint32_t planId, uint32_t ymd) {
     if (pos < 0) {
         return true;
     }
-    for (uint8_t i = static_cast<uint8_t>(pos + 1); i < g_count; ++i) {
-        g_entries[i - 1] = g_entries[i];
-    }
-    --g_count;
-    if (g_count < Capacity) {
-        g_entries[g_count] = {};
-    }
-    g_head = 0;
-    return persistAll();
+    return removeAt(static_cast<uint8_t>(pos));
 }
 
 bool read(uint8_t offset, uint8_t limit, SkipEntry* out, uint8_t* outCount) {

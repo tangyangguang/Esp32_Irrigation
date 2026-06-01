@@ -244,6 +244,20 @@ void appendRecordAppendFailed(uint8_t zoneId, uint32_t planId, Irrigation::TaskR
                       "watering record append failed");
 }
 
+void appendWebRouteRegistrationFailed(uint8_t failedCount) {
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_ERROR,
+                      "web",
+                      "web_route_fault",
+                      "registration_failed",
+                      kObjectSystem,
+                      failedCount,
+                      failedCount,
+                      0,
+                      0,
+                      Esp32BaseAppEventLog::VALUE1,
+                      "business web route registration failed");
+}
+
 void appendFlowFault(uint8_t zoneId,
                      Irrigation::TaskResult result,
                      uint32_t targetSec,

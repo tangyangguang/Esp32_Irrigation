@@ -70,8 +70,19 @@ bool PlanExecutionTracker::resetNewDay(uint32_t ymd) {
 }
 
 bool PlanExecutionTracker::isHandled(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay) const {
+    Irrigation::PlanObservationStatus found = Irrigation::PlanObservationStatus::NOT_EVALUATED;
+    if (!status(planId, ymd, minuteOfDay, &found)) {
+        return false;
+    }
+    return found != Irrigation::PlanObservationStatus::MISSED;
+}
+
+bool PlanExecutionTracker::status(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus* out) const {
     for (uint8_t i = 0; i < m_count; ++i) {
         if (m_entries[i].planId == planId && m_entries[i].ymd == ymd && m_entries[i].minuteOfDay == minuteOfDay) {
+            if (out) {
+                *out = m_entries[i].status;
+            }
             return true;
         }
     }
@@ -79,9 +90,24 @@ bool PlanExecutionTracker::isHandled(uint32_t planId, uint32_t ymd, uint16_t min
 }
 
 bool PlanExecutionTracker::mark(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status) {
+    return markInternal(planId, ymd, minuteOfDay, status, true);
+}
+
+bool PlanExecutionTracker::markVolatile(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status) {
+    return markInternal(planId, ymd, minuteOfDay, status, false);
+}
+
+bool PlanExecutionTracker::markInternal(uint32_t planId,
+                                        uint32_t ymd,
+                                        uint16_t minuteOfDay,
+                                        Irrigation::PlanObservationStatus status,
+                                        bool persist) {
     for (uint8_t i = 0; i < m_count; ++i) {
         if (m_entries[i].planId == planId && m_entries[i].ymd == ymd && m_entries[i].minuteOfDay == minuteOfDay) {
             m_entries[i].status = status;
+            if (!persist) {
+                return true;
+            }
             m_dirty = !save();
             return !m_dirty;
         }
@@ -90,6 +116,9 @@ bool PlanExecutionTracker::mark(uint32_t planId, uint32_t ymd, uint16_t minuteOf
         return false;
     }
     m_entries[m_count++] = {planId, ymd, minuteOfDay, status};
+    if (!persist) {
+        return true;
+    }
     m_dirty = !save();
     return !m_dirty;
 }

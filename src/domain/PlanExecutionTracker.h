@@ -15,7 +15,9 @@ public:
     void reset();
     bool resetNewDay(uint32_t ymd);
     bool isHandled(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay) const;
+    bool status(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus* out) const;
     bool mark(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status);
+    bool markVolatile(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status);
     bool retrySave();
     bool hasPendingSave() const;
     uint8_t count() const;
@@ -25,6 +27,7 @@ public:
 private:
     bool load();
     bool save() const;
+    bool markInternal(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status, bool persist);
 
     uint8_t m_zoneId = 0;
     Entry m_entries[Irrigation::MaxPlansPerZone] = {};

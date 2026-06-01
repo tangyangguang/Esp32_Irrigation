@@ -21,6 +21,7 @@ void appendRecordStoreRecovered(uint16_t count, uint32_t nextId);
 void appendRecordMetaSaveFailed(uint32_t recordId, uint16_t slot);
 void appendRecordAppendFailed(uint8_t zoneId, uint32_t planId, Irrigation::TaskResult result);
 void appendConfigSchemaReset(const char* store, uint16_t invalidCount);
+void appendWebRouteRegistrationFailed(uint8_t failedCount);
 void appendFlowFault(uint8_t zoneId,
                      Irrigation::TaskResult result,
                      uint32_t targetSec,

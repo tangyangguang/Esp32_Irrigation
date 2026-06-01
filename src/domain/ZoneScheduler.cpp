@@ -136,17 +136,20 @@ void ZoneScheduler::tick(Zone& zone,
         if (!dueEpochForDate(plan, nowLocal, &dueEpoch)) {
             continue;
         }
-        if (m_tracker.isHandled(plan.planId, ymd, minuteOfDay)) {
-            continue;
-        }
-
         const uint32_t graceEnd = dueEpoch + systemConfig.scheduleGraceSec;
         if (trustedEpoch < dueEpoch) {
             continue;
         }
         if (trustedEpoch > graceEnd) {
-            (void)markObserved(plan, ymd, minuteOfDay, Irrigation::PlanObservationStatus::MISSED);
-            appendObservation(plan, Irrigation::PlanObservationStatus::MISSED, dueEpoch);
+            Irrigation::PlanObservationStatus previous = Irrigation::PlanObservationStatus::NOT_EVALUATED;
+            if (!m_tracker.status(plan.planId, ymd, minuteOfDay, &previous) ||
+                previous != Irrigation::PlanObservationStatus::MISSED) {
+                (void)m_tracker.markVolatile(plan.planId, ymd, minuteOfDay, Irrigation::PlanObservationStatus::MISSED);
+                appendObservation(plan, Irrigation::PlanObservationStatus::MISSED, dueEpoch);
+            }
+            continue;
+        }
+        if (m_tracker.isHandled(plan.planId, ymd, minuteOfDay)) {
             continue;
         }
         (void)observePlan(zone, plan, systemConfig, leakAlertActive, ymd, minuteOfDay, dueEpoch, trustedEpoch, nowMs);

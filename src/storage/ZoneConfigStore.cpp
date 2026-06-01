@@ -48,36 +48,40 @@ void key(char* out, size_t len, uint8_t zoneId) {
     snprintf(out, len, "z%u", static_cast<unsigned>(zoneId));
 }
 
-bool validUtf8NoControl(const char* text) {
+bool validUtf8NoControl(const char* text, size_t maxLen) {
     if (!text || text[0] == '\0') {
         return false;
     }
     const uint8_t* s = reinterpret_cast<const uint8_t*>(text);
     size_t i = 0;
-    while (s[i] != 0) {
+    while (i < maxLen && s[i] != 0) {
         const uint8_t c = s[i];
+        const size_t remaining = maxLen - i;
         if (c < 0x20 || c == 0x7F) {
             return false;
         }
         if (c < 0x80) {
             ++i;
         } else if ((c & 0xE0) == 0xC0) {
+            if (remaining < 2) return false;
             if ((s[i + 1] & 0xC0) != 0x80 || c < 0xC2) return false;
             i += 2;
         } else if ((c & 0xF0) == 0xE0) {
+            if (remaining < 3) return false;
             if ((s[i + 1] & 0xC0) != 0x80 || (s[i + 2] & 0xC0) != 0x80) return false;
             i += 3;
         } else if ((c & 0xF8) == 0xF0) {
+            if (remaining < 4) return false;
             if ((s[i + 1] & 0xC0) != 0x80 || (s[i + 2] & 0xC0) != 0x80 || (s[i + 3] & 0xC0) != 0x80) return false;
             i += 4;
         } else {
             return false;
         }
-        if (i >= Irrigation::NameMaxBytes) {
+        if (i >= maxLen) {
             return false;
         }
     }
-    return i > 0 && i < Irrigation::NameMaxBytes;
+    return i > 0 && i < maxLen && s[i] == 0;
 }
 
 Irrigation::ZoneConfig defaultConfig(uint8_t zoneId) {
@@ -157,7 +161,7 @@ const Irrigation::ZoneConfig& get(uint8_t zoneId) {
 }
 
 bool validateName(const char* name) {
-    return validUtf8NoControl(name);
+    return validUtf8NoControl(name, Irrigation::NameMaxBytes);
 }
 
 Irrigation::FlowParameters normalizeFlowParameters(Irrigation::FlowParameters params) {

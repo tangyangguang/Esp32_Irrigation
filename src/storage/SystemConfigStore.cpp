@@ -6,6 +6,9 @@
 namespace {
 
 static constexpr const char* kNamespace = "irr_sys";
+static constexpr const char* kKeyBlob = "system";
+static constexpr uint32_t kBlobMagic = 0x49535953UL;
+static constexpr uint16_t kBlobVersion = 1;
 static constexpr const char* kGroupManual = "manual";
 static constexpr const char* kGroupSchedule = "schedule";
 static constexpr const char* kGroupSafety = "safety";
@@ -31,6 +34,13 @@ static constexpr const char* kPresetMinuteKeys[] = {
     "preset_min3",
     "preset_min4",
     "preset_min5",
+};
+
+struct StoredSystemConfig {
+    uint32_t magic;
+    uint16_t version;
+    uint16_t size;
+    Irrigation::SystemConfig data;
 };
 
 Irrigation::SystemConfig g_config = {};
@@ -79,7 +89,23 @@ bool writeBoolStored(const char* key, bool value) {
     return Esp32BaseConfig::setBool(kNamespace, key, value);
 }
 
-Irrigation::SystemConfig readStored() {
+StoredSystemConfig wrap(const Irrigation::SystemConfig& config) {
+    StoredSystemConfig stored = {};
+    stored.magic = kBlobMagic;
+    stored.version = kBlobVersion;
+    stored.size = sizeof(stored);
+    stored.data = config;
+    return stored;
+}
+
+bool validStored(const StoredSystemConfig& stored) {
+    return stored.magic == kBlobMagic &&
+           stored.version == kBlobVersion &&
+           stored.size == sizeof(stored) &&
+           SystemConfigStore::validate(stored.data);
+}
+
+Irrigation::SystemConfig readFieldStored() {
     Irrigation::SystemConfig config = defaults();
     config.maxWateringDurationSec = minutesToSeconds(readU32(kKeyMaxDurationMin, secondsToMinutes(config.maxWateringDurationSec)));
     config.scheduleGraceSec = static_cast<uint16_t>(readU32(kKeyGrace, config.scheduleGraceSec));
@@ -98,6 +124,16 @@ Irrigation::SystemConfig readStored() {
     config.flowChartIntervalSec = static_cast<uint16_t>(readU32(kKeyFlowChartIntervalSec, config.flowChartIntervalSec));
     config.flowChartHistoryMin = static_cast<uint16_t>(readU32(kKeyFlowChartHistoryMin, config.flowChartHistoryMin));
     return SystemConfigStore::validate(config) ? config : defaults();
+}
+
+Irrigation::SystemConfig readStored() {
+    StoredSystemConfig stored = {};
+    if (Esp32BaseConfig::getPod(kNamespace, kKeyBlob, stored) && validStored(stored)) {
+        return stored.data;
+    }
+    const Irrigation::SystemConfig config = readFieldStored();
+    (void)Esp32BaseConfig::setPod(kNamespace, kKeyBlob, wrap(config));
+    return config;
 }
 
 bool submittedInt(const char* key, uint32_t* out) {
@@ -207,7 +243,7 @@ bool validateAppConfigPage(char* error, size_t errorLen) {
 
 void onAppConfigSave(const Esp32BaseAppConfig::SaveSummary& summary) {
     if (summary.savedCount > 0) {
-        SystemConfigStore::reload();
+        (void)SystemConfigStore::set(readFieldStored());
     }
 }
 
@@ -311,24 +347,7 @@ bool set(const Irrigation::SystemConfig& config) {
     if (!validate(config)) {
         return false;
     }
-    bool ok = true;
-    ok = writeU32(kKeyMaxDurationMin, secondsToMinutes(config.maxWateringDurationSec)) && ok;
-    ok = writeU32(kKeyGrace, config.scheduleGraceSec) && ok;
-    ok = writeU32(kKeyManualDefaultMin, secondsToMinutes(config.manualDefaultDurationSec)) && ok;
-    for (uint8_t i = 0; i < 6; ++i) {
-        ok = writeU32(kPresetMinuteKeys[i], secondsToMinutes(config.durationPresets[i])) && ok;
-    }
-    ok = writeBoolStored(kKeyLeakEnabled, config.idleLeakDetectionEnabled) && ok;
-    ok = writeU32(kKeyLeakWindow, config.idleLeakWindowSec) && ok;
-    ok = writeU32(kKeyLeakPulse, config.idleLeakPulseThreshold) && ok;
-    ok = writeU32(kKeyCalibrationSampleTarget, config.calibrationSampleTarget) && ok;
-    ok = writeU32(kKeyCalibrationMaxCaptureMin, config.calibrationMaxCaptureMin) && ok;
-    ok = writeU32(kKeyCalibrationDetailCaptureSec, config.calibrationDetailCaptureSec) && ok;
-    ok = writeU32(kKeyCalibrationDetailPulseLimit, config.calibrationDetailPulseLimit) && ok;
-    ok = writeU32(kKeyFlowRateWindowSec, config.flowRateWindowSec) && ok;
-    ok = writeU32(kKeyFlowChartIntervalSec, config.flowChartIntervalSec) && ok;
-    ok = writeU32(kKeyFlowChartHistoryMin, config.flowChartHistoryMin) && ok;
-    if (!ok) {
+    if (!Esp32BaseConfig::setPod(kNamespace, kKeyBlob, wrap(config))) {
         return false;
     }
     g_config = config;

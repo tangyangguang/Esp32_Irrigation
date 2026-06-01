@@ -136,6 +136,8 @@ assert(systemConfig.includes('idleLeakDetectionEnabled'), 'system config should 
 assert(systemConfig.includes('calibrationSampleTarget') && systemConfig.includes('calibrationMaxCaptureMin'), 'system config should include calibration sample target and max capture minutes');
 assert(systemConfig.includes('calibrationDetailCaptureSec') && systemConfig.includes('calibrationDetailPulseLimit'), 'system config should include calibration detail capture bounds');
 assert(systemConfig.includes('config.calibrationSampleTarget = 5;') && systemConfig.includes('config.calibrationDetailCaptureSec = 20;'), 'flow calibration defaults should use 5-sample capacity and 20 seconds of detail capture');
+assert(systemConfig.includes('StoredSystemConfig') && systemConfig.includes('kKeyBlob') && systemConfig.includes('setPod(kNamespace, kKeyBlob'),
+       'system config API saves should use one versioned POD instead of multi-key writes');
 assert(systemConfig.includes('flowRateWindowSec') && systemConfig.includes('flowChartIntervalSec') && systemConfig.includes('flowChartHistoryMin'), 'system config should include flow rate display window, chart interval, and chart history settings');
 assert(systemConfig.includes('config.flowRateWindowSec = 5;') && systemConfig.includes('config.flowChartIntervalSec = 5;') && systemConfig.includes('config.flowChartHistoryMin = 10;'), 'flow rate display defaults should use 5s window, 5s chart interval, and 10 minutes of history');
 assert(systemConfig.includes('"流速显示"') && systemConfig.includes('"流速窗口秒"') && systemConfig.includes('"图表历史分钟"'), 'App Config should expose flow rate display settings');
@@ -148,6 +150,11 @@ assert(!systemConfig.includes('"单次最长秒"') && !systemConfig.includes('"�
 assert(systemConfig.includes('"校准样本容量"') && systemConfig.includes('"明细脉冲上限"'), 'App Config should expose flow calibration settings');
 
 assert(zoneConfig.includes('ZoneConfig') && zoneConfig.includes('startTimeoutSec') && zoneConfig.includes('suppressError'), 'zone config should include timeout and suppressError fields');
+assert(zoneConfig.includes('validUtf8NoControl(const char* text, size_t maxLen)') &&
+       zoneConfig.includes('remaining < 2') &&
+       zoneConfig.includes('remaining < 3') &&
+       zoneConfig.includes('remaining < 4'),
+       'zone name UTF-8 validation must be bounded before reading continuation bytes');
 assert(zoneTypes.includes('startupPulseLimit') && zoneTypes.includes('startupEstimatedMl') && zoneTypes.includes('stablePulsePerLiter'), 'zone config should use two-stage flow estimation fields');
 assert(!zoneTypes.includes('calibrationX1000'), 'zone config should not keep the old calibration coefficient');
 assert(!zoneTypes.includes('FlowParameterSource') && !zoneTypes.includes('sourceZoneId'), 'candidate flow parameters should not persist source metadata');
@@ -167,6 +174,12 @@ assert(plans.includes('nextPlanId'), 'plan store should persist a non-reused nex
 assert(plans.includes('MaxPlansPerZone = 6'), 'plan store should use six fixed slots per zone');
 assert(plans.includes('exists') && plans.includes('createdAt'), 'plan definitions should separate slot existence and creation time');
 assert(!plans.includes('lastRunYmd'), 'plan definition must not persist lastRunYmd');
+assert(plans.includes('bool currentYmd(uint32_t* out)') &&
+       plans.includes('bool validYmd(uint32_t ymd)') &&
+       !plans.includes('DefaultCycleStartYmd'),
+       'plan store should expose strict date helpers and should not fall back to a fixed default date');
+assert(plans.includes('recoverNextPlanId') && plans.includes('saveAllPlansBlob'),
+       'plan store should recover plan ids and save plans through a single committed blob');
 assert(read('src/domain/PlanExecutionTracker.cpp').includes('Esp32BaseConfig') &&
        read('src/domain/PlanExecutionTracker.cpp').includes('irr_plan_exec'),
        'plan execution tracker should persist handled plan observations outside plan definitions');
@@ -174,11 +187,19 @@ assert(read('src/domain/PlanExecutionTracker.cpp').includes('Esp32BaseConfig') &
 assert(skips.includes('Capacity = 128'), 'schedule skip store should have 128 entries');
 assert(skips.includes('SkipReason') && skips.includes('WEATHER'), 'schedule skip should store skip reason');
 assert(skips.includes('uint32_t planId'), 'schedule skip should be keyed by planId');
+assert(skips.includes('PlanStore::validYmd') && !skips.includes('persistAll'),
+       'schedule skip store should use strict real-date validation and must not rewrite all 128 slots per update');
+assert(skips.includes('pruneBefore(') && skips.includes('removeAt('),
+       'schedule skip store should prune expired entries and compact single slots');
 
 assert(scheduler.includes('eligibleFromEpoch'), 'scheduler should gate plans by first trusted time');
 assert(scheduler.includes('scheduleGraceSec'), 'scheduler should use schedule grace seconds');
 assert(!scheduler.includes('lastRunYmd'), 'scheduler should not use persistent lastRunYmd');
 assert(!scheduler.includes('dueEpoch < m_eligibleFromEpoch'), 'scheduler must not silently skip plans still inside the grace window after boot/NTP sync');
+assert(!scheduler.includes('markObserved(plan, ymd, minuteOfDay, Irrigation::PlanObservationStatus::MISSED)') &&
+       read('src/domain/PlanExecutionTracker.h').includes('markVolatile') &&
+       scheduler.includes('appendObservation(plan, Irrigation::PlanObservationStatus::MISSED, dueEpoch);'),
+       'scheduler should not persist MISSED observations that may be caused by time jumps');
 assert(scheduler.includes('MaintenanceService::factoryResetPending()') && scheduler.includes('SKIPPED_RESET'),
   'scheduler should skip plan starts while factory reset is pending');
 assert(scheduler.includes('FlowCalibration::active()') && scheduler.includes('SKIPPED_BUSY'),
@@ -232,6 +253,8 @@ assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_FIELDS=19'), 'App Config capaci
 assert(businessEvents.includes('Esp32BaseAppEventLog::append'), 'business events should write through Esp32BaseAppEventLog::append');
 assert(businessEvents.includes('schedule_skipped') && businessEvents.includes('flow_fault') && businessEvents.includes('leak_detected'), 'business event vocabulary should cover schedule, flow, and leak decisions');
 assert(businessEvents.includes('observedPulses') && businessEvents.includes('VALUE3'), 'leak events should record observed pulses, threshold, and detection window');
+assert(businessEvents.includes('web_route_fault') && web.includes('appendWebRouteRegistrationFailed'),
+       'business web route registration failures should be visible as business events');
 assert(!allSource.includes('Esp32BaseAppEventLog::clear'), 'business layer should not clear Esp32Base App Events');
 
 assert(web.includes('/api/v1/zone/start') && web.includes('zoneId'), 'web API should use fixed endpoint plus zoneId parameter');

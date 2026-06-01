@@ -157,12 +157,16 @@ bool readYmd(const char* name, uint32_t* ymd) {
                 return false;
             }
         }
-        *ymd = static_cast<uint32_t>((text[0] - '0') * 1000 + (text[1] - '0') * 100 + (text[2] - '0') * 10 + (text[3] - '0')) * 10000UL +
-               static_cast<uint32_t>((text[5] - '0') * 10 + (text[6] - '0')) * 100UL +
-               static_cast<uint32_t>((text[8] - '0') * 10 + (text[9] - '0'));
+        const uint32_t parsed = static_cast<uint32_t>((text[0] - '0') * 1000 + (text[1] - '0') * 100 + (text[2] - '0') * 10 + (text[3] - '0')) * 10000UL +
+                                static_cast<uint32_t>((text[5] - '0') * 10 + (text[6] - '0')) * 100UL +
+                                static_cast<uint32_t>((text[8] - '0') * 10 + (text[9] - '0'));
+        if (!PlanStore::validYmd(parsed)) {
+            return false;
+        }
+        *ymd = parsed;
         return true;
     }
-    return readU32(name, ymd);
+    return readU32(name, ymd) && PlanStore::validYmd(*ymd);
 }
 
 bool readTimeParam(const char* name, uint8_t* hour, uint8_t* minute) {
@@ -212,21 +216,8 @@ void redirectOrOk(const char* path = "/index") {
 }
 
 uint32_t currentYmd() {
-#if ESP32BASE_ENABLE_NTP
-    if (!Esp32BaseNtp::isTimeSynced()) {
-        return PlanStore::DefaultCycleStartYmd;
-    }
-    const time_t now = static_cast<time_t>(Esp32BaseNtp::timestamp());
-    tm local = {};
-    if (localtime_r(&now, &local) == nullptr) {
-        return PlanStore::DefaultCycleStartYmd;
-    }
-    return static_cast<uint32_t>(local.tm_year + 1900) * 10000UL +
-           static_cast<uint32_t>(local.tm_mon + 1) * 100UL +
-           static_cast<uint32_t>(local.tm_mday);
-#else
-    return PlanStore::DefaultCycleStartYmd;
-#endif
+    uint32_t ymd = 0;
+    return PlanStore::currentYmd(&ymd) ? ymd : 0;
 }
 
 void writeDuration(uint32_t seconds) {
@@ -241,6 +232,9 @@ void writeTime(uint8_t hour, uint8_t minute) {
 }
 
 void writeYmdInput(uint32_t ymd) {
+    if (!PlanStore::validYmd(ymd)) {
+        return;
+    }
     char text[12];
     snprintf(text, sizeof(text), "%04lu-%02lu-%02lu",
              static_cast<unsigned long>(ymd / 10000UL),
@@ -1661,6 +1655,10 @@ bool applyPlanForm(Irrigation::PlanDefinition& plan, const char** error) {
         *error = "invalid_cycle_start";
         return false;
     }
+    if (!PlanStore::validYmd(plan.cycleStartYmd)) {
+        *error = "invalid_cycle_start";
+        return false;
+    }
     if (plan.durationSec > SystemConfigStore::current().maxWateringDurationSec) {
         *error = "duration_exceeds_system_limit";
         return false;
@@ -2971,6 +2969,24 @@ void begin() {
     const bool unskipOk = Esp32BaseWeb::addRoute("/api/v1/schedule/unskip", Esp32BaseWeb::METHOD_POST, handleScheduleUnskipApi);
     const bool recordsOk = Esp32BaseWeb::addRoute("/api/v1/records", Esp32BaseWeb::METHOD_GET, handleRecordsApi);
     const bool eventsOk = Esp32BaseWeb::addRoute("/api/v1/events", Esp32BaseWeb::METHOD_GET, handleEventsApi);
+    const bool routeResults[] = {
+        overviewOk, plansOk, settingsOk, calibrationPageOk, calibrationSamplePageOk,
+        recordsPageOk, eventsPageOk, planEditOk, statusOk, flowHistoryOk, configOk,
+        zoneStartOk, zoneStopOk, allStopOk, zoneConfigOk, clearErrorOk,
+        calibrationStartOk, calibrationStopOk, calibrationSampleOk, calibrationSampleUpdateOk,
+        calibrationComputeOk, calibrationCandidateSaveOk, calibrationApplyOk, calibrationRestoreOk,
+        calibrationClearOk, plansApiOk, planCreateOk, planUpdateOk, planDeleteOk,
+        planEnableOk, planDisableOk, skipOk, unskipOk, recordsOk, eventsOk,
+    };
+    uint8_t failedRoutes = 0;
+    for (uint8_t i = 0; i < sizeof(routeResults) / sizeof(routeResults[0]); ++i) {
+        if (!routeResults[i]) {
+            ++failedRoutes;
+        }
+    }
+    if (failedRoutes > 0) {
+        BusinessEventLog::appendWebRouteRegistrationFailed(failedRoutes);
+    }
     ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s flowHistory=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
