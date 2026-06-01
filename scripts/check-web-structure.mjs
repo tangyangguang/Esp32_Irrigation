@@ -182,8 +182,12 @@ assert(!scheduler.includes('dueEpoch < m_eligibleFromEpoch'), 'scheduler must no
 assert(scheduler.includes('MaintenanceService::factoryResetPending()') && scheduler.includes('SKIPPED_RESET'),
   'scheduler should skip plan starts while factory reset is pending');
 assert(read('src/domain/PlanExecutionTracker.h').includes('bool mark(') &&
+       read('src/domain/PlanExecutionTracker.h').includes('retrySave') &&
+       read('src/domain/PlanExecutionTracker.cpp').includes('m_dirty') &&
        !read('src/domain/PlanExecutionTracker.cpp').includes('(void)save()'),
        'plan execution tracker persistence failures must be returned to callers');
+assert(scheduler.includes('retrySave') && scheduler.includes('tracker_retry_save_failed'),
+       'scheduler should retry dirty plan execution tracker saves');
 assert(scheduler.includes('appendPlanTrackerPersistFailed'),
        'scheduler should log when plan execution tracker persistence fails');
 
@@ -198,6 +202,11 @@ assert(records.includes('recoverMetaFromRecords') && records.includes('appendRec
        'watering record store should recover metadata from committed records on boot');
 assert(records.includes('appendRecordMetaSaveFailed'),
        'watering record store should log metadata save failures after record writes');
+assert(records.includes('commitMagic') && records.includes('crc32') && records.includes('crc32Record'),
+       'watering records should use a commit marker and CRC before recovery accepts a slot');
+assert(read('src/domain/Zone.cpp').includes('appendRecordAppendFailed') &&
+       !read('src/domain/Zone.cpp').includes('(void)RecordStore::append(record)'),
+       'zone finish should not ignore watering record append failures');
 
 assert(pio.includes('-D ESP32BASE_ENABLE_APP_EVENTS=1'), 'project should enable Esp32Base App Events');
 assert(pio.includes('-D ESP32BASE_APP_EVENT_LOG_CAPACITY=256'), 'project should set a scoped App Events capacity');

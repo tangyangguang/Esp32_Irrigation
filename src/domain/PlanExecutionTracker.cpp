@@ -56,6 +56,7 @@ void PlanExecutionTracker::reset() {
     }
     m_count = 0;
     m_currentYmd = 0;
+    m_dirty = false;
 }
 
 bool PlanExecutionTracker::resetNewDay(uint32_t ymd) {
@@ -64,7 +65,8 @@ bool PlanExecutionTracker::resetNewDay(uint32_t ymd) {
     }
     reset();
     m_currentYmd = ymd;
-    return save();
+    m_dirty = !save();
+    return !m_dirty;
 }
 
 bool PlanExecutionTracker::isHandled(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay) const {
@@ -80,14 +82,28 @@ bool PlanExecutionTracker::mark(uint32_t planId, uint32_t ymd, uint16_t minuteOf
     for (uint8_t i = 0; i < m_count; ++i) {
         if (m_entries[i].planId == planId && m_entries[i].ymd == ymd && m_entries[i].minuteOfDay == minuteOfDay) {
             m_entries[i].status = status;
-            return save();
+            m_dirty = !save();
+            return !m_dirty;
         }
     }
     if (m_count >= Irrigation::MaxPlansPerZone) {
         return false;
     }
     m_entries[m_count++] = {planId, ymd, minuteOfDay, status};
-    return save();
+    m_dirty = !save();
+    return !m_dirty;
+}
+
+bool PlanExecutionTracker::retrySave() {
+    if (!m_dirty) {
+        return true;
+    }
+    m_dirty = !save();
+    return !m_dirty;
+}
+
+bool PlanExecutionTracker::hasPendingSave() const {
+    return m_dirty;
 }
 
 uint8_t PlanExecutionTracker::count() const {
@@ -115,6 +131,7 @@ bool PlanExecutionTracker::load() {
     for (uint8_t i = 0; i < Irrigation::MaxPlansPerZone; ++i) {
         m_entries[i] = i < m_count ? stored.entries[i] : Entry{};
     }
+    m_dirty = false;
     return true;
 }
 

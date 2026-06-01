@@ -20,7 +20,7 @@ Plan Definition  ──调度器──►  Plan Execution  ──成功──►
 
 ```
 PlanDefinition
-├── id                  // 全局唯一 ID，uint8_t，1-based
+├── planId              // 全局唯一 ID，uint32_t，1-based
 ├── zoneId              // 属于哪个 Zone，不可变
 ├── name[16]            // 计划名称，如 "早浇"、"午浇"
 ├── enabled             // 启用/停用
@@ -251,7 +251,7 @@ ZoneManager
 │   └── leakAlert
 │
 ├── ZoneScheduler[MaxZones]
-│   ├── plans[6]: PlanDefinition (id, zoneId, name, time, duration, cycle, createdAt)
+│   ├── plans[6]: PlanDefinition (planId, zoneId, name, time, duration, cycle, createdAt)
 │   ├── tracker: PlanExecutionTracker (NVS 持久化，今天是否已处理)
 │   └── scheduleSkip → ScheduleSkip (引用)
 │

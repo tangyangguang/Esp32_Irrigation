@@ -100,8 +100,16 @@ void ZoneScheduler::tick(Zone& zone,
         return;
     }
     const uint32_t ymd = makeYmd(nowLocal);
-    if (!m_tracker.resetNewDay(ymd)) {
+    const bool daySaved = m_tracker.resetNewDay(ymd);
+    if (!daySaved) {
         ESP32BASE_LOG_W("scheduler", "tracker_day_save_failed zone=%u ymd=%lu",
+                        static_cast<unsigned>(m_zoneId),
+                        static_cast<unsigned long>(ymd));
+        BusinessEventLog::appendPlanTrackerPersistFailed(m_zoneId,
+                                                         Irrigation::NoPlanId,
+                                                         Irrigation::PlanObservationStatus::NOT_EVALUATED);
+    } else if (m_tracker.hasPendingSave() && !m_tracker.retrySave()) {
+        ESP32BASE_LOG_W("scheduler", "tracker_retry_save_failed zone=%u ymd=%lu",
                         static_cast<unsigned>(m_zoneId),
                         static_cast<unsigned long>(ymd));
         BusinessEventLog::appendPlanTrackerPersistFailed(m_zoneId,

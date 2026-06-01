@@ -212,6 +212,22 @@ void appendRecordMetaSaveFailed(uint32_t recordId, uint16_t slot) {
                       "watering record metadata save failed");
 }
 
+void appendRecordAppendFailed(uint8_t zoneId, uint32_t planId, Irrigation::TaskResult result) {
+    char object[16];
+    zoneObject(zoneId, object, sizeof(object));
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_ERROR,
+                      "storage",
+                      "record_store_fault",
+                      "append_failed",
+                      object,
+                      static_cast<uint16_t>(result),
+                      static_cast<int32_t>(zoneId),
+                      static_cast<int32_t>(planId),
+                      0,
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2,
+                      "watering record append failed");
+}
+
 void appendFlowFault(uint8_t zoneId,
                      Irrigation::TaskResult result,
                      uint32_t targetSec,

@@ -38,9 +38,11 @@ struct WateringRecord {
     uint32_t minFlowMlPerMin;
     uint32_t minFlowFirstAtSec;
     Irrigation::ZoneConfigSnapshot configSnapshot; // includes startTimeoutSec and flowNoPulseTimeoutSec
+    uint32_t commitMagic;
+    uint32_t crc32;
 };
 
-static_assert(sizeof(WateringRecord) == 120, "RecordStore::WateringRecord binary layout changed");
+static_assert(sizeof(WateringRecord) == 128, "RecordStore::WateringRecord binary layout changed");
 
 using ReadCallback = void (*)(const WateringRecord& record, void* user);
 

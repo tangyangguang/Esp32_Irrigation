@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Esp32Base.h>
+#include <stddef.h>
 
 #include "domain/BusinessEventLog.h"
 
@@ -12,6 +13,7 @@ static constexpr const char* kNamespace = "irr_rec";
 static constexpr const char* kKeyInitialized = "init";
 static constexpr const char* kKeyMeta = "meta";
 static constexpr uint32_t kMagic = 0x49525245UL;
+static constexpr uint32_t kCommitMagic = 0x4952434DUL;
 static constexpr uint32_t kMetaMagic = 0x4952524DUL;
 static constexpr uint16_t kVersion = 5;
 static constexpr uint16_t kMetaVersion = 1;
@@ -57,6 +59,21 @@ bool validMeta(const StoreMeta& meta) {
 bool saveMeta() {
     const StoreMeta meta = makeMeta();
     return Esp32BaseConfig::setPod(kNamespace, kKeyMeta, meta);
+}
+
+uint32_t crc32Record(const RecordStore::WateringRecord& record) {
+    RecordStore::WateringRecord copy = record;
+    copy.commitMagic = 0;
+    copy.crc32 = 0;
+    const uint8_t* data = reinterpret_cast<const uint8_t*>(&copy);
+    uint32_t crc = 0xFFFFFFFFUL;
+    for (size_t i = 0; i < sizeof(copy); ++i) {
+        crc ^= data[i];
+        for (uint8_t bit = 0; bit < 8; ++bit) {
+            crc = (crc & 1U) ? ((crc >> 1U) ^ 0xEDB88320UL) : (crc >> 1U);
+        }
+    }
+    return ~crc;
 }
 
 bool loadMeta() {
@@ -108,11 +125,15 @@ bool readAtIndex(uint16_t index, RecordStore::WateringRecord* record) {
     if (!Esp32BaseFs::readBytesAt(kPath, offset, reinterpret_cast<uint8_t*>(record), sizeof(*record), &readLen)) {
         return false;
     }
-    return readLen == sizeof(*record) &&
-           record->magic == kMagic &&
-           record->version == kVersion &&
-           record->size == sizeof(*record) &&
-           record->recordId != 0;
+    if (readLen != sizeof(*record) ||
+        record->magic != kMagic ||
+        record->version != kVersion ||
+        record->size != sizeof(*record) ||
+        record->recordId == 0 ||
+        record->commitMagic != kCommitMagic) {
+        return false;
+    }
+    return record->crc32 == crc32Record(*record);
 }
 
 bool recoverMetaFromRecords(bool metaValid) {
@@ -189,9 +210,20 @@ bool append(const WateringRecord& record) {
     stored.version = kVersion;
     stored.size = sizeof(stored);
     stored.recordId = g_nextId;
+    stored.commitMagic = 0;
+    stored.crc32 = crc32Record(stored);
     const uint16_t writtenSlot = g_head;
     const uint32_t offset = static_cast<uint32_t>(writtenSlot) * sizeof(stored);
+    const uint32_t commitOffset = offset + offsetof(RecordStore::WateringRecord, commitMagic);
+    uint32_t pendingCommit = 0;
+    if (!Esp32BaseFs::writeBytesAt(kPath, commitOffset, reinterpret_cast<const uint8_t*>(&pendingCommit), sizeof(pendingCommit))) {
+        return false;
+    }
     if (!Esp32BaseFs::writeBytesAt(kPath, offset, reinterpret_cast<const uint8_t*>(&stored), sizeof(stored))) {
+        return false;
+    }
+    const uint32_t committed = kCommitMagic;
+    if (!Esp32BaseFs::writeBytesAt(kPath, commitOffset, reinterpret_cast<const uint8_t*>(&committed), sizeof(committed))) {
         return false;
     }
     g_head = static_cast<uint16_t>((g_head + 1) % Capacity);
