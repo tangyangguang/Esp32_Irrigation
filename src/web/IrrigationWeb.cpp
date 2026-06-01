@@ -1579,8 +1579,9 @@ void handleCalibrationPage() {
                             ".calibration-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 12px}"
                             ".calibration-current-params td{vertical-align:top}"
                             ".calibration-param-line{display:flex;gap:8px;flex-wrap:wrap;align-items:center}"
-                            ".calibration-param-line span{display:inline-flex;gap:4px;align-items:baseline;border:1px solid var(--eb-border);border-radius:8px;padding:5px 8px;background:var(--eb-surface-subtle)}"
-                            ".calibration-param-line b{font-size:1.05rem}"
+                            ".calibration-param-line .param{display:inline-flex;gap:4px;align-items:baseline;border:1px solid var(--eb-border);border-radius:8px;padding:5px 8px;background:var(--eb-surface-subtle)}"
+                            ".calibration-param-line .value{color:var(--eb-text);font-weight:500}"
+                            ".calibration-param-note{margin:10px 0 0;color:var(--eb-muted);font-size:.92rem;line-height:1.55}"
                             ".calibration-internal{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;color:var(--eb-muted);font-size:.92rem}"
                             ".calibration-internal span{border:1px solid var(--eb-border);border-radius:8px;padding:6px 9px;background:var(--eb-surface-subtle)}"
                             ".calibration-workflow{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:18px;align-items:start}"
@@ -1608,15 +1609,15 @@ void handleCalibrationPage() {
         Esp32BaseWeb::sendChunk(zone.enabled ? " ok" : "");
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(zone.enabled ? "启用" : "停用");
-        Esp32BaseWeb::sendChunk("</span></td><td><div class='calibration-param-line'><span><b>");
+        Esp32BaseWeb::sendChunk("</span></td><td><div class='calibration-param-line'><span class='param'>启动阶段脉冲：<span class='value'>");
         writeUInt(zone.startupPulseLimit);
-        Esp32BaseWeb::sendChunk("</b> 启动脉冲</span><span><b>");
+        Esp32BaseWeb::sendChunk("</span></span><span class='param'>启动阶段水量：<span class='value'>");
         writeUInt(zone.startupEstimatedMl);
-        Esp32BaseWeb::sendChunk("</b> ml 启动水量</span><span><b>");
+        Esp32BaseWeb::sendChunk(" ml</span></span><span class='param'>稳定阶段脉冲：<span class='value'>");
         writeUInt(zone.stablePulsePerLiter);
-        Esp32BaseWeb::sendChunk("</b> 脉冲/升</span></div></td></tr>");
+        Esp32BaseWeb::sendChunk(" 脉冲/升</span></span></div></td></tr>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div><p class='calibration-param-note'>启动阶段用于开阀初期的非稳定流量补偿；总脉冲不超过启动阶段脉冲时，按启动阶段水量线性估算。超过启动阶段脉冲后，启动阶段按启动阶段水量计入，剩余脉冲按稳定阶段脉冲/升换算。</p>");
     Esp32BaseWeb::endPanel();
 
     Esp32BaseWeb::beginPanel("校准配置");
@@ -1726,15 +1727,15 @@ void handleCalibrationPage() {
     const FlowCalibration::Recommendation& rec = FlowCalibration::recommendation();
     if (rec.valid) {
         Esp32BaseWeb::beginPanel("推荐参数");
-        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>运行估算公式</b><br><code>P</code> 为总脉冲，<code>S</code> 为启动阶段脉冲，<code>V0</code> 为启动阶段水量，<code>K</code> 为稳定每升脉冲。<br>未过启动阶段：<code>P <= S，水量 = P × V0 / S</code>。<br>超过启动阶段：<code>P > S，水量 = V0 + (P - S) × 1000 / K</code>。</div>");
-        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>参数生成算法</b><br>系统从样本脉冲时间差还原时间线，用 2 秒窗口、200 ms 步进扫描流速，找到连续稳定的起点；稳定起点前的脉冲数作为启动阶段参考。多个样本取中位数附近搜索候选启动脉冲，并拟合启动阶段水量和稳定每升脉冲，选择平均误差和最大误差最小的一组。</div>");
+        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>运行估算公式</b><br><code>P</code> 为总脉冲，<code>S</code> 为启动阶段脉冲，<code>V0</code> 为启动阶段水量，<code>K</code> 为稳定阶段脉冲/升。<br>未过启动阶段：<code>P <= S，水量 = P × V0 / S</code>。<br>超过启动阶段：<code>P > S，水量 = V0 + (P - S) × 1000 / K</code>。</div>");
+        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>参数生成算法</b><br>系统从样本脉冲时间差还原时间线，用 2 秒窗口、200 ms 步进扫描流速，找到连续稳定的起点；稳定起点前的脉冲数作为启动阶段参考。多个样本取中位数附近搜索候选启动脉冲，并拟合启动阶段水量和稳定阶段脉冲/升，选择平均误差和最大误差最小的一组。</div>");
         Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><tbody><tr><th>水路</th><td>");
         writeUInt(rec.zoneId);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>启动阶段脉冲</th><td>");
         writeUInt(rec.startupPulseLimit);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>启动阶段水量</th><td>");
         writeUInt(rec.startupEstimatedMl);
-        Esp32BaseWeb::sendChunk(" ml</td></tr><tr><th>稳定每升脉冲</th><td>");
+        Esp32BaseWeb::sendChunk(" ml</td></tr><tr><th>稳定阶段脉冲/升</th><td>");
         writeUInt(rec.stablePulsePerLiter);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>有效样本数</th><td>");
         writeUInt(rec.sampleCount);
