@@ -28,6 +28,12 @@ void writeUInt(uint32_t value) {
     Esp32BaseWeb::sendChunk(text);
 }
 
+void writeInt(int32_t value) {
+    char text[16];
+    snprintf(text, sizeof(text), "%ld", static_cast<long>(value));
+    Esp32BaseWeb::sendChunk(text);
+}
+
 void writeBool(bool value) {
     Esp32BaseWeb::sendChunk(value ? "true" : "false");
 }
@@ -60,6 +66,24 @@ void sendMethodNotAllowed(const char* allowed) {
     Esp32BaseWeb::writeJsonEscaped(Esp32BaseWeb::currentMethodName());
     Esp32BaseWeb::sendChunk("\"}");
     endJson();
+}
+
+bool rejectFactoryResetPending() {
+    if (!MaintenanceService::factoryResetPending()) {
+        return false;
+    }
+    sendError(409, "factory_reset_pending");
+    return true;
+}
+
+bool checkBusinessPost(const char* context, bool allowFactoryResetPending = false) {
+    if (!Esp32BaseWeb::checkPostAllowed(context)) {
+        return false;
+    }
+    if (!allowFactoryResetPending && rejectFactoryResetPending()) {
+        return false;
+    }
+    return true;
 }
 
 bool readU32(const char* name, uint32_t* value) {
@@ -1254,7 +1278,7 @@ void writeManualStartDialog() {
                             ".irrmanual{max-width:520px}.irrmanual h2{margin-bottom:10px}.irrmanual-summary{display:grid;grid-template-columns:88px minmax(0,1fr);gap:6px 12px;border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:9px 10px;margin:0 0 12px}.irrmanual-summary b{color:var(--eb-muted);font-weight:650}.irrmanual-summary span{min-width:0}.irrmanual .durationrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;margin-bottom:10px}.irrmanual .durationrow input{width:9ch;max-width:9ch;margin:0}.irrmanual-presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}.irrmanual-presets .btnlink{width:100%;min-height:32px}.irrmanual-note{font-size:12px;color:var(--eb-muted);line-height:1.45;margin:8px 0 0}@media(max-width:560px){.irrmanual .durationrow{grid-template-columns:1fr}.irrmanual-presets{grid-template-columns:repeat(2,minmax(0,1fr))}}"
                             "</style><dialog id='irrManualDialog' class='panel eb-modal irrmanual'><form id='irrManualForm' class='editform' method='post' action='/api/v1/zone/start' data-default-min='");
     writeUInt(defaultMin);
-    Esp32BaseWeb::sendChunk("' onsubmit=\"return irrManualSubmit(this)&&irrManualSend(this,once(this))\"><h2>启动手动浇水</h2>");
+    Esp32BaseWeb::sendChunk("' onsubmit=\"return irrManualSubmit(this)&&confirm('确认启动手动浇水？')&&irrManualSend(this,once(this))\"><h2>启动手动浇水</h2>");
     writeOnePostHidden("source", "web_page");
     Esp32BaseWeb::sendChunk("<input type='hidden' name='zoneId' value=''><div class='irrmanual-summary'><b>水路</b><span id='irrManualZoneName'></span><b>安全确认</b><span>远程启动前请确认现场安全，阀门和管路可以正常出水。</span></div><div class='durationrow'><p class='field'><label>浇水分钟数</label><input id='irrManualDuration' name='durationMin' type='number' min='1' max='");
     writeUInt(maxMin);
@@ -1869,7 +1893,7 @@ void handleCalibrationPage() {
     writeUInt(system.calibrationSampleTarget);
     Esp32BaseWeb::sendChunk(" 条</p></div><div class='calibration-stage'><h3>接水</h3>");
     if (FlowCalibration::state() == FlowCalibration::State::CAPTURING) {
-        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/stop' onsubmit=\"return once(this)\">");
+        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/stop' onsubmit=\"return confirm('确认停止校准出水？')&&once(this)\">");
         writeOnePostHidden("source", "web_page");
         Esp32BaseWeb::sendChunk("<p>接到量杯目标水量后停止出水。</p><div class='actions'><input type='submit' value='停止并输入水量'></div></form>");
     } else if (FlowCalibration::state() == FlowCalibration::State::WAITING_ACTUAL) {
@@ -2166,11 +2190,11 @@ void writeEventJson(const Esp32BaseAppEventRecord& event, void* user) {
     Esp32BaseWeb::sendChunk("\",\"code\":");
     writeUInt(event.code);
     Esp32BaseWeb::sendChunk(",\"value1\":");
-    writeUInt(static_cast<uint32_t>(event.value1));
+    writeInt(event.value1);
     Esp32BaseWeb::sendChunk(",\"value2\":");
-    writeUInt(static_cast<uint32_t>(event.value2));
+    writeInt(event.value2);
     Esp32BaseWeb::sendChunk(",\"value3\":");
-    writeUInt(static_cast<uint32_t>(event.value3));
+    writeInt(event.value3);
     Esp32BaseWeb::sendChunk(",\"valueMask\":");
     writeUInt(event.valueMask);
     Esp32BaseWeb::sendChunk(",\"text\":\"");
@@ -2394,6 +2418,9 @@ void handleConfigApi() {
         sendMethodNotAllowed("GET,POST");
         return;
     }
+    if (!checkBusinessPost("irrigation.config")) {
+        return;
+    }
     Irrigation::SystemConfig system = SystemConfigStore::current();
     if (Esp32BaseWeb::hasParam("maxWateringDurationSec") && !readU32("maxWateringDurationSec", &system.maxWateringDurationSec)) sendError(400, "invalid_max_duration");
     else if (Esp32BaseWeb::hasParam("scheduleGraceSec") && !readU16("scheduleGraceSec", &system.scheduleGraceSec)) sendError(400, "invalid_schedule_grace");
@@ -2428,9 +2455,7 @@ void handleConfigApi() {
 }
 
 void handleCalibrationStartApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.start")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2446,9 +2471,7 @@ void handleCalibrationStartApi() {
 }
 
 void handleCalibrationStopApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.stop")) {
         return;
     }
     if (!FlowCalibration::stop()) {
@@ -2459,9 +2482,7 @@ void handleCalibrationStopApi() {
 }
 
 void handleCalibrationSampleApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.sample")) {
         return;
     }
     uint32_t actualMl = 0;
@@ -2477,9 +2498,7 @@ void handleCalibrationSampleApi() {
 }
 
 void handleCalibrationSampleUpdateApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.sample_update")) {
         return;
     }
     uint8_t sampleIndex = 0;
@@ -2498,9 +2517,7 @@ void handleCalibrationSampleUpdateApi() {
 }
 
 void handleCalibrationComputeApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.compute")) {
         return;
     }
     FlowCalibration::Recommendation rec = {};
@@ -2516,9 +2533,7 @@ void handleCalibrationComputeApi() {
 }
 
 void handleCalibrationCandidateSaveApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.candidate_save")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2535,9 +2550,7 @@ void handleCalibrationCandidateSaveApi() {
 }
 
 void handleCalibrationApplyApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.apply")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2570,9 +2583,7 @@ void handleCalibrationApplyApi() {
 }
 
 void handleCalibrationPreviousRestoreApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.previous_restore")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2596,9 +2607,7 @@ void handleCalibrationPreviousRestoreApi() {
 }
 
 void handleCalibrationClearApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.calibration.clear")) {
         return;
     }
     (void)FlowCalibration::clear();
@@ -2606,9 +2615,7 @@ void handleCalibrationClearApi() {
 }
 
 void handleZoneStartApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.zone.start")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2636,9 +2643,7 @@ void handleZoneStartApi() {
 }
 
 void handleZoneStopApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.zone.stop", true)) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2651,9 +2656,7 @@ void handleZoneStopApi() {
 }
 
 void handleZonesStopAllApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.zones.stop_all", true)) {
         return;
     }
     (void)ZoneManager::stopAll(stopSourceFromRequest());
@@ -2661,9 +2664,7 @@ void handleZonesStopAllApi() {
 }
 
 void handleZoneConfigApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.zone.config")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2709,9 +2710,7 @@ void handleZoneConfigApi() {
 }
 
 void handleZoneClearErrorApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.zone.clear_error")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2756,9 +2755,7 @@ void handlePlansApi() {
 }
 
 void handlePlanCreateApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.plan.create")) {
         return;
     }
     uint8_t zoneId = 0;
@@ -2807,27 +2804,21 @@ bool updatePlanEnabled(bool enabled) {
 }
 
 void handlePlanEnableApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.plan.enable")) {
         return;
     }
     (void)updatePlanEnabled(true);
 }
 
 void handlePlanDisableApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.plan.disable")) {
         return;
     }
     (void)updatePlanEnabled(false);
 }
 
 void handlePlanDeleteApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.plan.delete")) {
         return;
     }
     uint32_t planId = 0;
@@ -2839,9 +2830,7 @@ void handlePlanDeleteApi() {
 }
 
 void handlePlanUpdateApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.plan.update")) {
         return;
     }
     uint32_t planId = 0;
@@ -2861,9 +2850,7 @@ void handlePlanUpdateApi() {
 }
 
 void handleScheduleSkipApi(bool skip) {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost(skip ? "irrigation.schedule.skip" : "irrigation.schedule.unskip")) {
         return;
     }
     uint32_t planId = 0;
@@ -2939,9 +2926,7 @@ void handleEventsApi() {
 }
 
 void handleFactoryResetApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
+    if (!checkBusinessPost("irrigation.maintenance.factory_reset")) {
         return;
     }
     bool clearRecords = false;

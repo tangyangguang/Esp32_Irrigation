@@ -6,6 +6,7 @@
 
 #include "domain/BusinessEventLog.h"
 #include "domain/FlowMeter.h"
+#include "domain/MaintenanceService.h"
 #include "domain/Zone.h"
 #include "storage/PlanStore.h"
 #include "storage/ScheduleSkipStore.h"
@@ -55,13 +56,15 @@ void appendObservation(const Irrigation::PlanDefinition& plan, Irrigation::PlanO
 
 void ZoneScheduler::begin(uint8_t zoneId) {
     m_zoneId = zoneId;
-    reset();
+    m_eligibleFromEpoch = 0;
+    m_lastEpoch = 0;
+    m_tracker.begin(zoneId);
 }
 
 void ZoneScheduler::reset() {
     m_eligibleFromEpoch = 0;
     m_lastEpoch = 0;
-    m_tracker.reset();
+    m_tracker.begin(m_zoneId);
 }
 
 bool ZoneScheduler::eligible(uint32_t trustedEpoch) const {
@@ -151,6 +154,8 @@ bool ZoneScheduler::observePlan(Zone& zone,
         status = Irrigation::PlanObservationStatus::SKIPPED_ERROR;
     } else if (leakAlertActive) {
         status = Irrigation::PlanObservationStatus::SKIPPED_LEAK;
+    } else if (MaintenanceService::factoryResetPending()) {
+        status = Irrigation::PlanObservationStatus::SKIPPED_RESET;
     } else if (zone.isBusy()) {
         status = Irrigation::PlanObservationStatus::SKIPPED_BUSY;
     } else {

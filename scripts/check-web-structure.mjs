@@ -15,6 +15,27 @@ function assert(condition, message) {
   }
 }
 
+function functionBody(source, name) {
+  const signature = source.search(new RegExp(`(?:void|bool|uint8_t|uint16_t|uint32_t|const char\\*)\\s+${name}\\s*\\(`));
+  assert(signature !== -1, `function missing: ${name}`);
+  const open = source.indexOf('{', signature);
+  assert(open !== -1, `function body missing: ${name}`);
+  let depth = 0;
+  for (let i = open; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    if (source[i] === '}') depth -= 1;
+    if (depth === 0) {
+      return source.slice(open + 1, i);
+    }
+  }
+  throw new Error(`function body unterminated: ${name}`);
+}
+
+function assertPostGuard(name) {
+  const body = functionBody(web, name);
+  assert(body.includes('checkBusinessPost("irrigation.'), `${name} must use the shared POST same-origin guard`);
+}
+
 const requiredFiles = [
   'src/domain/ZoneTypes.h',
   'src/domain/ZoneTaskRunner.h',
@@ -146,6 +167,9 @@ assert(plans.includes('nextPlanId'), 'plan store should persist a non-reused nex
 assert(plans.includes('MaxPlansPerZone = 6'), 'plan store should use six fixed slots per zone');
 assert(plans.includes('exists') && plans.includes('createdAt'), 'plan definitions should separate slot existence and creation time');
 assert(!plans.includes('lastRunYmd'), 'plan definition must not persist lastRunYmd');
+assert(read('src/domain/PlanExecutionTracker.cpp').includes('Esp32BaseConfig') &&
+       read('src/domain/PlanExecutionTracker.cpp').includes('irr_plan_exec'),
+       'plan execution tracker should persist handled plan observations outside plan definitions');
 
 assert(skips.includes('Capacity = 128'), 'schedule skip store should have 128 entries');
 assert(skips.includes('SkipReason') && skips.includes('WEATHER'), 'schedule skip should store skip reason');
@@ -154,6 +178,8 @@ assert(skips.includes('uint32_t planId'), 'schedule skip should be keyed by plan
 assert(scheduler.includes('eligibleFromEpoch'), 'scheduler should gate plans by first trusted time');
 assert(scheduler.includes('scheduleGraceSec'), 'scheduler should use schedule grace seconds');
 assert(!scheduler.includes('lastRunYmd'), 'scheduler should not use persistent lastRunYmd');
+assert(scheduler.includes('MaintenanceService::factoryResetPending()') && scheduler.includes('SKIPPED_RESET'),
+  'scheduler should skip plan starts while factory reset is pending');
 
 assert(records.includes('planNameSnapshot') && records.includes('startedEpoch') && records.includes('startedUptimeMs'), 'records should be self-contained with plan name, epoch, and uptime');
 assert(records.includes('flowStatsValid') && records.includes('maxFlowMlPerMin') && records.includes('maxFlowFirstAtSec') && records.includes('minFlowMlPerMin') && records.includes('minFlowFirstAtSec'), 'watering records should persist max/min flow and first occurrence times');
@@ -208,6 +234,37 @@ assert(web.includes('irrOverviewRenderState') && web.includes('irrOverviewRender
 assert(!web.includes('if(changed){location.reload();return;}'), 'overview status polling should not reload the whole page for normal running state changes');
 assert(web.includes('irrManualSend') && web.includes('X-Esp32Base-Ajax') && web.includes('irrOverviewPollNow'), 'manual start should submit asynchronously and refresh status immediately');
 assert(web.includes('Esp32BaseWeb::isAjaxRequest()'), 'web-page AJAX actions should return JSON instead of redirecting');
+for (const name of [
+  'handleConfigApi',
+  'handleCalibrationStartApi',
+  'handleCalibrationStopApi',
+  'handleCalibrationSampleApi',
+  'handleCalibrationSampleUpdateApi',
+  'handleCalibrationComputeApi',
+  'handleCalibrationCandidateSaveApi',
+  'handleCalibrationApplyApi',
+  'handleCalibrationPreviousRestoreApi',
+  'handleCalibrationClearApi',
+  'handleZoneStartApi',
+  'handleZoneStopApi',
+  'handleZonesStopAllApi',
+  'handleZoneConfigApi',
+  'handleZoneClearErrorApi',
+  'handlePlanCreateApi',
+  'handlePlanEnableApi',
+  'handlePlanDisableApi',
+  'handlePlanDeleteApi',
+  'handlePlanUpdateApi',
+  'handleFactoryResetApi',
+]) {
+  assertPostGuard(name);
+}
+assert(functionBody(web, 'handleScheduleSkipApi').includes('checkBusinessPost(skip ? "irrigation.'),
+       'schedule skip/unskip POST handler must use the shared POST same-origin guard');
+assert(functionBody(web, 'checkBusinessPost').includes('Esp32BaseWeb::checkPostAllowed(context)'),
+       'shared POST guard must delegate to Esp32BaseWeb::checkPostAllowed()');
+assert(web.includes('rejectFactoryResetPending') && web.includes('"factory_reset_pending"'),
+       'mutating business handlers should reject writes while factory reset is pending');
 assert(!web.includes('sendMetric("可手动启动"'), 'overview metrics should not duplicate manual start availability count');
 assert(!web.includes('beginPanel("手动浇水启动")'), 'manual start should be merged into the zone status panel');
 assert(web.includes('irrManualOpen') && web.includes('<dialog id='), 'manual start should open a confirmation dialog from zone status actions');
@@ -215,7 +272,7 @@ assert(web.includes("<dialog id='irrManualDialog' class='panel eb-modal"), 'manu
 assert(web.includes('irrmanual-presets') && web.includes('irrmanual-summary'), 'manual start dialog should use dedicated layout classes for aligned controls');
 assert(web.includes('远程启动前请确认现场安全'), 'manual start dialog should include safety guidance for remote users');
 assert(web.includes("value='确认启动'"), 'manual start dialog should require an explicit final start submit');
-assert(!web.includes("confirm('确认启动手动浇水？')"), 'manual start final submit should not show a third confirmation popup');
+assert(web.includes("confirm('确认启动手动浇水？')"), 'manual start final submit should include browser confirmation');
 assert(web.includes('irrManualPreset(this)') && web.includes('data-min='), 'manual start presets should be visible buttons that fill duration');
 assert(!web.includes('<select onchange=\"this.form.durationMin.value=this.value\">'), 'manual start presets should not use a select dropdown');
 assert(web.includes('基本信息') && web.includes('流量估算') && web.includes('异常处理'), 'zone edit form should group fields into readable sections');
@@ -236,14 +293,13 @@ assert(web.includes('writeAverageFlowRate(record)') && web.includes('writeRecord
 assert(!web.includes('record.estimatedMilliliters);\n    Esp32BaseWeb::sendChunk(" ml'), 'watering record table should not show milliliters');
 assert(!web.includes('/api/v1/water/start'), 'old water start API should be removed');
 assert(!web.includes('road_id') && !web.includes('roadId'), 'external API should not expose road identifiers');
+assert(!web.includes('static_cast<uint32_t>(event.value'), 'event JSON must preserve signed int32 values');
 
 for (const marker of ["method='post'", 'method=\"post\"']) {
   let index = web.indexOf(marker);
   while (index !== -1) {
     const snippet = web.slice(index, index + 800);
-    if (!snippet.includes("action='/api/v1/zone/start'")) {
-      assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
-    }
+    assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
     assert(snippet.includes('once(this)'), `POST form must prevent duplicate submission near offset ${index}`);
     index = web.indexOf(marker, index + marker.length);
   }
@@ -257,6 +313,8 @@ assert(!allSource.includes('PlanSkipStore'), 'old PlanSkipStore references shoul
 assert(!allSource.includes('SettingsStore'), 'old SettingsStore references should be removed');
 assert(!allSource.includes('EventStore'), 'old application EventStore references should be removed');
 assert(!zoneTypes.includes('enum class EventType') && !zoneTypes.includes('enum class EventSource'), 'old application event enums should be removed');
+assert(read('src/domain/SafetyManager.cpp').includes('kLocalButtonZoneMax = 2'),
+       'local START/OK should be explicitly limited to locally controlled zone 1/2');
 
 assert(pio.includes('-D ESP32BASE_PROFILE=ESP32BASE_PROFILE_FULL'), 'project should keep Esp32Base full profile');
 assert(calibrationDoc.includes('detailPulseDeltas') && calibrationDoc.includes('滑动窗口') && calibrationDoc.includes('stablePulsePerLiter'), 'flow calibration design doc should describe raw pulse detail and final parameters');

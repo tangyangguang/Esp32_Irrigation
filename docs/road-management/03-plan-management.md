@@ -12,8 +12,8 @@ Plan Definition  ──调度器──►  Plan Execution  ──成功──►
 | 概念 | 是什么 | 存储 | 生命周期 |
 |------|--------|------|---------|
 | Plan Definition | 计划怎么配 | 持久化（NVS） | 永久，用户创建/编辑/删除 |
-| Plan Execution | 今天执行得怎么样 | 内存 | 每天重置 |
-| ScheduleSkip | 哪天哪个计划被跳过 | 持久化（NVS） | 环形，自动清理过期 |
+| Plan Execution | 今天执行得怎么样 | 持久化（NVS） | 每天重置，恢复出厂清空 |
+| ScheduleSkip | 哪天哪个计划被跳过 | 持久化（NVS） | 固定容量，按 `planId × ymd` 覆盖 |
 | Watering Record | 实际浇水的历史事实 | 文件系统环形记录 | 永久 |
 
 ## 二、Plan Definition（计划定义）
@@ -69,7 +69,7 @@ ScheduleSkip
 │   }
 │
 ├── struct SkipEntry {
-│       uint8_t  planId;     // 跳过的是哪个具体计划
+│       uint32_t planId;     // 跳过的是哪个具体计划
 │       uint32_t ymd;        // 哪一天
 │       SkipReason reason;
 │   }
@@ -84,7 +84,7 @@ ScheduleSkip
 └── pruneBefore(ymd)                  // 清理过期条目
 ```
 
-**容量**：保留最近 30 天过去 + 未来 30 天。超过自动清理。
+**当前容量**：固定 128 条。写放大和过期清理仍是后续优化项；当前不承诺自动清理过期项。
 
 **场景示例**：
 
@@ -106,7 +106,7 @@ Zone 1 有三个计划：
 
 ## 四、Plan Execution Tracker（执行跟踪）
 
-防止同一个计划在同一分钟重复触发。内存态，掉电即失。
+防止同一个计划在同一分钟重复触发。当前实现按水路持久化当天处理状态，重启后仍能识别已处理的 `planId + ymd + minuteOfDay`，避免计划窗口附近掉电导致重复执行或丢失已观察结果。恢复出厂会清空该 namespace。
 
 ```
 PlanExecutionTracker（每 Zone 一个实例）
@@ -125,17 +125,18 @@ PlanExecutionTracker（每 Zone 一个实例）
 │   }
 │
 ├── struct PlanDayState {
-│       uint8_t planSlot;         // 0-5
-│       bool handled;             // 今天是否已处理
-│       ExecutionStatus status;   // 今天的结果
+│       uint32_t planId;
+│       uint32_t ymd;
+│       uint16_t minuteOfDay;
+│       ExecutionStatus status;   // 当天该分钟的结果
 │   }
 │
-├── g_states[MaxPlansPerZone]   // 内存
+├── entries[MaxPlansPerZone]    // RAM 镜像，NVS 持久化
 │
-├── isHandledToday(planSlot) → bool
-├── markHandled(planSlot, status)
-├── resetNewDay()               // 新的一天，全部重置
-└── getAllToday() → PlanDayState[]
+├── isHandled(planId, ymd, minuteOfDay) → bool
+├── mark(planId, ymd, minuteOfDay, status)
+├── resetNewDay(ymd)            // 新的一天，清空并写入新日期
+└── get(index) → PlanDayState
 ```
 
 **与 ScheduleSkip 的区别**：
@@ -143,9 +144,9 @@ PlanExecutionTracker（每 Zone 一个实例）
 | | ScheduleSkip | PlanExecutionTracker |
 |---|---|---|
 | 是什么 | 用户主动设置的跳过 | 调度器自动记录的"今天已处理" |
-| 存储 | 持久化（NVS） | 内存，掉电即失 |
-| 粒度 | planId × ymd | planSlot × today |
-| 生命周期 | 环形清理，保留 30 天 | 每天重置 |
+| 存储 | 持久化（NVS） | 持久化（NVS） |
+| 粒度 | planId × ymd | planId × ymd × minuteOfDay |
+| 生命周期 | 固定容量覆盖 | 每天重置，恢复出厂清空 |
 
 ## 五、ZoneScheduler（每路调度器）
 
@@ -153,7 +154,7 @@ PlanExecutionTracker（每 Zone 一个实例）
 ZoneScheduler
 ├── Zone* zone                          // 绑定的 Zone
 ├── plans[MaxPlansPerZone]              // 该 Zone 的计划定义
-├── tracker: PlanExecutionTracker       // 执行跟踪（内存）
+├── tracker: PlanExecutionTracker       // 执行跟踪（NVS 持久化）
 ├── scheduleSkip: ScheduleSkip*         // 引用全局 ScheduleSkip 实例
 │
 ├── begin(now)
@@ -165,7 +166,7 @@ ZoneScheduler
 │       ├── 计划启用？
 │       ├── timeHour/timeMinute 匹配当前分钟？
 │       ├── 循环规则匹配？→ 不匹配 → tracker.mark(SKIPPED_CYCLE)
-│       ├── tracker.isHandledToday? → 跳过
+│       ├── tracker.isHandled(planId, ymd, minuteOfDay)? → 跳过
 │       ├── ScheduleSkip.isSkipped(planId, today)? → tracker.mark(SKIPPED_CALENDAR)
 │       ├── Zone.isError()? → tracker.mark(SKIPPED_ERROR)
 │       ├── Zone.isBusy()? → tracker.mark(SKIPPED_BUSY)
@@ -253,7 +254,7 @@ ZoneManager
 │
 ├── ZoneScheduler[MaxZones]
 │   ├── plans[6]: PlanDefinition (id, zoneId, name, time, duration, cycle, createdAt)
-│   ├── tracker: PlanExecutionTracker (内存，今天是否已处理)
+│   ├── tracker: PlanExecutionTracker (NVS 持久化，今天是否已处理)
 │   └── scheduleSkip → ScheduleSkip (引用)
 │
 ├── ScheduleSkip (持久化，环形)

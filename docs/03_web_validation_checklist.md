@@ -7,7 +7,7 @@
 - 打开 `/`：应跳转到 `/index`。
 - 打开 `/index`：应显示首页，包含设备状态、4 路浇水状态、手动浇水和当前告警。
 - 停留在 `/index`：待机时应低频刷新状态；有水路浇水时应提高刷新频率，但不应高频连续请求。
-- 业务导航顺序应为：首页、近期计划、历史记录、计划配置、灌溉设置。
+- 业务导航应包含：首页、计划、水路管理、流量校准、浇水记录、事件记录。
 - 业务导航不应显示单独的手动页或调试页。
 - 底部应保留 Esp32Base 默认页脚导航：`Status`、`Logs`、`App Config`、`System`。
 
@@ -22,9 +22,9 @@
 ## 状态 API
 
 - `GET /api/v1/status` 返回合法 JSON。
-- JSON 包含 `wifi`、`time`、`system`、`zones`、`plans`、`records`。
+- JSON 当前包含 `ok`、`timeSynced`、`leakAlertActive`、`zones`。
 - `zones` 应包含第 1 到第 4 路状态。
-- 每路包含启用状态、运行状态、目标秒数、估算水量、当前流速和阀门状态。
+- 每路包含 `zoneId`、`state`、`enabled`、`busy`、`errorActive`、`errorCode`、`taskType`、`targetSec`、`elapsedSec`、`remainingSec`、`pulses`、`estimatedMl`、`flowRatePerMinuteX1000`、`flowMlPerMin`、`flowRateReady`、`planId`。
 
 ## 手动控制
 
@@ -36,21 +36,15 @@
 - 外部 API 启动目标水路，停用、忙碌、异常或漏水保护中应拒绝。
 - `POST /api/v1/zone/stop` 页面触发后返回首页；直接 API 调用返回 JSON。
 
-## 近期计划
-
-- 打开 `/irrigation/plans`：应以一个表格显示今天、明天、后天。
-- 每行对应一路的一个计划槽。
-- 已手动跳过、已启动、水路停用跳过、水路忙跳过等结果应显示为计划触发结果。
-- 每个未执行的未来计划可单独跳过，已跳过计划可取消跳过。
-- `GET /api/v1/plans` 返回计划配置 JSON。
-
-## 计划配置
+## 计划配置与跳过 API
 
 - 打开 `/irrigation/plans` 或单个 `/irrigation/plan?...`：应能查看和编辑计划。
 - 每个计划显示为“第 N 路 / 计划 M”。
 - 编辑页只能修改该计划槽的启用状态、时间、目标时长、循环天数、循环开始日期和循环执行日。
 - 不应出现同时/顺序模式。
 - `GET /api/v1/plans` 返回 24 个计划的原始配置字段。
+- `POST /api/v1/schedule/skip` 和 `POST /api/v1/schedule/unskip` 支持按 `planId + ymd` 设置单次跳过；当前页面不承诺今天/明天/后天近期计划视图。
+- 计划执行结果应在重启后保留当天已处理状态；恢复出厂应清空该执行跟踪。
 
 ## 灌溉设置
 
@@ -97,6 +91,7 @@
 - 业务页面不提供恢复出厂入口。
 - 恢复出厂待处理后，配置保存、手动启动、清除告警、计划保存和计划跳过应返回 `factory_reset_pending`。
 - 恢复出厂待处理时，停止本路和停止全部仍应允许。
+- 所有业务 POST 应通过基础库 `Esp32BaseWeb::checkPostAllowed()` 同源校验；跨站 `Origin`/`Referer` 不应触发副作用。
 
 ## 未实机验证项
 
