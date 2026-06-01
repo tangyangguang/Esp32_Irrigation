@@ -98,13 +98,6 @@ enum class PlanObservationStatus : uint8_t {
     MISSED = 11,
 };
 
-enum class FlowParameterSource : uint8_t {
-    NONE = 0,
-    MANUAL = 1,
-    CALIBRATION = 2,
-    COPIED = 3,
-};
-
 struct FlowParameters {
     uint16_t startupPulseLimit;
     uint16_t startupEstimatedMl;
@@ -113,9 +106,7 @@ struct FlowParameters {
 
 struct FlowCandidateSlot {
     bool exists;
-    FlowParameterSource source;
-    uint8_t sourceZoneId;
-    uint8_t reserved;
+    uint8_t reserved[3];
     FlowParameters params;
 };
 

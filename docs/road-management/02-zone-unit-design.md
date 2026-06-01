@@ -29,7 +29,7 @@ ZoneConfig
 ├── enabled             // 启用/停用
 ├── startupPulseLimit   // 启动阶段脉冲数，0 表示不启用启动补偿
 ├── startupEstimatedMl  // 启动阶段全部脉冲对应的估算水量
-├── stablePulsePerLiter // 稳定阶段每升脉冲数
+├── stablePulsePerLiter // 稳定脉冲 P/L
 ├── startTimeoutSec     // STARTING → ERROR 的超时阈值
 ├── flowNoPulseTimeoutSec // RUNNING → ERROR 的超时阈值
 └── suppressError       // 是否抑制 ERROR 状态

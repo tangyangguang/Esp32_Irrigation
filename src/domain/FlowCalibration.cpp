@@ -712,7 +712,7 @@ bool saveCandidate() {
         setError("no_recommendation");
         return false;
     }
-    if (!ZoneConfigStore::saveCalibrationCandidate(g_recommendation.zoneId, g_recommendation.flow)) {
+    if (!ZoneConfigStore::saveCandidate(g_recommendation.zoneId, g_recommendation.flow)) {
         setError("save_failed");
         return false;
     }

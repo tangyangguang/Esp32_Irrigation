@@ -93,16 +93,6 @@ int32_t packU16(uint16_t high, uint16_t low) {
     return static_cast<int32_t>((static_cast<uint32_t>(high) << 16) | static_cast<uint32_t>(low));
 }
 
-const char* flowSourceName(Irrigation::FlowParameterSource source) {
-    switch (source) {
-        case Irrigation::FlowParameterSource::MANUAL: return "manual";
-        case Irrigation::FlowParameterSource::CALIBRATION: return "calibration";
-        case Irrigation::FlowParameterSource::COPIED: return "copied";
-        case Irrigation::FlowParameterSource::NONE:
-        default: return "none";
-    }
-}
-
 }
 
 namespace BusinessEventLog {
@@ -298,28 +288,20 @@ void appendFactoryResetExecuted(bool ok, bool clearRecords, const char* source) 
 void appendFlowCandidateApplied(uint8_t zoneId,
                                 const Irrigation::FlowParameters& oldParams,
                                 const Irrigation::FlowParameters& newParams,
-                                Irrigation::FlowParameterSource candidateSource,
-                                uint8_t sourceZoneId,
                                 const char* source) {
     char object[16];
     zoneObject(zoneId, object, sizeof(object));
-    char text[32];
-    if (candidateSource == Irrigation::FlowParameterSource::COPIED) {
-        snprintf(text, sizeof(text), "src=copied z=%u", static_cast<unsigned>(sourceZoneId));
-    } else {
-        snprintf(text, sizeof(text), "src=%s", flowSourceName(candidateSource));
-    }
     (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
                       source && source[0] ? source : "web",
                       "flow_params_applied",
-                      flowSourceName(candidateSource),
+                      "candidate",
                       object,
-                      static_cast<uint16_t>(candidateSource),
+                      0,
                       packU16(oldParams.startupPulseLimit, oldParams.startupEstimatedMl),
                       packU16(newParams.startupPulseLimit, newParams.startupEstimatedMl),
                       packU16(oldParams.stablePulsePerLiter, newParams.stablePulsePerLiter),
                       Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
-                      text);
+                      "candidate applied");
 }
 
 void appendFlowPreviousRestored(uint8_t zoneId,

@@ -429,16 +429,6 @@ const char* calibrationRecommendationAdvice(const FlowCalibration::Recommendatio
     return "样本误差偏大，不建议应用；建议重采或检查接水量、流量稳定性。";
 }
 
-const char* flowCandidateSourceLabel(Irrigation::FlowParameterSource source) {
-    switch (source) {
-        case Irrigation::FlowParameterSource::MANUAL: return "手工输入";
-        case Irrigation::FlowParameterSource::CALIBRATION: return "校准生成";
-        case Irrigation::FlowParameterSource::COPIED: return "复制参数";
-        case Irrigation::FlowParameterSource::NONE:
-        default: return "无";
-    }
-}
-
 bool readFlowParameters(Irrigation::FlowParameters* out) {
     if (!out) {
         return false;
@@ -458,13 +448,13 @@ bool readFlowParameters(Irrigation::FlowParameters* out) {
 }
 
 void writeFlowParameterLine(const Irrigation::FlowParameters& params) {
-    Esp32BaseWeb::sendChunk("<div class='calibration-param-line'><span class='param'>启动阶段脉冲：<span class='value'>");
+    Esp32BaseWeb::sendChunk("<div class='calibration-param-line'><span class='param'><span>启动脉冲</span><span class='value'>");
     writeUInt(params.startupPulseLimit);
-    Esp32BaseWeb::sendChunk("</span></span><span class='param'>启动阶段水量：<span class='value'>");
+    Esp32BaseWeb::sendChunk("</span></span><span class='param'><span>启动水量</span><span class='value'>");
     writeUInt(params.startupEstimatedMl);
-    Esp32BaseWeb::sendChunk(" ml</span></span><span class='param'>稳定阶段脉冲：<span class='value'>");
+    Esp32BaseWeb::sendChunk(" ml</span></span><span class='param'><span>稳定脉冲</span><span class='value'>");
     writeUInt(params.stablePulsePerLiter);
-    Esp32BaseWeb::sendChunk(" 脉冲/升</span></span></div>");
+    Esp32BaseWeb::sendChunk(" P/L</span></span></div>");
 }
 
 void writeFlowParameterInputs(const Irrigation::FlowParameters& params) {
@@ -472,21 +462,21 @@ void writeFlowParameterInputs(const Irrigation::FlowParameters& params) {
     writeUInt(params.startupPulseLimit);
     Esp32BaseWeb::sendChunk("' required></p><p class='field short'><label>启动阶段水量 ml</label><input name='startupEstimatedMl' type='number' min='0' max='10000' value='");
     writeUInt(params.startupEstimatedMl);
-    Esp32BaseWeb::sendChunk("' required></p><p class='field short'><label>稳定阶段脉冲/升</label><input name='stablePulsePerLiter' type='number' min='1' max='10000' value='");
+    Esp32BaseWeb::sendChunk("' required></p><p class='field short'><label>稳定脉冲 P/L</label><input name='stablePulsePerLiter' type='number' min='1' max='10000' value='");
     writeUInt(params.stablePulsePerLiter);
     Esp32BaseWeb::sendChunk("' required></p>");
 }
 
 void writeFlowParameterLifecyclePanel() {
     Esp32BaseWeb::beginPanel("流量参数");
-    Esp32BaseWeb::sendChunk("<div class='tablewrap calibration-current-params'><table class='part'><thead><tr><th>水路</th><th>当前参数</th><th>候选参数</th><th>上一套参数</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='calibration-zone-grid'>");
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         const Irrigation::ZoneConfig& zone = ZoneManager::config(zoneId);
         const bool busy = ZoneManager::isZoneBusy(zoneId);
         const bool candidateMatches = zone.candidateFlow.exists && ZoneConfigStore::flowParametersEqual(zone.flow, zone.candidateFlow.params);
-        Esp32BaseWeb::sendChunk("<tr><td><b>");
+        Esp32BaseWeb::sendChunk("<section class='calibration-zone-card'><div class='calibration-zone-head'><div><h3>");
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
-        Esp32BaseWeb::sendChunk("</b><br><span class='tag");
+        Esp32BaseWeb::sendChunk("</h3><span class='tag");
         Esp32BaseWeb::sendChunk(zone.enabled ? " ok" : "");
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(zone.enabled ? "启用" : "停用");
@@ -494,71 +484,105 @@ void writeFlowParameterLifecyclePanel() {
         if (busy) {
             Esp32BaseWeb::sendChunk(" <span class='tag warn'>运行中</span>");
         }
-        Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::sendChunk("</div></div><div class='calibration-param-grid'>");
+
+        Esp32BaseWeb::sendChunk("<div class='calibration-param-card current'><div class='calibration-param-head'><h4>当前参数</h4><span class='tag ok'>正在使用</span></div>");
         writeFlowParameterLine(zone.flow);
-        Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::sendChunk("</div>");
+
+        Esp32BaseWeb::sendChunk("<div class='calibration-param-card candidate'><div class='calibration-param-head'><h4>候选参数</h4>");
+        if (zone.candidateFlow.exists && !candidateMatches) {
+            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/apply' onsubmit=\"return confirm('确认将候选参数设为当前参数？当前参数会保存为上一套。')&&once(this)\">");
+            writeOnePostHidden("source", "web_page");
+            writeHiddenU32("zoneId", zoneId);
+            Esp32BaseWeb::sendChunk("<input class='btnlink compact ok'");
+            if (busy) {
+                Esp32BaseWeb::sendChunk(" disabled");
+            }
+            Esp32BaseWeb::sendChunk(" type='submit' value='设为当前'></form>");
+        } else if (zone.candidateFlow.exists) {
+            Esp32BaseWeb::sendChunk("<span class='tag'>与当前一致</span>");
+        }
+        Esp32BaseWeb::sendChunk("</div>");
         if (zone.candidateFlow.exists) {
             writeFlowParameterLine(zone.candidateFlow.params);
-            Esp32BaseWeb::sendChunk("<p class='calibration-param-note'>来源：");
-            Esp32BaseWeb::writeHtmlEscaped(flowCandidateSourceLabel(zone.candidateFlow.source));
-            if (zone.candidateFlow.source == Irrigation::FlowParameterSource::COPIED && Irrigation::validZoneId(zone.candidateFlow.sourceZoneId)) {
-                Esp32BaseWeb::sendChunk("（");
-                Esp32BaseWeb::writeHtmlEscaped(ZoneManager::config(zone.candidateFlow.sourceZoneId).name);
-                Esp32BaseWeb::sendChunk(" 当前参数）");
-            }
-            Esp32BaseWeb::sendChunk("；状态：");
-            Esp32BaseWeb::sendChunk(candidateMatches ? "与当前一致" : "待应用");
+            Esp32BaseWeb::sendChunk("<p class='calibration-param-note'>");
+            Esp32BaseWeb::sendChunk(candidateMatches ? "候选参数与当前参数一致。" : "候选参数已保存，尚未设为当前。");
             Esp32BaseWeb::sendChunk("</p>");
         } else {
             Esp32BaseWeb::sendChunk("<p class='calibration-param-note'>暂无候选参数。</p>");
         }
-        Esp32BaseWeb::sendChunk("<details><summary>手工输入候选参数</summary><form class='editform' method='post' action='/api/v1/calibration/candidate/manual' onsubmit=\"return confirm('确认保存手工候选参数？')&&once(this)\">");
-        writeOnePostHidden("source", "web_page");
-        writeHiddenU32("zoneId", zoneId);
-        writeFlowParameterInputs(zone.candidateFlow.exists ? zone.candidateFlow.params : zone.flow);
-        Esp32BaseWeb::sendChunk("<div class='actions'><input type='submit' value='保存候选参数'></div></form></details>");
-        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/candidate/copy-current' onsubmit=\"return confirm('确认用其他水路当前参数替换本路候选参数？')&&once(this)\">");
-        writeOnePostHidden("source", "web_page");
-        writeHiddenU32("zoneId", zoneId);
-        Esp32BaseWeb::sendChunk("<label>复制其他水路当前参数</label><select name='sourceZoneId'>");
-        for (uint8_t sourceZoneId = 1; sourceZoneId <= Irrigation::MaxZones; ++sourceZoneId) {
-            if (sourceZoneId == zoneId) {
-                continue;
-            }
-            Esp32BaseWeb::sendChunk("<option value='");
-            writeUInt(sourceZoneId);
-            Esp32BaseWeb::sendChunk("'>");
-            Esp32BaseWeb::writeHtmlEscaped(ZoneManager::config(sourceZoneId).name);
-            Esp32BaseWeb::sendChunk("</option>");
-        }
-        Esp32BaseWeb::sendChunk("</select><div class='actions'><input class='secondary' type='submit' value='复制为候选'></div></form>");
-        if (zone.candidateFlow.exists && !candidateMatches) {
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/apply' onsubmit=\"return confirm('确认应用候选参数？')&&once(this)\">");
+        Esp32BaseWeb::sendChunk("<div class='actions'><button type='button' class='btnlink compact secondary' onclick='calibrationCandidateOpen(");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk(")'>");
+        Esp32BaseWeb::sendChunk(zone.candidateFlow.exists ? "编辑候选" : "创建候选");
+        Esp32BaseWeb::sendChunk("</button></div></div>");
+
+        Esp32BaseWeb::sendChunk("<div class='calibration-param-card previous'><div class='calibration-param-head'><h4>上一套参数</h4>");
+        if (zone.previousFlowExists && !ZoneConfigStore::flowParametersEqual(zone.flow, zone.previousFlow)) {
+            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/previous/restore' onsubmit=\"return confirm('确认将上一套参数设为当前参数？当前参数会与上一套互换。')&&once(this)\">");
             writeOnePostHidden("source", "web_page");
             writeHiddenU32("zoneId", zoneId);
-            Esp32BaseWeb::sendChunk("<div class='actions'><input");
+            Esp32BaseWeb::sendChunk("<input class='btnlink compact secondary'");
             if (busy) {
                 Esp32BaseWeb::sendChunk(" disabled");
             }
-            Esp32BaseWeb::sendChunk(" type='submit' value='应用候选参数'></div></form>");
+            Esp32BaseWeb::sendChunk(" type='submit' value='设为当前'></form>");
         }
-        Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::sendChunk("</div>");
         if (zone.previousFlowExists) {
             writeFlowParameterLine(zone.previousFlow);
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/previous/restore' onsubmit=\"return confirm('确认恢复上一套参数？')&&once(this)\">");
-            writeOnePostHidden("source", "web_page");
-            writeHiddenU32("zoneId", zoneId);
-            Esp32BaseWeb::sendChunk("<div class='actions'><input class='secondary'");
-            if (busy) {
-                Esp32BaseWeb::sendChunk(" disabled");
+            if (ZoneConfigStore::flowParametersEqual(zone.flow, zone.previousFlow)) {
+                Esp32BaseWeb::sendChunk("<p class='calibration-param-note'>上一套参数与当前参数一致。</p>");
             }
-            Esp32BaseWeb::sendChunk(" type='submit' value='恢复上一套'></div></form>");
         } else {
             Esp32BaseWeb::sendChunk("<p class='calibration-param-note'>暂无上一套参数。</p>");
         }
-        Esp32BaseWeb::sendChunk("</td></tr>");
+        Esp32BaseWeb::sendChunk("</div></div></section>");
+
+        const Irrigation::FlowParameters formParams = zone.candidateFlow.exists ? zone.candidateFlow.params : zone.flow;
+        Esp32BaseWeb::sendChunk("<dialog id='calibrationCandidateDialog");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("' class='calibration-dialog calibration-candidate-dialog'><form class='editform' method='post' action='/api/v1/calibration/candidate' onsubmit=\"return confirm('确认保存候选参数？')&&once(this)\">");
+        writeOnePostHidden("source", "web_page");
+        writeHiddenU32("zoneId", zoneId);
+        Esp32BaseWeb::sendChunk("<h3>");
+        Esp32BaseWeb::sendChunk(zone.candidateFlow.exists ? "编辑候选参数" : "创建候选参数");
+        Esp32BaseWeb::sendChunk("</h3><p class='calibration-param-note'>候选参数只是待确认的参数值，不会改变当前运行估算。</p><div class='calibration-copy-fill'><label>从其他水路填入</label><div class='calibration-fill-row'><select id='calibrationFillSource");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("'>");
+        for (uint8_t fillZoneId = 1; fillZoneId <= Irrigation::MaxZones; ++fillZoneId) {
+            if (fillZoneId == zoneId) {
+                continue;
+            }
+            const Irrigation::FlowParameters& src = ZoneManager::config(fillZoneId).flow;
+            Esp32BaseWeb::sendChunk("<option value='");
+            writeUInt(fillZoneId);
+            Esp32BaseWeb::sendChunk("' data-startup-pulse='");
+            writeUInt(src.startupPulseLimit);
+            Esp32BaseWeb::sendChunk("' data-startup-ml='");
+            writeUInt(src.startupEstimatedMl);
+            Esp32BaseWeb::sendChunk("' data-stable-pulse='");
+            writeUInt(src.stablePulsePerLiter);
+            Esp32BaseWeb::sendChunk("'>");
+            Esp32BaseWeb::writeHtmlEscaped(ZoneManager::config(fillZoneId).name);
+            Esp32BaseWeb::sendChunk("</option>");
+        }
+        Esp32BaseWeb::sendChunk("</select><button type='button' class='btnlink compact secondary' onclick='calibrationCandidateFill(");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk(")'>填入表单</button></div></div><div class='fieldgrid'>");
+        writeFlowParameterInputs(formParams);
+        Esp32BaseWeb::sendChunk("</div><div class='actions'><input type='submit' value='保存为候选'><button class='btnlink secondary' type='button' onclick='calibrationCandidateClose(");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk(")'>取消</button></div></form></dialog>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div><p class='calibration-param-note'>当前参数正在用于运行估算；候选参数可由手工输入、校准生成或复制其他水路当前参数产生；应用候选参数前会自动保存当前参数为上一套参数。</p>");
+    Esp32BaseWeb::sendChunk("</div><p class='calibration-param-note'>当前参数正在用于运行估算；候选参数只保存最终参数值，可手工输入、从其他水路填入后保存，或由校准样本生成。设为当前前会自动保存当前参数为上一套参数。</p>"
+                            "<script>"
+                            "function calibrationCandidateDialog(id){return document.getElementById('calibrationCandidateDialog'+id);}"
+                            "function calibrationCandidateOpen(id){var d=calibrationCandidateDialog(id);if(!d)return;if(d.showModal)d.showModal();else d.setAttribute('open','open');}"
+                            "function calibrationCandidateClose(id){var d=calibrationCandidateDialog(id);if(d)d.close?d.close():d.removeAttribute('open');}"
+                            "function calibrationCandidateFill(id){var s=document.getElementById('calibrationFillSource'+id),d=calibrationCandidateDialog(id);if(!s||!d||!s.selectedOptions.length)return;var o=s.selectedOptions[0];d.querySelector('[name=startupPulseLimit]').value=o.dataset.startupPulse||0;d.querySelector('[name=startupEstimatedMl]').value=o.dataset.startupMl||0;d.querySelector('[name=stablePulsePerLiter]').value=o.dataset.stablePulse||450;}"
+                            "</script>");
     Esp32BaseWeb::endPanel();
 }
 
@@ -1649,7 +1673,7 @@ void handleSettingsPage() {
         writeUInt(zone.valvePin);
         Esp32BaseWeb::sendChunk("</code><small>控制这一路电磁阀或阀门驱动输出。</small></p><p class='field med'><label>流量计输入 GPIO</label><code>GPIO");
         writeUInt(zone.flowPin);
-        Esp32BaseWeb::sendChunk("</code><small>连接这一路流量计脉冲信号；输入脚需要按硬件设计提供稳定上拉。</small></p><p class='field full'><b>当前流量估算参数</b><small>当前参数只读；手工调整、校准生成和跨水路复制都先保存为候选参数，再到流量校准页应用。</small></p><div class='field full'>");
+        Esp32BaseWeb::sendChunk("</code><small>连接这一路流量计脉冲信号；输入脚需要按硬件设计提供稳定上拉。</small></p><p class='field full'><b>当前流量估算参数</b><small>当前参数只读；候选参数可手工填写、从其他水路填入或由校准样本生成，再到流量校准页设为当前。</small></p><div class='field full'>");
         writeFlowParameterLine(zone.flow);
         Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink secondary' href='/irrigation/calibration'>管理候选参数</a></div></div><p class='field full'><b>异常处理</b><small>用于判断开阀后是否真的有水流，以及水流中断时如何处理。</small></p><p class='field short'><label>启动超时秒</label><input name='startTimeoutSec' type='number' min='1' max='300' value='");
         writeUInt(zone.startTimeoutSec);
@@ -1685,7 +1709,7 @@ void handleSettingsPage() {
         writeUInt(zone.flow.startupEstimatedMl);
         Esp32BaseWeb::sendChunk(" ml · 稳定 ");
         writeUInt(zone.flow.stablePulsePerLiter);
-        Esp32BaseWeb::sendChunk(" 脉冲/升</td><td>");
+        Esp32BaseWeb::sendChunk(" P/L</td><td>");
         Esp32BaseWeb::sendChunk(zone.suppressError ? "只记录，不锁定异常" : "检测异常并锁定水路");
         Esp32BaseWeb::sendChunk("</td><td><a class='btnlink compact' href='/irrigation/zones?zoneId=");
         writeUInt(zoneId);
@@ -1706,27 +1730,45 @@ void handleCalibrationPage() {
     }
     Esp32BaseWeb::sendChunk("<style>"
                             ".calibration-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 12px}"
-                            ".calibration-current-params td{vertical-align:top}"
-                            ".calibration-param-line{display:flex;gap:8px;flex-wrap:wrap;align-items:center}"
-                            ".calibration-param-line .param{display:inline-flex;gap:4px;align-items:baseline;border:1px solid var(--eb-border);border-radius:8px;padding:5px 8px;background:var(--eb-surface-subtle)}"
-                            ".calibration-param-line .value{color:var(--eb-text);font-weight:500}"
-                            ".calibration-param-note{margin:10px 0 0;color:var(--eb-muted);font-size:.92rem;line-height:1.55}"
+                            ".calibration-metrics .metric b{font-weight:600}"
+                            ".calibration-zone-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}"
+                            ".calibration-zone-card{border:1px solid var(--eb-line);border-radius:8px;padding:12px;background:var(--eb-surface)}"
+                            ".calibration-zone-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;margin-bottom:10px}"
+                            ".calibration-zone-head h3{margin:0 0 6px;font-size:1rem;font-weight:600}"
+                            ".calibration-param-grid{display:grid;grid-template-columns:1fr;gap:10px}"
+                            ".calibration-param-card{border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);padding:10px;min-width:0}"
+                            ".calibration-param-card.current{background:#fff}"
+                            ".calibration-param-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:8px}"
+                            ".calibration-param-head h4{margin:0;font-size:.92rem;font-weight:500;color:var(--eb-muted)}"
+                            ".calibration-param-head form{margin:0}"
+                            ".calibration-param-line{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;align-items:baseline}"
+                            ".calibration-param-line .param{display:flex;gap:5px;align-items:baseline;min-width:0;color:var(--eb-muted);font-size:13px;white-space:nowrap}"
+                            ".calibration-param-line .value{color:var(--eb-ink);font-weight:500}"
+                            ".calibration-param-card.candidate,.calibration-param-card.previous{font-size:13px}"
+                            ".calibration-param-card.candidate .calibration-param-line .param,.calibration-param-card.previous .calibration-param-line .param{font-size:12px}"
+                            ".calibration-param-note{margin:8px 0 0;color:var(--eb-muted);font-size:12px;line-height:1.45}"
                             ".calibration-internal{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;color:var(--eb-muted);font-size:.92rem}"
-                            ".calibration-internal span{border:1px solid var(--eb-border);border-radius:8px;padding:6px 9px;background:var(--eb-surface-subtle)}"
-                            ".calibration-workflow{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:18px;align-items:start}"
-                            ".calibration-stage{border:1px solid var(--eb-border);border-radius:8px;padding:12px;background:var(--eb-surface-subtle)}"
-                            ".calibration-stage b{display:block;margin-bottom:6px}"
+                            ".calibration-internal span{border:1px solid var(--eb-line-soft);border-radius:8px;padding:6px 9px;background:var(--eb-soft)}"
+                            ".calibration-workflow{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:12px;align-items:stretch}"
+                            ".calibration-stage{border:1px solid var(--eb-line-soft);border-radius:8px;padding:12px;background:var(--eb-soft)}"
+                            ".calibration-stage h3{margin:0 0 8px;font-size:.95rem;font-weight:500;color:var(--eb-muted)}"
                             ".calibration-stage .tag{margin-left:0}"
                             ".calibration-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end}"
                             ".calibration-actions form{margin:0}"
                             ".calibration-actions .field{margin:0}"
-                            ".calibration-danger{display:flex;justify-content:flex-end;margin-top:12px}"
+                            ".calibration-sample-top{display:flex;justify-content:flex-end;margin:-4px 0 10px}"
                             ".calibration-sample-actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center}"
-                            ".calibration-note{border:1px solid var(--eb-border);border-radius:8px;background:var(--eb-surface-subtle);padding:10px 12px;margin:12px 0;color:var(--eb-muted)}"
-                            ".calibration-note code{color:var(--eb-text)}"
-                            ".calibration-dialog{border:1px solid var(--eb-border);border-radius:8px;padding:16px;max-width:360px;width:calc(100% - 32px)}"
+                            ".calibration-note{border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);padding:10px 12px;margin:12px 0;color:var(--eb-muted)}"
+                            ".calibration-note code{color:var(--eb-ink)}"
+                            ".calibration-dialog{border:1px solid var(--eb-line);border-radius:8px;padding:16px;max-width:420px;width:calc(100% - 32px)}"
                             ".calibration-dialog::backdrop{background:rgba(15,23,42,.35)}"
-                            "@media(max-width:720px){.calibration-workflow{grid-template-columns:1fr}}"
+                            ".calibration-candidate-dialog{max-width:560px}"
+                            ".calibration-candidate-dialog .field.short{grid-column:span 4}"
+                            ".calibration-copy-fill{border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);padding:10px;margin:10px 0}"
+                            ".calibration-copy-fill label{display:block;margin:0 0 6px;color:var(--eb-muted);font-size:13px}"
+                            ".calibration-fill-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}"
+                            ".calibration-fill-row select{width:auto;margin:0}"
+                            "@media(max-width:720px){.calibration-workflow{grid-template-columns:1fr}.calibration-zone-grid{grid-template-columns:1fr}.calibration-param-line{grid-template-columns:1fr}.calibration-candidate-dialog .field.short{grid-column:1/-1}}"
                             "</style>");
     writeFlowParameterLifecyclePanel();
 
@@ -1745,7 +1787,9 @@ void handleCalibrationPage() {
     Esp32BaseWeb::endPanel();
 
     Esp32BaseWeb::beginPanel("采集样本");
-    Esp32BaseWeb::sendChunk("<div class='calibration-workflow'><div class='calibration-stage'><b>当前状态</b><span class='tag");
+    Esp32BaseWeb::sendChunk("<div class='calibration-sample-top'><form method='post' action='/api/v1/calibration/clear' onsubmit=\"return confirm('确认清空当前校准样本？')&&once(this)\">");
+    writeOnePostHidden("source", "web_page");
+    Esp32BaseWeb::sendChunk("<input class='secondary' type='submit' value='清空样本'></form></div><div class='calibration-workflow'><div class='calibration-stage'><h3>状态</h3><span class='tag");
     Esp32BaseWeb::sendChunk(FlowCalibration::state() == FlowCalibration::State::IDLE ? " ok" : " warn");
     Esp32BaseWeb::sendChunk("'>");
     Esp32BaseWeb::writeHtmlEscaped(calibrationStateLabel(FlowCalibration::state()));
@@ -1756,21 +1800,19 @@ void handleCalibrationPage() {
     writeUInt(FlowCalibration::validSampleCount());
     Esp32BaseWeb::sendChunk(" 条，容量 ");
     writeUInt(system.calibrationSampleTarget);
-    Esp32BaseWeb::sendChunk(" 条</p></div><div class='calibration-actions'>");
+    Esp32BaseWeb::sendChunk(" 条</p></div><div class='calibration-stage'><h3>接水</h3>");
     if (FlowCalibration::state() == FlowCalibration::State::CAPTURING) {
         Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/stop' onsubmit=\"return once(this)\">");
         writeOnePostHidden("source", "web_page");
-        Esp32BaseWeb::sendChunk("<p><b>第 2 步</b><br>接到量杯目标水量后停止出水。</p><input type='submit' value='停止并输入水量'></form>");
+        Esp32BaseWeb::sendChunk("<p>接到量杯目标水量后停止出水。</p><div class='actions'><input type='submit' value='停止并输入水量'></div></form>");
     } else if (FlowCalibration::state() == FlowCalibration::State::WAITING_ACTUAL) {
-        Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/calibration/sample' onsubmit=\"return confirm('确认保存本次校准样本？')&&once(this)\">");
-        writeOnePostHidden("source", "web_page");
-        Esp32BaseWeb::sendChunk("<p><b>第 3 步</b><br>输入量杯实测水量后保存样本。</p><p class='field short'><label>实际水量 ml</label><input name='actualMl' type='number' min='1' max='100000' required></p><div class='actions'><input type='submit' value='保存样本'></div></form>");
+        Esp32BaseWeb::sendChunk("<p>已停止出水，请在右侧保存本次实测水量。</p>");
     } else if (FlowCalibration::sampleCount() >= system.calibrationSampleTarget) {
-        Esp32BaseWeb::sendChunk("<div class='calibration-stage'><b>容量已满</b><p>当前样本数已达到配置容量；可先生成候选参数，或清空样本后重新采集。</p></div>");
+        Esp32BaseWeb::sendChunk("<p>当前样本数已达到配置容量；可先生成候选参数，或清空样本后重新采集。</p>");
     } else {
         Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/calibration/start' onsubmit=\"return confirm('确认开始校准出水？')&&once(this)\">");
         writeOnePostHidden("source", "web_page");
-        Esp32BaseWeb::sendChunk("<p><b>第 1 步</b><br>选择水路，准备量杯后开始接水。</p><p class='field short'><label>水路</label><select name='zoneId'>");
+        Esp32BaseWeb::sendChunk("<p>选择水路，准备量杯后开始接水。</p><p class='field short'><label>水路</label><select name='zoneId'>");
         for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
             const Irrigation::ZoneConfig& zone = ZoneManager::config(zoneId);
             Esp32BaseWeb::sendChunk("<option value='");
@@ -1786,9 +1828,17 @@ void handleCalibrationPage() {
         }
         Esp32BaseWeb::sendChunk("</select></p><div class='actions'><input type='submit' value='开始接水'></div></form>");
     }
-    Esp32BaseWeb::sendChunk("</div></div><div class='calibration-danger'><form method='post' action='/api/v1/calibration/clear' onsubmit=\"return confirm('确认清空当前校准样本？')&&once(this)\">");
-    writeOnePostHidden("source", "web_page");
-    Esp32BaseWeb::sendChunk("<input class='secondary' type='submit' value='清空校准样本'></form></div>");
+    Esp32BaseWeb::sendChunk("</div><div class='calibration-stage'><h3>保存样本</h3>");
+    if (FlowCalibration::state() == FlowCalibration::State::WAITING_ACTUAL) {
+        Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/calibration/sample' onsubmit=\"return confirm('确认保存本次校准样本？')&&once(this)\">");
+        writeOnePostHidden("source", "web_page");
+        Esp32BaseWeb::sendChunk("<p>输入量杯实测水量后保存样本。</p><p class='field short'><label>实际水量 ml</label><input name='actualMl' type='number' min='1' max='100000' required></p><div class='actions'><input type='submit' value='保存样本'></div></form>");
+    } else if (FlowCalibration::state() == FlowCalibration::State::CAPTURING) {
+        Esp32BaseWeb::sendChunk("<p>停止出水后，这里会要求输入实际水量。</p>");
+    } else {
+        Esp32BaseWeb::sendChunk("<p>完成一次接水后，在这里输入实际水量并保存。</p>");
+    }
+    Esp32BaseWeb::sendChunk("</div></div>");
     Esp32BaseWeb::endPanel();
 
     Esp32BaseWeb::beginPanel("样本");
@@ -1837,15 +1887,15 @@ void handleCalibrationPage() {
     const FlowCalibration::Recommendation& rec = FlowCalibration::recommendation();
     if (rec.valid) {
         Esp32BaseWeb::beginPanel("候选参数诊断");
-        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>运行估算公式</b><br><code>P</code> 为总脉冲，<code>S</code> 为启动阶段脉冲，<code>V0</code> 为启动阶段水量，<code>K</code> 为稳定阶段脉冲/升。<br>未过启动阶段：<code>P <= S，水量 = P × V0 / S</code>。<br>超过启动阶段：<code>P > S，水量 = V0 + (P - S) × 1000 / K</code>。</div>");
-        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>参数生成算法</b><br>系统从样本脉冲时间差还原时间线，用 2 秒窗口、200 ms 步进扫描流速，找到连续稳定的起点；稳定起点前的脉冲数作为启动阶段参考。多个样本取中位数附近搜索候选启动脉冲，并拟合启动阶段水量和稳定阶段脉冲/升，选择平均误差和最大误差最小的一组。</div>");
+        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>运行估算公式</b><br><code>P</code> 为总脉冲，<code>S</code> 为启动阶段脉冲，<code>V0</code> 为启动阶段水量，<code>K</code> 为稳定脉冲 P/L。<br>未过启动阶段：<code>P <= S，水量 = P × V0 / S</code>。<br>超过启动阶段：<code>P > S，水量 = V0 + (P - S) × 1000 / K</code>。</div>");
+        Esp32BaseWeb::sendChunk("<div class='calibration-note'><b>参数生成算法</b><br>系统从样本脉冲时间差还原时间线，用 2 秒窗口、200 ms 步进扫描流速，找到连续稳定的起点；稳定起点前的脉冲数作为启动阶段参考。多个样本取中位数附近搜索候选启动脉冲，并拟合启动阶段水量和稳定脉冲 P/L，选择平均误差和最大误差最小的一组。</div>");
         Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><tbody><tr><th>水路</th><td>");
         writeUInt(rec.zoneId);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>启动阶段脉冲</th><td>");
         writeUInt(rec.flow.startupPulseLimit);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>启动阶段水量</th><td>");
         writeUInt(rec.flow.startupEstimatedMl);
-        Esp32BaseWeb::sendChunk(" ml</td></tr><tr><th>稳定阶段脉冲/升</th><td>");
+        Esp32BaseWeb::sendChunk(" ml</td></tr><tr><th>稳定脉冲 P/L</th><td>");
         writeUInt(rec.flow.stablePulsePerLiter);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>有效样本数</th><td>");
         writeUInt(rec.sampleCount);
@@ -2340,7 +2390,7 @@ void handleCalibrationComputeApi() {
     redirectOrOk("/irrigation/calibration");
 }
 
-void handleCalibrationCandidateManualApi() {
+void handleCalibrationCandidateSaveApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
         sendMethodNotAllowed("POST");
@@ -2352,30 +2402,8 @@ void handleCalibrationCandidateManualApi() {
         sendError(400, "invalid_candidate");
         return;
     }
-    if (!ZoneConfigStore::saveManualCandidate(zoneId, params)) {
+    if (!ZoneConfigStore::saveCandidate(zoneId, params)) {
         sendError(400, "candidate_save_failed");
-        return;
-    }
-    redirectOrOk("/irrigation/calibration");
-}
-
-void handleCalibrationCandidateCopyApi() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
-        sendMethodNotAllowed("POST");
-        return;
-    }
-    uint8_t zoneId = 0;
-    uint8_t sourceZoneId = 0;
-    if (!readZoneId(&zoneId) ||
-        !readU8("sourceZoneId", &sourceZoneId) ||
-        !Irrigation::validZoneId(sourceZoneId) ||
-        sourceZoneId == zoneId) {
-        sendError(400, "invalid_copy_source");
-        return;
-    }
-    if (!ZoneConfigStore::copyCurrentToCandidate(sourceZoneId, zoneId)) {
-        sendError(400, "candidate_copy_failed");
         return;
     }
     redirectOrOk("/irrigation/calibration");
@@ -2405,8 +2433,6 @@ void handleCalibrationApplyApi() {
         sendError(409, "candidate_unchanged");
         return;
     }
-    const Irrigation::FlowParameterSource candidateSource = before.candidateFlow.source;
-    const uint8_t sourceZoneId = before.candidateFlow.sourceZoneId;
     Irrigation::FlowParameters oldParams = {};
     Irrigation::FlowParameters newParams = {};
     if (!ZoneConfigStore::applyCandidate(zoneId, &oldParams, &newParams)) {
@@ -2414,7 +2440,7 @@ void handleCalibrationApplyApi() {
         return;
     }
     (void)ZoneManager::reloadZone(zoneId);
-    BusinessEventLog::appendFlowCandidateApplied(zoneId, oldParams, newParams, candidateSource, sourceZoneId, wantsRedirect() ? "web" : "api");
+    BusinessEventLog::appendFlowCandidateApplied(zoneId, oldParams, newParams, wantsRedirect() ? "web" : "api");
     redirectOrOk("/irrigation/calibration");
 }
 
@@ -2830,8 +2856,7 @@ void begin() {
     const bool calibrationSampleOk = Esp32BaseWeb::addRoute("/api/v1/calibration/sample", Esp32BaseWeb::METHOD_POST, handleCalibrationSampleApi);
     const bool calibrationSampleUpdateOk = Esp32BaseWeb::addRoute("/api/v1/calibration/sample/update", Esp32BaseWeb::METHOD_POST, handleCalibrationSampleUpdateApi);
     const bool calibrationComputeOk = Esp32BaseWeb::addRoute("/api/v1/calibration/compute", Esp32BaseWeb::METHOD_POST, handleCalibrationComputeApi);
-    const bool calibrationCandidateManualOk = Esp32BaseWeb::addRoute("/api/v1/calibration/candidate/manual", Esp32BaseWeb::METHOD_POST, handleCalibrationCandidateManualApi);
-    const bool calibrationCandidateCopyOk = Esp32BaseWeb::addRoute("/api/v1/calibration/candidate/copy-current", Esp32BaseWeb::METHOD_POST, handleCalibrationCandidateCopyApi);
+    const bool calibrationCandidateSaveOk = Esp32BaseWeb::addRoute("/api/v1/calibration/candidate", Esp32BaseWeb::METHOD_POST, handleCalibrationCandidateSaveApi);
     const bool calibrationApplyOk = Esp32BaseWeb::addRoute("/api/v1/calibration/apply", Esp32BaseWeb::METHOD_POST, handleCalibrationApplyApi);
     const bool calibrationRestoreOk = Esp32BaseWeb::addRoute("/api/v1/calibration/previous/restore", Esp32BaseWeb::METHOD_POST, handleCalibrationPreviousRestoreApi);
     const bool calibrationClearOk = Esp32BaseWeb::addRoute("/api/v1/calibration/clear", Esp32BaseWeb::METHOD_POST, handleCalibrationClearApi);
@@ -2846,7 +2871,7 @@ void begin() {
     const bool recordsOk = Esp32BaseWeb::addRoute("/api/v1/records", Esp32BaseWeb::METHOD_GET, handleRecordsApi);
     const bool eventsOk = Esp32BaseWeb::addRoute("/api/v1/events", Esp32BaseWeb::METHOD_GET, handleEventsApi);
     const bool factoryOk = Esp32BaseWeb::addRoute("/api/v1/maintenance/factory-reset", Esp32BaseWeb::METHOD_POST, handleFactoryResetApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateManual=%s calCandidateCopy=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s factory=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s factory=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
                     settingsOk ? "ok" : "fail",
@@ -2867,8 +2892,7 @@ void begin() {
                     calibrationSampleOk ? "ok" : "fail",
                     calibrationSampleUpdateOk ? "ok" : "fail",
                     calibrationComputeOk ? "ok" : "fail",
-                    calibrationCandidateManualOk ? "ok" : "fail",
-                    calibrationCandidateCopyOk ? "ok" : "fail",
+                    calibrationCandidateSaveOk ? "ok" : "fail",
                     calibrationApplyOk ? "ok" : "fail",
                     calibrationRestoreOk ? "ok" : "fail",
                     calibrationClearOk ? "ok" : "fail",

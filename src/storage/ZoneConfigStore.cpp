@@ -171,22 +171,11 @@ bool flowParametersEqual(const Irrigation::FlowParameters& a, const Irrigation::
 }
 
 bool validateCandidate(uint8_t zoneId, const Irrigation::FlowCandidateSlot& slot) {
+    (void)zoneId;
     if (!slot.exists) {
         return true;
     }
-    if (!validateFlowParameters(slot.params)) {
-        return false;
-    }
-    switch (slot.source) {
-        case Irrigation::FlowParameterSource::MANUAL:
-        case Irrigation::FlowParameterSource::CALIBRATION:
-            return slot.sourceZoneId == 0;
-        case Irrigation::FlowParameterSource::COPIED:
-            return Irrigation::validZoneId(slot.sourceZoneId) && slot.sourceZoneId != zoneId;
-        case Irrigation::FlowParameterSource::NONE:
-        default:
-            return false;
-    }
+    return validateFlowParameters(slot.params);
 }
 
 bool validate(const Irrigation::ZoneConfig& config) {
@@ -213,6 +202,7 @@ bool set(uint8_t zoneId, const Irrigation::ZoneConfig& config) {
     normalized.flow = normalizeFlowParameters(normalized.flow);
     if (normalized.candidateFlow.exists) {
         normalized.candidateFlow.params = normalizeFlowParameters(normalized.candidateFlow.params);
+        memset(normalized.candidateFlow.reserved, 0, sizeof(normalized.candidateFlow.reserved));
     } else {
         normalized.candidateFlow = {};
     }
@@ -234,36 +224,15 @@ bool set(uint8_t zoneId, const Irrigation::ZoneConfig& config) {
     return true;
 }
 
-bool saveCandidate(uint8_t zoneId,
-                   Irrigation::FlowParameters params,
-                   Irrigation::FlowParameterSource source,
-                   uint8_t sourceZoneId) {
+bool saveCandidate(uint8_t zoneId, Irrigation::FlowParameters params) {
     if (!Irrigation::validZoneId(zoneId)) {
         return false;
     }
     Irrigation::ZoneConfig config = get(zoneId);
     config.candidateFlow.exists = true;
-    config.candidateFlow.source = source;
-    config.candidateFlow.sourceZoneId = sourceZoneId;
+    memset(config.candidateFlow.reserved, 0, sizeof(config.candidateFlow.reserved));
     config.candidateFlow.params = normalizeFlowParameters(params);
     return set(zoneId, config);
-}
-
-bool saveManualCandidate(uint8_t zoneId, Irrigation::FlowParameters params) {
-    return saveCandidate(zoneId, params, Irrigation::FlowParameterSource::MANUAL, 0);
-}
-
-bool saveCalibrationCandidate(uint8_t zoneId, Irrigation::FlowParameters params) {
-    return saveCandidate(zoneId, params, Irrigation::FlowParameterSource::CALIBRATION, 0);
-}
-
-bool copyCurrentToCandidate(uint8_t sourceZoneId, uint8_t targetZoneId) {
-    if (!Irrigation::validZoneId(sourceZoneId) ||
-        !Irrigation::validZoneId(targetZoneId) ||
-        sourceZoneId == targetZoneId) {
-        return false;
-    }
-    return saveCandidate(targetZoneId, get(sourceZoneId).flow, Irrigation::FlowParameterSource::COPIED, sourceZoneId);
 }
 
 bool applyCandidate(uint8_t zoneId, Irrigation::FlowParameters* oldParams, Irrigation::FlowParameters* newParams) {

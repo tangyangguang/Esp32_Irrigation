@@ -31,8 +31,6 @@ void appendFactoryResetExecuted(bool ok, bool clearRecords, const char* source);
 void appendFlowCandidateApplied(uint8_t zoneId,
                                 const Irrigation::FlowParameters& oldParams,
                                 const Irrigation::FlowParameters& newParams,
-                                Irrigation::FlowParameterSource candidateSource,
-                                uint8_t sourceZoneId,
                                 const char* source);
 void appendFlowPreviousRestored(uint8_t zoneId,
                                 const Irrigation::FlowParameters& oldParams,

@@ -126,6 +126,8 @@ assert(systemConfig.includes('"校准样本容量"') && systemConfig.includes('"
 assert(zoneConfig.includes('ZoneConfig') && zoneConfig.includes('startTimeoutSec') && zoneConfig.includes('suppressError'), 'zone config should include timeout and suppressError fields');
 assert(zoneTypes.includes('startupPulseLimit') && zoneTypes.includes('startupEstimatedMl') && zoneTypes.includes('stablePulsePerLiter'), 'zone config should use two-stage flow estimation fields');
 assert(!zoneTypes.includes('calibrationX1000'), 'zone config should not keep the old calibration coefficient');
+assert(!zoneTypes.includes('FlowParameterSource') && !zoneTypes.includes('sourceZoneId'), 'candidate flow parameters should not persist source metadata');
+assert(!zoneConfig.includes('FlowParameterSource') && !zoneConfig.includes('sourceZoneId'), 'zone config storage should save candidate values only');
 assert(zoneConfig.includes('startupPulses') && zoneConfig.includes('stablePulses'), 'zone water estimation should split startup and stable pulses');
 assert(zoneConfig.includes('Zone 1') && zoneConfig.includes('Zone 4'), 'zone defaults should name all four zones');
 assert(zoneConfig.includes('config.suppressError = true;'), 'flow anomalies should default to record-only mode');
@@ -166,8 +168,11 @@ assert(allSource.includes('Esp32BaseAppEventLog::clear'), 'business clear-record
 assert(web.includes('/api/v1/zone/start') && web.includes('zoneId'), 'web API should use fixed endpoint plus zoneId parameter');
 assert(web.includes('/irrigation/calibration') && web.includes('handleCalibrationPage'), 'web should include a dedicated flow calibration page');
 assert(web.includes('/api/v1/calibration/start') && web.includes('/api/v1/calibration/apply'), 'web API should include flow calibration lifecycle endpoints');
+assert(web.includes('/api/v1/calibration/candidate') && !web.includes('/api/v1/calibration/candidate/manual'), 'candidate save API should not encode source type in the route');
 assert(web.includes('calibration-metrics') && web.includes('calibration-workflow') && web.includes('calibration-internal'), 'calibration page should use compact configuration and guided collection sections');
-assert(web.includes('calibration-current-params') && web.includes('当前使用参数'), 'calibration page should show currently active per-zone flow parameters');
+assert(web.includes('calibration-zone-grid') && web.includes('calibration-param-card') && web.includes('设为当前'), 'calibration page should show per-zone parameter cards with set-current actions');
+assert(web.includes('calibrationCandidateFill') && web.includes('从其他水路填入') && web.includes('填入表单'), 'candidate editor should support copy-as-input inside the candidate form');
+assert(!web.includes('来源：') && !web.includes('flowCandidateSourceLabel') && !web.includes('/api/v1/calibration/candidate/copy-current'), 'calibration page should not expose or persist candidate source tracking');
 assert(web.includes('chart-grid') && web.includes('chart-tick') && web.includes('chart-axis-title'), 'calibration sample charts should render grid lines, dense tick labels, and axis titles');
 assert(web.includes('writeChartTicks(') && web.includes('writeChartAxisTitle('), 'calibration sample charts should use shared chart helpers for axis labels and ticks');
 assert(web.includes('/api/v1/plan/update') && web.includes('planId'), 'plan API should use fixed endpoint plus planId parameter');
@@ -204,7 +209,7 @@ assert(!web.includes("confirm('确认启动手动浇水？')"), 'manual start fi
 assert(web.includes('irrManualPreset(this)') && web.includes('data-min='), 'manual start presets should be visible buttons that fill duration');
 assert(!web.includes('<select onchange=\"this.form.durationMin.value=this.value\">'), 'manual start presets should not use a select dropdown');
 assert(web.includes('基本信息') && web.includes('流量估算') && web.includes('异常处理'), 'zone edit form should group fields into readable sections');
-assert(web.includes('启动阶段脉冲') && web.includes('启动阶段水量') && web.includes('稳定每升脉冲'), 'zone edit form should expose two-stage flow estimation fields');
+assert(web.includes('启动阶段脉冲') && web.includes('启动阶段水量') && web.includes('稳定脉冲 P/L'), 'zone edit form should expose two-stage flow estimation fields');
 assert(!web.includes('校准 x1000'), 'zone edit form should not expose the old calibration coefficient');
 assert(web.includes('硬件引脚') && web.includes('阀门控制 GPIO') && web.includes('流量计输入 GPIO'), 'zone edit form should show read-only hardware pin diagnostics with user-facing labels');
 assert(!web.includes('流量 GPIO'), 'zone pages should not use the ambiguous flow GPIO label');
