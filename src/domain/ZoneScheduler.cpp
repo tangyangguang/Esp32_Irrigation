@@ -13,6 +13,8 @@
 
 namespace {
 
+static constexpr uint32_t kTrackerFaultEventMinIntervalMs = 60000UL;
+
 bool epochToLocal(uint32_t epoch, tm* out) {
     if (!out || epoch == 0) {
         return false;
@@ -58,12 +60,18 @@ void ZoneScheduler::begin(uint8_t zoneId) {
     m_zoneId = zoneId;
     m_eligibleFromEpoch = 0;
     m_lastEpoch = 0;
+    m_lastTrackerFaultMs = 0;
+    m_lastTrackerFaultPlanId = 0;
+    m_lastTrackerFaultStatus = Irrigation::PlanObservationStatus::NOT_EVALUATED;
     m_tracker.begin(zoneId);
 }
 
 void ZoneScheduler::reset() {
     m_eligibleFromEpoch = 0;
     m_lastEpoch = 0;
+    m_lastTrackerFaultMs = 0;
+    m_lastTrackerFaultPlanId = 0;
+    m_lastTrackerFaultStatus = Irrigation::PlanObservationStatus::NOT_EVALUATED;
     m_tracker.begin(m_zoneId);
 }
 
@@ -105,16 +113,16 @@ void ZoneScheduler::tick(Zone& zone,
         ESP32BASE_LOG_W("scheduler", "tracker_day_save_failed zone=%u ymd=%lu",
                         static_cast<unsigned>(m_zoneId),
                         static_cast<unsigned long>(ymd));
-        BusinessEventLog::appendPlanTrackerPersistFailed(m_zoneId,
-                                                         Irrigation::NoPlanId,
-                                                         Irrigation::PlanObservationStatus::NOT_EVALUATED);
+        recordTrackerPersistFailed(Irrigation::NoPlanId,
+                                   Irrigation::PlanObservationStatus::NOT_EVALUATED,
+                                   nowMs);
     } else if (m_tracker.hasPendingSave() && !m_tracker.retrySave()) {
         ESP32BASE_LOG_W("scheduler", "tracker_retry_save_failed zone=%u ymd=%lu",
                         static_cast<unsigned>(m_zoneId),
                         static_cast<unsigned long>(ymd));
-        BusinessEventLog::appendPlanTrackerPersistFailed(m_zoneId,
-                                                         Irrigation::NoPlanId,
-                                                         Irrigation::PlanObservationStatus::NOT_EVALUATED);
+        recordTrackerPersistFailed(Irrigation::NoPlanId,
+                                   Irrigation::PlanObservationStatus::NOT_EVALUATED,
+                                   nowMs);
     }
 
     for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
@@ -205,7 +213,20 @@ bool ZoneScheduler::markObserved(const Irrigation::PlanDefinition& plan,
                         static_cast<unsigned long>(ymd),
                         static_cast<unsigned>(minuteOfDay),
                         static_cast<unsigned>(status));
-        BusinessEventLog::appendPlanTrackerPersistFailed(plan.zoneId, plan.planId, status);
+        recordTrackerPersistFailed(plan.planId, status, millis());
     }
     return saved;
+}
+
+void ZoneScheduler::recordTrackerPersistFailed(uint32_t planId,
+                                               Irrigation::PlanObservationStatus status,
+                                               uint32_t nowMs) {
+    const bool sameFault = m_lastTrackerFaultPlanId == planId && m_lastTrackerFaultStatus == status;
+    if (sameFault && m_lastTrackerFaultMs != 0 && nowMs - m_lastTrackerFaultMs < kTrackerFaultEventMinIntervalMs) {
+        return;
+    }
+    m_lastTrackerFaultMs = nowMs;
+    m_lastTrackerFaultPlanId = planId;
+    m_lastTrackerFaultStatus = status;
+    BusinessEventLog::appendPlanTrackerPersistFailed(m_zoneId, planId, status);
 }

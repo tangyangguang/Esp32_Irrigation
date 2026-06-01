@@ -208,8 +208,7 @@ ZoneManager
 ├── stopZone(zoneId, source, now)
 ├── stopAll(source, result, now)
 ├── clearZoneError(zoneId)
-├── skipSchedule(planId, ymd, reason)
-│   └── scheduleSkip.skip(planId, ymd, reason)
+├── skipSchedule(planId, ymd, reason)   // 后续目标；当前由 Web/API handler 调用 ScheduleSkipStore
 └── getZoneStatus() → ZoneStatus[]
 ```
 

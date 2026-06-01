@@ -188,6 +188,8 @@ assert(read('src/domain/PlanExecutionTracker.h').includes('bool mark(') &&
        'plan execution tracker persistence failures must be returned to callers');
 assert(scheduler.includes('retrySave') && scheduler.includes('tracker_retry_save_failed'),
        'scheduler should retry dirty plan execution tracker saves');
+assert(scheduler.includes('kTrackerFaultEventMinIntervalMs') && scheduler.includes('recordTrackerPersistFailed'),
+       'scheduler should throttle repeated plan tracker persistence fault events');
 assert(scheduler.includes('appendPlanTrackerPersistFailed'),
        'scheduler should log when plan execution tracker persistence fails');
 
@@ -204,9 +206,19 @@ assert(records.includes('appendRecordMetaSaveFailed'),
        'watering record store should log metadata save failures after record writes');
 assert(records.includes('commitMagic') && records.includes('crc32') && records.includes('crc32Record'),
        'watering records should use a commit marker and CRC before recovery accepts a slot');
+assert(records.includes('LegacyWateringRecord') &&
+       records.includes('migrateLegacyStoreFile') &&
+       records.includes('appendRecordStoreMigrated'),
+       'watering record store should migrate legacy 120-byte records instead of silently clearing them');
 assert(read('src/domain/Zone.cpp').includes('appendRecordAppendFailed') &&
        !read('src/domain/Zone.cpp').includes('(void)RecordStore::append(record)'),
        'zone finish should not ignore watering record append failures');
+assert(zoneConfig.includes('schemaResetDetected') &&
+       plans.includes('schemaResetDetected') &&
+       businessEvents.includes('config_schema_reset') &&
+       web.includes('水路配置已重置') &&
+       web.includes('计划配置已重置'),
+       'zone and plan schema mismatch should be visible via business events and Web notices');
 
 assert(pio.includes('-D ESP32BASE_ENABLE_APP_EVENTS=1'), 'project should enable Esp32Base App Events');
 assert(pio.includes('-D ESP32BASE_APP_EVENT_LOG_CAPACITY=256'), 'project should set a scoped App Events capacity');

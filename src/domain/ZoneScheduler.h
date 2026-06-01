@@ -34,9 +34,15 @@ private:
                       uint32_t ymd,
                       uint16_t minuteOfDay,
                       Irrigation::PlanObservationStatus status);
+    void recordTrackerPersistFailed(uint32_t planId,
+                                    Irrigation::PlanObservationStatus status,
+                                    uint32_t nowMs);
 
     uint8_t m_zoneId = 0;
     uint32_t m_eligibleFromEpoch = 0;
     uint32_t m_lastEpoch = 0;
+    uint32_t m_lastTrackerFaultMs = 0;
+    uint32_t m_lastTrackerFaultPlanId = 0;
+    Irrigation::PlanObservationStatus m_lastTrackerFaultStatus = Irrigation::PlanObservationStatus::NOT_EVALUATED;
     PlanExecutionTracker m_tracker;
 };

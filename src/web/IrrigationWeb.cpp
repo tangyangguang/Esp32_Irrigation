@@ -1334,6 +1334,12 @@ void handleOverviewPage() {
     if (Esp32BaseWeb::hasParam("alert_cleared")) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_OK, "异常已清除", "系统已记录本次清除操作。");
     }
+    if (ZoneConfigStore::schemaResetDetected()) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "水路配置已重置", "检测到已保存的水路配置格式不匹配，已使用当前固件默认配置。请检查水路启用、名称和流量参数。");
+    }
+    if (PlanStore::schemaResetDetected()) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "计划配置已重置", "检测到已保存的计划配置格式不匹配，相关计划已使用当前固件默认状态。请重新检查计划。");
+    }
 
     uint8_t enabledCount = 0;
     uint8_t runningCount = 0;
