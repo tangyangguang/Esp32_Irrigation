@@ -167,6 +167,9 @@ assert(web.includes('/api/v1/zone/start') && web.includes('zoneId'), 'web API sh
 assert(web.includes('/irrigation/calibration') && web.includes('handleCalibrationPage'), 'web should include a dedicated flow calibration page');
 assert(web.includes('/api/v1/calibration/start') && web.includes('/api/v1/calibration/apply'), 'web API should include flow calibration lifecycle endpoints');
 assert(web.includes('calibration-metrics') && web.includes('calibration-workflow') && web.includes('calibration-internal'), 'calibration page should use compact configuration and guided collection sections');
+assert(web.includes('calibration-current-params') && web.includes('当前使用参数'), 'calibration page should show currently active per-zone flow parameters');
+assert(web.includes('chart-grid') && web.includes('chart-tick') && web.includes('chart-axis-title'), 'calibration sample charts should render grid lines, dense tick labels, and axis titles');
+assert(web.includes('writeChartTicks(') && web.includes('writeChartAxisTitle('), 'calibration sample charts should use shared chart helpers for axis labels and ticks');
 assert(web.includes('/api/v1/plan/update') && web.includes('planId'), 'plan API should use fixed endpoint plus planId parameter');
 assert(web.includes('planform-cycle') && web.includes('cycleday-grid'), 'plan edit form should group cycle days and execution days together');
 assert(web.includes('irrPlanRenderDays') && web.includes('replaceChildren'), 'plan edit form should render exactly the visible execution days from cycleDays');

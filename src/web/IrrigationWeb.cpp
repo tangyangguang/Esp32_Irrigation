@@ -435,6 +435,90 @@ void writeSvgPoint(uint32_t x, uint32_t y) {
     Esp32BaseWeb::sendChunk(text);
 }
 
+void writeChartTimeLabel(uint32_t ms) {
+    if (ms < 10000UL && (ms % 1000UL) != 0) {
+        writeUInt(ms / 1000UL);
+        Esp32BaseWeb::sendChunk(".");
+        writeUInt((ms % 1000UL) / 100UL);
+        Esp32BaseWeb::sendChunk("秒");
+        return;
+    }
+    writeUInt((ms + 500UL) / 1000UL);
+    Esp32BaseWeb::sendChunk("秒");
+}
+
+void writeChartAxisTitle(const char* xTitle,
+                         const char* yTitle,
+                         uint32_t left,
+                         uint32_t top,
+                         uint32_t width,
+                         uint32_t height,
+                         uint32_t svgHeight) {
+    Esp32BaseWeb::sendChunk("<text class='chart-axis-title' x='");
+    writeUInt(left + width / 2UL);
+    Esp32BaseWeb::sendChunk("' y='");
+    writeUInt(svgHeight - 10UL);
+    Esp32BaseWeb::sendChunk("' text-anchor='middle'>");
+    Esp32BaseWeb::writeHtmlEscaped(xTitle);
+    Esp32BaseWeb::sendChunk("</text><text class='chart-axis-title' x='");
+    writeUInt(14);
+    Esp32BaseWeb::sendChunk("' y='");
+    writeUInt(top + height / 2UL);
+    Esp32BaseWeb::sendChunk("' text-anchor='middle' transform='rotate(-90 14 ");
+    writeUInt(top + height / 2UL);
+    Esp32BaseWeb::sendChunk(")'>");
+    Esp32BaseWeb::writeHtmlEscaped(yTitle);
+    Esp32BaseWeb::sendChunk("</text>");
+}
+
+void writeChartTicks(uint32_t durationMs,
+                     uint32_t maxValue,
+                     uint32_t left,
+                     uint32_t top,
+                     uint32_t width,
+                     uint32_t height) {
+    static constexpr uint8_t xSegments = 6;
+    static constexpr uint8_t ySegments = 5;
+    for (uint8_t i = 0; i <= xSegments; ++i) {
+        const uint32_t x = left + static_cast<uint32_t>((static_cast<uint64_t>(width) * i) / xSegments);
+        const uint32_t labelMs = static_cast<uint32_t>((static_cast<uint64_t>(durationMs) * i) / xSegments);
+        Esp32BaseWeb::sendChunk("<line class='chart-grid' x1='");
+        writeUInt(x);
+        Esp32BaseWeb::sendChunk("' y1='");
+        writeUInt(top);
+        Esp32BaseWeb::sendChunk("' x2='");
+        writeUInt(x);
+        Esp32BaseWeb::sendChunk("' y2='");
+        writeUInt(top + height);
+        Esp32BaseWeb::sendChunk("'></line><text class='chart-tick' x='");
+        writeUInt(x);
+        Esp32BaseWeb::sendChunk("' y='");
+        writeUInt(top + height + 18UL);
+        Esp32BaseWeb::sendChunk("' text-anchor='middle'>");
+        writeChartTimeLabel(labelMs);
+        Esp32BaseWeb::sendChunk("</text>");
+    }
+    for (uint8_t i = 0; i <= ySegments; ++i) {
+        const uint32_t y = top + height - static_cast<uint32_t>((static_cast<uint64_t>(height) * i) / ySegments);
+        const uint32_t value = static_cast<uint32_t>((static_cast<uint64_t>(maxValue) * i) / ySegments);
+        Esp32BaseWeb::sendChunk("<line class='chart-grid' x1='");
+        writeUInt(left);
+        Esp32BaseWeb::sendChunk("' y1='");
+        writeUInt(y);
+        Esp32BaseWeb::sendChunk("' x2='");
+        writeUInt(left + width);
+        Esp32BaseWeb::sendChunk("' y2='");
+        writeUInt(y);
+        Esp32BaseWeb::sendChunk("'></line><text class='chart-tick' x='");
+        writeUInt(left - 10UL);
+        Esp32BaseWeb::sendChunk("' y='");
+        writeUInt(y + 4UL);
+        Esp32BaseWeb::sendChunk("' text-anchor='end'>");
+        writeUInt(value);
+        Esp32BaseWeb::sendChunk("</text>");
+    }
+}
+
 void writeStableMarker(uint32_t stableStartMs, uint32_t durationMs, uint32_t left, uint32_t top, uint32_t width, uint32_t height) {
     if (stableStartMs == 0 || durationMs == 0 || stableStartMs > durationMs) {
         return;
@@ -448,7 +532,7 @@ void writeStableMarker(uint32_t stableStartMs, uint32_t durationMs, uint32_t lef
     writeUInt(x > left ? x - left : 0);
     Esp32BaseWeb::sendChunk("' height='");
     writeUInt(height);
-    Esp32BaseWeb::sendChunk("' fill='#e6f4f6'></rect><line x1='");
+    Esp32BaseWeb::sendChunk("' class='chart-startup'></rect><line x1='");
     writeUInt(x);
     Esp32BaseWeb::sendChunk("' y1='");
     writeUInt(top);
@@ -456,7 +540,7 @@ void writeStableMarker(uint32_t stableStartMs, uint32_t durationMs, uint32_t lef
     writeUInt(x);
     Esp32BaseWeb::sendChunk("' y2='");
     writeUInt(top + height);
-    Esp32BaseWeb::sendChunk("' stroke='#0f7a86' stroke-width='2'></line>");
+    Esp32BaseWeb::sendChunk("' class='chart-stable-marker'></line>");
 }
 
 void writeChartFrame(uint32_t left, uint32_t top, uint32_t width, uint32_t height) {
@@ -468,7 +552,7 @@ void writeChartFrame(uint32_t left, uint32_t top, uint32_t width, uint32_t heigh
     writeUInt(left + width);
     Esp32BaseWeb::sendChunk("' y2='");
     writeUInt(top + height);
-    Esp32BaseWeb::sendChunk("' stroke='#d7e0ea'></line><line x1='");
+    Esp32BaseWeb::sendChunk("' class='chart-axis'></line><line x1='");
     writeUInt(left);
     Esp32BaseWeb::sendChunk("' y1='");
     writeUInt(top);
@@ -476,20 +560,22 @@ void writeChartFrame(uint32_t left, uint32_t top, uint32_t width, uint32_t heigh
     writeUInt(left);
     Esp32BaseWeb::sendChunk("' y2='");
     writeUInt(top + height);
-    Esp32BaseWeb::sendChunk("' stroke='#d7e0ea'></line>");
+    Esp32BaseWeb::sendChunk("' class='chart-axis'></line>");
 }
 
 void writeCumulativePulseChart(uint8_t sampleIndex, const FlowCalibration::Sample& sample) {
-    static constexpr uint32_t left = 46;
-    static constexpr uint32_t top = 18;
-    static constexpr uint32_t width = 860;
-    static constexpr uint32_t height = 200;
+    static constexpr uint32_t left = 62;
+    static constexpr uint32_t top = 22;
+    static constexpr uint32_t width = 832;
+    static constexpr uint32_t height = 128;
+    static constexpr uint32_t svgHeight = 200;
     const uint32_t durationMs = sample.durationMs == 0 ? 1UL : sample.durationMs;
     const uint32_t maxPulse = sample.detailCapturedPulses == 0 ? 1UL : sample.detailCapturedPulses;
-    Esp32BaseWeb::sendChunk("<div class='calibration-chart'><h3>累计脉冲</h3><svg viewBox='0 0 940 250' role='img'>");
+    Esp32BaseWeb::sendChunk("<div class='calibration-chart'><div class='calibration-chart-head'><h3>累计脉冲</h3><span>原始明细脉冲随时间累计</span></div><svg viewBox='0 0 940 200' role='img' aria-label='累计脉冲图表'>");
     writeStableMarker(sample.stableStartMs, durationMs, left, top, width, height);
+    writeChartTicks(durationMs, maxPulse, left, top, width, height);
     writeChartFrame(left, top, width, height);
-    Esp32BaseWeb::sendChunk("<polyline fill='none' stroke='#0f7a86' stroke-width='2' points='");
+    Esp32BaseWeb::sendChunk("<polyline class='chart-line cumulative' fill='none' points='");
     uint32_t timeMs = 0;
     for (uint16_t i = 0; i < sample.detailCapturedPulses; ++i) {
         timeMs += FlowCalibration::samplePulseDelta(sampleIndex, i);
@@ -500,16 +586,17 @@ void writeCumulativePulseChart(uint8_t sampleIndex, const FlowCalibration::Sampl
         const uint32_t y = top + height - static_cast<uint32_t>((static_cast<uint64_t>(i + 1UL) * height) / maxPulse);
         writeSvgPoint(x, y);
     }
-    Esp32BaseWeb::sendChunk("'></polyline><text x='46' y='240'>时间</text><text x='810' y='240'>");
-    writeDurationMsHumanCompact(sample.durationMs);
-    Esp32BaseWeb::sendChunk("</text></svg></div>");
+    Esp32BaseWeb::sendChunk("'></polyline>");
+    writeChartAxisTitle("时间 (秒)", "累计脉冲", left, top, width, height, svgHeight);
+    Esp32BaseWeb::sendChunk("</svg></div>");
 }
 
 void writeWindowPulseChart(uint8_t sampleIndex, const FlowCalibration::Sample& sample) {
-    static constexpr uint32_t left = 46;
-    static constexpr uint32_t top = 18;
-    static constexpr uint32_t width = 860;
-    static constexpr uint32_t height = 200;
+    static constexpr uint32_t left = 62;
+    static constexpr uint32_t top = 22;
+    static constexpr uint32_t width = 832;
+    static constexpr uint32_t height = 128;
+    static constexpr uint32_t svgHeight = 200;
     const uint32_t durationMs = sample.durationMs == 0 ? 1UL : sample.durationMs;
     uint16_t maxWindow = 1;
     for (uint16_t i = 0; i < sample.windowPulseCount; ++i) {
@@ -518,10 +605,15 @@ void writeWindowPulseChart(uint8_t sampleIndex, const FlowCalibration::Sample& s
             maxWindow = value;
         }
     }
-    Esp32BaseWeb::sendChunk("<div class='calibration-chart'><h3>2 秒滑动窗口脉冲</h3><svg viewBox='0 0 940 250' role='img'>");
+    Esp32BaseWeb::sendChunk("<div class='calibration-chart'><div class='calibration-chart-head'><h3>2 秒滑动窗口脉冲</h3><span>窗口 ");
+    writeUInt(calibrationWindowMs / 1000UL);
+    Esp32BaseWeb::sendChunk(" 秒 / 步进 ");
+    writeUInt(calibrationWindowStepMs);
+    Esp32BaseWeb::sendChunk(" ms</span></div><svg viewBox='0 0 940 200' role='img' aria-label='滑动窗口脉冲图表'>");
     writeStableMarker(sample.stableStartMs, durationMs, left, top, width, height);
+    writeChartTicks(durationMs, maxWindow, left, top, width, height);
     writeChartFrame(left, top, width, height);
-    Esp32BaseWeb::sendChunk("<polyline fill='none' stroke='#2b6cb0' stroke-width='2' points='");
+    Esp32BaseWeb::sendChunk("<polyline class='chart-line window' fill='none' points='");
     for (uint16_t i = 0; i < sample.windowPulseCount; ++i) {
         uint32_t timeMs = static_cast<uint32_t>(i + 1UL) * calibrationWindowStepMs;
         if (timeMs > durationMs) {
@@ -532,13 +624,9 @@ void writeWindowPulseChart(uint8_t sampleIndex, const FlowCalibration::Sample& s
         const uint32_t y = top + height - static_cast<uint32_t>((static_cast<uint64_t>(value) * height) / maxWindow);
         writeSvgPoint(x, y);
     }
-    Esp32BaseWeb::sendChunk("'></polyline><text x='46' y='240'>窗口 ");
-    writeUInt(calibrationWindowMs / 1000UL);
-    Esp32BaseWeb::sendChunk(" 秒 / 步进 ");
-    writeUInt(calibrationWindowStepMs);
-    Esp32BaseWeb::sendChunk(" ms</text><text x='810' y='240'>峰值 ");
-    writeUInt(maxWindow);
-    Esp32BaseWeb::sendChunk(" 脉冲</text></svg></div>");
+    Esp32BaseWeb::sendChunk("'></polyline>");
+    writeChartAxisTitle("时间 (秒)", "窗口脉冲", left, top, width, height, svgHeight);
+    Esp32BaseWeb::sendChunk("</svg></div>");
 }
 
 uint8_t countPlansForDate(uint32_t ymd) {
@@ -1489,6 +1577,10 @@ void handleCalibrationPage() {
     }
     Esp32BaseWeb::sendChunk("<style>"
                             ".calibration-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:8px 0 12px}"
+                            ".calibration-current-params td{vertical-align:top}"
+                            ".calibration-param-line{display:flex;gap:8px;flex-wrap:wrap;align-items:center}"
+                            ".calibration-param-line span{display:inline-flex;gap:4px;align-items:baseline;border:1px solid var(--eb-border);border-radius:8px;padding:5px 8px;background:var(--eb-surface-subtle)}"
+                            ".calibration-param-line b{font-size:1.05rem}"
                             ".calibration-internal{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0;color:var(--eb-muted);font-size:.92rem}"
                             ".calibration-internal span{border:1px solid var(--eb-border);border-radius:8px;padding:6px 9px;background:var(--eb-surface-subtle)}"
                             ".calibration-workflow{display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:18px;align-items:start}"
@@ -1506,6 +1598,27 @@ void handleCalibrationPage() {
                             ".calibration-dialog::backdrop{background:rgba(15,23,42,.35)}"
                             "@media(max-width:720px){.calibration-workflow{grid-template-columns:1fr}}"
                             "</style>");
+    Esp32BaseWeb::beginPanel("当前使用参数");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap calibration-current-params'><table class='part'><thead><tr><th>水路</th><th>状态</th><th>当前流量估算参数</th></tr></thead><tbody>");
+    for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+        const Irrigation::ZoneConfig& zone = ZoneManager::config(zoneId);
+        Esp32BaseWeb::sendChunk("<tr><td>");
+        Esp32BaseWeb::writeHtmlEscaped(zone.name);
+        Esp32BaseWeb::sendChunk("</td><td><span class='tag");
+        Esp32BaseWeb::sendChunk(zone.enabled ? " ok" : "");
+        Esp32BaseWeb::sendChunk("'>");
+        Esp32BaseWeb::sendChunk(zone.enabled ? "启用" : "停用");
+        Esp32BaseWeb::sendChunk("</span></td><td><div class='calibration-param-line'><span><b>");
+        writeUInt(zone.startupPulseLimit);
+        Esp32BaseWeb::sendChunk("</b> 启动脉冲</span><span><b>");
+        writeUInt(zone.startupEstimatedMl);
+        Esp32BaseWeb::sendChunk("</b> ml 启动水量</span><span><b>");
+        writeUInt(zone.stablePulsePerLiter);
+        Esp32BaseWeb::sendChunk("</b> 脉冲/升</span></div></td></tr>");
+    }
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::endPanel();
+
     Esp32BaseWeb::beginPanel("校准配置");
     Esp32BaseWeb::sendChunk("<div class='calibration-metrics'>");
     char text[32];
@@ -1691,10 +1804,25 @@ void handleCalibrationSampleDetailPage() {
     Esp32BaseWeb::sendPageTitle("校准样本详情", "查看本次采集的脉冲明细、累计脉冲和滑动窗口流速变化。");
     Esp32BaseWeb::sendChunk("<style>"
                             ".calibration-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin:8px 0 12px}"
-                            ".calibration-chart{margin:14px 0;border:1px solid var(--eb-border);border-radius:8px;padding:12px;background:var(--eb-surface)}"
-                            ".calibration-chart h3{margin:0 0 8px;font-size:1rem}"
-                            ".calibration-chart svg{width:100%;height:auto;display:block;background:#fff}"
+                            ".calibration-detail-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px;margin:10px 0 0}"
+                            ".calibration-detail-summary span{border:1px solid var(--eb-border);border-radius:8px;background:var(--eb-surface-subtle);padding:8px 10px}"
+                            ".calibration-detail-summary b{display:block;color:var(--eb-muted);font-size:.88rem;margin-bottom:2px}"
+                            ".calibration-chart{margin:14px 0;border:1px solid var(--eb-border);border-radius:8px;padding:12px 14px 10px;background:linear-gradient(180deg,#fff,#f8fbfd);box-shadow:0 1px 2px rgba(15,23,42,.04)}"
+                            ".calibration-chart-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline;margin-bottom:8px}"
+                            ".calibration-chart h3{margin:0;font-size:1rem}"
+                            ".calibration-chart-head span{color:var(--eb-muted);font-size:.9rem}"
+                            ".calibration-chart svg{width:100%;height:auto;max-height:240px;display:block;background:#fff;border:1px solid #e2e8f0;border-radius:6px}"
+                            ".chart-grid{stroke:#e8eef5;stroke-width:1}"
+                            ".chart-axis{stroke:#94a3b8;stroke-width:1.4}"
+                            ".chart-tick{fill:#64748b;font-size:12px}"
+                            ".chart-axis-title{fill:#0f172a;font-size:13px;font-weight:700}"
+                            ".chart-startup{fill:#dff3f5;opacity:.78}"
+                            ".chart-stable-marker{stroke:#0f7a86;stroke-width:2.2;stroke-dasharray:4 3}"
+                            ".chart-line{stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}"
+                            ".chart-line.cumulative{stroke:#0f7a86}"
+                            ".chart-line.window{stroke:#2563ad}"
                             ".calibration-detail-note{color:var(--eb-muted);margin:8px 0}"
+                            "@media(max-width:720px){.calibration-chart-head{display:block}.calibration-chart svg{max-height:none}}"
                             "</style>");
     Esp32BaseWeb::beginPanel("样本概览");
     Esp32BaseWeb::sendChunk("<div class='calibration-detail-grid'>");
@@ -1721,7 +1849,7 @@ void handleCalibrationSampleDetailPage() {
     writeUInt(sample.stableRatePerMinuteX1000 / 1000UL);
     Esp32BaseWeb::sendChunk(" 脉冲/分钟</td></tr><tr><th>波动</th><td>");
     writeUInt(sample.rateVariationPermille);
-    Esp32BaseWeb::sendChunk("‰</td></tr></tbody></table></div><div class='actions'><a class='btnlink secondary' href='/irrigation/calibration'>返回流量校准</a></div>");
+    Esp32BaseWeb::sendChunk("‰</td></tr></tbody></table></div><div class='calibration-detail-summary'><span><b>横坐标</b>时间，按采集时长分成 6 段显示。</span><span><b>纵坐标</b>当前图表对应的脉冲数量，按 5 段显示。</span><span><b>稳定标记</b>浅色为启动阶段，虚线为稳定开始。</span></div><div class='actions'><a class='btnlink secondary' href='/irrigation/calibration'>返回流量校准</a></div>");
     Esp32BaseWeb::endPanel();
 
     Esp32BaseWeb::beginPanel("图表");
