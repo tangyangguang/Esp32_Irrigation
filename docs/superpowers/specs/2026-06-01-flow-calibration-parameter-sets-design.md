@@ -44,7 +44,9 @@ optional previous parameter set
 
 Candidate and previous parameter sets are persistent. They survive reboot and power loss.
 
-The persistent storage boundary should be one complete per-zone calibration-parameter record, not scattered independent keys. That record contains the current parameter set, optional candidate slot, optional previous slot, and candidate source. This keeps apply and restore operations from leaving a partially updated state such as current values saved without the matching previous values.
+The persistent storage boundary should be one complete per-zone calibration-parameter record, not scattered independent keys. That record contains the current parameter set, optional candidate slot, optional previous slot, candidate source, and candidate source details. This keeps apply and restore operations from leaving a partially updated state such as current values saved without the matching previous values.
+
+The current parameter set must have exactly one authoritative storage source. Runtime watering snapshots and volume estimation read from that source. Implementation must not maintain a second independent copy of current calibration parameters in another store; if the existing zone configuration record remains the storage vehicle, it should be evolved into the single complete per-zone record rather than duplicated by a separate calibration-current record.
 
 Candidate parameters default to unset. The page must display an unset candidate as "no candidate parameters" rather than silently mirroring the current values.
 
@@ -62,6 +64,8 @@ copied       another zone's current parameters are copied into this zone's candi
 
 The source is stored only for user-facing context. It is not an audit system and does not create extra runtime behavior.
 
+For copied candidates, the source details include the source zone ID. The page can then display context such as "copied from Zone 1 current parameters", and the apply event can include that source context.
+
 All candidate creation actions may replace an existing candidate, but the Web page must clearly confirm that the current candidate will be replaced.
 
 ## Apply Flow
@@ -72,11 +76,12 @@ For the target zone:
 
 ```text
 1. Require a valid candidate parameter set.
-2. Require the target zone to be idle.
-3. Save the current parameter set as previous parameters.
-4. Copy the candidate parameter set into current parameters.
-5. Keep the candidate parameter set.
-6. Reload the zone runtime configuration.
+2. Reject the operation if the candidate values are identical to the current values.
+3. Require the target zone to be idle.
+4. Save the current parameter set as previous parameters.
+5. Copy the candidate parameter set into current parameters.
+6. Keep the candidate parameter set.
+7. Reload the zone runtime configuration.
 ```
 
 Keeping the candidate after apply preserves the calibration context and avoids hiding the values the user just activated.
@@ -89,6 +94,8 @@ candidate differs from current display as "pending apply"
 ```
 
 This avoids stale state after restore operations.
+
+When the candidate equals the current parameter set, apply must have no side effects: it must not overwrite previous parameters and must not write a business event. The Web page should disable or hide the apply action in this state; the API should reject the request with a clear error such as `candidate_unchanged`.
 
 ## Restore Flow
 
@@ -157,7 +164,7 @@ candidate applied
 previous parameters restored
 ```
 
-Each event includes the zone ID, the old three-parameter current values, and the new three-parameter current values. Applying a candidate also includes the candidate source.
+Each event includes the zone ID, the old three-parameter current values, and the new three-parameter current values. Applying a candidate also includes the candidate source and any source details such as copied-from zone ID.
 
 Candidate edits and copy operations do not need business event entries unless later requirements call for detailed audit logs.
 
@@ -169,9 +176,11 @@ Implementation validation should cover:
 - Manual candidate save validates ranges and persists across restart.
 - Calibration compute writes candidate parameters and does not change current parameters.
 - Applying candidate updates current parameters, stores previous parameters, preserves candidate, and reloads the zone.
+- Applying an unchanged candidate is rejected without overwriting previous parameters or writing an event.
 - Restore swaps current and previous parameters.
 - Apply and restore are rejected when the target zone is running.
 - Cross-zone copy only accepts another zone's current parameters and writes the target candidate.
+- Copied candidates retain copied-from zone ID as source detail.
 - Starting calibration for a different zone is rejected while samples for another zone exist.
 - Mixed-zone calibration samples are rejected defensively if they ever exist.
 - Clearing samples does not clear candidate parameters.
