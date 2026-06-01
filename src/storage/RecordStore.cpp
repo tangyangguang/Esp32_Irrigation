@@ -76,6 +76,10 @@ uint32_t fileSizeBytes() {
     return static_cast<uint32_t>(sizeof(RecordStore::WateringRecord)) * RecordStore::Capacity;
 }
 
+uint32_t legacyFileSizeBytes() {
+    return static_cast<uint32_t>(sizeof(LegacyWateringRecord)) * RecordStore::Capacity;
+}
+
 StoreMeta makeMeta() {
     StoreMeta meta = {};
     meta.magic = kMetaMagic;
@@ -232,22 +236,80 @@ bool migrateLegacyStoreFile() {
     return true;
 }
 
+bool replaceCurrentWith(const char* sourcePath) {
+    if (!sourcePath) {
+        return false;
+    }
+    (void)Esp32BaseFs::removeFileWithRecovery(kPath);
+    return Esp32BaseFs::rename(sourcePath, kPath);
+}
+
+bool recoverInterruptedMigration() {
+    const int64_t currentSize = Esp32BaseFs::fileSize(kPath);
+    const int64_t migrationSize = Esp32BaseFs::fileSize(kMigrationPath);
+    const int64_t backupSize = Esp32BaseFs::fileSize(kMigrationBackupPath);
+    const int64_t expectedSize = static_cast<int64_t>(fileSizeBytes());
+    const int64_t expectedLegacySize = static_cast<int64_t>(legacyFileSizeBytes());
+
+    const bool currentIsReady = currentSize == expectedSize;
+    const bool currentIsLegacy = currentSize == expectedLegacySize;
+    const bool migrationIsReady = migrationSize == expectedSize;
+    const bool backupIsLegacy = backupSize == expectedLegacySize;
+
+    if (currentIsReady) {
+        (void)Esp32BaseFs::removeFileWithRecovery(kMigrationPath);
+        (void)Esp32BaseFs::removeFileWithRecovery(kMigrationBackupPath);
+        return true;
+    }
+    if (currentIsLegacy) {
+        (void)Esp32BaseFs::removeFileWithRecovery(kMigrationPath);
+        (void)Esp32BaseFs::removeFileWithRecovery(kMigrationBackupPath);
+        return true;
+    }
+    if (!migrationIsReady && !backupIsLegacy) {
+        return true;
+    }
+
+    if (migrationIsReady) {
+        if (!replaceCurrentWith(kMigrationPath)) {
+            return false;
+        }
+        (void)Esp32BaseFs::removeFileWithRecovery(kMigrationBackupPath);
+        return true;
+    }
+
+    if (backupIsLegacy) {
+        if (!replaceCurrentWith(kMigrationBackupPath)) {
+            return false;
+        }
+        return migrateLegacyStoreFile();
+    }
+    return true;
+}
+
 bool ensureStoreFile() {
     if (!Esp32BaseFs::isReady()) {
         return false;
     }
+    if (!recoverInterruptedMigration()) {
+        return false;
+    }
     if (Esp32BaseConfig::getInt(kNamespace, kKeyInitialized, 0) != 1) {
-        const bool created = createEmptyStore();
-        if (created) {
-            (void)Esp32BaseConfig::setInt(kNamespace, kKeyInitialized, 1);
+        const int64_t existingSize = Esp32BaseFs::fileSize(kPath);
+        if (existingSize < 0) {
+            const bool created = createEmptyStore();
+            if (created) {
+                (void)Esp32BaseConfig::setInt(kNamespace, kKeyInitialized, 1);
+            }
+            return created;
         }
-        return created;
+        (void)Esp32BaseConfig::setInt(kNamespace, kKeyInitialized, 1);
     }
     const int64_t size = Esp32BaseFs::fileSize(kPath);
     if (size == static_cast<int64_t>(fileSizeBytes())) {
         return true;
     }
-    if (size == static_cast<int64_t>(sizeof(LegacyWateringRecord) * RecordStore::Capacity)) {
+    if (size == static_cast<int64_t>(legacyFileSizeBytes())) {
         return migrateLegacyStoreFile();
     }
     const bool created = createEmptyStore();

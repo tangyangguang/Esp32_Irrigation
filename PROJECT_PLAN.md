@@ -62,11 +62,12 @@ src/
 - 业务 POST 统一通过 `Esp32BaseWeb::checkPostAllowed()` 做认证、POST 方法和同源校验。
 - 恢复出厂 pending 期间拒绝启动、配置保存、清告警、计划保存、跳过、校准写入等非停止类写操作；停止单路和停止全部仍允许。
 - 浇水记录使用业务 `RecordStore`，启动时会扫描定长记录文件重建 `head/count/nextId`；业务事件使用 `Esp32BaseAppEventLog`。
+- `ZoneConfigStore`、`PlanStore` 持久化结构版本不匹配时会记录业务事件，并在首页提示配置已重置。
 - `Esp32BaseAppConfig` 已接入系统级业务参数；水路和计划仍由业务页面管理。
 
 ## 5. 后续优先级
 
-1. 持久化结构版本保护：对 `ZoneConfigStore`、`PlanStore` 等版本不匹配场景增加明确事件、导出/备份或显式清空策略，避免静默丢弃可识别用户数据。
+1. 配置导出/备份策略：schema reset 已有事件和首页提示；后续如确认需要，再增加升级前导出、导入或备份恢复策略。
 2. `ScheduleSkipStore` 写放大优化和过期清理：减少每次跳过/取消跳过的 NVS 全量写入，并明确固定容量覆盖或自动清理语义。
 3. Flash 余量治理：区分 debug/release 日志等级，检查 Web 字符串和内联 CSS/JS 体积。
 4. 近期计划 Web 视图：如确认需要，再实现今天/明天/后天展开和单次跳过表单，并同步原型与验证清单。

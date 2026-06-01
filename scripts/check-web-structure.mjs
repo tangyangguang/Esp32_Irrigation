@@ -208,8 +208,11 @@ assert(records.includes('commitMagic') && records.includes('crc32') && records.i
        'watering records should use a commit marker and CRC before recovery accepts a slot');
 assert(records.includes('LegacyWateringRecord') &&
        records.includes('migrateLegacyStoreFile') &&
+       records.includes('recoverInterruptedMigration') &&
+       records.includes('kMigrationPath') &&
+       records.includes('kMigrationBackupPath') &&
        records.includes('appendRecordStoreMigrated'),
-       'watering record store should migrate legacy 120-byte records instead of silently clearing them');
+       'watering record store should migrate legacy 120-byte records and recover interrupted .mig/.bak migrations');
 assert(read('src/domain/Zone.cpp').includes('appendRecordAppendFailed') &&
        !read('src/domain/Zone.cpp').includes('(void)RecordStore::append(record)'),
        'zone finish should not ignore watering record append failures');
