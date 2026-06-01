@@ -11,7 +11,7 @@ static constexpr const char* kKeyInitialized = "init";
 static constexpr const char* kKeyMeta = "meta";
 static constexpr uint32_t kMagic = 0x49525245UL;
 static constexpr uint32_t kMetaMagic = 0x4952524DUL;
-static constexpr uint16_t kVersion = 4;
+static constexpr uint16_t kVersion = 5;
 static constexpr uint16_t kMetaVersion = 1;
 
 struct StoreMeta {

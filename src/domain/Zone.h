@@ -12,7 +12,7 @@ class Zone {
 public:
     void begin(const Irrigation::ZoneConfig& config, const ZoneErrorStore::ZoneError& error, uint32_t nowMs);
     void applyConfig(const Irrigation::ZoneConfig& config, uint32_t epoch, uint32_t nowMs);
-    void tick(uint32_t pulseCount, uint32_t epoch, uint32_t nowMs);
+    void tick(uint32_t pulseCount, uint32_t flowMlPerMin, bool flowRateReady, uint32_t epoch, uint32_t nowMs);
     bool start(Irrigation::TaskType type,
                Irrigation::StartSource source,
                uint32_t planId,
@@ -20,6 +20,7 @@ public:
                const char* planName,
                uint32_t targetSec,
                uint32_t maxWateringDurationSec,
+               uint16_t flowRateWindowSec,
                uint32_t pulseCount,
                uint32_t epoch,
                uint32_t nowMs);
@@ -28,7 +29,7 @@ public:
     bool clearError(uint32_t nowMs);
     bool checkIdleLeak(uint32_t pulseCount, uint32_t nowMs, uint16_t windowSec, uint16_t threshold, uint32_t* observedPulses);
     void resetLeakWindow(uint32_t pulseCount, uint32_t nowMs);
-    Irrigation::ZoneStatus status(uint32_t pulseCount, uint32_t flowRatePerMinuteX1000, uint32_t nowMs) const;
+    Irrigation::ZoneStatus status(uint32_t pulseCount, uint32_t flowRatePerMinuteX1000, uint32_t flowMlPerMin, bool flowRateReady, uint32_t nowMs) const;
     const Irrigation::ZoneConfig& config() const;
     Irrigation::ZoneState state() const;
     bool isBusy() const;

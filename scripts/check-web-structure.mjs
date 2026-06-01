@@ -115,6 +115,9 @@ assert(systemConfig.includes('idleLeakDetectionEnabled'), 'system config should 
 assert(systemConfig.includes('calibrationSampleTarget') && systemConfig.includes('calibrationMaxCaptureMin'), 'system config should include calibration sample target and max capture minutes');
 assert(systemConfig.includes('calibrationDetailCaptureSec') && systemConfig.includes('calibrationDetailPulseLimit'), 'system config should include calibration detail capture bounds');
 assert(systemConfig.includes('config.calibrationSampleTarget = 5;') && systemConfig.includes('config.calibrationDetailCaptureSec = 20;'), 'flow calibration defaults should use 5-sample capacity and 20 seconds of detail capture');
+assert(systemConfig.includes('flowRateWindowSec') && systemConfig.includes('flowChartIntervalSec') && systemConfig.includes('flowChartHistoryMin'), 'system config should include flow rate display window, chart interval, and chart history settings');
+assert(systemConfig.includes('config.flowRateWindowSec = 5;') && systemConfig.includes('config.flowChartIntervalSec = 5;') && systemConfig.includes('config.flowChartHistoryMin = 10;'), 'flow rate display defaults should use 5s window, 5s chart interval, and 10 minutes of history');
+assert(systemConfig.includes('"流速显示"') && systemConfig.includes('"流速窗口秒"') && systemConfig.includes('"图表历史分钟"'), 'App Config should expose flow rate display settings');
 assert(systemConfig.includes('86400'), 'max watering duration upper bound should allow up to 24 hours');
 assert(systemConfig.includes('14400'), 'max watering duration default should be 4 hours');
 assert(systemConfig.includes('submittedMinutesAsSeconds'), 'App Config should accept manual duration values in minutes and store seconds');
@@ -133,6 +136,8 @@ assert(zoneConfig.includes('Zone 1') && zoneConfig.includes('Zone 4'), 'zone def
 assert(zoneConfig.includes('config.suppressError = true;'), 'flow anomalies should default to record-only mode');
 assert(zoneError.includes('leakAlertActive') && zoneError.includes('ZoneError'), 'zone errors and leak alert should be persistent');
 assert(flowMeter.includes('beginCapture') && flowMeter.includes('endCapture'), 'flow meter should expose raw pulse detail capture for calibration');
+assert(flowMeter.includes('configureFlowRate') && flowMeter.includes('flowMillilitersPerMinute') && flowMeter.includes('readFlowHistory'), 'flow meter should expose configurable flow rate and chart history APIs');
+assert(flowMeter.includes('MaxFlowHistoryPoints = 360'), 'flow chart history should cap each zone at 360 points');
 assert(flowCalibration.includes('stableWindowMs') && flowCalibration.includes('stableStepMs'), 'flow calibration should use sliding window stability detection');
 assert(flowCalibration.includes('computeRecommendation') && flowCalibration.includes('rateVariationPermille'), 'flow calibration should compute recommendations and stability diagnostics');
 
@@ -151,6 +156,8 @@ assert(scheduler.includes('scheduleGraceSec'), 'scheduler should use schedule gr
 assert(!scheduler.includes('lastRunYmd'), 'scheduler should not use persistent lastRunYmd');
 
 assert(records.includes('planNameSnapshot') && records.includes('startedEpoch') && records.includes('startedUptimeMs'), 'records should be self-contained with plan name, epoch, and uptime');
+assert(records.includes('flowStatsValid') && records.includes('maxFlowMlPerMin') && records.includes('maxFlowFirstAtSec') && records.includes('minFlowMlPerMin') && records.includes('minFlowFirstAtSec'), 'watering records should persist max/min flow and first occurrence times');
+assert(records.includes('flowRateWindowSec'), 'watering records should snapshot the flow rate window used for max/min statistics');
 assert(records.includes('configSnapshot') && zoneTypes.includes('startTimeoutSec') && zoneTypes.includes('flowNoPulseTimeoutSec'), 'records should include config snapshot timeout fields');
 assert(records.includes('configSnapshot') && zoneTypes.includes('startupPulseLimit') && zoneTypes.includes('startupEstimatedMl') && zoneTypes.includes('stablePulsePerLiter'), 'records should snapshot two-stage flow estimation fields');
 assert(records.includes('createFixedFile'), 'fixed-capacity watering record store should use Esp32BaseFs::createFixedFile');
@@ -158,8 +165,8 @@ assert(!records.includes('calloc'), 'fixed-capacity watering record store should
 
 assert(pio.includes('-D ESP32BASE_ENABLE_APP_EVENTS=1'), 'project should enable Esp32Base App Events');
 assert(pio.includes('-D ESP32BASE_APP_EVENT_LOG_CAPACITY=256'), 'project should set a scoped App Events capacity');
-assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_GROUPS=4'), 'App Config group capacity should cover manual, schedule, safety, and calibration groups');
-assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_FIELDS=16'), 'App Config capacity should cover all registered irrigation system fields');
+assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_GROUPS=5'), 'App Config group capacity should cover manual, schedule, safety, calibration, and flow display groups');
+assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_FIELDS=19'), 'App Config capacity should cover all registered irrigation system fields');
 assert(businessEvents.includes('Esp32BaseAppEventLog::append'), 'business events should write through Esp32BaseAppEventLog::append');
 assert(businessEvents.includes('schedule_skipped') && businessEvents.includes('flow_fault') && businessEvents.includes('leak_detected'), 'business event vocabulary should cover schedule, flow, and leak decisions');
 assert(businessEvents.includes('observedPulses') && businessEvents.includes('VALUE3'), 'leak events should record observed pulses, threshold, and detection window');
@@ -192,6 +199,9 @@ assert(!web.includes('<th>异常原因</th>'), 'overview zone table should not r
 assert(web.includes('zoneErrorClearConfirm(status.errorCode)'), 'clear-error confirmation should include the current fault reason');
 assert(web.includes('irrOverviewRefreshMs') && web.includes('30000') && web.includes('1000'), 'overview should poll slowly while idle and every second while watering');
 assert(web.includes('/api/v1/status') && web.includes('irrOverviewApplyStatus'), 'overview should refresh from the lightweight status API');
+assert(web.includes('/api/v1/flow/history') && web.includes('handleFlowHistoryApi'), 'web API should expose single-zone flow chart history');
+assert(web.includes('data-irr-flow') && web.includes('irrOverviewFlow') && web.includes('流速'), 'overview should display current flow rate instead of pulse count');
+assert(web.includes('irrFlowChart') && web.includes('flowHistory'), 'overview should render recent per-zone flow sparkline data');
 assert(web.includes('irrOverviewLiters') && web.includes("+' L'"), 'overview estimated water should render in liters');
 assert(web.includes('writeLitersFromMilliliters(status.estimatedMilliliters)'), 'overview initial estimated water should use liters');
 assert(web.includes('irrOverviewRenderState') && web.includes('irrOverviewRenderActions'), 'overview should update zone state/action cells in place');
@@ -222,6 +232,7 @@ assert(web.includes('eventZoneId(event)') && web.includes('writeEventDetailValue
 assert(web.includes('writeShortDateTimeHuman') && !web.includes('%04d-%02d-%02d %02d:%02d:%02d'), 'record and event pages should show month-day time without year');
 assert(web.includes('writeDurationMsHumanCompact(record.endedUptimeMs - record.startedUptimeMs)'), 'watering record runtime should use compact human duration');
 assert(web.includes('writeLitersFromMilliliters(record.estimatedMilliliters)'), 'watering record estimated water should use liters');
+assert(web.includes('writeAverageFlowRate(record)') && web.includes('writeRecordPeakFlow'), 'watering record table should show average, max, and min flow diagnostics');
 assert(!web.includes('record.estimatedMilliliters);\n    Esp32BaseWeb::sendChunk(" ml'), 'watering record table should not show milliliters');
 assert(!web.includes('/api/v1/water/start'), 'old water start API should be removed');
 assert(!web.includes('road_id') && !web.includes('roadId'), 'external API should not expose road identifiers');

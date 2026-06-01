@@ -139,6 +139,9 @@ struct SystemConfig {
     uint16_t calibrationMaxCaptureMin;
     uint16_t calibrationDetailCaptureSec;
     uint16_t calibrationDetailPulseLimit;
+    uint16_t flowRateWindowSec;
+    uint16_t flowChartIntervalSec;
+    uint16_t flowChartHistoryMin;
 };
 
 struct PlanDefinition {
@@ -178,12 +181,21 @@ struct ActiveTask {
     uint32_t startedUptimeMs;
     uint32_t startedPulseCount;
     ZoneConfigSnapshot configSnapshot;
+    uint16_t flowRateWindowSec;
+    uint16_t reserved;
 };
 
 struct TaskRuntime {
     uint32_t lastPulseCount;
     uint32_t lastPulseMs;
+    uint32_t runningStartedMs;
+    uint32_t maxFlowMlPerMin;
+    uint32_t maxFlowFirstAtSec;
+    uint32_t minFlowMlPerMin;
+    uint32_t minFlowFirstAtSec;
     bool firstPulseSeen;
+    bool flowStatsValid;
+    uint8_t reserved[2];
 };
 
 struct FinishedTask {
@@ -210,6 +222,8 @@ struct ZoneStatus {
     uint32_t pulses;
     uint32_t estimatedMilliliters;
     uint32_t flowRatePerMinuteX1000;
+    uint32_t flowMlPerMin;
+    bool flowRateReady;
     TaskType taskType;
     uint32_t planId;
 };

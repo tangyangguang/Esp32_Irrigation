@@ -9,6 +9,7 @@
 #include "Version.h"
 #include "domain/BusinessEventLog.h"
 #include "domain/FlowCalibration.h"
+#include "domain/FlowMeter.h"
 #include "domain/MaintenanceService.h"
 #include "domain/SafetyManager.h"
 #include "domain/ZoneManager.h"
@@ -266,6 +267,10 @@ void writeStatusJson(const Irrigation::ZoneStatus& status) {
     writeUInt(status.estimatedMilliliters);
     Esp32BaseWeb::sendChunk(",\"flowRatePerMinuteX1000\":");
     writeUInt(status.flowRatePerMinuteX1000);
+    Esp32BaseWeb::sendChunk(",\"flowMlPerMin\":");
+    writeUInt(status.flowMlPerMin);
+    Esp32BaseWeb::sendChunk(",\"flowRateReady\":");
+    writeBool(status.flowRateReady);
     Esp32BaseWeb::sendChunk(",\"planId\":");
     writeUInt(status.planId);
     Esp32BaseWeb::sendChunk("}");
@@ -386,6 +391,48 @@ void writeLitersFromMilliliters(uint32_t milliliters) {
              static_cast<unsigned long>(milliliters / 1000UL),
              static_cast<unsigned long>(milliliters % 1000UL));
     Esp32BaseWeb::sendChunk(text);
+}
+
+void writeFlowRate(uint32_t mlPerMin) {
+    char text[28];
+    snprintf(text, sizeof(text), "%lu.%03lu L/min",
+             static_cast<unsigned long>(mlPerMin / 1000UL),
+             static_cast<unsigned long>(mlPerMin % 1000UL));
+    Esp32BaseWeb::sendChunk(text);
+}
+
+uint32_t averageFlowMlPerMin(const RecordStore::WateringRecord& record) {
+    if (record.endedUptimeMs <= record.startedUptimeMs) {
+        return 0;
+    }
+    const uint32_t durationMs = record.endedUptimeMs - record.startedUptimeMs;
+    return static_cast<uint32_t>((static_cast<uint64_t>(record.estimatedMilliliters) * 60000ULL) / durationMs);
+}
+
+void writeAverageFlowRate(const RecordStore::WateringRecord& record) {
+    if (record.endedUptimeMs <= record.startedUptimeMs) {
+        Esp32BaseWeb::sendChunk("-");
+        return;
+    }
+    writeFlowRate(averageFlowMlPerMin(record));
+}
+
+void writeRecordFlowAt(uint32_t elapsedSec) {
+    char text[16];
+    snprintf(text, sizeof(text), "%02lu:%02lu",
+             static_cast<unsigned long>(elapsedSec / 60UL),
+             static_cast<unsigned long>(elapsedSec % 60UL));
+    Esp32BaseWeb::sendChunk(text);
+}
+
+void writeRecordPeakFlow(uint32_t mlPerMin, uint32_t firstAtSec, bool valid) {
+    if (!valid) {
+        Esp32BaseWeb::sendChunk("-");
+        return;
+    }
+    writeFlowRate(mlPerMin);
+    Esp32BaseWeb::sendChunk(" @ ");
+    writeRecordFlowAt(firstAtSec);
 }
 
 const char* calibrationStateLabel(FlowCalibration::State state) {
@@ -1307,7 +1354,8 @@ void handleOverviewPage() {
     Esp32BaseWeb::endPanel();
 
     Esp32BaseWeb::beginPanel("水路状态");
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>水路</th><th>状态</th><th>任务</th><th>目标时长</th><th>剩余时间</th><th>脉冲</th><th>估算水量</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<style>.irr-flow-chart-row td{padding-top:0}.irr-flow-chart-box{display:none;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);padding:8px 10px;margin:0 0 6px}.irr-flow-chart-box.active{display:block}.irr-flow-chart-head{display:flex;justify-content:space-between;gap:8px;color:var(--eb-muted);font-size:12px;margin-bottom:4px}.irr-flow-chart{width:100%;height:54px;display:block;background:#fff;border:1px solid var(--eb-line-soft);border-radius:6px}</style>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>水路</th><th>状态</th><th>任务</th><th>目标时长</th><th>剩余时间</th><th>流速</th><th>估算水量</th><th>操作</th></tr></thead><tbody>");
     bool wroteStatus = false;
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         const Irrigation::ZoneStatus status = ZoneManager::status(zoneId);
@@ -1356,10 +1404,14 @@ void handleOverviewPage() {
         writeUInt(zoneId);
         Esp32BaseWeb::sendChunk("'>");
         writeDurationHuman(status.remainingSec);
-        Esp32BaseWeb::sendChunk("</td><td data-irr-pulses='");
+        Esp32BaseWeb::sendChunk("</td><td data-irr-flow='");
         writeUInt(zoneId);
         Esp32BaseWeb::sendChunk("'>");
-        writeUInt(status.pulses);
+        if (status.busy && status.flowRateReady) {
+            writeFlowRate(status.flowMlPerMin);
+        } else {
+            Esp32BaseWeb::sendChunk("-");
+        }
         Esp32BaseWeb::sendChunk("</td><td data-irr-ml='");
         writeUInt(zoneId);
         Esp32BaseWeb::sendChunk("'>");
@@ -1392,7 +1444,19 @@ void handleOverviewPage() {
                 Esp32BaseWeb::sendChunk("' onclick='irrManualOpen(this)'>启动</button>");
             }
         }
-        Esp32BaseWeb::sendChunk("</div></td></tr>");
+        Esp32BaseWeb::sendChunk("</div></td></tr><tr class='irr-flow-chart-row' data-irr-flow-row='");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("'><td colspan='8'><div class='irr-flow-chart-box");
+        Esp32BaseWeb::sendChunk(status.busy ? " active" : "");
+        Esp32BaseWeb::sendChunk("' id='irrFlowChartBox");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("'><div class='irr-flow-chart-head'><span>近期流速</span><span data-irr-flow-chart-label='");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("'>");
+        writeUInt(SystemConfigStore::current().flowChartHistoryMin);
+        Esp32BaseWeb::sendChunk(" 分钟</span></div><svg class='irr-flow-chart' id='irrFlowChart");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("' viewBox='0 0 300 54' preserveAspectRatio='none' role='img' aria-label='近期流速图表'></svg></div></td></tr>");
     }
     if (!wroteStatus) {
         Esp32BaseWeb::sendChunk("<tr><td colspan='8'>暂无启用水路</td></tr>");
@@ -1413,6 +1477,7 @@ void handleOverviewPage() {
                             "function irrFaultClose(b){var d=b&&b.closest?b.closest('dialog'):null;if(d&&d.close)d.close();else if(d)d.removeAttribute('open');}"
                             "function irrOverviewDuration(s){s=parseInt(s||0,10)||0;var h=Math.floor(s/3600),m=Math.floor((s%3600)/60),r=s%60,t='';if(h)t+=h+'小时';if(m)t+=m+'分钟';if(r||!t)t+=r+'秒';return t;}"
                             "function irrOverviewLiters(ml){ml=parseInt(ml||0,10)||0;return Math.floor(ml/1000)+'.'+('00'+(ml%1000)).slice(-3)+' L';}"
+                            "function irrOverviewFlow(v,ready,busy){v=parseInt(v||0,10)||0;if(!busy||!ready)return '-';return Math.floor(v/1000)+'.'+('00'+(v%1000)).slice(-3)+' L/min';}"
                             "function irrOverviewEscape(s){return String(s||'').replace(/[&<>\"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c];});}"
                             "function irrOverviewStateLabel(s){return {disabled:'已禁用',idle:'待机',starting:'启动中',running:'浇水中',error:'异常'}[s]||'未知';}"
                             "function irrOverviewStateTone(s){return s==='running'||s==='starting'?' warn':(s==='error'?' danger':(s==='idle'?' ok':''));}"
@@ -1421,7 +1486,9 @@ void handleOverviewPage() {
                             "function irrOverviewInitialFast(){return !!document.querySelector('[data-irr-zone-row][data-busy=\"1\"]');}"
                             "function irrOverviewRenderState(z){var e=document.querySelector('[data-irr-state=\"'+z.zoneId+'\"]');if(e)e.innerHTML='<span class=\"tag'+irrOverviewStateTone(z.state)+'\">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</span>';}"
                             "function irrOverviewRenderActions(row,z,leak){var e=document.querySelector('[data-irr-actions=\"'+z.zoneId+'\"]');if(!e)return;var name=irrOverviewEscape(row.dataset.zoneName||('水路 '+z.zoneId));if(z.busy){e.innerHTML='<div class=\"fsactions\"><form method=\"post\" action=\"/api/v1/zone/stop\" onsubmit=\"return confirm(\\'确认停止该水路？\\')&&once(this)\"><input type=\"hidden\" name=\"source\" value=\"web_page\"><input type=\"hidden\" name=\"zoneId\" value=\"'+z.zoneId+'\"><input class=\"fsaction\" type=\"submit\" value=\"停止\"></form></div>';return;}e.innerHTML=leak?'<div class=\"fsactions\"><span class=\"muted\">漏水告警中</span></div>':'<div class=\"fsactions\"><button class=\"btnlink compact ok\" type=\"button\" data-zone-id=\"'+z.zoneId+'\" data-zone-name=\"'+name+'\" onclick=\"irrManualOpen(this)\">启动</button></div>';}"
-                            "function irrOverviewApplyStatus(data){if(!data||!data.ok||!data.zones)return;var enabled=0,running=0,errors=0,structural=false;data.zones.forEach(function(z){if(!z.enabled)return;enabled++;if(z.busy)running++;if(z.errorActive)errors++;var row=document.querySelector('[data-irr-zone-row=\"'+z.zoneId+'\"]');if(!row){structural=true;return;}var busy=z.busy?'1':'0',err=z.errorActive?'1':'0';if(row.dataset.error!==err){structural=true;return;}row.dataset.state=z.state;row.dataset.busy=busy;row.dataset.error=err;irrOverviewRenderState(z);var e=document.querySelector('[data-irr-task=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?(z.taskLabel||'浇水中'):'-';e=document.querySelector('[data-irr-target=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewDuration(z.targetSec);e=document.querySelector('[data-irr-remaining=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewDuration(z.remainingSec);e=document.querySelector('[data-irr-pulses=\"'+z.zoneId+'\"]');if(e)e.textContent=String(z.pulses);e=document.querySelector('[data-irr-ml=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewLiters(z.estimatedMl);irrOverviewRenderActions(row,z,data.leakAlertActive);});if(enabled!==document.querySelectorAll('[data-irr-zone-row]').length)structural=true;if(structural){location.reload();return;}irrOverviewSetMetric('irrMetricRunning',running+' / '+enabled);irrOverviewSetMetric('irrMetricErrors',String(errors));irrOverviewSetMetric('irrMetricSafety',data.leakAlertActive?'漏水告警':(errors>0?errors+' 路异常':'正常'));var stop=document.getElementById('irrStopAll');if(stop)stop.disabled=running<=0;}"
+                            "function irrFlowChartDraw(id,points){var svg=document.getElementById('irrFlowChart'+id);if(!svg)return;points=points||[];var max=0;for(var i=0;i<points.length;i++)max=Math.max(max,parseInt(points[i]||0,10)||0);svg.innerHTML='';if(points.length<2||max<=0){return;}var w=300,h=54,d='';for(var j=0;j<points.length;j++){var x=points.length===1?0:(j*(w-2)/(points.length-1)+1),y=h-3-((parseInt(points[j]||0,10)||0)*(h-8)/max);d+=(j?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);}svg.innerHTML='<path d=\"'+d+'\" fill=\"none\" stroke=\"#0f766e\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/><line x1=\"0\" y1=\"'+(h-3)+'\" x2=\"300\" y2=\"'+(h-3)+'\" stroke=\"#e2e8f0\" vector-effect=\"non-scaling-stroke\"/>';}"
+                            "function irrFlowChart(id,busy){var box=document.getElementById('irrFlowChartBox'+id);if(box)box.classList.toggle('active',!!busy);if(!busy)return;fetch('/api/v1/flow/history?zoneId='+id,{headers:{Accept:'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){if(!j||!j.ok)return;irrFlowChartDraw(id,j.flowHistory||[]);var label=document.querySelector('[data-irr-flow-chart-label=\"'+id+'\"]');if(label)label.textContent=String(j.historyMin||'')+' 分钟';}).catch(function(){});}"
+                            "function irrOverviewApplyStatus(data){if(!data||!data.ok||!data.zones)return;var enabled=0,running=0,errors=0,structural=false;data.zones.forEach(function(z){if(!z.enabled)return;enabled++;if(z.busy)running++;if(z.errorActive)errors++;var row=document.querySelector('[data-irr-zone-row=\"'+z.zoneId+'\"]');if(!row){structural=true;return;}var busy=z.busy?'1':'0',err=z.errorActive?'1':'0';if(row.dataset.error!==err){structural=true;return;}row.dataset.state=z.state;row.dataset.busy=busy;row.dataset.error=err;irrOverviewRenderState(z);var e=document.querySelector('[data-irr-task=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?(z.taskLabel||'浇水中'):'-';e=document.querySelector('[data-irr-target=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewDuration(z.targetSec);e=document.querySelector('[data-irr-remaining=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewDuration(z.remainingSec);e=document.querySelector('[data-irr-flow=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewFlow(z.flowMlPerMin,z.flowRateReady,z.busy);e=document.querySelector('[data-irr-ml=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewLiters(z.estimatedMl);irrFlowChart(z.zoneId,z.busy);irrOverviewRenderActions(row,z,data.leakAlertActive);});if(enabled!==document.querySelectorAll('[data-irr-zone-row]').length)structural=true;if(structural){location.reload();return;}irrOverviewSetMetric('irrMetricRunning',running+' / '+enabled);irrOverviewSetMetric('irrMetricErrors',String(errors));irrOverviewSetMetric('irrMetricSafety',data.leakAlertActive?'漏水告警':(errors>0?errors+' 路异常':'正常'));var stop=document.getElementById('irrStopAll');if(stop)stop.disabled=running<=0;}"
                             "var irrOverviewTimer=0;function irrOverviewSchedule(ms){if(irrOverviewTimer)clearTimeout(irrOverviewTimer);irrOverviewTimer=setTimeout(irrOverviewPoll,ms);}"
                             "function irrOverviewPoll(){fetch('/api/v1/status',{headers:{Accept:'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){irrOverviewApplyStatus(j);irrOverviewSchedule(irrOverviewRefreshMs(j));}).catch(function(){irrOverviewSchedule(45000);});}"
                             "function irrOverviewPollNow(){irrOverviewSchedule(0);}"
@@ -2055,6 +2122,20 @@ void writeRecordJson(const RecordStore::WateringRecord& record, void* user) {
     writeUInt(record.endedEpoch);
     Esp32BaseWeb::sendChunk(",\"estimatedMl\":");
     writeUInt(record.estimatedMilliliters);
+    Esp32BaseWeb::sendChunk(",\"averageFlowMlPerMin\":");
+    writeUInt(averageFlowMlPerMin(record));
+    Esp32BaseWeb::sendChunk(",\"flowStatsValid\":");
+    writeBool(record.flowStatsValid);
+    Esp32BaseWeb::sendChunk(",\"flowRateWindowSec\":");
+    writeUInt(record.flowRateWindowSec);
+    Esp32BaseWeb::sendChunk(",\"maxFlowMlPerMin\":");
+    writeUInt(record.maxFlowMlPerMin);
+    Esp32BaseWeb::sendChunk(",\"maxFlowFirstAtSec\":");
+    writeUInt(record.maxFlowFirstAtSec);
+    Esp32BaseWeb::sendChunk(",\"minFlowMlPerMin\":");
+    writeUInt(record.minFlowMlPerMin);
+    Esp32BaseWeb::sendChunk(",\"minFlowFirstAtSec\":");
+    writeUInt(record.minFlowFirstAtSec);
     Esp32BaseWeb::sendChunk("}");
 }
 
@@ -2136,6 +2217,12 @@ void writeRecordRow(const RecordStore::WateringRecord& record, void* user) {
     }
     Esp32BaseWeb::sendChunk("</td><td>");
     writeLitersFromMilliliters(record.estimatedMilliliters);
+    Esp32BaseWeb::sendChunk("</td><td>");
+    writeAverageFlowRate(record);
+    Esp32BaseWeb::sendChunk("</td><td>");
+    writeRecordPeakFlow(record.maxFlowMlPerMin, record.maxFlowFirstAtSec, record.flowStatsValid);
+    Esp32BaseWeb::sendChunk("</td><td>");
+    writeRecordPeakFlow(record.minFlowMlPerMin, record.minFlowFirstAtSec, record.flowStatsValid);
     Esp32BaseWeb::sendChunk("</td></tr>");
 }
 
@@ -2172,11 +2259,11 @@ void handleRecordsPage() {
     pageHeader("浇水记录");
     Esp32BaseWeb::sendPageTitle("浇水记录", "按时间倒序展示浇水执行记录。");
     Esp32BaseWeb::beginPanel("列表");
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>ID</th><th>水路</th><th>类型</th><th>结果</th><th>计划</th><th>目标时长</th><th>开始时间</th><th>运行时间</th><th>估算水量</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>ID</th><th>水路</th><th>类型</th><th>结果</th><th>计划</th><th>目标时长</th><th>开始时间</th><th>运行时间</th><th>估算水量</th><th>平均流速</th><th>最大流速</th><th>最小流速</th></tr></thead><tbody>");
     RecordTableContext ctx = {false};
     (void)RecordStore::readLatest(offset, static_cast<uint16_t>(perPage), writeRecordRow, &ctx);
     if (!ctx.wrote) {
-        Esp32BaseWeb::sendChunk("<tr><td colspan='9'>暂无记录</td></tr>");
+        Esp32BaseWeb::sendChunk("<tr><td colspan='12'>暂无记录</td></tr>");
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div>");
     Esp32BaseWeb::sendPagination({"/irrigation/records", nullptr, page, perPage, RecordStore::count()});
@@ -2234,6 +2321,35 @@ void handleStatusApi() {
     endJson();
 }
 
+void handleFlowHistoryApi() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
+        sendMethodNotAllowed("GET");
+        return;
+    }
+    uint8_t zoneId = 0;
+    if (!readZoneId(&zoneId)) {
+        sendError(400, "invalid_zone");
+        return;
+    }
+    uint16_t points[FlowMeter::MaxFlowHistoryPoints] = {};
+    const uint16_t count = FlowMeter::readFlowHistory(zoneId, points, FlowMeter::MaxFlowHistoryPoints);
+    beginJson(200);
+    Esp32BaseWeb::sendChunk("{\"ok\":true,\"zoneId\":");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk(",\"intervalSec\":");
+    writeUInt(FlowMeter::flowChartIntervalSec());
+    Esp32BaseWeb::sendChunk(",\"historyMin\":");
+    writeUInt(FlowMeter::flowChartHistoryMin());
+    Esp32BaseWeb::sendChunk(",\"flowHistory\":[");
+    for (uint16_t i = 0; i < count; ++i) {
+        if (i) Esp32BaseWeb::sendChunk(",");
+        writeUInt(points[i]);
+    }
+    Esp32BaseWeb::sendChunk("]}");
+    endJson();
+}
+
 void handleConfigApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
@@ -2259,6 +2375,12 @@ void handleConfigApi() {
         writeUInt(system.calibrationDetailCaptureSec);
         Esp32BaseWeb::sendChunk(",\"calibrationDetailPulseLimit\":");
         writeUInt(system.calibrationDetailPulseLimit);
+        Esp32BaseWeb::sendChunk(",\"flowRateWindowSec\":");
+        writeUInt(system.flowRateWindowSec);
+        Esp32BaseWeb::sendChunk(",\"flowChartIntervalSec\":");
+        writeUInt(system.flowChartIntervalSec);
+        Esp32BaseWeb::sendChunk(",\"flowChartHistoryMin\":");
+        writeUInt(system.flowChartHistoryMin);
         Esp32BaseWeb::sendChunk(",\"durationPresets\":[");
         for (uint8_t i = 0; i < 6; ++i) {
             if (i) Esp32BaseWeb::sendChunk(",");
@@ -2283,6 +2405,9 @@ void handleConfigApi() {
     else if (Esp32BaseWeb::hasParam("calibrationMaxCaptureMin") && !readU16("calibrationMaxCaptureMin", &system.calibrationMaxCaptureMin)) sendError(400, "invalid_calibration_max_capture");
     else if (Esp32BaseWeb::hasParam("calibrationDetailCaptureSec") && !readU16("calibrationDetailCaptureSec", &system.calibrationDetailCaptureSec)) sendError(400, "invalid_calibration_detail_capture");
     else if (Esp32BaseWeb::hasParam("calibrationDetailPulseLimit") && !readU16("calibrationDetailPulseLimit", &system.calibrationDetailPulseLimit)) sendError(400, "invalid_calibration_detail_pulses");
+    else if (Esp32BaseWeb::hasParam("flowRateWindowSec") && !readU16("flowRateWindowSec", &system.flowRateWindowSec)) sendError(400, "invalid_flow_rate_window");
+    else if (Esp32BaseWeb::hasParam("flowChartIntervalSec") && !readU16("flowChartIntervalSec", &system.flowChartIntervalSec)) sendError(400, "invalid_flow_chart_interval");
+    else if (Esp32BaseWeb::hasParam("flowChartHistoryMin") && !readU16("flowChartHistoryMin", &system.flowChartHistoryMin)) sendError(400, "invalid_flow_chart_history");
     else {
         bool parsed = true;
         for (uint8_t i = 0; i < 6; ++i) {
@@ -2845,6 +2970,7 @@ void begin() {
     const bool eventsPageOk = Esp32BaseWeb::addPage("/irrigation/events", "事件记录", handleEventsPage);
     const bool planEditOk = Esp32BaseWeb::addRoute("/irrigation/plan", Esp32BaseWeb::METHOD_GET, handlePlanEditPage);
     const bool statusOk = Esp32BaseWeb::addRoute("/api/v1/status", Esp32BaseWeb::METHOD_GET, handleStatusApi);
+    const bool flowHistoryOk = Esp32BaseWeb::addRoute("/api/v1/flow/history", Esp32BaseWeb::METHOD_GET, handleFlowHistoryApi);
     const bool configOk = Esp32BaseWeb::addApi("/api/v1/config", handleConfigApi);
     const bool zoneStartOk = Esp32BaseWeb::addRoute("/api/v1/zone/start", Esp32BaseWeb::METHOD_POST, handleZoneStartApi);
     const bool zoneStopOk = Esp32BaseWeb::addRoute("/api/v1/zone/stop", Esp32BaseWeb::METHOD_POST, handleZoneStopApi);
@@ -2871,7 +2997,7 @@ void begin() {
     const bool recordsOk = Esp32BaseWeb::addRoute("/api/v1/records", Esp32BaseWeb::METHOD_GET, handleRecordsApi);
     const bool eventsOk = Esp32BaseWeb::addRoute("/api/v1/events", Esp32BaseWeb::METHOD_GET, handleEventsApi);
     const bool factoryOk = Esp32BaseWeb::addRoute("/api/v1/maintenance/factory-reset", Esp32BaseWeb::METHOD_POST, handleFactoryResetApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s factory=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s flowHistory=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s factory=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
                     settingsOk ? "ok" : "fail",
@@ -2881,6 +3007,7 @@ void begin() {
                     eventsPageOk ? "ok" : "fail",
                     planEditOk ? "ok" : "fail",
                     statusOk ? "ok" : "fail",
+                    flowHistoryOk ? "ok" : "fail",
                     configOk ? "ok" : "fail",
                     zoneStartOk ? "ok" : "fail",
                     zoneStopOk ? "ok" : "fail",

@@ -161,6 +161,7 @@ bool ZoneScheduler::observePlan(Zone& zone,
                              plan.name,
                              plan.durationSec,
                              systemConfig.maxWateringDurationSec,
+                             systemConfig.flowRateWindowSec,
                              FlowMeter::pulseCount(plan.zoneId),
                              trustedEpoch,
                              nowMs);

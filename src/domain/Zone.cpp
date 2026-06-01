@@ -47,7 +47,7 @@ void Zone::refreshStateFromConfigAndError() {
     }
 }
 
-void Zone::tick(uint32_t pulseCount, uint32_t epoch, uint32_t nowMs) {
+void Zone::tick(uint32_t pulseCount, uint32_t flowMlPerMin, bool flowRateReady, uint32_t epoch, uint32_t nowMs) {
     if (!m_runner.active()) {
         refreshStateFromConfigAndError();
         return;
@@ -63,6 +63,7 @@ void Zone::tick(uint32_t pulseCount, uint32_t epoch, uint32_t nowMs) {
     if (m_state == Irrigation::ZoneState::STARTING) {
         if (runtime.firstPulseSeen) {
             m_state = Irrigation::ZoneState::RUNNING;
+            m_runner.markRunningStarted(nowMs);
             return;
         }
         const uint32_t startLimitMs = static_cast<uint32_t>(task.configSnapshot.startTimeoutSec) * 1000UL;
@@ -78,6 +79,7 @@ void Zone::tick(uint32_t pulseCount, uint32_t epoch, uint32_t nowMs) {
         return;
     }
     if (m_state == Irrigation::ZoneState::RUNNING) {
+        m_runner.updateFlowStats(flowMlPerMin, flowRateReady, nowMs);
         const uint32_t noPulseMs = nowMs - runtime.lastPulseMs;
         if (noPulseMs >= static_cast<uint32_t>(task.configSnapshot.flowNoPulseTimeoutSec) * 1000UL) {
             finish(Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT,
@@ -107,6 +109,7 @@ bool Zone::start(Irrigation::TaskType type,
                  const char* planName,
                  uint32_t targetSec,
                  uint32_t maxWateringDurationSec,
+                 uint16_t flowRateWindowSec,
                  uint32_t pulseCount,
                  uint32_t epoch,
                  uint32_t nowMs) {
@@ -114,7 +117,7 @@ bool Zone::start(Irrigation::TaskType type,
     if (m_state != Irrigation::ZoneState::IDLE || !m_config.enabled || targetSec < 1 || targetSec > maxWateringDurationSec) {
         return false;
     }
-    if (!m_runner.start(type, source, planId, planSlot, planName, targetSec, pulseCount, epoch, nowMs, m_config)) {
+    if (!m_runner.start(type, source, planId, planSlot, planName, targetSec, pulseCount, epoch, nowMs, flowRateWindowSec, m_config)) {
         return false;
     }
     if (!ValveController::setRoad(m_config.zoneId, true, "zone start")) {
@@ -180,6 +183,12 @@ void Zone::finish(Irrigation::TaskResult result, Irrigation::StopSource source, 
     record.startedPulseCount = task.startedPulseCount;
     record.endedPulseCount = finished.endedPulseCount;
     record.estimatedMilliliters = ZoneConfigStore::estimateMilliliters(task.configSnapshot, pulses);
+    record.flowRateWindowSec = task.flowRateWindowSec;
+    record.flowStatsValid = m_runner.runtime().flowStatsValid;
+    record.maxFlowMlPerMin = m_runner.runtime().maxFlowMlPerMin;
+    record.maxFlowFirstAtSec = m_runner.runtime().maxFlowFirstAtSec;
+    record.minFlowMlPerMin = m_runner.runtime().minFlowMlPerMin;
+    record.minFlowFirstAtSec = m_runner.runtime().minFlowFirstAtSec;
     record.configSnapshot = task.configSnapshot;
     (void)RecordStore::append(record);
 
@@ -239,7 +248,7 @@ void Zone::resetLeakWindow(uint32_t pulseCount, uint32_t nowMs) {
     m_leakWindowStartedMs = nowMs;
 }
 
-Irrigation::ZoneStatus Zone::status(uint32_t pulseCount, uint32_t flowRatePerMinuteX1000, uint32_t nowMs) const {
+Irrigation::ZoneStatus Zone::status(uint32_t pulseCount, uint32_t flowRatePerMinuteX1000, uint32_t flowMlPerMin, bool flowRateReady, uint32_t nowMs) const {
     Irrigation::ZoneStatus status = {};
     status.zoneId = m_config.zoneId;
     status.state = m_state;
@@ -249,6 +258,8 @@ Irrigation::ZoneStatus Zone::status(uint32_t pulseCount, uint32_t flowRatePerMin
     status.errorCode = m_error.errorCode;
     status.leakAlert = m_error.active && m_error.errorCode == Irrigation::ZoneErrorCode::LEAK_DETECTED;
     status.flowRatePerMinuteX1000 = flowRatePerMinuteX1000;
+    status.flowMlPerMin = flowMlPerMin;
+    status.flowRateReady = flowRateReady;
     status.taskType = m_runner.task().type;
     status.planId = m_runner.task().planId;
     if (m_runner.active()) {

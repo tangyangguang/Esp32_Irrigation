@@ -15,12 +15,28 @@ static constexpr uint8_t kFlowPins[] = {
     IrrigationPins::Flow3,
     IrrigationPins::Flow4,
 };
+static constexpr uint8_t kMaxFlowWindowSec = 30;
 
 volatile uint32_t g_pulses[IrrigationPins::MaxRoads] = {};
 portMUX_TYPE g_pulseMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t g_lastSampleMs = 0;
 uint32_t g_lastSamplePulses[IrrigationPins::MaxRoads] = {};
 uint32_t g_ratePerMinuteX1000[IrrigationPins::MaxRoads] = {};
+uint32_t g_flowMlPerMin[IrrigationPins::MaxRoads] = {};
+bool g_flowReady[IrrigationPins::MaxRoads] = {};
+uint16_t g_stablePulsePerLiter[IrrigationPins::MaxRoads] = {450, 450, 450, 450};
+uint16_t g_flowRateWindowSec = 5;
+uint16_t g_flowChartIntervalSec = 5;
+uint16_t g_flowChartHistoryMin = 10;
+uint16_t g_flowHistoryLimit = 120;
+uint32_t g_lastHistoryMs = 0;
+uint32_t g_deltaHistory[IrrigationPins::MaxRoads][kMaxFlowWindowSec] = {};
+uint16_t g_deltaMsHistory[IrrigationPins::MaxRoads][kMaxFlowWindowSec] = {};
+uint8_t g_deltaHistoryPos[IrrigationPins::MaxRoads] = {};
+uint8_t g_deltaHistoryFilled[IrrigationPins::MaxRoads] = {};
+uint16_t g_flowHistory[IrrigationPins::MaxRoads][FlowMeter::MaxFlowHistoryPoints] = {};
+uint16_t g_flowHistoryHead[IrrigationPins::MaxRoads] = {};
+uint16_t g_flowHistoryCount[IrrigationPins::MaxRoads] = {};
 volatile bool g_captureActive = false;
 volatile uint8_t g_captureIndex = 0;
 volatile uint32_t g_captureStartedMs = 0;
@@ -90,6 +106,95 @@ bool roadIndex(uint8_t road, uint8_t* index) {
     return true;
 }
 
+uint16_t clampWindowSec(uint16_t value) {
+    if (value < 2) return 2;
+    if (value > kMaxFlowWindowSec) return kMaxFlowWindowSec;
+    return value;
+}
+
+uint16_t clampChartIntervalSec(uint16_t value) {
+    if (value < 1) return 1;
+    if (value > 30) return 30;
+    return value;
+}
+
+uint16_t clampChartHistoryMin(uint16_t value) {
+    if (value < 1) return 1;
+    if (value > 30) return 30;
+    return value;
+}
+
+uint16_t computeHistoryLimit(uint16_t intervalSec, uint16_t historyMin) {
+    uint32_t points = (static_cast<uint32_t>(historyMin) * 60UL) / intervalSec;
+    if (points < 1) points = 1;
+    if (points > FlowMeter::MaxFlowHistoryPoints) points = FlowMeter::MaxFlowHistoryPoints;
+    return static_cast<uint16_t>(points);
+}
+
+void clearRoadFlowHistory(uint8_t index) {
+    if (index >= IrrigationPins::MaxRoads) {
+        return;
+    }
+    memset(g_deltaHistory[index], 0, sizeof(g_deltaHistory[index]));
+    memset(g_deltaMsHistory[index], 0, sizeof(g_deltaMsHistory[index]));
+    memset(g_flowHistory[index], 0, sizeof(g_flowHistory[index]));
+    g_deltaHistoryPos[index] = 0;
+    g_deltaHistoryFilled[index] = 0;
+    g_flowHistoryHead[index] = 0;
+    g_flowHistoryCount[index] = 0;
+    g_ratePerMinuteX1000[index] = 0;
+    g_flowMlPerMin[index] = 0;
+    g_flowReady[index] = false;
+}
+
+void clearAllFlowHistory() {
+    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        clearRoadFlowHistory(i);
+    }
+}
+
+void pushHistoryPoint(uint8_t index, uint32_t mlPerMin) {
+    if (index >= IrrigationPins::MaxRoads || g_flowHistoryLimit == 0) {
+        return;
+    }
+    if (mlPerMin > 65535UL) {
+        mlPerMin = 65535UL;
+    }
+    g_flowHistory[index][g_flowHistoryHead[index]] = static_cast<uint16_t>(mlPerMin);
+    g_flowHistoryHead[index] = static_cast<uint16_t>((g_flowHistoryHead[index] + 1U) % g_flowHistoryLimit);
+    if (g_flowHistoryCount[index] < g_flowHistoryLimit) {
+        ++g_flowHistoryCount[index];
+    }
+}
+
+void sampleRoad(uint8_t index, uint32_t delta, uint32_t elapsedMs) {
+    g_deltaHistory[index][g_deltaHistoryPos[index]] = delta;
+    g_deltaMsHistory[index][g_deltaHistoryPos[index]] = elapsedMs > 65535UL ? 65535U : static_cast<uint16_t>(elapsedMs);
+    g_deltaHistoryPos[index] = static_cast<uint8_t>((g_deltaHistoryPos[index] + 1U) % kMaxFlowWindowSec);
+    if (g_deltaHistoryFilled[index] < kMaxFlowWindowSec) {
+        ++g_deltaHistoryFilled[index];
+    }
+
+    const uint32_t targetMs = static_cast<uint32_t>(g_flowRateWindowSec) * 1000UL;
+    uint32_t sumPulses = 0;
+    uint32_t sumMs = 0;
+    for (uint8_t n = 0; n < g_deltaHistoryFilled[index] && sumMs < targetMs; ++n) {
+        const uint8_t pos = static_cast<uint8_t>((g_deltaHistoryPos[index] + kMaxFlowWindowSec - 1U - n) % kMaxFlowWindowSec);
+        sumPulses += g_deltaHistory[index][pos];
+        sumMs += g_deltaMsHistory[index][pos];
+    }
+    if (sumMs == 0) {
+        g_ratePerMinuteX1000[index] = 0;
+        g_flowMlPerMin[index] = 0;
+        g_flowReady[index] = false;
+        return;
+    }
+    g_ratePerMinuteX1000[index] = static_cast<uint32_t>((static_cast<uint64_t>(sumPulses) * 60000ULL * 1000ULL) / sumMs);
+    g_flowReady[index] = sumMs >= targetMs;
+    const uint16_t stable = g_stablePulsePerLiter[index] == 0 ? 1 : g_stablePulsePerLiter[index];
+    g_flowMlPerMin[index] = static_cast<uint32_t>((static_cast<uint64_t>(sumPulses) * 60000ULL * 1000ULL) / (sumMs * stable));
+}
+
 }
 
 namespace FlowMeter {
@@ -105,6 +210,7 @@ void begin() {
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         g_lastSamplePulses[i] = pulseCount(i + 1);
     }
+    g_lastHistoryMs = g_lastSampleMs;
 }
 
 void handle() {
@@ -116,10 +222,47 @@ void handle() {
     for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
         const uint32_t pulses = pulseCount(i + 1);
         const uint32_t delta = pulses >= g_lastSamplePulses[i] ? pulses - g_lastSamplePulses[i] : 0;
-        g_ratePerMinuteX1000[i] = elapsedMs > 0 ? static_cast<uint32_t>((static_cast<uint64_t>(delta) * 60000ULL * 1000ULL) / elapsedMs) : 0;
+        sampleRoad(i, delta, elapsedMs);
         g_lastSamplePulses[i] = pulses;
     }
     g_lastSampleMs = now;
+    if (now - g_lastHistoryMs >= static_cast<uint32_t>(g_flowChartIntervalSec) * 1000UL) {
+        for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+            pushHistoryPoint(i, g_flowMlPerMin[i]);
+        }
+        g_lastHistoryMs = now;
+    }
+}
+
+void configureFlowRate(uint16_t windowSec, uint16_t chartIntervalSec, uint16_t chartHistoryMin) {
+    windowSec = clampWindowSec(windowSec);
+    chartIntervalSec = clampChartIntervalSec(chartIntervalSec);
+    chartHistoryMin = clampChartHistoryMin(chartHistoryMin);
+    const uint16_t limit = computeHistoryLimit(chartIntervalSec, chartHistoryMin);
+    if (windowSec == g_flowRateWindowSec &&
+        chartIntervalSec == g_flowChartIntervalSec &&
+        chartHistoryMin == g_flowChartHistoryMin &&
+        limit == g_flowHistoryLimit) {
+        return;
+    }
+    g_flowRateWindowSec = windowSec;
+    g_flowChartIntervalSec = chartIntervalSec;
+    g_flowChartHistoryMin = chartHistoryMin;
+    g_flowHistoryLimit = limit;
+    clearAllFlowHistory();
+    g_lastHistoryMs = millis();
+}
+
+void setStablePulsePerLiter(uint8_t road, uint16_t stablePulsePerLiter) {
+    uint8_t index = 0;
+    if (!roadIndex(road, &index) || stablePulsePerLiter == 0) {
+        return;
+    }
+    if (g_stablePulsePerLiter[index] == stablePulsePerLiter) {
+        return;
+    }
+    g_stablePulsePerLiter[index] = stablePulsePerLiter;
+    clearRoadFlowHistory(index);
 }
 
 uint32_t pulseCount(uint8_t road) {
@@ -139,6 +282,53 @@ uint32_t pulseRatePerMinuteX1000(uint8_t road) {
         return 0;
     }
     return g_ratePerMinuteX1000[index];
+}
+
+uint32_t flowMillilitersPerMinute(uint8_t road) {
+    uint8_t index = 0;
+    if (!roadIndex(road, &index)) {
+        return 0;
+    }
+    return g_flowMlPerMin[index];
+}
+
+bool flowRateReady(uint8_t road) {
+    uint8_t index = 0;
+    if (!roadIndex(road, &index)) {
+        return false;
+    }
+    return g_flowReady[index];
+}
+
+uint16_t flowRateWindowSec() {
+    return g_flowRateWindowSec;
+}
+
+uint16_t flowChartIntervalSec() {
+    return g_flowChartIntervalSec;
+}
+
+uint16_t flowChartHistoryMin() {
+    return g_flowChartHistoryMin;
+}
+
+uint16_t readFlowHistory(uint8_t road, uint16_t* out, uint16_t capacity) {
+    uint8_t index = 0;
+    if (!out || capacity == 0 || !roadIndex(road, &index)) {
+        return 0;
+    }
+    uint16_t count = g_flowHistoryCount[index];
+    if (count > capacity) {
+        count = capacity;
+    }
+    for (uint16_t i = 0; i < count; ++i) {
+        const uint16_t oldest = g_flowHistoryCount[index] < g_flowHistoryLimit
+            ? 0
+            : g_flowHistoryHead[index];
+        const uint16_t source = static_cast<uint16_t>((oldest + g_flowHistoryCount[index] - count + i) % g_flowHistoryLimit);
+        out[i] = g_flowHistory[index][source];
+    }
+    return count;
 }
 
 bool beginCapture(uint8_t road, uint32_t detailCaptureMs, uint16_t detailPulseLimit) {

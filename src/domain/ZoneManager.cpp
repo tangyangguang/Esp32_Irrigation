@@ -89,8 +89,9 @@ void handle() {
     const Irrigation::SystemConfig& system = SystemConfigStore::current();
     const bool leakActive = ZoneErrorStore::leakAlertActive();
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+        FlowMeter::setStablePulsePerLiter(zoneId, ZoneConfigStore::get(zoneId).flow.stablePulsePerLiter);
         Zone& z = g_zones[indexFor(zoneId)];
-        z.tick(pulseCount(zoneId), epoch, nowMs);
+        z.tick(pulseCount(zoneId), FlowMeter::flowMillilitersPerMinute(zoneId), FlowMeter::flowRateReady(zoneId), epoch, nowMs);
         g_schedulers[indexFor(zoneId)].tick(z, system, leakActive, epoch, nowMs);
     }
     checkIdleLeaks(nowMs);
@@ -116,6 +117,7 @@ bool startManual(uint8_t zoneId, uint32_t durationSec, Irrigation::StartSource s
                                            "",
                                            durationSec,
                                            system.maxWateringDurationSec,
+                                           system.flowRateWindowSec,
                                            pulseCount(zoneId),
                                            epochNow(),
                                            millis());
@@ -180,7 +182,11 @@ Irrigation::ZoneStatus status(uint8_t zoneId) {
     if (!Irrigation::validZoneId(zoneId)) {
         return {};
     }
-    return g_zones[indexFor(zoneId)].status(pulseCount(zoneId), FlowMeter::pulseRatePerMinuteX1000(zoneId), millis());
+    return g_zones[indexFor(zoneId)].status(pulseCount(zoneId),
+                                            FlowMeter::pulseRatePerMinuteX1000(zoneId),
+                                            FlowMeter::flowMillilitersPerMinute(zoneId),
+                                            FlowMeter::flowRateReady(zoneId),
+                                            millis());
 }
 
 const Irrigation::ZoneConfig& config(uint8_t zoneId) {

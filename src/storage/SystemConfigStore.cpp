@@ -10,6 +10,7 @@ static constexpr const char* kGroupManual = "manual";
 static constexpr const char* kGroupSchedule = "schedule";
 static constexpr const char* kGroupSafety = "safety";
 static constexpr const char* kGroupCalibration = "calibration";
+static constexpr const char* kGroupFlowRate = "flow_rate";
 static constexpr const char* kKeyMaxDurationMin = "max_dur_min";
 static constexpr const char* kKeyGrace = "grace";
 static constexpr const char* kKeyManualDefaultMin = "manual_def_min";
@@ -20,6 +21,9 @@ static constexpr const char* kKeyCalibrationSampleTarget = "cal_samp";
 static constexpr const char* kKeyCalibrationMaxCaptureMin = "cal_max_min";
 static constexpr const char* kKeyCalibrationDetailCaptureSec = "cal_detail_s";
 static constexpr const char* kKeyCalibrationDetailPulseLimit = "cal_detail_p";
+static constexpr const char* kKeyFlowRateWindowSec = "flow_win_s";
+static constexpr const char* kKeyFlowChartIntervalSec = "flow_chart_s";
+static constexpr const char* kKeyFlowChartHistoryMin = "flow_chart_m";
 static constexpr const char* kPresetMinuteKeys[] = {
     "preset_min0",
     "preset_min1",
@@ -45,6 +49,9 @@ Irrigation::SystemConfig defaults() {
     config.calibrationMaxCaptureMin = 10;
     config.calibrationDetailCaptureSec = 20;
     config.calibrationDetailPulseLimit = 2000;
+    config.flowRateWindowSec = 5;
+    config.flowChartIntervalSec = 5;
+    config.flowChartHistoryMin = 10;
     return config;
 }
 
@@ -87,6 +94,9 @@ Irrigation::SystemConfig readStored() {
     config.calibrationMaxCaptureMin = static_cast<uint16_t>(readU32(kKeyCalibrationMaxCaptureMin, config.calibrationMaxCaptureMin));
     config.calibrationDetailCaptureSec = static_cast<uint16_t>(readU32(kKeyCalibrationDetailCaptureSec, config.calibrationDetailCaptureSec));
     config.calibrationDetailPulseLimit = static_cast<uint16_t>(readU32(kKeyCalibrationDetailPulseLimit, config.calibrationDetailPulseLimit));
+    config.flowRateWindowSec = static_cast<uint16_t>(readU32(kKeyFlowRateWindowSec, config.flowRateWindowSec));
+    config.flowChartIntervalSec = static_cast<uint16_t>(readU32(kKeyFlowChartIntervalSec, config.flowChartIntervalSec));
+    config.flowChartHistoryMin = static_cast<uint16_t>(readU32(kKeyFlowChartHistoryMin, config.flowChartHistoryMin));
     return SystemConfigStore::validate(config) ? config : defaults();
 }
 
@@ -173,6 +183,21 @@ bool validateAppConfigPage(char* error, size_t errorLen) {
         return false;
     }
     config.calibrationDetailPulseLimit = static_cast<uint16_t>(value);
+    if (!submittedInt(kKeyFlowRateWindowSec, &value)) {
+        strlcpy(error, "Flow rate display window is invalid.", errorLen);
+        return false;
+    }
+    config.flowRateWindowSec = static_cast<uint16_t>(value);
+    if (!submittedInt(kKeyFlowChartIntervalSec, &value)) {
+        strlcpy(error, "Flow chart interval is invalid.", errorLen);
+        return false;
+    }
+    config.flowChartIntervalSec = static_cast<uint16_t>(value);
+    if (!submittedInt(kKeyFlowChartHistoryMin, &value)) {
+        strlcpy(error, "Flow chart history is invalid.", errorLen);
+        return false;
+    }
+    config.flowChartHistoryMin = static_cast<uint16_t>(value);
     if (!SystemConfigStore::validate(config)) {
         strlcpy(error, "Manual duration and presets must be within the max watering duration.", errorLen);
         return false;
@@ -199,6 +224,7 @@ void registerAppConfig() {
     (void)Esp32BaseAppConfig::addGroup({kGroupSchedule, "计划调度"});
     (void)Esp32BaseAppConfig::addGroup({kGroupSafety, "安全保护"});
     (void)Esp32BaseAppConfig::addGroup({kGroupCalibration, "流量校准"});
+    (void)Esp32BaseAppConfig::addGroup({kGroupFlowRate, "流速显示"});
     const Irrigation::SystemConfig def = defaults();
     (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyMaxDurationMin, "单次最长分钟", static_cast<int32_t>(secondsToMinutes(def.maxWateringDurationSec)), 1, 1440, 1, "min", "限制手动和计划单次连续出水时长。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupSchedule, kNamespace, kKeyGrace, "调度宽限秒", def.scheduleGraceSec, 1, 60, 1, "s", "计划到点后允许补跑的秒数。", false, nullptr});
@@ -216,6 +242,9 @@ void registerAppConfig() {
     (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationMaxCaptureMin, "校准最长分钟", def.calibrationMaxCaptureMin, 1, 15, 1, "min", "单次校准出水最长允许时间，超过后样本无效并自动关阀。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationDetailCaptureSec, "明细采集秒", def.calibrationDetailCaptureSec, 5, 60, 1, "s", "保存原始脉冲时间差的最长时长，只用于启动阶段识别。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationDetailPulseLimit, "明细脉冲上限", def.calibrationDetailPulseLimit, 100, 5000, 100, nullptr, "保存原始脉冲时间差的最大条数，达到后仍继续统计总脉冲。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupFlowRate, kNamespace, kKeyFlowRateWindowSec, "流速窗口秒", def.flowRateWindowSec, 2, 30, 1, "s", "首页流速和历史最大/最小流速使用的滑动平均窗口。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupFlowRate, kNamespace, kKeyFlowChartIntervalSec, "图表间隔秒", def.flowChartIntervalSec, 1, 30, 1, "s", "首页流速图表保存点的间隔。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupFlowRate, kNamespace, kKeyFlowChartHistoryMin, "图表历史分钟", def.flowChartHistoryMin, 1, 30, 1, "min", "每路在 RAM 中保留的近期流速图表长度。", false, nullptr});
 #endif
 }
 
@@ -252,6 +281,10 @@ bool validate(const Irrigation::SystemConfig& config) {
             return false;
         }
     }
+    if (config.flowChartIntervalSec == 0) {
+        return false;
+    }
+    const uint32_t flowChartPoints = (static_cast<uint32_t>(config.flowChartHistoryMin) * 60UL) / config.flowChartIntervalSec;
     return config.idleLeakWindowSec >= 1 &&
            config.idleLeakWindowSec <= 300 &&
            config.idleLeakPulseThreshold >= 1 &&
@@ -263,7 +296,15 @@ bool validate(const Irrigation::SystemConfig& config) {
            config.calibrationDetailCaptureSec >= 5 &&
            config.calibrationDetailCaptureSec <= 60 &&
            config.calibrationDetailPulseLimit >= 100 &&
-           config.calibrationDetailPulseLimit <= 5000;
+           config.calibrationDetailPulseLimit <= 5000 &&
+           config.flowRateWindowSec >= 2 &&
+           config.flowRateWindowSec <= 30 &&
+           config.flowChartIntervalSec >= 1 &&
+           config.flowChartIntervalSec <= 30 &&
+           config.flowChartHistoryMin >= 1 &&
+           config.flowChartHistoryMin <= 30 &&
+           flowChartPoints >= 1 &&
+           flowChartPoints <= 360;
 }
 
 bool set(const Irrigation::SystemConfig& config) {
@@ -284,6 +325,9 @@ bool set(const Irrigation::SystemConfig& config) {
     ok = writeU32(kKeyCalibrationMaxCaptureMin, config.calibrationMaxCaptureMin) && ok;
     ok = writeU32(kKeyCalibrationDetailCaptureSec, config.calibrationDetailCaptureSec) && ok;
     ok = writeU32(kKeyCalibrationDetailPulseLimit, config.calibrationDetailPulseLimit) && ok;
+    ok = writeU32(kKeyFlowRateWindowSec, config.flowRateWindowSec) && ok;
+    ok = writeU32(kKeyFlowChartIntervalSec, config.flowChartIntervalSec) && ok;
+    ok = writeU32(kKeyFlowChartHistoryMin, config.flowChartHistoryMin) && ok;
     if (!ok) {
         return false;
     }

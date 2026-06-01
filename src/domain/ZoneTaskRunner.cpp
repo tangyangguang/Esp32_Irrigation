@@ -17,6 +17,7 @@ bool ZoneTaskRunner::start(Irrigation::TaskType type,
                            uint32_t pulseCount,
                            uint32_t epoch,
                            uint32_t nowMs,
+                           uint16_t flowRateWindowSec,
                            const Irrigation::ZoneConfig& config) {
     if (m_task.active || targetSec == 0) {
         return false;
@@ -34,6 +35,7 @@ bool ZoneTaskRunner::start(Irrigation::TaskType type,
     m_task.startedEpoch = epoch;
     m_task.startedUptimeMs = nowMs;
     m_task.startedPulseCount = pulseCount;
+    m_task.flowRateWindowSec = flowRateWindowSec;
     m_task.configSnapshot.flow.startupPulseLimit = config.flow.startupPulseLimit;
     m_task.configSnapshot.flow.startupEstimatedMl = config.flow.startupEstimatedMl;
     m_task.configSnapshot.flow.stablePulsePerLiter = config.flow.stablePulsePerLiter;
@@ -67,6 +69,39 @@ void ZoneTaskRunner::markPulse(uint32_t pulseCount, uint32_t nowMs) {
         m_runtime.lastPulseCount = pulseCount;
         m_runtime.lastPulseMs = nowMs;
         m_runtime.firstPulseSeen = true;
+    }
+}
+
+void ZoneTaskRunner::markRunningStarted(uint32_t nowMs) {
+    if (m_runtime.runningStartedMs == 0) {
+        m_runtime.runningStartedMs = nowMs;
+    }
+}
+
+void ZoneTaskRunner::updateFlowStats(uint32_t flowMlPerMin, bool flowRateReady, uint32_t nowMs) {
+    if (!m_task.active || m_runtime.runningStartedMs == 0 || !flowRateReady) {
+        return;
+    }
+    const uint32_t windowMs = static_cast<uint32_t>(m_task.flowRateWindowSec) * 1000UL;
+    if (nowMs - m_runtime.runningStartedMs < windowMs) {
+        return;
+    }
+    const uint32_t firstAtSec = nowMs >= m_task.startedUptimeMs ? (nowMs - m_task.startedUptimeMs) / 1000UL : 0;
+    if (!m_runtime.flowStatsValid) {
+        m_runtime.flowStatsValid = true;
+        m_runtime.maxFlowMlPerMin = flowMlPerMin;
+        m_runtime.maxFlowFirstAtSec = firstAtSec;
+        m_runtime.minFlowMlPerMin = flowMlPerMin;
+        m_runtime.minFlowFirstAtSec = firstAtSec;
+        return;
+    }
+    if (flowMlPerMin > m_runtime.maxFlowMlPerMin) {
+        m_runtime.maxFlowMlPerMin = flowMlPerMin;
+        m_runtime.maxFlowFirstAtSec = firstAtSec;
+    }
+    if (flowMlPerMin < m_runtime.minFlowMlPerMin) {
+        m_runtime.minFlowMlPerMin = flowMlPerMin;
+        m_runtime.minFlowFirstAtSec = firstAtSec;
     }
 }
 

@@ -14,12 +14,15 @@ public:
                uint32_t pulseCount,
                uint32_t epoch,
                uint32_t nowMs,
+               uint16_t flowRateWindowSec,
                const Irrigation::ZoneConfig& config);
     bool active() const;
     const Irrigation::ActiveTask& task() const;
     const Irrigation::TaskRuntime& runtime() const;
     const Irrigation::FinishedTask& finished() const;
     void markPulse(uint32_t pulseCount, uint32_t nowMs);
+    void markRunningStarted(uint32_t nowMs);
+    void updateFlowStats(uint32_t flowMlPerMin, bool flowRateReady, uint32_t nowMs);
     void finish(Irrigation::TaskResult result,
                 Irrigation::StopSource source,
                 Irrigation::StopScope scope,

@@ -35,6 +35,9 @@ void begin() {
     PlanStore::begin();
     ScheduleSkipStore::begin();
     FlowMeter::begin();
+    FlowMeter::configureFlowRate(SystemConfigStore::current().flowRateWindowSec,
+                                 SystemConfigStore::current().flowChartIntervalSec,
+                                 SystemConfigStore::current().flowChartHistoryMin);
     FlowCalibration::begin();
     ZoneManager::begin();
     SafetyManager::begin();
@@ -44,8 +47,10 @@ void begin() {
 }
 
 void handle() {
+    const Irrigation::SystemConfig& system = SystemConfigStore::current();
+    FlowMeter::configureFlowRate(system.flowRateWindowSec, system.flowChartIntervalSec, system.flowChartHistoryMin);
     FlowMeter::handle();
-    FlowCalibration::handle(SystemConfigStore::current());
+    FlowCalibration::handle(system);
     ZoneManager::handle();
     SafetyManager::handle();
     ValveController::handle();
