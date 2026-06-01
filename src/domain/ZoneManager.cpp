@@ -106,7 +106,7 @@ bool reloadZone(uint8_t zoneId) {
 }
 
 bool startManual(uint8_t zoneId, uint32_t durationSec, Irrigation::StartSource source) {
-    if (!Irrigation::validZoneId(zoneId) || ZoneErrorStore::leakAlertActive()) {
+    if (!Irrigation::validZoneId(zoneId) || ZoneErrorStore::leakAlertActive() || FlowCalibration::active()) {
         return false;
     }
     const Irrigation::SystemConfig& system = SystemConfigStore::current();
@@ -144,6 +144,7 @@ uint8_t stopAll(Irrigation::StopSource source, Irrigation::TaskResult result) {
             ++stopped;
         }
     }
+    (void)FlowCalibration::abort("stop_all");
     ValveController::allOff("zone manager stop all");
     return stopped;
 }

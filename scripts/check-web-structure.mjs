@@ -181,6 +181,8 @@ assert(!scheduler.includes('lastRunYmd'), 'scheduler should not use persistent l
 assert(!scheduler.includes('dueEpoch < m_eligibleFromEpoch'), 'scheduler must not silently skip plans still inside the grace window after boot/NTP sync');
 assert(scheduler.includes('MaintenanceService::factoryResetPending()') && scheduler.includes('SKIPPED_RESET'),
   'scheduler should skip plan starts while factory reset is pending');
+assert(scheduler.includes('FlowCalibration::active()') && scheduler.includes('SKIPPED_BUSY'),
+  'scheduler should skip plan starts while flow calibration is active');
 assert(read('src/domain/PlanExecutionTracker.h').includes('bool mark(') &&
        read('src/domain/PlanExecutionTracker.h').includes('retrySave') &&
        read('src/domain/PlanExecutionTracker.cpp').includes('m_dirty') &&
@@ -206,13 +208,13 @@ assert(records.includes('appendRecordMetaSaveFailed'),
        'watering record store should log metadata save failures after record writes');
 assert(records.includes('commitMagic') && records.includes('crc32') && records.includes('crc32Record'),
        'watering records should use a commit marker and CRC before recovery accepts a slot');
-assert(records.includes('LegacyWateringRecord') &&
-       records.includes('migrateLegacyStoreFile') &&
-       records.includes('recoverInterruptedMigration') &&
-       records.includes('kMigrationPath') &&
-       records.includes('kMigrationBackupPath') &&
-       records.includes('appendRecordStoreMigrated'),
-       'watering record store should migrate legacy 120-byte records and recover interrupted .mig/.bak migrations');
+assert(!records.includes('LegacyWateringRecord') &&
+       !records.includes('migrateLegacyStoreFile') &&
+       !records.includes('recoverInterruptedMigration') &&
+       !records.includes('kMigrationPath') &&
+       !records.includes('kMigrationBackupPath') &&
+       !records.includes('appendRecordStoreMigrated'),
+       'watering record store must not keep legacy format migration code');
 assert(read('src/domain/Zone.cpp').includes('appendRecordAppendFailed') &&
        !read('src/domain/Zone.cpp').includes('(void)RecordStore::append(record)'),
        'zone finish should not ignore watering record append failures');
@@ -230,7 +232,7 @@ assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_FIELDS=19'), 'App Config capaci
 assert(businessEvents.includes('Esp32BaseAppEventLog::append'), 'business events should write through Esp32BaseAppEventLog::append');
 assert(businessEvents.includes('schedule_skipped') && businessEvents.includes('flow_fault') && businessEvents.includes('leak_detected'), 'business event vocabulary should cover schedule, flow, and leak decisions');
 assert(businessEvents.includes('observedPulses') && businessEvents.includes('VALUE3'), 'leak events should record observed pulses, threshold, and detection window');
-assert(allSource.includes('Esp32BaseAppEventLog::clear'), 'business clear-records flow should clear Esp32Base App Events');
+assert(!allSource.includes('Esp32BaseAppEventLog::clear'), 'business layer should not clear Esp32Base App Events');
 
 assert(web.includes('/api/v1/zone/start') && web.includes('zoneId'), 'web API should use fixed endpoint plus zoneId parameter');
 assert(web.includes('/irrigation/calibration') && web.includes('handleCalibrationPage'), 'web should include a dedicated flow calibration page');
@@ -289,7 +291,6 @@ for (const name of [
   'handlePlanDisableApi',
   'handlePlanDeleteApi',
   'handlePlanUpdateApi',
-  'handleFactoryResetApi',
 ]) {
   assertPostGuard(name);
 }
@@ -328,6 +329,8 @@ assert(!web.includes('record.estimatedMilliliters);\n    Esp32BaseWeb::sendChunk
 assert(!web.includes('/api/v1/water/start'), 'old water start API should be removed');
 assert(!web.includes('road_id') && !web.includes('roadId'), 'external API should not expose road identifiers');
 assert(!web.includes('static_cast<uint32_t>(event.value'), 'event JSON must preserve signed int32 values');
+assert(!web.includes('handleFactoryResetApi') && !web.includes('/api/v1/maintenance/factory-reset'),
+       'business web must not expose a factory reset API');
 
 for (const marker of ["method='post'", 'method=\"post\"']) {
   let index = web.indexOf(marker);
@@ -349,6 +352,12 @@ assert(!allSource.includes('EventStore'), 'old application EventStore references
 assert(!zoneTypes.includes('enum class EventType') && !zoneTypes.includes('enum class EventSource'), 'old application event enums should be removed');
 assert(read('src/domain/SafetyManager.cpp').includes('kLocalButtonZoneMax = 2'),
        'local START/OK should be explicitly limited to locally controlled zone 1/2');
+assert(!read('src/domain/SafetyManager.cpp').includes('lock button not held') &&
+       read('src/domain/SafetyManager.cpp').includes('factory reset requested by gpio0 long press'),
+       'GPIO0 long press should be a single-button local maintenance trigger');
+assert(read('src/domain/ZoneManager.cpp').includes('FlowCalibration::active()') &&
+       read('src/domain/ZoneManager.cpp').includes('FlowCalibration::abort('),
+       'manual starts should reject active calibration and stop-all should clear calibration state');
 
 assert(pio.includes('-D ESP32BASE_PROFILE=ESP32BASE_PROFILE_FULL'), 'project should keep Esp32Base full profile');
 assert(calibrationDoc.includes('detailPulseDeltas') && calibrationDoc.includes('滑动窗口') && calibrationDoc.includes('stablePulsePerLiter'), 'flow calibration design doc should describe raw pulse detail and final parameters');

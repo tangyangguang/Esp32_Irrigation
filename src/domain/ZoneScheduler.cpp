@@ -5,6 +5,7 @@
 #include <time.h>
 
 #include "domain/BusinessEventLog.h"
+#include "domain/FlowCalibration.h"
 #include "domain/FlowMeter.h"
 #include "domain/MaintenanceService.h"
 #include "domain/Zone.h"
@@ -179,6 +180,8 @@ bool ZoneScheduler::observePlan(Zone& zone,
         status = Irrigation::PlanObservationStatus::SKIPPED_LEAK;
     } else if (MaintenanceService::factoryResetPending()) {
         status = Irrigation::PlanObservationStatus::SKIPPED_RESET;
+    } else if (FlowCalibration::active()) {
+        status = Irrigation::PlanObservationStatus::SKIPPED_BUSY;
     } else if (zone.isBusy()) {
         status = Irrigation::PlanObservationStatus::SKIPPED_BUSY;
     } else {

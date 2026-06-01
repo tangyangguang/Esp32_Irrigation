@@ -2931,22 +2931,6 @@ void handleEventsApi() {
     endJson();
 }
 
-void handleFactoryResetApi() {
-    if (!checkBusinessPost("irrigation.maintenance.factory_reset")) {
-        return;
-    }
-    bool clearRecords = false;
-    if (Esp32BaseWeb::hasParam("clearRecords") && !readBool("clearRecords", &clearRecords)) {
-        sendError(400, "invalid_clear_records");
-        return;
-    }
-    if (!MaintenanceService::requestFactoryReset(clearRecords)) {
-        sendError(409, "factory_reset_pending");
-        return;
-    }
-    redirectOrOk("/index");
-}
-
 }
 
 namespace IrrigationWeb {
@@ -2987,8 +2971,7 @@ void begin() {
     const bool unskipOk = Esp32BaseWeb::addRoute("/api/v1/schedule/unskip", Esp32BaseWeb::METHOD_POST, handleScheduleUnskipApi);
     const bool recordsOk = Esp32BaseWeb::addRoute("/api/v1/records", Esp32BaseWeb::METHOD_GET, handleRecordsApi);
     const bool eventsOk = Esp32BaseWeb::addRoute("/api/v1/events", Esp32BaseWeb::METHOD_GET, handleEventsApi);
-    const bool factoryOk = Esp32BaseWeb::addRoute("/api/v1/maintenance/factory-reset", Esp32BaseWeb::METHOD_POST, handleFactoryResetApi);
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s flowHistory=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s factory=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s flowHistory=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
                     settingsOk ? "ok" : "fail",
@@ -3024,7 +3007,6 @@ void begin() {
                     unskipOk ? "ok" : "fail",
                     recordsOk ? "ok" : "fail",
                     eventsOk ? "ok" : "fail",
-                    factoryOk ? "ok" : "fail",
                     IrrigationVersion::FirmwareVersion);
 }
 

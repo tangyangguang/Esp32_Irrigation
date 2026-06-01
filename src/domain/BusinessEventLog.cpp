@@ -198,20 +198,6 @@ void appendRecordStoreRecovered(uint16_t count, uint32_t nextId) {
                       "watering record metadata rebuilt from file");
 }
 
-void appendRecordStoreMigrated(uint16_t count, uint32_t oldRecordSize, uint32_t newRecordSize) {
-    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_WARN,
-                      "storage",
-                      "record_store_recovered",
-                      "file_migrated",
-                      kObjectSystem,
-                      count,
-                      count,
-                      static_cast<int32_t>(oldRecordSize),
-                      static_cast<int32_t>(newRecordSize),
-                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
-                      "watering record file migrated");
-}
-
 void appendRecordMetaSaveFailed(uint32_t recordId, uint16_t slot) {
     (void)appendEvent(Esp32BaseAppEventLog::LEVEL_ERROR,
                       "storage",
@@ -349,28 +335,28 @@ void appendAlertCleared(uint8_t zoneId, bool allZones, const char* source) {
                       allZones ? "all alerts cleared" : "zone alert cleared");
 }
 
-void appendFactoryResetRequested(bool clearRecords, const char* source) {
+void appendFactoryResetRequested(const char* source) {
     (void)appendEvent(Esp32BaseAppEventLog::LEVEL_WARN,
                       source && source[0] ? source : "runtime",
                       "factory_reset",
                       "requested",
                       kObjectSystem,
-                      clearRecords ? 1 : 0,
-                      clearRecords ? 1 : 0,
                       0,
                       0,
-                      Esp32BaseAppEventLog::VALUE1,
+                      0,
+                      0,
+                      0,
                       "factory reset requested");
 }
 
-void appendFactoryResetExecuted(bool ok, bool clearRecords, const char* source) {
+void appendFactoryResetExecuted(bool ok, const char* source) {
     (void)appendEvent(ok ? Esp32BaseAppEventLog::LEVEL_INFO : Esp32BaseAppEventLog::LEVEL_ERROR,
                       source && source[0] ? source : "runtime",
                       "factory_reset",
                       ok ? "executed" : "failed",
                       kObjectSystem,
                       ok ? 1 : 0,
-                      clearRecords ? 1 : 0,
+                      ok ? 1 : 0,
                       0,
                       0,
                       Esp32BaseAppEventLog::VALUE1,

@@ -9,7 +9,6 @@
 #include "domain/ValveController.h"
 #include "domain/ZoneManager.h"
 #include "storage/PlanStore.h"
-#include "storage/RecordStore.h"
 #include "storage/ScheduleSkipStore.h"
 #include "storage/SystemConfigStore.h"
 #include "storage/ZoneConfigStore.h"
@@ -18,7 +17,6 @@
 namespace {
 
 bool g_pending = false;
-bool g_clearRecords = false;
 uint32_t g_requestedMs = 0;
 const char* g_requestSource = "runtime";
 static constexpr uint32_t kFactoryResetResponseDelayMs = 750UL;
@@ -29,7 +27,6 @@ namespace MaintenanceService {
 
 void begin() {
     g_pending = false;
-    g_clearRecords = false;
     g_requestedMs = 0;
     g_requestSource = "runtime";
 }
@@ -37,10 +34,9 @@ void begin() {
 void handle() {
     if (!g_pending && SafetyManager::factoryResetRequested()) {
         g_pending = true;
-        g_clearRecords = false;
         g_requestedMs = millis();
         g_requestSource = "button";
-        BusinessEventLog::appendFactoryResetRequested(false, g_requestSource);
+        BusinessEventLog::appendFactoryResetRequested(g_requestSource);
         ESP32BASE_LOG_W("maintenance", "factory reset requested by button");
     }
     if (!g_pending || millis() - g_requestedMs < kFactoryResetResponseDelayMs) {
@@ -56,47 +52,23 @@ void handle() {
     const bool plansOk = PlanStore::clear();
     const bool planExecOk = PlanExecutionTracker::clearPersistent();
     const bool skipsOk = ScheduleSkipStore::clear();
-    const bool recordsOk = !g_clearRecords || RecordStore::clear();
-    const bool eventsOk = !g_clearRecords || Esp32BaseAppEventLog::clear();
-    if (!g_clearRecords) {
-        BusinessEventLog::appendFactoryResetExecuted(systemOk && zonesOk && errorsOk && plansOk && planExecOk && skipsOk && recordsOk && eventsOk,
-                                                     false,
-                                                     g_requestSource);
-    }
+    BusinessEventLog::appendFactoryResetExecuted(systemOk && zonesOk && errorsOk && plansOk && planExecOk && skipsOk,
+                                                 g_requestSource);
     SafetyManager::clearFactoryResetRequest();
 
-    ESP32BASE_LOG_W("maintenance", "factory reset system=%s zones=%s errors=%s plans=%s planExec=%s skips=%s records=%s events=%s clearRecords=%s",
+    ESP32BASE_LOG_W("maintenance", "factory reset system=%s zones=%s errors=%s plans=%s planExec=%s skips=%s",
                     systemOk ? "ok" : "fail",
                     zonesOk ? "ok" : "fail",
                     errorsOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
                     planExecOk ? "ok" : "fail",
-                    skipsOk ? "ok" : "fail",
-                    recordsOk ? "ok" : "fail",
-                    eventsOk ? "ok" : "fail",
-                    g_clearRecords ? "yes" : "no");
+                    skipsOk ? "ok" : "fail");
     Esp32BaseConfig::flushAll();
     Esp32BaseSystem::restart("irrigation factory reset");
 }
 
-bool requestFactoryReset(bool clearRecords) {
-    if (g_pending) {
-        return false;
-    }
-    g_pending = true;
-    g_clearRecords = clearRecords;
-    g_requestedMs = millis();
-    g_requestSource = "web";
-    BusinessEventLog::appendFactoryResetRequested(clearRecords, g_requestSource);
-    return true;
-}
-
 bool factoryResetPending() {
     return g_pending;
-}
-
-bool factoryResetClearRecords() {
-    return g_clearRecords;
 }
 
 }

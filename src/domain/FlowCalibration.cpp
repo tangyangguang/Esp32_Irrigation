@@ -548,6 +548,23 @@ bool stop() {
     return g_state == State::WAITING_ACTUAL;
 }
 
+bool abort(const char* reason) {
+    if (g_state == State::IDLE) {
+        return false;
+    }
+    const char* abortReason = reason && reason[0] ? reason : "aborted";
+    if (g_state == State::CAPTURING) {
+        finishCapture(false, abortReason);
+    } else {
+        (void)ValveController::off(g_activeZoneId, "flow calibration abort");
+        freeSampleData(&g_pending);
+        releaseActiveWindow();
+        g_state = State::IDLE;
+    }
+    setError(abortReason);
+    return true;
+}
+
 bool submitActualMilliliters(uint32_t actualMl) {
     if (g_state != State::WAITING_ACTUAL) {
         setError("not_waiting_actual");

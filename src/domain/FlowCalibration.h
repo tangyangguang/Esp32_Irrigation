@@ -66,6 +66,7 @@ uint8_t activeZoneId();
 const char* lastError();
 bool start(uint8_t zoneId, const Irrigation::SystemConfig& config);
 bool stop();
+bool abort(const char* reason);
 bool submitActualMilliliters(uint32_t actualMl);
 bool updateActualMilliliters(uint8_t sampleIndex, uint32_t actualMl);
 bool clear();

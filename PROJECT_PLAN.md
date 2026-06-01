@@ -11,7 +11,7 @@
 ## 2. 当前真实路由
 
 - `/`：由基础库跳转到业务首页。
-- `/index`：业务首页，包含 4 路状态、手动启动、停止和告警入口。
+- `/index`：业务首页，包含已启用水路状态、手动启动、停止和告警入口；停用水路隐藏。
 - `/irrigation/plans`：计划配置列表。
 - `/irrigation/plan?planId=<id>`：单条计划编辑。
 - `/irrigation/zones`：水路管理。
@@ -61,6 +61,7 @@ src/
 - 单次跳过 API 按 `planId + ymd` 管理；近期计划 Web 视图尚未实现，不作为当前验收承诺。
 - 业务 POST 统一通过 `Esp32BaseWeb::checkPostAllowed()` 做认证、POST 方法和同源校验。
 - 恢复出厂 pending 期间拒绝启动、配置保存、清告警、计划保存、跳过、校准写入等非停止类写操作；停止单路和停止全部仍允许。
+- 流量校准期间拒绝普通手动/计划启动；停止全部会中止校准并关阀。
 - 浇水记录使用业务 `RecordStore`，启动时会扫描定长记录文件重建 `head/count/nextId`；业务事件使用 `Esp32BaseAppEventLog`。
 - `ZoneConfigStore`、`PlanStore` 持久化结构版本不匹配时会记录业务事件，并在首页提示配置已重置。
 - `Esp32BaseAppConfig` 已接入系统级业务参数；水路和计划仍由业务页面管理。

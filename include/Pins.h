@@ -24,8 +24,8 @@ static constexpr uint8_t LockButton = 33;
 static constexpr uint8_t Road1UpButton = 18;
 static constexpr uint8_t Road2DownButton = 19;
 // GPIO0 is also the ESP32 boot strap pin and is often driven by USB serial
-// auto-program circuits. Factory reset must require LockButton + GPIO0 long
-// press after firmware is running, so serial monitor/reset cannot trigger it.
+// auto-program circuits. Factory reset only reacts to a long press after
+// firmware is running; holding GPIO0 during reset still enters download mode.
 static constexpr uint8_t FactoryResetButton = 0;
 
 static constexpr uint8_t Flow1 = 32;

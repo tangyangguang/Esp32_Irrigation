@@ -18,7 +18,6 @@ void appendPlanTrackerPersistFailed(uint8_t zoneId,
                                     uint32_t planId,
                                     Irrigation::PlanObservationStatus status);
 void appendRecordStoreRecovered(uint16_t count, uint32_t nextId);
-void appendRecordStoreMigrated(uint16_t count, uint32_t oldRecordSize, uint32_t newRecordSize);
 void appendRecordMetaSaveFailed(uint32_t recordId, uint16_t slot);
 void appendRecordAppendFailed(uint8_t zoneId, uint32_t planId, Irrigation::TaskResult result);
 void appendConfigSchemaReset(const char* store, uint16_t invalidCount);
@@ -34,8 +33,8 @@ void appendLeakDetected(uint8_t zoneId,
                         uint16_t windowSec);
 void appendZoneLocked(uint8_t zoneId, Irrigation::ZoneErrorCode code, Irrigation::TaskResult result);
 void appendAlertCleared(uint8_t zoneId, bool allZones, const char* source);
-void appendFactoryResetRequested(bool clearRecords, const char* source);
-void appendFactoryResetExecuted(bool ok, bool clearRecords, const char* source);
+void appendFactoryResetRequested(const char* source);
+void appendFactoryResetExecuted(bool ok, const char* source);
 void appendFlowCandidateApplied(uint8_t zoneId,
                                 const Irrigation::FlowParameters& oldParams,
                                 const Irrigation::FlowParameters& newParams,
