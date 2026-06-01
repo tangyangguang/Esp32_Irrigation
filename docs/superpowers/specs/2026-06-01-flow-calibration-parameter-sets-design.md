@@ -44,6 +44,8 @@ optional previous parameter set
 
 Candidate and previous parameter sets are persistent. They survive reboot and power loss.
 
+The persistent storage boundary should be one complete per-zone calibration-parameter record, not scattered independent keys. That record contains the current parameter set, optional candidate slot, optional previous slot, and candidate source. This keeps apply and restore operations from leaving a partially updated state such as current values saved without the matching previous values.
+
 Candidate parameters default to unset. The page must display an unset candidate as "no candidate parameters" rather than silently mirroring the current values.
 
 Previous parameters default to unset. The restore action is hidden or disabled until the zone has a previous parameter set.
@@ -73,11 +75,20 @@ For the target zone:
 2. Require the target zone to be idle.
 3. Save the current parameter set as previous parameters.
 4. Copy the candidate parameter set into current parameters.
-5. Keep the candidate parameter set and mark or display that it matches the current values.
+5. Keep the candidate parameter set.
 6. Reload the zone runtime configuration.
 ```
 
 Keeping the candidate after apply preserves the calibration context and avoids hiding the values the user just activated.
+
+The system should not persist a separate "applied" flag. The page derives candidate state by comparing the candidate's three parameter values with the current values:
+
+```text
+candidate equals current     display as "matches current"
+candidate differs from current display as "pending apply"
+```
+
+This avoids stale state after restore operations.
 
 ## Restore Flow
 
@@ -102,7 +113,7 @@ target: this zone's candidate parameters
 
 The system must not copy another zone's candidate parameters. It must not directly overwrite the target zone's current parameters.
 
-Copying from the same zone's current parameters is not the cross-zone copy action. If the user wants to edit from the current values, the page should provide a separate "initialize candidate from this zone's current parameters" action that writes only to the candidate set.
+Copying from the same zone's current parameters is not allowed as a copy action. If the user wants to edit from the current values, the manual candidate form may be prefilled from this zone's current values, but a candidate is created only after the user explicitly saves the manual candidate.
 
 ## Calibration Samples
 
@@ -110,7 +121,7 @@ Calibration samples remain a temporary working area. Computing calibration outpu
 
 After candidate generation, the candidate is independent from the sample list. Clearing samples does not clear candidate parameters.
 
-Samples from multiple zones must not be mixed in one computation. If the saved sample set contains multiple zone IDs, computation must fail with a clear error rather than silently choosing a subset.
+Samples from multiple zones must not be mixed in one computation. The UI and API should prevent mixing early: once the sample work area contains samples for one zone, starting calibration for another zone is rejected until samples are cleared. If mixed-zone samples are ever present because of an older state or unexpected path, computation must fail with a clear error rather than silently choosing a subset.
 
 The existing wording "recommended parameters" should be replaced in the user experience with "candidate parameters". "Recommended" may remain only as explanatory text for a candidate source, not as a separate concept.
 
@@ -146,7 +157,7 @@ candidate applied
 previous parameters restored
 ```
 
-Each event includes the zone ID and the three resulting current parameter values.
+Each event includes the zone ID, the old three-parameter current values, and the new three-parameter current values. Applying a candidate also includes the candidate source.
 
 Candidate edits and copy operations do not need business event entries unless later requirements call for detailed audit logs.
 
@@ -161,7 +172,8 @@ Implementation validation should cover:
 - Restore swaps current and previous parameters.
 - Apply and restore are rejected when the target zone is running.
 - Cross-zone copy only accepts another zone's current parameters and writes the target candidate.
-- Mixed-zone calibration samples are rejected.
+- Starting calibration for a different zone is rejected while samples for another zone exist.
+- Mixed-zone calibration samples are rejected defensively if they ever exist.
 - Clearing samples does not clear candidate parameters.
 - PlatformIO build passes.
 
