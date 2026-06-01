@@ -260,9 +260,12 @@ assert(!allSource.includes('Esp32BaseAppEventLog::clear'), 'business layer shoul
 assert(web.includes('/api/v1/zone/start') && web.includes('zoneId'), 'web API should use fixed endpoint plus zoneId parameter');
 assert(web.includes('/irrigation/calibration') && web.includes('handleCalibrationPage'), 'web should include a dedicated flow calibration page');
 assert(web.includes('/api/v1/calibration/start') && web.includes('/api/v1/calibration/apply'), 'web API should include flow calibration lifecycle endpoints');
+assert(web.includes('/api/v1/calibration/status') && web.includes('handleCalibrationStatusApi'), 'web API should include a read-only calibration status endpoint');
 assert(web.includes('/api/v1/calibration/candidate') && !web.includes('/api/v1/calibration/candidate/manual'), 'candidate save API should not encode source type in the route');
 assert(web.includes('calibration-metrics') && web.includes('calibration-workflow') && web.includes('calibration-internal'), 'calibration page should use compact configuration and guided collection sections');
-assert(web.includes('calibration-zone-grid') && web.includes('calibration-param-card') && web.includes('设为当前'), 'calibration page should show per-zone parameter cards with set-current actions');
+assert(web.includes('calibration-zone-list') && web.includes('calibration-zone-row') && web.includes('设为当前'), 'calibration page should show one parameter row per zone with set-current actions');
+assert(web.includes('calibrationProgressStart') && web.includes('/api/v1/calibration/status') && web.includes('setInterval(calibrationProgressUpdate,1000)'),
+       'calibration page should refresh collection progress from the status API every second');
 assert(web.includes('calibrationCandidateFill') && web.includes('从其他水路填入') && web.includes('填入表单'), 'candidate editor should support copy-as-input inside the candidate form');
 assert(!web.includes('来源：') && !web.includes('flowCandidateSourceLabel') && !web.includes('/api/v1/calibration/candidate/copy-current'), 'calibration page should not expose or persist candidate source tracking');
 assert(web.includes('chart-grid') && web.includes('chart-tick') && web.includes('chart-axis-title'), 'calibration sample charts should render grid lines, dense tick labels, and axis titles');
@@ -390,5 +393,6 @@ assert(read('src/domain/ZoneManager.cpp').includes('FlowCalibration::active()') 
        'manual starts should reject active calibration and stop-all should clear calibration state');
 
 assert(pio.includes('-D ESP32BASE_PROFILE=ESP32BASE_PROFILE_FULL'), 'project should keep Esp32Base full profile');
+assert(pio.includes('-D ESP32BASE_WEB_MAX_ROUTES=42'), 'web route capacity should include calibration status API');
 assert(calibrationDoc.includes('detailPulseDeltas') && calibrationDoc.includes('滑动窗口') && calibrationDoc.includes('stablePulsePerLiter'), 'flow calibration design doc should describe raw pulse detail and final parameters');
 assert(roadReadme.includes('04-flow-calibration.md'), 'road management docs index should link the flow calibration design');
