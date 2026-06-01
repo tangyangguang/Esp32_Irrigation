@@ -50,9 +50,7 @@ struct Recommendation {
     uint8_t zoneId;
     uint8_t sampleCount;
     uint8_t stableDetectedCount;
-    uint16_t startupPulseLimit;
-    uint16_t startupEstimatedMl;
-    uint16_t stablePulsePerLiter;
+    Irrigation::FlowParameters flow;
     uint16_t volumeSpanPermille;
     uint16_t pulseSpanPermille;
     uint16_t averageErrorPermille;
@@ -78,6 +76,6 @@ uint16_t samplePulseDelta(uint8_t sampleIndex, uint16_t pulseIndex);
 uint16_t sampleWindowPulse(uint8_t sampleIndex, uint16_t pointIndex);
 bool computeRecommendation(Recommendation* out);
 const Recommendation& recommendation();
-bool applyRecommendation();
+bool saveCandidate();
 
 }

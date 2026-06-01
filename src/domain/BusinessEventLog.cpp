@@ -89,6 +89,10 @@ const char* reasonForZoneError(Irrigation::ZoneErrorCode code) {
     }
 }
 
+int32_t packU16(uint16_t high, uint16_t low) {
+    return static_cast<int32_t>((static_cast<uint32_t>(high) << 16) | static_cast<uint32_t>(low));
+}
+
 }
 
 namespace BusinessEventLog {
@@ -279,6 +283,44 @@ void appendFactoryResetExecuted(bool ok, bool clearRecords, const char* source) 
                       0,
                       Esp32BaseAppEventLog::VALUE1,
                       "factory reset executed");
+}
+
+void appendFlowCandidateApplied(uint8_t zoneId,
+                                const Irrigation::FlowParameters& oldParams,
+                                const Irrigation::FlowParameters& newParams,
+                                const char* source) {
+    char object[16];
+    zoneObject(zoneId, object, sizeof(object));
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
+                      source && source[0] ? source : "web",
+                      "flow_params_applied",
+                      "candidate",
+                      object,
+                      0,
+                      packU16(oldParams.startupPulseLimit, oldParams.startupEstimatedMl),
+                      packU16(newParams.startupPulseLimit, newParams.startupEstimatedMl),
+                      packU16(oldParams.stablePulsePerLiter, newParams.stablePulsePerLiter),
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
+                      "candidate applied");
+}
+
+void appendFlowPreviousRestored(uint8_t zoneId,
+                                const Irrigation::FlowParameters& oldParams,
+                                const Irrigation::FlowParameters& newParams,
+                                const char* source) {
+    char object[16];
+    zoneObject(zoneId, object, sizeof(object));
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
+                      source && source[0] ? source : "web",
+                      "flow_params_restored",
+                      "previous",
+                      object,
+                      0,
+                      packU16(oldParams.startupPulseLimit, oldParams.startupEstimatedMl),
+                      packU16(newParams.startupPulseLimit, newParams.startupEstimatedMl),
+                      packU16(oldParams.stablePulsePerLiter, newParams.stablePulsePerLiter),
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
+                      "previous restored");
 }
 
 }

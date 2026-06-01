@@ -34,9 +34,9 @@ bool ZoneTaskRunner::start(Irrigation::TaskType type,
     m_task.startedEpoch = epoch;
     m_task.startedUptimeMs = nowMs;
     m_task.startedPulseCount = pulseCount;
-    m_task.configSnapshot.startupPulseLimit = config.startupPulseLimit;
-    m_task.configSnapshot.startupEstimatedMl = config.startupEstimatedMl;
-    m_task.configSnapshot.stablePulsePerLiter = config.stablePulsePerLiter;
+    m_task.configSnapshot.flow.startupPulseLimit = config.flow.startupPulseLimit;
+    m_task.configSnapshot.flow.startupEstimatedMl = config.flow.startupEstimatedMl;
+    m_task.configSnapshot.flow.stablePulsePerLiter = config.flow.stablePulsePerLiter;
     m_task.configSnapshot.startTimeoutSec = config.startTimeoutSec;
     m_task.configSnapshot.flowNoPulseTimeoutSec = config.flowNoPulseTimeoutSec;
     m_task.configSnapshot.suppressError = config.suppressError;

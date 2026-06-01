@@ -28,6 +28,14 @@ void appendZoneLocked(uint8_t zoneId, Irrigation::ZoneErrorCode code, Irrigation
 void appendAlertCleared(uint8_t zoneId, bool allZones, const char* source);
 void appendFactoryResetRequested(bool clearRecords, const char* source);
 void appendFactoryResetExecuted(bool ok, bool clearRecords, const char* source);
+void appendFlowCandidateApplied(uint8_t zoneId,
+                                const Irrigation::FlowParameters& oldParams,
+                                const Irrigation::FlowParameters& newParams,
+                                const char* source);
+void appendFlowPreviousRestored(uint8_t zoneId,
+                                const Irrigation::FlowParameters& oldParams,
+                                const Irrigation::FlowParameters& newParams,
+                                const char* source);
 
 const char* sourceFromStart(Irrigation::StartSource source);
 const char* sourceFromStop(Irrigation::StopSource source);
