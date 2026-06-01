@@ -76,6 +76,6 @@ uint16_t samplePulseDelta(uint8_t sampleIndex, uint16_t pulseIndex);
 uint16_t sampleWindowPulse(uint8_t sampleIndex, uint16_t pointIndex);
 bool computeRecommendation(Recommendation* out);
 const Recommendation& recommendation();
-bool applyRecommendation();
+bool saveCandidate();
 
 }

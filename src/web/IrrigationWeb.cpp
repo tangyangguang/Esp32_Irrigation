@@ -2234,7 +2234,7 @@ void handleCalibrationApplyApi() {
         sendMethodNotAllowed("POST");
         return;
     }
-    if (!FlowCalibration::applyRecommendation()) {
+    if (!FlowCalibration::saveCandidate()) {
         sendError(409, FlowCalibration::lastError());
         return;
     }

@@ -52,6 +52,15 @@ bool sampleSlotAvailable() {
     return g_sampleCount < FlowCalibration::MaxSamples && g_sampleCount < g_sampleCapacity;
 }
 
+bool sampleWorkAreaMatches(uint8_t zoneId) {
+    for (uint8_t i = 0; i < g_sampleCount; ++i) {
+        if (g_samples[i].exists && g_samples[i].zoneId != zoneId) {
+            return false;
+        }
+    }
+    return true;
+}
+
 uint8_t clampSampleCapacity(uint8_t value) {
     if (value < 2) {
         return 2;
@@ -495,6 +504,10 @@ bool start(uint8_t zoneId, const Irrigation::SystemConfig& config) {
         setError("zone_busy");
         return false;
     }
+    if (!sampleWorkAreaMatches(zoneId)) {
+        setError("sample_zone_mismatch");
+        return false;
+    }
     g_sampleCapacity = clampSampleCapacity(config.calibrationSampleTarget);
     if (!sampleSlotAvailable()) {
         setError("sample_full");
@@ -645,6 +658,12 @@ bool computeRecommendation(Recommendation* out) {
         setError("no_valid_samples");
         return false;
     }
+    for (uint8_t i = 0; i < g_sampleCount; ++i) {
+        if (g_samples[i].exists && g_samples[i].zoneId != samples[0]->zoneId) {
+            setError("sample_zone_mismatch");
+            return false;
+        }
+    }
     Recommendation best = {};
     double bestScore = 999999999.0;
     const uint16_t median = medianDetectedStartup();
@@ -688,20 +707,15 @@ const Recommendation& recommendation() {
     return g_recommendation;
 }
 
-bool applyRecommendation() {
+bool saveCandidate() {
     if (!g_recommendation.valid || !Irrigation::validZoneId(g_recommendation.zoneId)) {
         setError("no_recommendation");
         return false;
     }
-    Irrigation::ZoneConfig config = ZoneConfigStore::get(g_recommendation.zoneId);
-    config.flow.startupPulseLimit = g_recommendation.flow.startupPulseLimit;
-    config.flow.startupEstimatedMl = g_recommendation.flow.startupEstimatedMl;
-    config.flow.stablePulsePerLiter = g_recommendation.flow.stablePulsePerLiter;
-    if (!ZoneConfigStore::set(g_recommendation.zoneId, config)) {
+    if (!ZoneConfigStore::saveCalibrationCandidate(g_recommendation.zoneId, g_recommendation.flow)) {
         setError("save_failed");
         return false;
     }
-    (void)ZoneManager::reloadZone(g_recommendation.zoneId);
     setError("");
     return true;
 }
