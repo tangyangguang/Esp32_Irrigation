@@ -30,7 +30,7 @@ private:
                      uint32_t dueEpoch,
                      uint32_t trustedEpoch,
                      uint32_t nowMs);
-    void markObserved(const Irrigation::PlanDefinition& plan,
+    bool markObserved(const Irrigation::PlanDefinition& plan,
                       uint32_t ymd,
                       uint16_t minuteOfDay,
                       Irrigation::PlanObservationStatus status);

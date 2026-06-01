@@ -166,6 +166,52 @@ void appendScheduleSkipDecision(uint32_t planId,
                       skipped ? "schedule skip saved" : "schedule skip removed");
 }
 
+void appendPlanTrackerPersistFailed(uint8_t zoneId,
+                                    uint32_t planId,
+                                    Irrigation::PlanObservationStatus status) {
+    char object[24];
+    planObject(planId, object, sizeof(object));
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_ERROR,
+                      "schedule",
+                      "schedule_tracker_fault",
+                      "persist_failed",
+                      object,
+                      static_cast<uint16_t>(status),
+                      static_cast<int32_t>(zoneId),
+                      static_cast<int32_t>(planId),
+                      0,
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2,
+                      "plan execution tracker persistence failed");
+}
+
+void appendRecordStoreRecovered(uint16_t count, uint32_t nextId) {
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_WARN,
+                      "storage",
+                      "record_store_recovered",
+                      "meta_rebuilt",
+                      kObjectSystem,
+                      count,
+                      count,
+                      static_cast<int32_t>(nextId),
+                      0,
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2,
+                      "watering record metadata rebuilt from file");
+}
+
+void appendRecordMetaSaveFailed(uint32_t recordId, uint16_t slot) {
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_ERROR,
+                      "storage",
+                      "record_store_fault",
+                      "meta_save_failed",
+                      kObjectSystem,
+                      slot,
+                      static_cast<int32_t>(recordId),
+                      slot,
+                      0,
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2,
+                      "watering record metadata save failed");
+}
+
 void appendFlowFault(uint8_t zoneId,
                      Irrigation::TaskResult result,
                      uint32_t targetSec,

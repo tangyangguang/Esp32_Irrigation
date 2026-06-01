@@ -178,8 +178,14 @@ assert(skips.includes('uint32_t planId'), 'schedule skip should be keyed by plan
 assert(scheduler.includes('eligibleFromEpoch'), 'scheduler should gate plans by first trusted time');
 assert(scheduler.includes('scheduleGraceSec'), 'scheduler should use schedule grace seconds');
 assert(!scheduler.includes('lastRunYmd'), 'scheduler should not use persistent lastRunYmd');
+assert(!scheduler.includes('dueEpoch < m_eligibleFromEpoch'), 'scheduler must not silently skip plans still inside the grace window after boot/NTP sync');
 assert(scheduler.includes('MaintenanceService::factoryResetPending()') && scheduler.includes('SKIPPED_RESET'),
   'scheduler should skip plan starts while factory reset is pending');
+assert(read('src/domain/PlanExecutionTracker.h').includes('bool mark(') &&
+       !read('src/domain/PlanExecutionTracker.cpp').includes('(void)save()'),
+       'plan execution tracker persistence failures must be returned to callers');
+assert(scheduler.includes('appendPlanTrackerPersistFailed'),
+       'scheduler should log when plan execution tracker persistence fails');
 
 assert(records.includes('planNameSnapshot') && records.includes('startedEpoch') && records.includes('startedUptimeMs'), 'records should be self-contained with plan name, epoch, and uptime');
 assert(records.includes('flowStatsValid') && records.includes('maxFlowMlPerMin') && records.includes('maxFlowFirstAtSec') && records.includes('minFlowMlPerMin') && records.includes('minFlowFirstAtSec'), 'watering records should persist max/min flow and first occurrence times');
@@ -188,6 +194,10 @@ assert(records.includes('configSnapshot') && zoneTypes.includes('startTimeoutSec
 assert(records.includes('configSnapshot') && zoneTypes.includes('startupPulseLimit') && zoneTypes.includes('startupEstimatedMl') && zoneTypes.includes('stablePulsePerLiter'), 'records should snapshot two-stage flow estimation fields');
 assert(records.includes('createFixedFile'), 'fixed-capacity watering record store should use Esp32BaseFs::createFixedFile');
 assert(!records.includes('calloc'), 'fixed-capacity watering record store should not allocate full files on heap');
+assert(records.includes('recoverMetaFromRecords') && records.includes('appendRecordStoreRecovered'),
+       'watering record store should recover metadata from committed records on boot');
+assert(records.includes('appendRecordMetaSaveFailed'),
+       'watering record store should log metadata save failures after record writes');
 
 assert(pio.includes('-D ESP32BASE_ENABLE_APP_EVENTS=1'), 'project should enable Esp32Base App Events');
 assert(pio.includes('-D ESP32BASE_APP_EVENT_LOG_CAPACITY=256'), 'project should set a scoped App Events capacity');

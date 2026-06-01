@@ -79,9 +79,11 @@ ScheduleSkip
 ├── isSkipped(planId, ymd) → bool
 ├── skip(planId, ymd, reason)
 ├── unskip(planId, ymd)
-├── unskipZone(zoneId, ymd)           // 批量：取消某天该 Zone 所有计划的跳过
-├── getEntries(zoneId, fromYmd, toYmd) → SkipEntry[]  // 日历视图数据
-└── pruneBefore(ymd)                  // 清理过期条目
+│
+└── 后续目标：
+    ├── unskipZone(zoneId, ymd)           // 批量：取消某天该 Zone 所有计划的跳过
+    ├── getEntries(zoneId, fromYmd, toYmd) → SkipEntry[]  // 日历视图数据
+    └── pruneBefore(ymd)                  // 清理过期条目
 ```
 
 **当前容量**：固定 128 条。写放大和过期清理仍是后续优化项；当前不承诺自动清理过期项。
@@ -107,6 +109,8 @@ Zone 1 有三个计划：
 ## 四、Plan Execution Tracker（执行跟踪）
 
 防止同一个计划在同一分钟重复触发。当前实现按水路持久化当天处理状态，重启后仍能识别已处理的 `planId + ymd + minuteOfDay`，避免计划窗口附近掉电导致重复执行或丢失已观察结果。恢复出厂会清空该 namespace。
+
+调度器不再因为 `dueEpoch` 早于本次启动后的首次可信时间就静默跳过计划；如果当前时间仍在 `scheduleGraceSec` 宽限期内，会继续按正常规则评估并启动或记录跳过原因；如果已经超过宽限期，会记录 `MISSED`。
 
 ```
 PlanExecutionTracker（每 Zone 一个实例）
@@ -176,13 +180,7 @@ ZoneScheduler
 │           ├── 成功 → tracker.mark(STARTED)
 │           └── 失败 → tracker.mark(REJECTED)
 │
-├── skipPlan(planId, ymd, reason)       // 委托给 ScheduleSkip
-├── unskipPlan(planId, ymd)
-├── getTodayResults() → PlanDayState[]
-├── getPlan(planSlot) → PlanDefinition
-├── setPlan(planSlot, PlanDefinition)
-├── count() → uint8_t
-└── hasFreeSlot() → bool
+└── 当前不提供独立管理 API；计划配置由 PlanStore 和 Web/API handler 直接管理，近期结果查询视图属于后续目标。
 ```
 
 **每个 ZoneScheduler 只调度自己的 Zone，不关心其他 Zone。**
@@ -294,10 +292,10 @@ Zone.finish():
     └── Zone 状态回 IDLE（或 ERROR）
 
 用户手动跳过:
-    ZoneManager.skipSchedule(planId, ymd, MANUAL)
+    POST /api/v1/schedule/skip
     → ScheduleSkip.skip(planId, ymd, MANUAL)
 
-日历视图查询:
+后续日历视图查询目标:
     ScheduleSkip.getEntries(zoneId, monthStart, monthEnd) → 跳过的日期
     RecordStore.read(zoneId, monthStart, monthEnd) → 实际浇水的日期
 ```

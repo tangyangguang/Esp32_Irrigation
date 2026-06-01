@@ -13,9 +13,9 @@ public:
 
     void begin(uint8_t zoneId);
     void reset();
-    void resetNewDay(uint32_t ymd);
+    bool resetNewDay(uint32_t ymd);
     bool isHandled(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay) const;
-    void mark(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status);
+    bool mark(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status);
     uint8_t count() const;
     const Entry& get(uint8_t index) const;
     static bool clearPersistent();

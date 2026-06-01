@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
 
+#include "domain/BusinessEventLog.h"
+
 namespace {
 
 static constexpr const char* kPath = "/irr_records.bin";
@@ -57,18 +59,18 @@ bool saveMeta() {
     return Esp32BaseConfig::setPod(kNamespace, kKeyMeta, meta);
 }
 
-void loadMeta() {
+bool loadMeta() {
     StoreMeta meta = {};
     if (Esp32BaseConfig::getPod(kNamespace, kKeyMeta, meta) && validMeta(meta)) {
         g_head = meta.head;
         g_count = meta.count;
         g_nextId = meta.nextId;
-        return;
+        return true;
     }
     g_head = 0;
     g_count = 0;
     g_nextId = 1;
-    (void)saveMeta();
+    return false;
 }
 
 bool createEmptyStore() {
@@ -106,7 +108,56 @@ bool readAtIndex(uint16_t index, RecordStore::WateringRecord* record) {
     if (!Esp32BaseFs::readBytesAt(kPath, offset, reinterpret_cast<uint8_t*>(record), sizeof(*record), &readLen)) {
         return false;
     }
-    return readLen == sizeof(*record) && record->magic == kMagic && record->version == kVersion && record->size == sizeof(*record);
+    return readLen == sizeof(*record) &&
+           record->magic == kMagic &&
+           record->version == kVersion &&
+           record->size == sizeof(*record) &&
+           record->recordId != 0;
+}
+
+bool recoverMetaFromRecords(bool metaValid) {
+    const uint16_t oldHead = g_head;
+    const uint16_t oldCount = g_count;
+    const uint32_t oldNextId = g_nextId;
+
+    uint16_t recoveredCount = 0;
+    uint32_t maxRecordId = 0;
+    uint16_t maxRecordIndex = 0;
+    for (uint16_t index = 0; index < RecordStore::Capacity; ++index) {
+        RecordStore::WateringRecord record = {};
+        if (!readAtIndex(index, &record)) {
+            continue;
+        }
+        ++recoveredCount;
+        if (record.recordId > maxRecordId) {
+            maxRecordId = record.recordId;
+            maxRecordIndex = index;
+        }
+    }
+
+    if (maxRecordId == 0) {
+        g_head = 0;
+        g_count = 0;
+        g_nextId = 1;
+    } else {
+        g_head = static_cast<uint16_t>((maxRecordIndex + 1U) % RecordStore::Capacity);
+        g_count = recoveredCount > RecordStore::Capacity ? RecordStore::Capacity : recoveredCount;
+        g_nextId = maxRecordId + 1U;
+        if (g_nextId == 0) {
+            g_nextId = 1;
+        }
+    }
+
+    const bool changed = !metaValid || oldHead != g_head || oldCount != g_count || oldNextId != g_nextId;
+    if (!changed) {
+        return true;
+    }
+    if (!saveMeta()) {
+        BusinessEventLog::appendRecordMetaSaveFailed(maxRecordId, maxRecordIndex);
+        return false;
+    }
+    BusinessEventLog::appendRecordStoreRecovered(g_count, g_nextId);
+    return true;
 }
 
 }
@@ -119,7 +170,13 @@ void begin() {
         ESP32BASE_LOG_W("records", "record store not ready");
         return;
     }
-    loadMeta();
+    const bool metaValid = loadMeta();
+    if (!recoverMetaFromRecords(metaValid)) {
+        ESP32BASE_LOG_W("records", "record meta recovery save failed head=%u count=%u next=%lu",
+                        static_cast<unsigned>(g_head),
+                        static_cast<unsigned>(g_count),
+                        static_cast<unsigned long>(g_nextId));
+    }
 }
 
 bool append(const WateringRecord& record) {
@@ -132,7 +189,8 @@ bool append(const WateringRecord& record) {
     stored.version = kVersion;
     stored.size = sizeof(stored);
     stored.recordId = g_nextId;
-    const uint32_t offset = static_cast<uint32_t>(g_head) * sizeof(stored);
+    const uint16_t writtenSlot = g_head;
+    const uint32_t offset = static_cast<uint32_t>(writtenSlot) * sizeof(stored);
     if (!Esp32BaseFs::writeBytesAt(kPath, offset, reinterpret_cast<const uint8_t*>(&stored), sizeof(stored))) {
         return false;
     }
@@ -144,7 +202,11 @@ bool append(const WateringRecord& record) {
     if (g_nextId == 0) {
         g_nextId = 1;
     }
-    return saveMeta();
+    const bool metaSaved = saveMeta();
+    if (!metaSaved) {
+        BusinessEventLog::appendRecordMetaSaveFailed(stored.recordId, writtenSlot);
+    }
+    return metaSaved;
 }
 
 bool clear() {

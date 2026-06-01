@@ -58,13 +58,13 @@ void PlanExecutionTracker::reset() {
     m_currentYmd = 0;
 }
 
-void PlanExecutionTracker::resetNewDay(uint32_t ymd) {
+bool PlanExecutionTracker::resetNewDay(uint32_t ymd) {
     if (m_currentYmd == ymd) {
-        return;
+        return true;
     }
     reset();
     m_currentYmd = ymd;
-    (void)save();
+    return save();
 }
 
 bool PlanExecutionTracker::isHandled(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay) const {
@@ -76,19 +76,18 @@ bool PlanExecutionTracker::isHandled(uint32_t planId, uint32_t ymd, uint16_t min
     return false;
 }
 
-void PlanExecutionTracker::mark(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status) {
+bool PlanExecutionTracker::mark(uint32_t planId, uint32_t ymd, uint16_t minuteOfDay, Irrigation::PlanObservationStatus status) {
     for (uint8_t i = 0; i < m_count; ++i) {
         if (m_entries[i].planId == planId && m_entries[i].ymd == ymd && m_entries[i].minuteOfDay == minuteOfDay) {
             m_entries[i].status = status;
-            (void)save();
-            return;
+            return save();
         }
     }
     if (m_count >= Irrigation::MaxPlansPerZone) {
-        return;
+        return false;
     }
     m_entries[m_count++] = {planId, ymd, minuteOfDay, status};
-    (void)save();
+    return save();
 }
 
 uint8_t PlanExecutionTracker::count() const {
