@@ -22,5 +22,6 @@ uint8_t count();
 bool validate(const Irrigation::PlanDefinition& plan);
 bool shouldRunOnDate(const Irrigation::PlanDefinition& plan, uint32_t ymd);
 uint32_t nextPlanId();
+bool schemaResetDetected();
 
 }

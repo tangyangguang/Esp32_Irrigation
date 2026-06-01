@@ -6,11 +6,14 @@
 
 #include "domain/BusinessEventLog.h"
 #include "domain/FlowMeter.h"
+#include "domain/MaintenanceService.h"
 #include "domain/Zone.h"
 #include "storage/PlanStore.h"
 #include "storage/ScheduleSkipStore.h"
 
 namespace {
+
+static constexpr uint32_t kTrackerFaultEventMinIntervalMs = 60000UL;
 
 bool epochToLocal(uint32_t epoch, tm* out) {
     if (!out || epoch == 0) {
@@ -55,13 +58,21 @@ void appendObservation(const Irrigation::PlanDefinition& plan, Irrigation::PlanO
 
 void ZoneScheduler::begin(uint8_t zoneId) {
     m_zoneId = zoneId;
-    reset();
+    m_eligibleFromEpoch = 0;
+    m_lastEpoch = 0;
+    m_lastTrackerFaultMs = 0;
+    m_lastTrackerFaultPlanId = 0;
+    m_lastTrackerFaultStatus = Irrigation::PlanObservationStatus::NOT_EVALUATED;
+    m_tracker.begin(zoneId);
 }
 
 void ZoneScheduler::reset() {
     m_eligibleFromEpoch = 0;
     m_lastEpoch = 0;
-    m_tracker.reset();
+    m_lastTrackerFaultMs = 0;
+    m_lastTrackerFaultPlanId = 0;
+    m_lastTrackerFaultStatus = Irrigation::PlanObservationStatus::NOT_EVALUATED;
+    m_tracker.begin(m_zoneId);
 }
 
 bool ZoneScheduler::eligible(uint32_t trustedEpoch) const {
@@ -97,7 +108,22 @@ void ZoneScheduler::tick(Zone& zone,
         return;
     }
     const uint32_t ymd = makeYmd(nowLocal);
-    m_tracker.resetNewDay(ymd);
+    const bool daySaved = m_tracker.resetNewDay(ymd);
+    if (!daySaved) {
+        ESP32BASE_LOG_W("scheduler", "tracker_day_save_failed zone=%u ymd=%lu",
+                        static_cast<unsigned>(m_zoneId),
+                        static_cast<unsigned long>(ymd));
+        recordTrackerPersistFailed(Irrigation::NoPlanId,
+                                   Irrigation::PlanObservationStatus::NOT_EVALUATED,
+                                   nowMs);
+    } else if (m_tracker.hasPendingSave() && !m_tracker.retrySave()) {
+        ESP32BASE_LOG_W("scheduler", "tracker_retry_save_failed zone=%u ymd=%lu",
+                        static_cast<unsigned>(m_zoneId),
+                        static_cast<unsigned long>(ymd));
+        recordTrackerPersistFailed(Irrigation::NoPlanId,
+                                   Irrigation::PlanObservationStatus::NOT_EVALUATED,
+                                   nowMs);
+    }
 
     for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
         const Irrigation::PlanDefinition& plan = PlanStore::getBySlot(m_zoneId, slot);
@@ -106,7 +132,7 @@ void ZoneScheduler::tick(Zone& zone,
         }
         const uint16_t minuteOfDay = makeMinuteOfDay(plan);
         uint32_t dueEpoch = 0;
-        if (!dueEpochForDate(plan, nowLocal, &dueEpoch) || dueEpoch < m_eligibleFromEpoch) {
+        if (!dueEpochForDate(plan, nowLocal, &dueEpoch)) {
             continue;
         }
         if (m_tracker.isHandled(plan.planId, ymd, minuteOfDay)) {
@@ -118,7 +144,7 @@ void ZoneScheduler::tick(Zone& zone,
             continue;
         }
         if (trustedEpoch > graceEnd) {
-            markObserved(plan, ymd, minuteOfDay, Irrigation::PlanObservationStatus::MISSED);
+            (void)markObserved(plan, ymd, minuteOfDay, Irrigation::PlanObservationStatus::MISSED);
             appendObservation(plan, Irrigation::PlanObservationStatus::MISSED, dueEpoch);
             continue;
         }
@@ -151,6 +177,8 @@ bool ZoneScheduler::observePlan(Zone& zone,
         status = Irrigation::PlanObservationStatus::SKIPPED_ERROR;
     } else if (leakAlertActive) {
         status = Irrigation::PlanObservationStatus::SKIPPED_LEAK;
+    } else if (MaintenanceService::factoryResetPending()) {
+        status = Irrigation::PlanObservationStatus::SKIPPED_RESET;
     } else if (zone.isBusy()) {
         status = Irrigation::PlanObservationStatus::SKIPPED_BUSY;
     } else {
@@ -168,14 +196,37 @@ bool ZoneScheduler::observePlan(Zone& zone,
         status = started ? Irrigation::PlanObservationStatus::STARTED : Irrigation::PlanObservationStatus::REJECTED;
     }
 
-    markObserved(plan, ymd, minuteOfDay, status);
+    (void)markObserved(plan, ymd, minuteOfDay, status);
     appendObservation(plan, status, dueEpoch);
     return started;
 }
 
-void ZoneScheduler::markObserved(const Irrigation::PlanDefinition& plan,
+bool ZoneScheduler::markObserved(const Irrigation::PlanDefinition& plan,
                                  uint32_t ymd,
                                  uint16_t minuteOfDay,
                                  Irrigation::PlanObservationStatus status) {
-    m_tracker.mark(plan.planId, ymd, minuteOfDay, status);
+    const bool saved = m_tracker.mark(plan.planId, ymd, minuteOfDay, status);
+    if (!saved) {
+        ESP32BASE_LOG_W("scheduler", "tracker_mark_save_failed zone=%u plan=%lu ymd=%lu minute=%u status=%u",
+                        static_cast<unsigned>(plan.zoneId),
+                        static_cast<unsigned long>(plan.planId),
+                        static_cast<unsigned long>(ymd),
+                        static_cast<unsigned>(minuteOfDay),
+                        static_cast<unsigned>(status));
+        recordTrackerPersistFailed(plan.planId, status, millis());
+    }
+    return saved;
+}
+
+void ZoneScheduler::recordTrackerPersistFailed(uint32_t planId,
+                                               Irrigation::PlanObservationStatus status,
+                                               uint32_t nowMs) {
+    const bool sameFault = m_lastTrackerFaultPlanId == planId && m_lastTrackerFaultStatus == status;
+    if (sameFault && m_lastTrackerFaultMs != 0 && nowMs - m_lastTrackerFaultMs < kTrackerFaultEventMinIntervalMs) {
+        return;
+    }
+    m_lastTrackerFaultMs = nowMs;
+    m_lastTrackerFaultPlanId = planId;
+    m_lastTrackerFaultStatus = status;
+    BusinessEventLog::appendPlanTrackerPersistFailed(m_zoneId, planId, status);
 }

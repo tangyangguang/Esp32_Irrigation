@@ -4,6 +4,8 @@
 #include <Esp32Base.h>
 #include <string.h>
 
+#include "domain/BusinessEventLog.h"
+
 namespace {
 
 static constexpr const char* kNamespace = "irr_zone";
@@ -19,6 +21,7 @@ struct StoredZoneConfig {
 
 Irrigation::ZoneConfig g_configs[Irrigation::MaxZones] = {};
 Irrigation::ZoneConfig g_invalid = {};
+bool g_schemaResetDetected = false;
 
 static constexpr uint8_t kValvePins[] = {
     IrrigationPins::Valve1,
@@ -114,14 +117,24 @@ bool validStored(const StoredZoneConfig& stored) {
 namespace ZoneConfigStore {
 
 void begin() {
+    uint16_t invalidCount = 0;
+    g_schemaResetDetected = false;
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         g_configs[zoneId - 1] = defaultConfig(zoneId);
         char k[8];
         key(k, sizeof(k), zoneId);
         StoredZoneConfig stored = {};
-        if (Esp32BaseConfig::getPod(kNamespace, k, stored) && validStored(stored)) {
-            g_configs[zoneId - 1] = stored.data;
+        if (Esp32BaseConfig::getPod(kNamespace, k, stored)) {
+            if (validStored(stored)) {
+                g_configs[zoneId - 1] = stored.data;
+            } else {
+                ++invalidCount;
+            }
         }
+    }
+    if (invalidCount > 0) {
+        g_schemaResetDetected = true;
+        BusinessEventLog::appendConfigSchemaReset("zones", invalidCount);
     }
 }
 
@@ -301,6 +314,10 @@ uint32_t estimateMilliliters(const Irrigation::FlowParameters& raw, uint32_t pul
 
 uint32_t estimateMilliliters(const Irrigation::ZoneConfigSnapshot& snapshot, uint32_t pulses) {
     return estimateMilliliters(snapshot.flow, pulses);
+}
+
+bool schemaResetDetected() {
+    return g_schemaResetDetected;
 }
 
 }

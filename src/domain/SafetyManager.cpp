@@ -20,18 +20,19 @@ ButtonInput g_factoryReset(IrrigationPins::FactoryResetButton, true, 30, 3000, t
 
 bool g_locked = false;
 bool g_factoryResetRequested = false;
+static constexpr uint8_t kLocalButtonZoneMax = 2;
 
 void handleStopButtons() {
     if (g_stopAll.wasPressed()) {
         (void)ZoneManager::stopAll(Irrigation::StopSource::LOCAL_BUTTON);
     }
     if (g_zone1.wasPressed()) {
-        if (!ZoneManager::stopZone(1, Irrigation::StopSource::LOCAL_BUTTON)) {
+        if (!ZoneManager::stopZone(1, Irrigation::StopSource::LOCAL_BUTTON) && !g_locked) {
             (void)ZoneManager::startManual(1, SystemConfigStore::current().manualDefaultDurationSec, Irrigation::StartSource::LOCAL_BUTTON);
         }
     }
     if (g_zone2.wasPressed()) {
-        if (!ZoneManager::stopZone(2, Irrigation::StopSource::LOCAL_BUTTON)) {
+        if (!ZoneManager::stopZone(2, Irrigation::StopSource::LOCAL_BUTTON) && !g_locked) {
             (void)ZoneManager::startManual(2, SystemConfigStore::current().manualDefaultDurationSec, Irrigation::StartSource::LOCAL_BUTTON);
         }
     }
@@ -49,7 +50,7 @@ void handleNormalButtons() {
     }
 
     if (g_startOk.wasPressed()) {
-        for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+        for (uint8_t zoneId = 1; zoneId <= kLocalButtonZoneMax; ++zoneId) {
             if (ZoneManager::config(zoneId).enabled) {
                 (void)ZoneManager::startManual(zoneId, SystemConfigStore::current().manualDefaultDurationSec, Irrigation::StartSource::LOCAL_BUTTON);
             }

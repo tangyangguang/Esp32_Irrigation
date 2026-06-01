@@ -18,5 +18,6 @@ bool applyCandidate(uint8_t zoneId, Irrigation::FlowParameters* oldParams, Irrig
 bool restorePrevious(uint8_t zoneId, Irrigation::FlowParameters* oldParams, Irrigation::FlowParameters* newParams);
 uint32_t estimateMilliliters(const Irrigation::ZoneConfigSnapshot& snapshot, uint32_t pulses);
 uint32_t estimateMilliliters(const Irrigation::FlowParameters& params, uint32_t pulses);
+bool schemaResetDetected();
 
 }

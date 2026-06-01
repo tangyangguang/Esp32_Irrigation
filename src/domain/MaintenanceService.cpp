@@ -4,6 +4,7 @@
 #include <Esp32Base.h>
 
 #include "domain/BusinessEventLog.h"
+#include "domain/PlanExecutionTracker.h"
 #include "domain/SafetyManager.h"
 #include "domain/ValveController.h"
 #include "domain/ZoneManager.h"
@@ -53,21 +54,23 @@ void handle() {
     const bool zonesOk = ZoneConfigStore::clear();
     const bool errorsOk = ZoneErrorStore::clear();
     const bool plansOk = PlanStore::clear();
+    const bool planExecOk = PlanExecutionTracker::clearPersistent();
     const bool skipsOk = ScheduleSkipStore::clear();
     const bool recordsOk = !g_clearRecords || RecordStore::clear();
     const bool eventsOk = !g_clearRecords || Esp32BaseAppEventLog::clear();
     if (!g_clearRecords) {
-        BusinessEventLog::appendFactoryResetExecuted(systemOk && zonesOk && errorsOk && plansOk && skipsOk && recordsOk && eventsOk,
+        BusinessEventLog::appendFactoryResetExecuted(systemOk && zonesOk && errorsOk && plansOk && planExecOk && skipsOk && recordsOk && eventsOk,
                                                      false,
                                                      g_requestSource);
     }
     SafetyManager::clearFactoryResetRequest();
 
-    ESP32BASE_LOG_W("maintenance", "factory reset system=%s zones=%s errors=%s plans=%s skips=%s records=%s events=%s clearRecords=%s",
+    ESP32BASE_LOG_W("maintenance", "factory reset system=%s zones=%s errors=%s plans=%s planExec=%s skips=%s records=%s events=%s clearRecords=%s",
                     systemOk ? "ok" : "fail",
                     zonesOk ? "ok" : "fail",
                     errorsOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
+                    planExecOk ? "ok" : "fail",
                     skipsOk ? "ok" : "fail",
                     recordsOk ? "ok" : "fail",
                     eventsOk ? "ok" : "fail",

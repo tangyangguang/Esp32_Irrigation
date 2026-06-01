@@ -190,7 +190,9 @@ void Zone::finish(Irrigation::TaskResult result, Irrigation::StopSource source, 
     record.minFlowMlPerMin = m_runner.runtime().minFlowMlPerMin;
     record.minFlowFirstAtSec = m_runner.runtime().minFlowFirstAtSec;
     record.configSnapshot = task.configSnapshot;
-    (void)RecordStore::append(record);
+    if (!RecordStore::append(record)) {
+        BusinessEventLog::appendRecordAppendFailed(m_config.zoneId, task.planId, result);
+    }
 
     const bool error = result == Irrigation::TaskResult::FLOW_START_TIMEOUT || result == Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT;
     if (error) {

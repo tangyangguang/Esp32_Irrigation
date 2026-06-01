@@ -14,6 +14,14 @@ void appendScheduleSkipDecision(uint32_t planId,
                                 Irrigation::SkipReason reason,
                                 bool skipped,
                                 const char* source);
+void appendPlanTrackerPersistFailed(uint8_t zoneId,
+                                    uint32_t planId,
+                                    Irrigation::PlanObservationStatus status);
+void appendRecordStoreRecovered(uint16_t count, uint32_t nextId);
+void appendRecordStoreMigrated(uint16_t count, uint32_t oldRecordSize, uint32_t newRecordSize);
+void appendRecordMetaSaveFailed(uint32_t recordId, uint16_t slot);
+void appendRecordAppendFailed(uint8_t zoneId, uint32_t planId, Irrigation::TaskResult result);
+void appendConfigSchemaReset(const char* store, uint16_t invalidCount);
 void appendFlowFault(uint8_t zoneId,
                      Irrigation::TaskResult result,
                      uint32_t targetSec,

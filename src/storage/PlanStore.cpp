@@ -6,6 +6,7 @@
 #include <string.h>
 #include <time.h>
 
+#include "domain/BusinessEventLog.h"
 #include "storage/ZoneConfigStore.h"
 
 namespace {
@@ -34,6 +35,7 @@ struct StoredPlan {
 Irrigation::PlanDefinition g_plans[Irrigation::TotalPlanSlots] = {};
 uint32_t g_nextPlanId = 1;
 Irrigation::PlanDefinition g_invalid = {};
+bool g_schemaResetDetected = false;
 
 void key(char* out, size_t len, uint8_t index) {
     snprintf(out, len, "p%u", static_cast<unsigned>(index));
@@ -191,9 +193,15 @@ namespace PlanStore {
 
 void begin() {
     g_nextPlanId = 1;
+    uint16_t invalidCount = 0;
+    g_schemaResetDetected = false;
     PlanMeta meta = {};
-    if (Esp32BaseConfig::getPod(kNamespace, kKeyMeta, meta) && validMeta(meta)) {
-        g_nextPlanId = meta.nextPlanId;
+    if (Esp32BaseConfig::getPod(kNamespace, kKeyMeta, meta)) {
+        if (validMeta(meta)) {
+            g_nextPlanId = meta.nextPlanId;
+        } else {
+            ++invalidCount;
+        }
     }
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
@@ -203,10 +211,18 @@ void begin() {
             char k[8];
             key(k, sizeof(k), index);
             StoredPlan stored = {};
-            if (Esp32BaseConfig::getPod(kNamespace, k, stored) && validStored(stored)) {
-                g_plans[index] = stored.data;
+            if (Esp32BaseConfig::getPod(kNamespace, k, stored)) {
+                if (validStored(stored)) {
+                    g_plans[index] = stored.data;
+                } else {
+                    ++invalidCount;
+                }
             }
         }
+    }
+    if (invalidCount > 0) {
+        g_schemaResetDetected = true;
+        BusinessEventLog::appendConfigSchemaReset("plans", invalidCount);
     }
     (void)saveMeta();
 }
@@ -399,6 +415,10 @@ bool shouldRunOnDate(const Irrigation::PlanDefinition& plan, uint32_t ymd) {
 
 uint32_t nextPlanId() {
     return g_nextPlanId;
+}
+
+bool schemaResetDetected() {
+    return g_schemaResetDetected;
 }
 
 }
