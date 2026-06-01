@@ -397,17 +397,37 @@ const char* calibrationStateLabel(FlowCalibration::State state) {
     }
 }
 
-const char* calibrationConfidenceLabel(uint8_t confidence) {
-    switch (confidence) {
-        case 3: return "高";
-        case 2: return "中";
-        case 1: return "低";
-        default: return "-";
-    }
-}
-
 static constexpr uint32_t calibrationWindowMs = 2000UL;
 static constexpr uint32_t calibrationWindowStepMs = 200UL;
+
+void writePermilleAsPercent(uint16_t permille) {
+    writeUInt(permille / 10U);
+    Esp32BaseWeb::sendChunk(".");
+    writeUInt(permille % 10U);
+    Esp32BaseWeb::sendChunk("%");
+}
+
+const char* calibrationRecommendationAdvice(const FlowCalibration::Recommendation& rec) {
+    if (rec.sampleCount <= 1) {
+        return "单条样本只能生成单点估计，无法交叉验证误差；建议补采不同水量样本。";
+    }
+    if (rec.sampleCount == 2) {
+        if (rec.volumeSpanPermille < 200 || rec.pulseSpanPermille < 200) {
+            return "两条样本水量或脉冲跨度偏小，建议补采一条明显不同水量的样本。";
+        }
+        if (rec.averageErrorPermille <= 50 && rec.maxErrorPermille <= 80) {
+            return "两条样本拟合误差较小，可试用；建议补采一条不同水量样本做验证。";
+        }
+        return "两条样本拟合误差偏大，建议重采或检查接水量、流量稳定性。";
+    }
+    if (rec.averageErrorPermille <= 50 && rec.maxErrorPermille <= 80) {
+        return "样本内误差较小，建议可应用。";
+    }
+    if (rec.averageErrorPermille <= 100 && rec.maxErrorPermille <= 150) {
+        return "样本内误差可接受，可应用但建议复核。";
+    }
+    return "样本误差偏大，不建议应用；建议重采或检查接水量、流量稳定性。";
+}
 
 void writeSvgPoint(uint32_t x, uint32_t y) {
     char text[32];
@@ -1489,8 +1509,8 @@ void handleCalibrationPage() {
     Esp32BaseWeb::beginPanel("校准配置");
     Esp32BaseWeb::sendChunk("<div class='calibration-metrics'>");
     char text[32];
-    snprintf(text, sizeof(text), "%u 次", static_cast<unsigned>(system.calibrationSampleTarget));
-    sendMetricCard("目标样本数", text, "达到后可计算");
+    snprintf(text, sizeof(text), "%u 条", static_cast<unsigned>(system.calibrationSampleTarget));
+    sendMetricCard("样本容量", text, "只限制新增样本");
     snprintf(text, sizeof(text), "%u 分钟", static_cast<unsigned>(system.calibrationMaxCaptureMin));
     sendMetricCard("单次最长", text, "超时样本无效");
     snprintf(text, sizeof(text), "%u 秒", static_cast<unsigned>(system.calibrationDetailCaptureSec));
@@ -1506,10 +1526,13 @@ void handleCalibrationPage() {
     Esp32BaseWeb::sendChunk("'>");
     Esp32BaseWeb::writeHtmlEscaped(calibrationStateLabel(FlowCalibration::state()));
     Esp32BaseWeb::sendChunk("</span><p>");
+    Esp32BaseWeb::sendChunk("已保存 ");
+    writeUInt(FlowCalibration::sampleCount());
+    Esp32BaseWeb::sendChunk(" 条，有效 ");
     writeUInt(FlowCalibration::validSampleCount());
-    Esp32BaseWeb::sendChunk(" / ");
+    Esp32BaseWeb::sendChunk(" 条，容量 ");
     writeUInt(system.calibrationSampleTarget);
-    Esp32BaseWeb::sendChunk(" 个有效样本</p></div><div class='calibration-actions'>");
+    Esp32BaseWeb::sendChunk(" 条</p></div><div class='calibration-actions'>");
     if (FlowCalibration::state() == FlowCalibration::State::CAPTURING) {
         Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/stop' onsubmit=\"return once(this)\">");
         writeOnePostHidden("source", "web_page");
@@ -1518,6 +1541,8 @@ void handleCalibrationPage() {
         Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/calibration/sample' onsubmit=\"return confirm('确认保存本次校准样本？')&&once(this)\">");
         writeOnePostHidden("source", "web_page");
         Esp32BaseWeb::sendChunk("<p><b>第 3 步</b><br>输入量杯实测水量后保存样本。</p><p class='field short'><label>实际水量 ml</label><input name='actualMl' type='number' min='1' max='100000' required></p><div class='actions'><input type='submit' value='保存样本'></div></form>");
+    } else if (FlowCalibration::sampleCount() >= system.calibrationSampleTarget) {
+        Esp32BaseWeb::sendChunk("<div class='calibration-stage'><b>容量已满</b><p>当前样本数已达到配置容量；可先计算推荐参数，或清空样本后重新采集。</p></div>");
     } else {
         Esp32BaseWeb::sendChunk("<form class='editform' method='post' action='/api/v1/calibration/start' onsubmit=\"return confirm('确认开始校准出水？')&&once(this)\">");
         writeOnePostHidden("source", "web_page");
@@ -1598,13 +1623,31 @@ void handleCalibrationPage() {
         writeUInt(rec.startupEstimatedMl);
         Esp32BaseWeb::sendChunk(" ml</td></tr><tr><th>稳定每升脉冲</th><td>");
         writeUInt(rec.stablePulsePerLiter);
-        Esp32BaseWeb::sendChunk("</td></tr><tr><th>置信度</th><td>");
-        Esp32BaseWeb::writeHtmlEscaped(calibrationConfidenceLabel(rec.confidence));
-        Esp32BaseWeb::sendChunk("</td></tr><tr><th>平均误差</th><td>");
-        writeUInt(rec.averageErrorPermille);
-        Esp32BaseWeb::sendChunk("‰</td></tr><tr><th>最大误差</th><td>");
-        writeUInt(rec.maxErrorPermille);
-        Esp32BaseWeb::sendChunk("‰</td></tr></tbody></table></div>");
+        Esp32BaseWeb::sendChunk("</td></tr><tr><th>有效样本数</th><td>");
+        writeUInt(rec.sampleCount);
+        Esp32BaseWeb::sendChunk("</td></tr><tr><th>稳定点识别</th><td>");
+        writeUInt(rec.stableDetectedCount);
+        Esp32BaseWeb::sendChunk(" / ");
+        writeUInt(rec.sampleCount);
+        Esp32BaseWeb::sendChunk("</td></tr><tr><th>水量跨度</th><td>");
+        writePermilleAsPercent(rec.volumeSpanPermille);
+        Esp32BaseWeb::sendChunk("</td></tr><tr><th>脉冲跨度</th><td>");
+        writePermilleAsPercent(rec.pulseSpanPermille);
+        Esp32BaseWeb::sendChunk("</td></tr><tr><th>样本内平均误差</th><td>");
+        if (rec.sampleCount < 2) {
+            Esp32BaseWeb::sendChunk("无法评估");
+        } else {
+            writePermilleAsPercent(rec.averageErrorPermille);
+        }
+        Esp32BaseWeb::sendChunk("</td></tr><tr><th>样本内最大误差</th><td>");
+        if (rec.sampleCount < 2) {
+            Esp32BaseWeb::sendChunk("无法评估");
+        } else {
+            writePermilleAsPercent(rec.maxErrorPermille);
+        }
+        Esp32BaseWeb::sendChunk("</td></tr><tr><th>建议</th><td>");
+        Esp32BaseWeb::writeHtmlEscaped(calibrationRecommendationAdvice(rec));
+        Esp32BaseWeb::sendChunk("</td></tr></tbody></table></div>");
         Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>样本</th><th>实际</th><th>估算</th><th>误差</th></tr></thead><tbody>");
         for (uint8_t i = 0; i < rec.sampleCount; ++i) {
             Esp32BaseWeb::sendChunk("<tr><td>");

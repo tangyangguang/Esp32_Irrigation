@@ -49,10 +49,12 @@ struct Recommendation {
     bool valid;
     uint8_t zoneId;
     uint8_t sampleCount;
-    uint8_t confidence;
+    uint8_t stableDetectedCount;
     uint16_t startupPulseLimit;
     uint16_t startupEstimatedMl;
     uint16_t stablePulsePerLiter;
+    uint16_t volumeSpanPermille;
+    uint16_t pulseSpanPermille;
     uint16_t averageErrorPermille;
     uint16_t maxErrorPermille;
     SampleError errors[MaxSamples];

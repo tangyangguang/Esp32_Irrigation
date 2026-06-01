@@ -114,14 +114,14 @@ assert(systemConfig.includes('durationPresets'), 'system config should include f
 assert(systemConfig.includes('idleLeakDetectionEnabled'), 'system config should include a user switch for idle leak detection');
 assert(systemConfig.includes('calibrationSampleTarget') && systemConfig.includes('calibrationMaxCaptureMin'), 'system config should include calibration sample target and max capture minutes');
 assert(systemConfig.includes('calibrationDetailCaptureSec') && systemConfig.includes('calibrationDetailPulseLimit'), 'system config should include calibration detail capture bounds');
-assert(systemConfig.includes('config.calibrationSampleTarget = 2;') && systemConfig.includes('config.calibrationDetailCaptureSec = 20;'), 'flow calibration defaults should use 2 samples and 20 seconds of detail capture');
+assert(systemConfig.includes('config.calibrationSampleTarget = 5;') && systemConfig.includes('config.calibrationDetailCaptureSec = 20;'), 'flow calibration defaults should use 5-sample capacity and 20 seconds of detail capture');
 assert(systemConfig.includes('86400'), 'max watering duration upper bound should allow up to 24 hours');
 assert(systemConfig.includes('14400'), 'max watering duration default should be 4 hours');
 assert(systemConfig.includes('submittedMinutesAsSeconds'), 'App Config should accept manual duration values in minutes and store seconds');
 assert(systemConfig.includes('kKeyLeakEnabled') && systemConfig.includes('addBool'), 'App Config should expose idle leak detection as a boolean switch');
 assert(systemConfig.includes('"单次最长分钟"') && systemConfig.includes('"手动默认分钟"'), 'App Config duration labels should use minutes for user-facing watering durations');
 assert(!systemConfig.includes('"单次最长秒"') && !systemConfig.includes('"手动默认秒"'), 'App Config should not expose user-facing watering duration fields in seconds');
-assert(systemConfig.includes('"校准样本数"') && systemConfig.includes('"明细脉冲上限"'), 'App Config should expose flow calibration settings');
+assert(systemConfig.includes('"校准样本容量"') && systemConfig.includes('"明细脉冲上限"'), 'App Config should expose flow calibration settings');
 
 assert(zoneConfig.includes('ZoneConfig') && zoneConfig.includes('startTimeoutSec') && zoneConfig.includes('suppressError'), 'zone config should include timeout and suppressError fields');
 assert(zoneTypes.includes('startupPulseLimit') && zoneTypes.includes('startupEstimatedMl') && zoneTypes.includes('stablePulsePerLiter'), 'zone config should use two-stage flow estimation fields');

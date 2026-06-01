@@ -41,7 +41,7 @@ Irrigation::SystemConfig defaults() {
     config.idleLeakDetectionEnabled = true;
     config.idleLeakWindowSec = 10;
     config.idleLeakPulseThreshold = 3;
-    config.calibrationSampleTarget = 2;
+    config.calibrationSampleTarget = 5;
     config.calibrationMaxCaptureMin = 10;
     config.calibrationDetailCaptureSec = 20;
     config.calibrationDetailPulseLimit = 2000;
@@ -154,7 +154,7 @@ bool validateAppConfigPage(char* error, size_t errorLen) {
     }
     config.idleLeakPulseThreshold = static_cast<uint16_t>(value);
     if (!submittedInt(kKeyCalibrationSampleTarget, &value)) {
-        strlcpy(error, "Calibration sample target is invalid.", errorLen);
+        strlcpy(error, "Calibration sample capacity is invalid.", errorLen);
         return false;
     }
     config.calibrationSampleTarget = static_cast<uint8_t>(value);
@@ -212,7 +212,7 @@ void registerAppConfig() {
     (void)Esp32BaseAppConfig::addBool({kGroupSafety, kNamespace, kKeyLeakEnabled, "启用漏水检测", def.idleLeakDetectionEnabled, "关闭后待机状态不会根据流量脉冲触发漏水告警。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakWindow, "漏水窗口秒", def.idleLeakWindowSec, 1, 300, 1, "s", "待机漏水检测的统计窗口。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakPulse, "漏水脉冲", def.idleLeakPulseThreshold, 1, 1000, 1, nullptr, "窗口内达到该脉冲数触发漏水告警。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationSampleTarget, "校准样本数", def.calibrationSampleTarget, 1, 5, 1, nullptr, "达到该数量的有效样本后，允许计算推荐流量参数。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationSampleTarget, "校准样本容量", def.calibrationSampleTarget, 2, 5, 1, nullptr, "RAM 中最多保留的校准样本数，只限制新增样本，不限制计算。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationMaxCaptureMin, "校准最长分钟", def.calibrationMaxCaptureMin, 1, 15, 1, "min", "单次校准出水最长允许时间，超过后样本无效并自动关阀。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationDetailCaptureSec, "明细采集秒", def.calibrationDetailCaptureSec, 5, 60, 1, "s", "保存原始脉冲时间差的最长时长，只用于启动阶段识别。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationDetailPulseLimit, "明细脉冲上限", def.calibrationDetailPulseLimit, 100, 5000, 100, nullptr, "保存原始脉冲时间差的最大条数，达到后仍继续统计总脉冲。", false, nullptr});
@@ -256,7 +256,7 @@ bool validate(const Irrigation::SystemConfig& config) {
            config.idleLeakWindowSec <= 300 &&
            config.idleLeakPulseThreshold >= 1 &&
            config.idleLeakPulseThreshold <= 1000 &&
-           config.calibrationSampleTarget >= 1 &&
+           config.calibrationSampleTarget >= 2 &&
            config.calibrationSampleTarget <= 5 &&
            config.calibrationMaxCaptureMin >= 1 &&
            config.calibrationMaxCaptureMin <= 15 &&

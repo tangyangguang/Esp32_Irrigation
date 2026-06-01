@@ -24,6 +24,7 @@ uint8_t g_activeZoneId = 0;
 uint32_t g_startedMs = 0;
 uint32_t g_startedPulseCount = 0;
 uint32_t g_maxCaptureMs = 0;
+uint8_t g_sampleCapacity = FlowCalibration::MaxSamples;
 uint16_t* g_activeWindowPulses = nullptr;
 uint16_t g_activeWindowCapacity = 0;
 uint16_t g_activeWindowCount = 0;
@@ -48,7 +49,17 @@ uint16_t clampDetailPulseLimit(uint16_t value) {
 }
 
 bool sampleSlotAvailable() {
-    return g_sampleCount < FlowCalibration::MaxSamples;
+    return g_sampleCount < FlowCalibration::MaxSamples && g_sampleCount < g_sampleCapacity;
+}
+
+uint8_t clampSampleCapacity(uint8_t value) {
+    if (value < 2) {
+        return 2;
+    }
+    if (value > FlowCalibration::MaxSamples) {
+        return FlowCalibration::MaxSamples;
+    }
+    return value;
 }
 
 void freeSampleData(FlowCalibration::Sample* sample) {
@@ -255,6 +266,29 @@ uint8_t collectValidSamples(const FlowCalibration::Sample** out) {
     return count;
 }
 
+void fillRecommendationDiagnostics(FlowCalibration::Recommendation* out, const FlowCalibration::Sample** samples, uint8_t sampleCount) {
+    if (!out || !samples || sampleCount == 0) {
+        return;
+    }
+    uint32_t minMl = samples[0]->actualMl;
+    uint32_t maxMl = samples[0]->actualMl;
+    uint32_t minPulses = samples[0]->totalPulses;
+    uint32_t maxPulses = samples[0]->totalPulses;
+    uint8_t stableCount = 0;
+    for (uint8_t i = 0; i < sampleCount; ++i) {
+        if (samples[i]->actualMl < minMl) minMl = samples[i]->actualMl;
+        if (samples[i]->actualMl > maxMl) maxMl = samples[i]->actualMl;
+        if (samples[i]->totalPulses < minPulses) minPulses = samples[i]->totalPulses;
+        if (samples[i]->totalPulses > maxPulses) maxPulses = samples[i]->totalPulses;
+        if (samples[i]->stableDetected) {
+            ++stableCount;
+        }
+    }
+    out->stableDetectedCount = stableCount;
+    out->volumeSpanPermille = maxMl > 0 ? static_cast<uint16_t>(((maxMl - minMl) * 1000UL) / maxMl) : 0;
+    out->pulseSpanPermille = maxPulses > 0 ? static_cast<uint16_t>(((maxPulses - minPulses) * 1000UL) / maxPulses) : 0;
+}
+
 uint16_t medianDetectedStartup() {
     uint16_t values[FlowCalibration::MaxSamples] = {};
     uint8_t count = 0;
@@ -360,7 +394,7 @@ bool scoreCandidate(uint16_t candidate,
     }
     out->averageErrorPermille = static_cast<uint16_t>(sumErrorPermille / sampleCount);
     out->maxErrorPermille = maxErrorPermille;
-    out->confidence = sampleCount >= 3 ? 3 : sampleCount;
+    fillRecommendationDiagnostics(out, samples, sampleCount);
     return true;
 }
 
@@ -461,6 +495,7 @@ bool start(uint8_t zoneId, const Irrigation::SystemConfig& config) {
         setError("zone_busy");
         return false;
     }
+    g_sampleCapacity = clampSampleCapacity(config.calibrationSampleTarget);
     if (!sampleSlotAvailable()) {
         setError("sample_full");
         return false;
@@ -505,7 +540,7 @@ bool submitActualMilliliters(uint32_t actualMl) {
         setError("not_waiting_actual");
         return false;
     }
-    if (actualMl == 0 || !sampleSlotAvailable()) {
+    if (actualMl == 0 || g_sampleCount >= FlowCalibration::MaxSamples) {
         setError("invalid_actual_ml");
         return false;
     }
