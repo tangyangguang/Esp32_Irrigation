@@ -248,6 +248,7 @@ assert(zoneConfig.includes('schemaResetDetected') &&
 
 assert(pio.includes('-D ESP32BASE_ENABLE_APP_EVENTS=1'), 'project should enable Esp32Base App Events');
 assert(pio.includes('-D ESP32BASE_APP_EVENT_LOG_CAPACITY=256'), 'project should set a scoped App Events capacity');
+assert(pio.includes('-D ESP32BASE_EB_FILELOG_DEFAULT_MODE=ESP32BASE_FILELOG_MODE_WARN'), 'project should explicitly default System Logs / FileLog to WARN');
 assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_GROUPS=5'), 'App Config group capacity should cover manual, schedule, safety, calibration, and flow display groups');
 assert(pio.includes('-D ESP32BASE_APP_CONFIG_MAX_FIELDS=19'), 'App Config capacity should cover all registered irrigation system fields');
 assert(businessEvents.includes('Esp32BaseAppEventLog::append'), 'business events should write through Esp32BaseAppEventLog::append');
