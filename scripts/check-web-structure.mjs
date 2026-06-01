@@ -262,10 +262,21 @@ assert(web.includes('/irrigation/calibration') && web.includes('handleCalibratio
 assert(web.includes('/api/v1/calibration/start') && web.includes('/api/v1/calibration/apply'), 'web API should include flow calibration lifecycle endpoints');
 assert(web.includes('/api/v1/calibration/status') && web.includes('handleCalibrationStatusApi'), 'web API should include a read-only calibration status endpoint');
 assert(web.includes('/api/v1/calibration/candidate') && !web.includes('/api/v1/calibration/candidate/manual'), 'candidate save API should not encode source type in the route');
-assert(web.includes('calibration-metrics') && web.includes('calibration-workflow') && web.includes('calibration-internal'), 'calibration page should use compact configuration and guided collection sections');
+assert(web.includes('calibration-metrics') && web.includes('calibration-compact-workflow') && web.includes('calibration-internal'), 'calibration page should use compact configuration and guided collection sections');
 assert(web.includes('calibration-zone-list') && web.includes('calibration-zone-row') && web.includes('设为当前'), 'calibration page should show one parameter row per zone with set-current actions');
+assert(web.includes('writeFlowParameterCompact') && web.includes('启动 ') && web.includes(' · ') && web.includes(' P/L'),
+       'calibration page should render flow parameters in compact one-line text');
+assert(web.includes('calibration-collect-status') && web.includes('接水状态') &&
+       web.includes('calibration-current-params') && web.includes('当前水路参数'),
+       'calibration collection area should separate collection status from current zone parameters');
+assert(web.includes('calibration-compact-workflow') && web.includes('calibration-inline-form'),
+       'calibration collection actions should use compact inline layout');
 assert(web.includes('calibrationProgressStart') && web.includes('/api/v1/calibration/status') && web.includes('setInterval(calibrationProgressUpdate,1000)'),
        'calibration page should refresh collection progress from the status API every second');
+assert(web.includes('calibrationSubmit(this)') && web.includes('calibrationReplaceSections') && web.includes('DOMParser'),
+       'calibration page should submit calibration actions locally and replace page sections without a full reload');
+assert(web.includes('readOptionalZoneId') && web.includes('currentFlow') && web.includes('candidateFlow'),
+       'calibration status API should support selected zone parameter summaries');
 assert(web.includes('calibrationCandidateFill') && web.includes('从其他水路填入') && web.includes('填入表单'), 'candidate editor should support copy-as-input inside the candidate form');
 assert(!web.includes('来源：') && !web.includes('flowCandidateSourceLabel') && !web.includes('/api/v1/calibration/candidate/copy-current'), 'calibration page should not expose or persist candidate source tracking');
 assert(web.includes('chart-grid') && web.includes('chart-tick') && web.includes('chart-axis-title'), 'calibration sample charts should render grid lines, dense tick labels, and axis titles');
