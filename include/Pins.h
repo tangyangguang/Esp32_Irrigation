@@ -3,12 +3,13 @@
 #include <stdint.h>
 
 namespace IrrigationPins {
-// Fixed 4-road board configuration. GPIO34/35/36/39 are input-only pins and
+// Fixed 4-road board configuration. GPIO35/36/39 are input-only pins and
 // require external pull-ups when used with open-drain flow sensors such as
-// YF-S201.
-static constexpr uint8_t Valve1 = 13;
+// YF-S201. GPIO32 is input-capable and also uses the board-provided flow
+// sensor pull-up in this design.
+static constexpr uint8_t Valve1 = 16;
 static constexpr uint8_t Valve2 = 14;
-static constexpr uint8_t Valve3 = 16;
+static constexpr uint8_t Valve3 = 13;
 static constexpr uint8_t Valve4 = 27;
 
 static constexpr uint8_t StatusLed = 17;
@@ -27,7 +28,7 @@ static constexpr uint8_t Road2DownButton = 19;
 // press after firmware is running, so serial monitor/reset cannot trigger it.
 static constexpr uint8_t FactoryResetButton = 0;
 
-static constexpr uint8_t Flow1 = 34;
+static constexpr uint8_t Flow1 = 32;
 static constexpr uint8_t Flow2 = 35;
 static constexpr uint8_t Flow3 = 36;
 static constexpr uint8_t Flow4 = 39;

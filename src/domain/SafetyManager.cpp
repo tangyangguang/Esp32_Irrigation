@@ -6,7 +6,6 @@
 #include "Pins.h"
 #include "domain/ZoneManager.h"
 #include "io/ButtonInput.h"
-#include "storage/EventStore.h"
 #include "storage/SystemConfigStore.h"
 
 namespace {
@@ -97,13 +96,6 @@ void handle() {
             return;
         }
         g_factoryResetRequested = true;
-        (void)EventStore::append(Irrigation::EventType::FACTORY_RESET_REQUESTED,
-                                 Irrigation::EventSource::BUTTON,
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-                                 "lock+gpio0 long press");
         ESP32BASE_LOG_W("safety", "factory reset requested by lock+gpio0 long press");
     }
 }
@@ -117,13 +109,6 @@ bool setLocked(bool locked) {
         return true;
     }
     g_locked = locked;
-    (void)EventStore::append(Irrigation::EventType::ZONE_CONFIG_CHANGED,
-                             Irrigation::EventSource::BUTTON,
-                             0,
-                             0,
-                             locked ? 1 : 0,
-                             0,
-                             "keypad lock");
     return true;
 }
 

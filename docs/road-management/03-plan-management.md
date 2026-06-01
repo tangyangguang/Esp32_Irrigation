@@ -233,8 +233,9 @@ WateringRecord
 ├── endedPulseCount       // 结束时脉冲
 ├── estimatedMilliliters  // 估算水量
 └── configSnapshot        // 启动时的配置快照
-    ├── pulsePerLiter
-    └── calibrationX1000
+    ├── startupPulseLimit
+    ├── startupEstimatedMl
+    └── stablePulsePerLiter
 ```
 
 一条记录 = 一个 Zone 的一次实际浇水任务。`planId` 字段让记录可反查触发来源。`configSnapshot` 保证历史水量计算不受后续配置修改影响。
@@ -288,7 +289,7 @@ Zone 执行中:
 Zone.finish():
     ├── 关阀
     ├── 写 WateringRecord（含 planId、configSnapshot）
-    ├── 写 EventStore
+    ├── 按需写 Esp32BaseAppEventLog 业务事件
     └── Zone 状态回 IDLE（或 ERROR）
 
 用户手动跳过:

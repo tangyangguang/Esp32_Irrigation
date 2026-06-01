@@ -11,6 +11,7 @@
 | [01-core-proposition.md](01-core-proposition.md) | 核心命题：单路自治，N 倍扩展 | ✅ 已确认 |
 | [02-zone-unit-design.md](02-zone-unit-design.md) | Zone 单元设计：状态机、实体、接口 | ✅ 已确认 |
 | [03-plan-management.md](03-plan-management.md) | 计划管理体系：定义、调度、跳过、记录 | ✅ 已确认 |
+| [04-flow-calibration.md](04-flow-calibration.md) | 流量计现场校准：原始脉冲明细、稳定识别、参数拟合 | ✅ 已确认 |
 
 ## 使用方式
 

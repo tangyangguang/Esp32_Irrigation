@@ -26,7 +26,7 @@ public:
     bool stop(Irrigation::StopSource source, Irrigation::StopScope scope, Irrigation::TaskResult result, uint32_t pulseCount, uint32_t epoch, uint32_t nowMs);
     bool markLeak(uint32_t pulseCount, uint32_t epoch, uint32_t nowMs);
     bool clearError(uint32_t nowMs);
-    bool checkIdleLeak(uint32_t pulseCount, uint32_t nowMs, uint16_t windowSec, uint16_t threshold);
+    bool checkIdleLeak(uint32_t pulseCount, uint32_t nowMs, uint16_t windowSec, uint16_t threshold, uint32_t* observedPulses);
     void resetLeakWindow(uint32_t pulseCount, uint32_t nowMs);
     Irrigation::ZoneStatus status(uint32_t pulseCount, uint32_t flowRatePerMinuteX1000, uint32_t nowMs) const;
     const Irrigation::ZoneConfig& config() const;

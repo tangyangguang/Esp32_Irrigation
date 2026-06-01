@@ -98,42 +98,19 @@ enum class PlanObservationStatus : uint8_t {
     MISSED = 11,
 };
 
-enum class EventType : uint8_t {
-    BOOT = 1,
-    ZONE_CONFIG_CHANGED = 2,
-    SYSTEM_CONFIG_CHANGED = 3,
-    PLAN_CHANGED = 4,
-    PLAN_OBSERVED = 5,
-    WATER_START = 6,
-    WATER_FINISH = 7,
-    WATER_ERROR = 8,
-    LEAK_ALERT = 9,
-    ALERT_CLEARED = 10,
-    FACTORY_RESET_REQUESTED = 11,
-    FACTORY_RESET_EXECUTED = 12,
-    WIFI_STATUS_CHANGED = 13,
-    OTA_STATUS_CHANGED = 14,
-};
-
-enum class EventSource : uint8_t {
-    SYSTEM = 0,
-    BUTTON = 1,
-    WEB = 2,
-    PLAN = 3,
-};
-
 struct ZoneConfig {
     uint8_t zoneId;
     char name[NameMaxBytes];
     uint8_t valvePin;
     uint8_t flowPin;
     bool enabled;
-    uint16_t pulsePerLiter;
-    uint16_t calibrationX1000;
+    uint16_t startupPulseLimit;
+    uint16_t startupEstimatedMl;
+    uint16_t stablePulsePerLiter;
     uint16_t startTimeoutSec;
     uint16_t flowNoPulseTimeoutSec;
     bool suppressError;
-    uint8_t reserved[5];
+    uint8_t reserved[3];
 };
 
 struct SystemConfig {
@@ -141,8 +118,13 @@ struct SystemConfig {
     uint16_t scheduleGraceSec;
     uint32_t manualDefaultDurationSec;
     uint32_t durationPresets[6];
+    bool idleLeakDetectionEnabled;
+    uint8_t calibrationSampleTarget;
     uint16_t idleLeakWindowSec;
     uint16_t idleLeakPulseThreshold;
+    uint16_t calibrationMaxCaptureMin;
+    uint16_t calibrationDetailCaptureSec;
+    uint16_t calibrationDetailPulseLimit;
 };
 
 struct PlanDefinition {
@@ -163,12 +145,13 @@ struct PlanDefinition {
 };
 
 struct ZoneConfigSnapshot {
-    uint16_t pulsePerLiter;
-    uint16_t calibrationX1000;
+    uint16_t startupPulseLimit;
+    uint16_t startupEstimatedMl;
+    uint16_t stablePulsePerLiter;
     uint16_t startTimeoutSec;
     uint16_t flowNoPulseTimeoutSec;
     bool suppressError;
-    uint8_t reserved[3];
+    uint8_t reserved[1];
 };
 
 struct ActiveTask {

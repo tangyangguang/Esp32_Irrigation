@@ -3,9 +3,10 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
 
+#include "domain/BusinessEventLog.h"
+#include "domain/FlowCalibration.h"
 #include "domain/FlowMeter.h"
 #include "domain/ValveController.h"
-#include "storage/EventStore.h"
 #include "storage/SystemConfigStore.h"
 #include "storage/ZoneConfigStore.h"
 #include "storage/ZoneErrorStore.h"
@@ -42,7 +43,7 @@ bool anyBusy() {
 }
 
 void checkIdleLeaks(uint32_t nowMs) {
-    if (anyBusy()) {
+    if (anyBusy() || FlowCalibration::active()) {
         for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
             g_zones[indexFor(zoneId)].resetLeakWindow(pulseCount(zoneId), nowMs);
         }
@@ -50,21 +51,22 @@ void checkIdleLeaks(uint32_t nowMs) {
     }
 
     const Irrigation::SystemConfig& system = SystemConfigStore::current();
+    if (!system.idleLeakDetectionEnabled) {
+        for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+            g_zones[indexFor(zoneId)].resetLeakWindow(pulseCount(zoneId), nowMs);
+        }
+        return;
+    }
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         Zone& z = g_zones[indexFor(zoneId)];
         if (!z.config().enabled || z.isError()) {
             z.resetLeakWindow(pulseCount(zoneId), nowMs);
             continue;
         }
-        if (z.checkIdleLeak(pulseCount(zoneId), nowMs, system.idleLeakWindowSec, system.idleLeakPulseThreshold)) {
+        uint32_t observedPulses = 0;
+        if (z.checkIdleLeak(pulseCount(zoneId), nowMs, system.idleLeakWindowSec, system.idleLeakPulseThreshold, &observedPulses)) {
             (void)z.markLeak(pulseCount(zoneId), epochNow(), nowMs);
-            (void)EventStore::append(Irrigation::EventType::LEAK_ALERT,
-                                     Irrigation::EventSource::SYSTEM,
-                                     zoneId,
-                                     0,
-                                     system.idleLeakPulseThreshold,
-                                     system.idleLeakWindowSec,
-                                     "idle leak detected");
+            BusinessEventLog::appendLeakDetected(zoneId, observedPulses, system.idleLeakPulseThreshold, system.idleLeakWindowSec);
         }
     }
 }

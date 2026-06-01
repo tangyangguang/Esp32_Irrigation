@@ -4,13 +4,11 @@
 #include <Esp32Base.h>
 #include <string.h>
 
-#include "storage/EventStore.h"
-
 namespace {
 
 static constexpr const char* kNamespace = "irr_zone";
 static constexpr uint32_t kMagic = 0x495A4346UL;
-static constexpr uint16_t kVersion = 1;
+static constexpr uint16_t kVersion = 2;
 
 struct StoredZoneConfig {
     uint32_t magic;
@@ -86,11 +84,12 @@ Irrigation::ZoneConfig defaultConfig(uint8_t zoneId) {
     config.valvePin = kValvePins[zoneId - 1];
     config.flowPin = kFlowPins[zoneId - 1];
     config.enabled = zoneId <= 2;
-    config.pulsePerLiter = 450;
-    config.calibrationX1000 = 1000;
+    config.startupPulseLimit = 0;
+    config.startupEstimatedMl = 0;
+    config.stablePulsePerLiter = 450;
     config.startTimeoutSec = 30;
     config.flowNoPulseTimeoutSec = 10;
-    config.suppressError = false;
+    config.suppressError = true;
     return config;
 }
 
@@ -157,10 +156,10 @@ bool validate(const Irrigation::ZoneConfig& config) {
         return false;
     }
     return validateName(config.name) &&
-           config.pulsePerLiter >= 1 &&
-           config.pulsePerLiter <= 10000 &&
-           config.calibrationX1000 >= 100 &&
-           config.calibrationX1000 <= 10000 &&
+           config.startupPulseLimit <= 10000 &&
+           config.startupEstimatedMl <= 10000 &&
+           config.stablePulsePerLiter >= 1 &&
+           config.stablePulsePerLiter <= 10000 &&
            config.startTimeoutSec >= 1 &&
            config.startTimeoutSec <= 300 &&
            config.flowNoPulseTimeoutSec >= 1 &&
@@ -179,23 +178,21 @@ bool set(uint8_t zoneId, const Irrigation::ZoneConfig& config) {
         return false;
     }
     g_configs[index] = config;
-    (void)EventStore::append(Irrigation::EventType::ZONE_CONFIG_CHANGED,
-                             Irrigation::EventSource::WEB,
-                             zoneId,
-                             0,
-                             config.enabled ? 1 : 0,
-                             config.suppressError ? 1 : 0,
-                             "zone config saved");
     return true;
 }
 
 uint32_t estimateMilliliters(const Irrigation::ZoneConfigSnapshot& snapshot, uint32_t pulses) {
-    if (snapshot.pulsePerLiter == 0) {
+    if (snapshot.stablePulsePerLiter == 0) {
         return 0;
     }
-    const uint64_t numerator = static_cast<uint64_t>(pulses) * 1000ULL * snapshot.calibrationX1000;
-    const uint64_t denominator = static_cast<uint64_t>(snapshot.pulsePerLiter) * 1000ULL;
-    return static_cast<uint32_t>(numerator / denominator);
+    if (snapshot.startupPulseLimit == 0) {
+        return static_cast<uint32_t>((static_cast<uint64_t>(pulses) * 1000ULL) / snapshot.stablePulsePerLiter);
+    }
+    const uint32_t startupPulses = pulses < snapshot.startupPulseLimit ? pulses : snapshot.startupPulseLimit;
+    const uint32_t stablePulses = pulses > snapshot.startupPulseLimit ? pulses - snapshot.startupPulseLimit : 0;
+    const uint64_t startupMl = (static_cast<uint64_t>(startupPulses) * snapshot.startupEstimatedMl) / snapshot.startupPulseLimit;
+    const uint64_t stableMl = (static_cast<uint64_t>(stablePulses) * 1000ULL) / snapshot.stablePulsePerLiter;
+    return static_cast<uint32_t>(startupMl + stableMl);
 }
 
 }

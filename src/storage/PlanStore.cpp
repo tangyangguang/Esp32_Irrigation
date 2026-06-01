@@ -6,7 +6,6 @@
 #include <string.h>
 #include <time.h>
 
-#include "storage/EventStore.h"
 #include "storage/ZoneConfigStore.h"
 
 namespace {
@@ -278,13 +277,6 @@ bool create(uint8_t zoneId, const Irrigation::PlanDefinition& draft, Irrigation:
         if (out) {
             *out = plan;
         }
-        (void)EventStore::append(Irrigation::EventType::PLAN_CHANGED,
-                                 Irrigation::EventSource::WEB,
-                                 zoneId,
-                                 1,
-                                 static_cast<int32_t>(plan.planId),
-                                 slot,
-                                 "plan created");
         return true;
     }
     return false;
@@ -302,13 +294,6 @@ bool remove(uint32_t planId) {
             return false;
         }
         g_plans[i] = plan;
-        (void)EventStore::append(Irrigation::EventType::PLAN_CHANGED,
-                                 Irrigation::EventSource::WEB,
-                                 zoneId,
-                                 2,
-                                 static_cast<int32_t>(planId),
-                                 slot,
-                                 "plan deleted");
         return true;
     }
     return false;
@@ -329,13 +314,6 @@ bool set(uint32_t planId, const Irrigation::PlanDefinition& plan) {
             return false;
         }
         g_plans[i] = plan;
-        (void)EventStore::append(Irrigation::EventType::PLAN_CHANGED,
-                                 Irrigation::EventSource::WEB,
-                                 plan.zoneId,
-                                 3,
-                                 static_cast<int32_t>(planId),
-                                 plan.enabled ? 1 : 0,
-                                 "plan saved");
         return true;
     }
     return false;

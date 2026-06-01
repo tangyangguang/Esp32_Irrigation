@@ -7,41 +7,10 @@
 #undef DISABLED
 #endif
 
+#include "domain/BusinessEventLog.h"
 #include "domain/ValveController.h"
-#include "storage/EventStore.h"
 #include "storage/RecordStore.h"
 #include "storage/ZoneConfigStore.h"
-
-namespace {
-
-Irrigation::EventSource eventSourceFromStart(Irrigation::StartSource source) {
-    switch (source) {
-        case Irrigation::StartSource::LOCAL_BUTTON: return Irrigation::EventSource::BUTTON;
-        case Irrigation::StartSource::WEB_PAGE:
-        case Irrigation::StartSource::HTTP_API: return Irrigation::EventSource::WEB;
-        case Irrigation::StartSource::SCHEDULER: return Irrigation::EventSource::PLAN;
-        case Irrigation::StartSource::UNKNOWN:
-        default: return Irrigation::EventSource::SYSTEM;
-    }
-}
-
-Irrigation::EventSource eventSourceFromStop(Irrigation::StopSource source) {
-    switch (source) {
-        case Irrigation::StopSource::LOCAL_BUTTON: return Irrigation::EventSource::BUTTON;
-        case Irrigation::StopSource::WEB_PAGE:
-        case Irrigation::StopSource::HTTP_API:
-        case Irrigation::StopSource::CONFIG_CHANGE: return Irrigation::EventSource::WEB;
-        case Irrigation::StopSource::SCHEDULER: return Irrigation::EventSource::PLAN;
-        case Irrigation::StopSource::UNKNOWN:
-        case Irrigation::StopSource::DURATION_REACHED:
-        case Irrigation::StopSource::FLOW_MONITOR:
-        case Irrigation::StopSource::LEAK_MONITOR:
-        case Irrigation::StopSource::FACTORY_RESET:
-        default: return Irrigation::EventSource::SYSTEM;
-    }
-}
-
-}
 
 void Zone::begin(const Irrigation::ZoneConfig& config, const ZoneErrorStore::ZoneError& error, uint32_t nowMs) {
     m_config = config;
@@ -153,13 +122,6 @@ bool Zone::start(Irrigation::TaskType type,
         return false;
     }
     m_state = Irrigation::ZoneState::STARTING;
-    (void)EventStore::append(Irrigation::EventType::WATER_START,
-                             eventSourceFromStart(source),
-                             m_config.zoneId,
-                             static_cast<uint8_t>(type),
-                             static_cast<int32_t>(targetSec),
-                             static_cast<int32_t>(planId),
-                             "zone start");
     return true;
 }
 
@@ -222,13 +184,11 @@ void Zone::finish(Irrigation::TaskResult result, Irrigation::StopSource source, 
     (void)RecordStore::append(record);
 
     const bool error = result == Irrigation::TaskResult::FLOW_START_TIMEOUT || result == Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT;
-    (void)EventStore::append(error ? Irrigation::EventType::WATER_ERROR : Irrigation::EventType::WATER_FINISH,
-                             eventSourceFromStop(source),
-                             m_config.zoneId,
-                             static_cast<uint8_t>(result),
-                             static_cast<int32_t>(task.targetSec),
-                             static_cast<int32_t>(pulses),
-                             Irrigation::taskResultName(result));
+    if (error) {
+        BusinessEventLog::appendFlowFault(m_config.zoneId, result, task.targetSec, pulses, !task.configSnapshot.suppressError);
+    } else if (result == Irrigation::TaskResult::LEAK_PROTECTED || result == Irrigation::TaskResult::FACTORY_RESET_PROTECTED) {
+        BusinessEventLog::appendSafetyStop(m_config.zoneId, result, BusinessEventLog::sourceFromStop(source));
+    }
     if (result == Irrigation::TaskResult::FLOW_START_TIMEOUT && !task.configSnapshot.suppressError) {
         persistError(Irrigation::ZoneErrorCode::FLOW_START_TIMEOUT, source, result);
         m_error = ZoneErrorStore::get(m_config.zoneId);
@@ -241,6 +201,7 @@ void Zone::finish(Irrigation::TaskResult result, Irrigation::StopSource source, 
 
 void Zone::persistError(Irrigation::ZoneErrorCode code, Irrigation::StopSource source, Irrigation::TaskResult result) {
     (void)ZoneErrorStore::setError(m_config.zoneId, code, source, result);
+    BusinessEventLog::appendZoneLocked(m_config.zoneId, code, result);
 }
 
 bool Zone::clearError(uint32_t nowMs) {
@@ -253,7 +214,10 @@ bool Zone::clearError(uint32_t nowMs) {
     return true;
 }
 
-bool Zone::checkIdleLeak(uint32_t pulseCount, uint32_t nowMs, uint16_t windowSec, uint16_t threshold) {
+bool Zone::checkIdleLeak(uint32_t pulseCount, uint32_t nowMs, uint16_t windowSec, uint16_t threshold, uint32_t* observedPulses) {
+    if (observedPulses) {
+        *observedPulses = 0;
+    }
     if (m_state != Irrigation::ZoneState::IDLE) {
         resetLeakWindow(pulseCount, nowMs);
         return false;
@@ -264,6 +228,9 @@ bool Zone::checkIdleLeak(uint32_t pulseCount, uint32_t nowMs, uint16_t windowSec
     }
     const uint32_t delta = pulseCount >= m_leakWindowStartPulses ? pulseCount - m_leakWindowStartPulses : 0;
     resetLeakWindow(pulseCount, nowMs);
+    if (observedPulses) {
+        *observedPulses = delta;
+    }
     return delta >= threshold;
 }
 

@@ -1,50 +1,37 @@
-# 事件字段语义
+# 业务事件字段语义
 
-`EventStore::Event` 是固定长度环形事件记录。系统事件用于内部事实流和联调诊断；正式业务历史记录以 `RecordStore` 的浇水任务记录为准。
+本项目不再维护自己的事件存储。灌溉业务事件统一写入 `Esp32BaseAppEventLog`，由基础库提供固定容量环形存储、分页读取、`/esp32base/app-events`、`/esp32base/api/app-events`、CSV 导出和 POST 清空能力。
 
-通用字段：
+业务事件只记录能帮助用户理解灌溉业务行为的重要事实，不记录启动、WiFi、NTP、OTA、重启、文件系统、健康状态等设备系统日志。这些系统层信息归 `Esp32Base` 的日志、健康和诊断页面。
 
-- `type`：事件类型。
-- `source`：事件来源，取值为 `system`、`button`、`web`、`plan`。
-- `road`：关联路号；`0` 表示整机事件或不适用。
-- `code`：事件内的枚举码。
-- `value1` / `value2`：按事件类型解释的两个数值槽位。
-- `text`：短文本原因，最多 31 字符。
+## 字段约定
 
-## 类型对照
+- `level`：`info`、`warn`、`error`，页面显示为“信息 / 注意 / 故障”。
+- `source`：业务来源 token，例如 `web`、`api`、`button`、`schedule`、`monitor`、`runtime`。
+- `type`：业务事件类型。
+- `reason`：结构化原因。
+- `object`：关联业务对象，例如 `zone:1`、`plan:123`、`system:irrigation`。
+- `code`：业务自定义短码，通常保存对应枚举值。
+- `value1` / `value2` / `value3`：业务数值槽，含义由 `type` 决定。
+- `text`：短说明。业务页面会用业务文案解释事件，不展示基础库内部字段。
 
-| type | code | value1 | value2 | 说明 |
-|---|---:|---:|---:|---|
-| `boot` | 是否 WDT 复位 | 启动计数 | 重启日志计数 | 应用初始化完成；`text` 为 reset reason。 |
-| `config_changed` | 0 | 配置值 | 0 | Web 保存配置时 `value1` 为启用路 mask；按键锁定时 `value1` 为 1/0。 |
-| `plan_changed` | 0 | 计划索引或日期 | 周期天数或 0 | 保存计划、跳过计划或取消跳过计划。 |
-| `water_start` | `RecordStore::TaskType` | 目标秒数 | 计划槽或 `0xFF` | `road` 为目标水路；`source` 区分按钮、Web/API 或计划。 |
-| `water_stop` | `RecordStore::Result` 或计划结果值 | 目标秒数或计划结果值 | 脉冲增量或目标秒数 | 路级任务停止时保存执行结果；计划调度结果事件的 `source=plan`，`text` 说明启动或跳过原因。 |
-| `water_error` | `RecordStore::Result` | 目标秒数 | 脉冲增量 | 路级水流异常停止。 |
-| `leak_alert` | 0 | 窗口内脉冲增量 | 告警阈值 | 待机漏水或阀门粘连告警。 |
-| `alert_clear` | 0 | 0 | 0 | 告警清除；`source` 区分 Web 或系统来源。 |
-| `factory_reset_requested` | 是否清记录 | 0 | 0 | Web 请求时 `code=1` 表示同时清空记录和事件；BOOT 长按固定为 0。 |
-| `factory_reset_executed` | 0 | 是否成功 | 0 | 仅在恢复出厂保留事件时写入。 |
-| `wifi_status_changed` | `Esp32BaseWiFi::State` | RSSI | 0 | 应用启动和 WiFi 关键状态变化。 |
-| `ota_status_changed` | `Esp32BaseOta::Status` | 已写入字节 | 总字节 | OTA 开始、成功、失败。 |
+## 当前事件类型
 
-## 计划触发结果
+| type | level | source | reason | object | code/value | 说明 |
+|---|---|---|---|---|---|---|
+| `schedule_skipped` | `info`/`warn` | `schedule`/`web`/`api` | 计划跳过或未执行原因 | `plan:<id>` | `code` 为计划观察状态或跳过原因；`value1` 可为日期或水路 | 计划因为手动跳过、天气、周期、水路停用、忙碌、漏水保护、配置无效等原因没有启动。 |
+| `schedule_unskipped` | `info` | `web`/`api` | `manual`/`weather`/`other` | `plan:<id>` | `value1` 为日期 | 取消某天计划跳过。 |
+| `flow_fault` | `error` | `monitor` | `flow_start_timeout` / `flow_no_pulse_timeout` | `zone:<id>` | `code` 为 `TaskResult`；`value1` 目标秒；`value2` 脉冲数；`value3` 是否锁定 | 浇水任务因启动无水流或运行中断流停止。 |
+| `leak_detected` | `error` | `monitor` | `idle_flow` | `zone:<id>` | `value1` 实际脉冲数；`value2` 阈值；`value3` 窗口秒 | 某一路待机状态检测到异常流量，疑似漏水、阀门粘连或流量计输入干扰。 |
+| `zone_locked` | `error` | `monitor` | 水路异常原因 | `zone:<id>` | `code` 为 `ZoneErrorCode`；`value1` 为 `TaskResult` | 水路进入异常锁定，需要人工清除。 |
+| `alert_cleared` | `info` | `web` | `zone` / `all_zones` | `zone:<id>` / `zone:all` | `value1` 可为水路号 | 用户清除单路或全部告警。 |
+| `safety_stop` | `warn` | `monitor`/`runtime` | 停止原因 | `zone:<id>` | `code` 为 `TaskResult` | 安全策略主动停止浇水，例如漏水保护或恢复出厂保护。 |
+| `factory_reset` | `warn`/`info`/`error` | `web`/`button`/`runtime` | `requested` / `executed` / `failed` | `system:irrigation` | `code`/`value1` 表示是否清空记录或执行结果 | 恢复出厂请求和执行结果。清空业务记录时会清空应用事件。 |
 
-计划触发结果的正式业务状态保存在 `PlanResultStore`，用于近期计划页面和 `/api/v1/plans/recent`。事件流中的 `water_stop` 只作为补充诊断。
+## 新增事件规则
 
-当前计划结果：
+新增事件前必须先判断：
 
-- `started`
-- `skipped_manual`
-- `skipped_road_disabled`
-- `skipped_road_busy`
-- `rejected`
-- `config_invalid`
-- `factory_reset_pending`
-- `leak_alert`
+> 这个事件是否能帮助用户理解灌溉业务为什么执行、跳过、停止或进入保护？
 
-## 约束
-
-- 新增事件类型时，必须同时更新本文件、`EventStore::typeName()` 和相关 JSON 验证项。
-- 新增计划触发结果时，必须同时更新 `PlanResultStore::resultName()`、`PlanResultStore::resultLabel()` 和 Web/API 展示。
-- 新增浇水执行结果时，必须同时更新 `RecordStore::resultName()`、历史记录页面和记录 JSON。
+如果答案是否，就不要写入业务事件日志，应交给 `Esp32Base` 系统日志或普通调试日志。

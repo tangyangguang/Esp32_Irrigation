@@ -3,7 +3,7 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
 
-#include "storage/EventStore.h"
+#include "domain/BusinessEventLog.h"
 
 namespace {
 
@@ -122,13 +122,7 @@ bool clearError(uint8_t zoneId) {
     }
     const bool ok = persist();
     if (ok) {
-        (void)EventStore::append(Irrigation::EventType::ALERT_CLEARED,
-                                 Irrigation::EventSource::WEB,
-                                 zoneId,
-                                 0,
-                                 0,
-                                 0,
-                                 "zone error cleared");
+        BusinessEventLog::appendAlertCleared(zoneId, false, "web");
     }
     return ok;
 }
@@ -140,13 +134,7 @@ bool clearAllErrors() {
     g_state.leakAlertActive = false;
     const bool ok = persist();
     if (ok) {
-        (void)EventStore::append(Irrigation::EventType::ALERT_CLEARED,
-                                 Irrigation::EventSource::WEB,
-                                 0,
-                                 0,
-                                 0,
-                                 0,
-                                 "all errors cleared");
+        BusinessEventLog::appendAlertCleared(0, true, "web");
     }
     return ok;
 }

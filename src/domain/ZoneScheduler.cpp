@@ -4,9 +4,9 @@
 #include <Esp32Base.h>
 #include <time.h>
 
+#include "domain/BusinessEventLog.h"
 #include "domain/FlowMeter.h"
 #include "domain/Zone.h"
-#include "storage/EventStore.h"
 #include "storage/PlanStore.h"
 #include "storage/ScheduleSkipStore.h"
 
@@ -48,13 +48,7 @@ bool dueEpochForDate(const Irrigation::PlanDefinition& plan, const tm& nowLocal,
 }
 
 void appendObservation(const Irrigation::PlanDefinition& plan, Irrigation::PlanObservationStatus status, uint32_t dueEpoch) {
-    (void)EventStore::append(Irrigation::EventType::PLAN_OBSERVED,
-                             Irrigation::EventSource::PLAN,
-                             plan.zoneId,
-                             static_cast<uint8_t>(status),
-                             static_cast<int32_t>(plan.planId),
-                             static_cast<int32_t>(dueEpoch),
-                             Irrigation::observationStatusName(status));
+    BusinessEventLog::appendScheduleObservation(plan, status, dueEpoch);
 }
 
 }

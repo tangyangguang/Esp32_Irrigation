@@ -106,7 +106,7 @@ Esp32_Irrigation/
 - 引用 `Esp32Base` 本地库，启用 `ESP32BASE_PROFILE_FULL`。
 - 设置固件名、版本、hostname、Web Basic Auth 应用默认认证、文件日志 INFO。
 - 注册最小业务首页和 `/api/v1/status`，确认 Web 入口可达。
-- 建立引脚表：阀门 GPIO13/14，LED GPIO17，I2C GPIO21/22，按键 GPIO0/18/19/23/25/26/33，流量 GPIO34/35。
+- 建立引脚表：阀门 GPIO16/14/13/27，LED GPIO17，I2C GPIO21/22，按键 GPIO0/18/19/23/25/26/33，流量 GPIO32/35/36/39。
 
 ### 阶段 1：配置与数据模型
 

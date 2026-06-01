@@ -27,8 +27,9 @@ ZoneConfig
 ├── valvePin            // 阀门 PWM 引脚，硬件绑定，不可变
 ├── flowPin             // 流量计引脚，硬件绑定，不可变
 ├── enabled             // 启用/停用
-├── pulsePerLiter       // 每升脉冲数
-├── calibrationX1000    // 校准系数
+├── startupPulseLimit   // 启动阶段脉冲数，0 表示不启用启动补偿
+├── startupEstimatedMl  // 启动阶段全部脉冲对应的估算水量
+├── stablePulsePerLiter // 稳定阶段每升脉冲数
 ├── startTimeoutSec     // STARTING → ERROR 的超时阈值
 ├── flowNoPulseTimeoutSec // RUNNING → ERROR 的超时阈值
 └── suppressError       // 是否抑制 ERROR 状态
@@ -44,7 +45,7 @@ ZoneConfig
 | `enabled` | 立即（停用 → 关阀终止当前任务；启用 → 立即可用） |
 | `suppressError` | 立即 |
 | `name` | 立即（纯展示） |
-| `pulsePerLiter` / `calibrationX1000` | 下次任务结束后再生效 |
+| `startupPulseLimit` / `startupEstimatedMl` / `stablePulsePerLiter` | 下次任务结束后再生效 |
 | `startTimeoutSec` / `flowNoPulseTimeoutSec` | 下次任务开始后再生效 |
 
 原则：影响当前运行中任务计算的参数，等任务结束后再生效。不影响正在执行中的参数，立即生效。
@@ -165,7 +166,7 @@ Zone
 ├── getTaskInfo() → const ZoneTaskInfo&
 ├── getLastResult() → Result
 │
-├── checkIdleLeak(pulseCount, now, windowSec, threshold) → bool
+├── checkIdleLeak(pulseCount, now, windowSec, threshold, observedPulses*) → bool
 ├── resetLeakWindow(now, pulseCount)
 │
 ├── valvePin() → uint8_t
@@ -187,9 +188,10 @@ ZoneManager
 │  ├── if allIdle:
 │  │       for zone in zones:
 │  │           if zone.isEnabled() && zone.isIdle():
-│  │               if zone.checkIdleLeak(now):
+│  │               if zone.checkIdleLeak(now, &observedPulses):
 │  │                   stopAll(SOURCE_LEAK_MONITOR, RESULT_LEAK_PROTECTED)
 │  │                   zone.markLeakAlert()
+│  │                   appendLeakDetected(zoneId, observedPulses, threshold, windowSec)
 │  │                   break
 │  └── else:
 │       for zone in zones: zone.resetLeakWindow(now)
@@ -248,7 +250,7 @@ Zone.start(type, source, planSlot, targetSec, now)
     └── 触发 stop 时：
         ├── ValveController::close()
         ├── 写入 RecordStore
-        ├── 写入 EventStore
+        ├── 按需写入 Esp32BaseAppEventLog 业务事件
         ├── runner.finished 填充终态
         └── state → IDLE（或 ERROR）
 ```
