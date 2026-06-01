@@ -1517,11 +1517,11 @@ void handleSettingsPage() {
         Esp32BaseWeb::sendChunk("</code><small>控制这一路电磁阀或阀门驱动输出。</small></p><p class='field med'><label>流量计输入 GPIO</label><code>GPIO");
         writeUInt(zone.flowPin);
         Esp32BaseWeb::sendChunk("</code><small>连接这一路流量计脉冲信号；输入脚需要按硬件设计提供稳定上拉。</small></p><p class='field full'><b>流量估算</b><small>启动阶段按独立补偿水量计算，超过启动脉冲后按稳定阶段每升脉冲计算。</small></p><p class='field short'><label>启动阶段脉冲</label><input name='startupPulseLimit' type='number' min='0' max='10000' value='");
-        writeUInt(zone.startupPulseLimit);
+        writeUInt(zone.flow.startupPulseLimit);
         Esp32BaseWeb::sendChunk("'><small>前 N 个脉冲按启动阶段估算；0 表示不使用启动补偿。</small></p><p class='field short'><label>启动阶段水量 ml</label><input name='startupEstimatedMl' type='number' min='0' max='10000' value='");
-        writeUInt(zone.startupEstimatedMl);
+        writeUInt(zone.flow.startupEstimatedMl);
         Esp32BaseWeb::sendChunk("'><small>启动阶段全部脉冲对应的实测水量。</small></p><p class='field short'><label>稳定每升脉冲</label><input name='stablePulsePerLiter' type='number' min='1' max='10000' value='");
-        writeUInt(zone.stablePulsePerLiter);
+        writeUInt(zone.flow.stablePulsePerLiter);
         Esp32BaseWeb::sendChunk("'><small>水流稳定后每通过 1 升水产生的脉冲数。</small></p><p class='field full'><b>异常处理</b><small>用于判断开阀后是否真的有水流，以及水流中断时如何处理。</small></p><p class='field short'><label>启动超时秒</label><input name='startTimeoutSec' type='number' min='1' max='300' value='");
         writeUInt(zone.startTimeoutSec);
         Esp32BaseWeb::sendChunk("'><small>开阀后在该时间内没有检测到水流，判定启动异常。</small></p><p class='field short'><label>无脉冲超时秒</label><input name='flowNoPulseTimeoutSec' type='number' min='1' max='300' value='");
@@ -1551,11 +1551,11 @@ void handleSettingsPage() {
         Esp32BaseWeb::sendChunk(" 秒</td><td>");
         writeUInt(zone.flowNoPulseTimeoutSec);
         Esp32BaseWeb::sendChunk(" 秒</td><td>");
-        writeUInt(zone.startupPulseLimit);
+        writeUInt(zone.flow.startupPulseLimit);
         Esp32BaseWeb::sendChunk(" 脉冲启动 / ");
-        writeUInt(zone.startupEstimatedMl);
+        writeUInt(zone.flow.startupEstimatedMl);
         Esp32BaseWeb::sendChunk(" ml · 稳定 ");
-        writeUInt(zone.stablePulsePerLiter);
+        writeUInt(zone.flow.stablePulsePerLiter);
         Esp32BaseWeb::sendChunk(" 脉冲/升</td><td>");
         Esp32BaseWeb::sendChunk(zone.suppressError ? "只记录，不锁定异常" : "检测异常并锁定水路");
         Esp32BaseWeb::sendChunk("</td><td><a class='btnlink compact' href='/irrigation/zones?zoneId=");
@@ -1610,11 +1610,11 @@ void handleCalibrationPage() {
         Esp32BaseWeb::sendChunk("'>");
         Esp32BaseWeb::sendChunk(zone.enabled ? "启用" : "停用");
         Esp32BaseWeb::sendChunk("</span></td><td><div class='calibration-param-line'><span class='param'>启动阶段脉冲：<span class='value'>");
-        writeUInt(zone.startupPulseLimit);
+        writeUInt(zone.flow.startupPulseLimit);
         Esp32BaseWeb::sendChunk("</span></span><span class='param'>启动阶段水量：<span class='value'>");
-        writeUInt(zone.startupEstimatedMl);
+        writeUInt(zone.flow.startupEstimatedMl);
         Esp32BaseWeb::sendChunk(" ml</span></span><span class='param'>稳定阶段脉冲：<span class='value'>");
-        writeUInt(zone.stablePulsePerLiter);
+        writeUInt(zone.flow.stablePulsePerLiter);
         Esp32BaseWeb::sendChunk(" 脉冲/升</span></span></div></td></tr>");
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div><p class='calibration-param-note'>启动阶段用于开阀初期的非稳定流量补偿；总脉冲不超过启动阶段脉冲时，按启动阶段水量线性估算。超过启动阶段脉冲后，启动阶段按启动阶段水量计入，剩余脉冲按稳定阶段脉冲/升换算。</p>");
@@ -1732,11 +1732,11 @@ void handleCalibrationPage() {
         Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><tbody><tr><th>水路</th><td>");
         writeUInt(rec.zoneId);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>启动阶段脉冲</th><td>");
-        writeUInt(rec.startupPulseLimit);
+        writeUInt(rec.flow.startupPulseLimit);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>启动阶段水量</th><td>");
-        writeUInt(rec.startupEstimatedMl);
+        writeUInt(rec.flow.startupEstimatedMl);
         Esp32BaseWeb::sendChunk(" ml</td></tr><tr><th>稳定阶段脉冲/升</th><td>");
-        writeUInt(rec.stablePulsePerLiter);
+        writeUInt(rec.flow.stablePulsePerLiter);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>有效样本数</th><td>");
         writeUInt(rec.sampleCount);
         Esp32BaseWeb::sendChunk("</td></tr><tr><th>稳定点识别</th><td>");
@@ -2326,13 +2326,13 @@ void handleZoneConfigApi() {
     } else if (Esp32BaseWeb::hasParam("enabled") && !readBool("enabled", &zone.enabled)) {
         error = "invalid_enabled";
     }
-    if (!error && Esp32BaseWeb::hasParam("startupPulseLimit") && !readU16("startupPulseLimit", &zone.startupPulseLimit)) {
+    if (!error && Esp32BaseWeb::hasParam("startupPulseLimit") && !readU16("startupPulseLimit", &zone.flow.startupPulseLimit)) {
         error = "invalid_startup_pulse_limit";
     }
-    if (!error && Esp32BaseWeb::hasParam("startupEstimatedMl") && !readU16("startupEstimatedMl", &zone.startupEstimatedMl)) {
+    if (!error && Esp32BaseWeb::hasParam("startupEstimatedMl") && !readU16("startupEstimatedMl", &zone.flow.startupEstimatedMl)) {
         error = "invalid_startup_estimated_ml";
     }
-    if (!error && Esp32BaseWeb::hasParam("stablePulsePerLiter") && !readU16("stablePulsePerLiter", &zone.stablePulsePerLiter)) {
+    if (!error && Esp32BaseWeb::hasParam("stablePulsePerLiter") && !readU16("stablePulsePerLiter", &zone.flow.stablePulsePerLiter)) {
         error = "invalid_stable_pulse_per_liter";
     }
     if (!error && Esp32BaseWeb::hasParam("startTimeoutSec") && !readU16("startTimeoutSec", &zone.startTimeoutSec)) {

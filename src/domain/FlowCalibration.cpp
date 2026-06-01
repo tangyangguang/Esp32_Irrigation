@@ -368,17 +368,17 @@ bool scoreCandidate(uint16_t candidate,
     const uint16_t stablePpl = static_cast<uint16_t>(stablePplRaw < 1.0 ? 1 : (stablePplRaw > 10000.0 ? 10000 : stablePplRaw + 0.5));
 
     out->valid = true;
-    out->startupPulseLimit = candidate;
-    out->startupEstimatedMl = candidate == 0 ? 0 : startupMl;
-    out->stablePulsePerLiter = stablePpl;
+    out->flow.startupPulseLimit = candidate;
+    out->flow.startupEstimatedMl = candidate == 0 ? 0 : startupMl;
+    out->flow.stablePulsePerLiter = stablePpl;
     out->sampleCount = sampleCount;
     uint32_t sumErrorPermille = 0;
     uint16_t maxErrorPermille = 0;
     for (uint8_t i = 0; i < sampleCount; ++i) {
         const uint32_t estimated = estimateMl(samples[i]->totalPulses,
-                                              out->startupPulseLimit,
-                                              out->startupEstimatedMl,
-                                              out->stablePulsePerLiter);
+                                              out->flow.startupPulseLimit,
+                                              out->flow.startupEstimatedMl,
+                                              out->flow.stablePulsePerLiter);
         const int32_t errorMl = static_cast<int32_t>(estimated) - static_cast<int32_t>(samples[i]->actualMl);
         const uint32_t absError = errorMl < 0 ? static_cast<uint32_t>(-errorMl) : static_cast<uint32_t>(errorMl);
         const uint16_t errorPermille = static_cast<uint16_t>((absError * 1000UL) / samples[i]->actualMl);
@@ -694,9 +694,9 @@ bool applyRecommendation() {
         return false;
     }
     Irrigation::ZoneConfig config = ZoneConfigStore::get(g_recommendation.zoneId);
-    config.startupPulseLimit = g_recommendation.startupPulseLimit;
-    config.startupEstimatedMl = g_recommendation.startupEstimatedMl;
-    config.stablePulsePerLiter = g_recommendation.stablePulsePerLiter;
+    config.flow.startupPulseLimit = g_recommendation.flow.startupPulseLimit;
+    config.flow.startupEstimatedMl = g_recommendation.flow.startupEstimatedMl;
+    config.flow.stablePulsePerLiter = g_recommendation.flow.stablePulsePerLiter;
     if (!ZoneConfigStore::set(g_recommendation.zoneId, config)) {
         setError("save_failed");
         return false;

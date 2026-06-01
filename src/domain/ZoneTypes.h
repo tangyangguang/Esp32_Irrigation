@@ -98,15 +98,38 @@ enum class PlanObservationStatus : uint8_t {
     MISSED = 11,
 };
 
+enum class FlowParameterSource : uint8_t {
+    NONE = 0,
+    MANUAL = 1,
+    CALIBRATION = 2,
+    COPIED = 3,
+};
+
+struct FlowParameters {
+    uint16_t startupPulseLimit;
+    uint16_t startupEstimatedMl;
+    uint16_t stablePulsePerLiter;
+};
+
+struct FlowCandidateSlot {
+    bool exists;
+    FlowParameterSource source;
+    uint8_t sourceZoneId;
+    uint8_t reserved;
+    FlowParameters params;
+};
+
 struct ZoneConfig {
     uint8_t zoneId;
     char name[NameMaxBytes];
     uint8_t valvePin;
     uint8_t flowPin;
     bool enabled;
-    uint16_t startupPulseLimit;
-    uint16_t startupEstimatedMl;
-    uint16_t stablePulsePerLiter;
+    FlowParameters flow;
+    FlowCandidateSlot candidateFlow;
+    bool previousFlowExists;
+    uint8_t reservedFlow[3];
+    FlowParameters previousFlow;
     uint16_t startTimeoutSec;
     uint16_t flowNoPulseTimeoutSec;
     bool suppressError;
@@ -145,9 +168,7 @@ struct PlanDefinition {
 };
 
 struct ZoneConfigSnapshot {
-    uint16_t startupPulseLimit;
-    uint16_t startupEstimatedMl;
-    uint16_t stablePulsePerLiter;
+    FlowParameters flow;
     uint16_t startTimeoutSec;
     uint16_t flowNoPulseTimeoutSec;
     bool suppressError;
