@@ -1179,25 +1179,35 @@ const char* appEventLevelLabel(uint8_t level) {
 }
 
 const char* appEventSourceLabel(const char* source) {
+    if (!source || !source[0]) return "-";
     if (strcmp(source, "web") == 0) return "网页";
     if (strcmp(source, "api") == 0) return "API";
     if (strcmp(source, "button") == 0) return "本地按键";
     if (strcmp(source, "schedule") == 0) return "计划";
     if (strcmp(source, "monitor") == 0) return "监控";
     if (strcmp(source, "runtime") == 0) return "运行保护";
-    return source;
+    if (strcmp(source, "storage") == 0) return "存储";
+    return "其他来源";
 }
 
 const char* appEventTypeLabel(const char* type) {
+    if (!type || !type[0]) return "-";
     if (strcmp(type, "schedule_skipped") == 0) return "计划跳过";
     if (strcmp(type, "schedule_unskipped") == 0) return "取消跳过";
+    if (strcmp(type, "schedule_tracker_fault") == 0) return "计划跟踪异常";
     if (strcmp(type, "flow_fault") == 0) return "流量异常";
     if (strcmp(type, "leak_detected") == 0) return "漏水检测";
     if (strcmp(type, "zone_locked") == 0) return "水路锁定";
     if (strcmp(type, "alert_cleared") == 0) return "告警清除";
     if (strcmp(type, "safety_stop") == 0) return "安全停止";
     if (strcmp(type, "factory_reset") == 0) return "恢复出厂";
-    return type;
+    if (strcmp(type, "flow_params_applied") == 0) return "流量参数应用";
+    if (strcmp(type, "flow_params_restored") == 0) return "流量参数恢复";
+    if (strcmp(type, "record_store_recovered") == 0) return "浇水记录修复";
+    if (strcmp(type, "record_store_fault") == 0) return "浇水记录异常";
+    if (strcmp(type, "config_schema_reset") == 0) return "配置格式更新";
+    if (strcmp(type, "web_route_fault") == 0) return "网页注册异常";
+    return "其他业务事件";
 }
 
 uint8_t zoneIdFromEventObject(const char* object) {
@@ -1244,6 +1254,47 @@ void writeEventDetailValue(const char* label, int32_t value, const char* unit = 
     }
 }
 
+void writeEventDetailYmd(const char* label, int32_t value) {
+    Esp32BaseWeb::sendChunk("；");
+    Esp32BaseWeb::writeHtmlEscaped(label);
+    Esp32BaseWeb::sendChunk(" ");
+    const uint32_t ymd = static_cast<uint32_t>(value);
+    if (value > 0 && PlanStore::validYmd(ymd)) {
+        writeYmdInput(ymd);
+    } else {
+        writeInt(value);
+    }
+}
+
+uint16_t highU16(int32_t packed) {
+    return static_cast<uint16_t>((static_cast<uint32_t>(packed) >> 16) & 0xFFFFUL);
+}
+
+uint16_t lowU16(int32_t packed) {
+    return static_cast<uint16_t>(static_cast<uint32_t>(packed) & 0xFFFFUL);
+}
+
+void writeEventFlowParamsChange(const Esp32BaseAppEventRecord& event, const char* action) {
+    Esp32BaseWeb::writeHtmlEscaped(action);
+    if ((event.valueMask & (Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3)) !=
+        (Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3)) {
+        return;
+    }
+    Esp32BaseWeb::sendChunk("；启动脉冲 ");
+    writeUInt(highU16(event.value1));
+    Esp32BaseWeb::sendChunk(" -> ");
+    writeUInt(highU16(event.value2));
+    Esp32BaseWeb::sendChunk("；启动估算水量 ");
+    writeUInt(lowU16(event.value1));
+    Esp32BaseWeb::sendChunk(" -> ");
+    writeUInt(lowU16(event.value2));
+    Esp32BaseWeb::sendChunk(" ml；稳定系数 ");
+    writeUInt(highU16(event.value3));
+    Esp32BaseWeb::sendChunk(" -> ");
+    writeUInt(lowU16(event.value3));
+    Esp32BaseWeb::sendChunk(" 脉冲/L");
+}
+
 void writeEventDetail(const Esp32BaseAppEventRecord& event) {
     if (strcmp(event.type, "schedule_skipped") == 0) {
         if (strcmp(event.source, "schedule") == 0 && event.code <= static_cast<uint16_t>(Irrigation::PlanObservationStatus::MISSED)) {
@@ -1258,7 +1309,7 @@ void writeEventDetail(const Esp32BaseAppEventRecord& event) {
         } else {
             Esp32BaseWeb::sendChunk("已设置单次跳过");
             if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
-                writeEventDetailValue("日期", event.value1, nullptr);
+                writeEventDetailYmd("日期", event.value1);
             }
         }
         return;
@@ -1266,7 +1317,18 @@ void writeEventDetail(const Esp32BaseAppEventRecord& event) {
     if (strcmp(event.type, "schedule_unskipped") == 0) {
         Esp32BaseWeb::sendChunk("已取消单次跳过");
         if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
-            writeEventDetailValue("日期", event.value1, nullptr);
+            writeEventDetailYmd("日期", event.value1);
+        }
+        return;
+    }
+    if (strcmp(event.type, "schedule_tracker_fault") == 0) {
+        Esp32BaseWeb::sendChunk("计划执行状态保存失败");
+        if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
+            Esp32BaseWeb::sendChunk("；水路 ");
+            writeEventZoneName(static_cast<uint8_t>(event.value1));
+        }
+        if (event.valueMask & Esp32BaseAppEventLog::VALUE2) {
+            writeEventDetailValue("计划 ID", event.value2, nullptr);
         }
         return;
     }
@@ -1327,7 +1389,135 @@ void writeEventDetail(const Esp32BaseAppEventRecord& event) {
         }
         return;
     }
+    if (strcmp(event.type, "flow_params_applied") == 0) {
+        writeEventFlowParamsChange(event, "已应用候选流量参数");
+        return;
+    }
+    if (strcmp(event.type, "flow_params_restored") == 0) {
+        writeEventFlowParamsChange(event, "已恢复上一组流量参数");
+        return;
+    }
+    if (strcmp(event.type, "record_store_recovered") == 0) {
+        Esp32BaseWeb::sendChunk("浇水记录索引已从记录文件重建");
+        if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
+            writeEventDetailValue("已识别记录", event.value1, "条");
+        }
+        if (event.valueMask & Esp32BaseAppEventLog::VALUE2) {
+            writeEventDetailValue("下一条 ID", event.value2, nullptr);
+        }
+        return;
+    }
+    if (strcmp(event.type, "record_store_fault") == 0) {
+        if (strcmp(event.reason, "meta_save_failed") == 0) {
+            Esp32BaseWeb::sendChunk("浇水记录索引保存失败");
+            if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
+                writeEventDetailValue("记录 ID", event.value1, nullptr);
+            }
+            if (event.valueMask & Esp32BaseAppEventLog::VALUE2) {
+                writeEventDetailValue("存储槽", event.value2, nullptr);
+            }
+        } else {
+            Esp32BaseWeb::sendChunk("浇水结束后写入记录失败");
+            if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
+                Esp32BaseWeb::sendChunk("；水路 ");
+                writeEventZoneName(static_cast<uint8_t>(event.value1));
+            }
+            if (event.valueMask & Esp32BaseAppEventLog::VALUE2) {
+                writeEventDetailValue("计划 ID", event.value2, nullptr);
+            }
+            Esp32BaseWeb::sendChunk("；结果 ");
+            Esp32BaseWeb::writeHtmlEscaped(taskResultLabel(static_cast<Irrigation::TaskResult>(event.code)));
+        }
+        return;
+    }
+    if (strcmp(event.type, "config_schema_reset") == 0) {
+        Esp32BaseWeb::sendChunk("保存的配置格式已更新，系统已按当前版本重新整理");
+        if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
+            writeEventDetailValue("受影响项", event.value1, "个");
+        }
+        return;
+    }
+    if (strcmp(event.type, "web_route_fault") == 0) {
+        Esp32BaseWeb::sendChunk("业务网页或 API 注册不完整");
+        if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
+            writeEventDetailValue("失败数量", event.value1, "个");
+        }
+        return;
+    }
     Esp32BaseWeb::writeHtmlEscaped(event.text);
+}
+
+const char* appEventUserExplanation(const Esp32BaseAppEventRecord& event) {
+    if (strcmp(event.type, "schedule_skipped") == 0) {
+        return strcmp(event.source, "schedule") == 0
+            ? "到计划时间时，系统判断本次计划不应该或不能启动，所以没有打开阀门。"
+            : "用户或外部系统为某个计划设置了单次跳过。到这一天时，该计划不会自动浇水。";
+    }
+    if (strcmp(event.type, "schedule_unskipped") == 0) {
+        return "之前设置的单次跳过已取消，符合条件时计划会按原规则继续执行。";
+    }
+    if (strcmp(event.type, "schedule_tracker_fault") == 0) {
+        return "系统未能保存计划执行跟踪状态，可能影响下次判断该计划是否已经处理过。";
+    }
+    if (strcmp(event.type, "flow_fault") == 0) {
+        return "浇水过程中流量监控发现异常，系统已经停止本次浇水；如果配置要求锁定水路，需要人工确认后再清除异常。";
+    }
+    if (strcmp(event.type, "safety_stop") == 0) {
+        return "系统按保护规则停止了正在执行的浇水任务，用于避免异常情况下继续出水。";
+    }
+    if (strcmp(event.type, "leak_detected") == 0) {
+        return "没有浇水任务时仍检测到流量脉冲，系统将其视为可能漏水、阀门未关严或输入信号异常。";
+    }
+    if (strcmp(event.type, "zone_locked") == 0) {
+        return "这一路已进入异常锁定状态。锁定期间系统会阻止它继续自动或手动浇水。";
+    }
+    if (strcmp(event.type, "alert_cleared") == 0) {
+        return "用户已清除水路告警。清除只代表确认处理完成，不会修改历史记录。";
+    }
+    if (strcmp(event.type, "factory_reset") == 0) {
+        return "设备执行了恢复出厂相关操作。请结合说明确认是否包含业务记录清空。";
+    }
+    if (strcmp(event.type, "flow_params_applied") == 0) {
+        return "用户把候选流量参数设为当前参数，后续估算水量和流量判断会使用新参数。";
+    }
+    if (strcmp(event.type, "flow_params_restored") == 0) {
+        return "用户把当前流量参数恢复为上一组参数，后续估算水量和流量判断会使用恢复后的参数。";
+    }
+    if (strcmp(event.type, "record_store_recovered") == 0) {
+        return "系统启动时发现浇水记录索引需要修复，并已从记录文件重建索引。已有记录通常仍可继续查看。";
+    }
+    if (strcmp(event.type, "record_store_fault") == 0) {
+        return "浇水记录写入或索引保存失败。该次浇水的历史记录可能不完整，但阀门控制不依赖这条记录继续运行。";
+    }
+    if (strcmp(event.type, "config_schema_reset") == 0) {
+        return "设备中保存的配置格式与当前固件不一致，系统已按当前固件的配置结构重新整理。";
+    }
+    if (strcmp(event.type, "web_route_fault") == 0) {
+        return "业务网页或 API 没有全部注册成功，部分页面或接口可能无法访问。";
+    }
+    return "系统记录了一条灌溉业务事件，当前固件没有更具体的用户说明。";
+}
+
+const char* appEventUserAdvice(const Esp32BaseAppEventRecord& event) {
+    if (strcmp(event.type, "flow_fault") == 0 ||
+        strcmp(event.type, "leak_detected") == 0 ||
+        strcmp(event.type, "zone_locked") == 0) {
+        return "请先检查水源、阀门、管路和流量计接线。确认现场安全后，再在水路页面清除异常。";
+    }
+    if (strcmp(event.type, "record_store_fault") == 0 ||
+        strcmp(event.type, "record_store_recovered") == 0 ||
+        strcmp(event.type, "config_schema_reset") == 0) {
+        return "如果这类事件反复出现，请检查文件系统状态、电源稳定性，并保留事件记录用于排查。";
+    }
+    if (strcmp(event.type, "web_route_fault") == 0 ||
+        strcmp(event.type, "schedule_tracker_fault") == 0) {
+        return "如果重启后仍反复出现，请重新编译烧录当前固件，并检查事件记录中的时间和触发页面。";
+    }
+    if (strcmp(event.type, "flow_params_applied") == 0 ||
+        strcmp(event.type, "flow_params_restored") == 0) {
+        return "建议观察后续浇水记录中的估算水量和流速。如果明显不准，请重新采集校准样本。";
+    }
+    return "通常无需额外处理。需要追溯原因时，可结合浇水记录和现场操作时间查看。";
 }
 
 void writeManualStartDialog() {
@@ -2469,12 +2659,29 @@ struct EventTableContext {
     bool wrote;
 };
 
+struct EventFindContext {
+    uint32_t id;
+    bool found;
+    Esp32BaseAppEventRecord event;
+};
+
+void findEventById(const Esp32BaseAppEventRecord& event, void* user) {
+    EventFindContext* ctx = static_cast<EventFindContext*>(user);
+    if (!ctx || ctx->found || event.id != ctx->id) {
+        return;
+    }
+    ctx->event = event;
+    ctx->found = true;
+}
+
 void writeEventRow(const Esp32BaseAppEventRecord& event, void* user) {
     EventTableContext* ctx = static_cast<EventTableContext*>(user);
     ctx->wrote = true;
-    Esp32BaseWeb::sendChunk("<tr><td>");
+    Esp32BaseWeb::sendChunk("<tr><td><a href='/irrigation/events/detail?id=");
     writeUInt(event.id);
-    Esp32BaseWeb::sendChunk("</td><td>");
+    Esp32BaseWeb::sendChunk("'>");
+    writeUInt(event.id);
+    Esp32BaseWeb::sendChunk("</a></td><td>");
     Esp32BaseWeb::writeHtmlEscaped(appEventLevelLabel(event.level));
     Esp32BaseWeb::sendChunk("</td><td>");
     writeEventTimeHuman(event);
@@ -2486,7 +2693,50 @@ void writeEventRow(const Esp32BaseAppEventRecord& event, void* user) {
     writeEventZoneName(eventZoneId(event));
     Esp32BaseWeb::sendChunk("</td><td>");
     writeEventDetail(event);
+    Esp32BaseWeb::sendChunk("</td><td><a class='btnlink compact' href='/irrigation/events/detail?id=");
+    writeUInt(event.id);
+    Esp32BaseWeb::sendChunk("'>详情</a>");
     Esp32BaseWeb::sendChunk("</td></tr>");
+}
+
+void writeEventKvStart(const char* label) {
+    Esp32BaseWeb::sendChunk("<tr><th>");
+    Esp32BaseWeb::writeHtmlEscaped(label);
+    Esp32BaseWeb::sendChunk("</th><td>");
+}
+
+void writeEventKvEnd() {
+    Esp32BaseWeb::sendChunk("</td></tr>");
+}
+
+void writeEventKvText(const char* label, const char* value) {
+    writeEventKvStart(label);
+    Esp32BaseWeb::writeHtmlEscaped(value ? value : "");
+    writeEventKvEnd();
+}
+
+void writeEventDetailPanel(const Esp32BaseAppEventRecord& event) {
+    Esp32BaseWeb::beginPanel("事件详情");
+    Esp32BaseWeb::sendChunk("<table class='kv'><tbody>");
+    writeEventKvStart("ID");
+    writeUInt(event.id);
+    writeEventKvEnd();
+    writeEventKvText("等级", appEventLevelLabel(event.level));
+    writeEventKvStart("发生时间");
+    writeEventTimeHuman(event);
+    writeEventKvEnd();
+    writeEventKvText("类型", appEventTypeLabel(event.type));
+    writeEventKvText("来源", appEventSourceLabel(event.source));
+    writeEventKvStart("水路");
+    writeEventZoneName(eventZoneId(event));
+    writeEventKvEnd();
+    writeEventKvStart("事件说明");
+    writeEventDetail(event);
+    writeEventKvEnd();
+    writeEventKvText("这是什么意思", appEventUserExplanation(event));
+    writeEventKvText("建议处理", appEventUserAdvice(event));
+    Esp32BaseWeb::sendChunk("</tbody></table><div class='actions'><a class='btnlink secondary' href='/irrigation/events'>返回事件记录</a></div>");
+    Esp32BaseWeb::endPanel();
 }
 
 void handleRecordsPage() {
@@ -2524,15 +2774,45 @@ void handleEventsPage() {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "事件日志未就绪", Esp32BaseAppEventLog::lastError());
     }
     Esp32BaseWeb::beginPanel("列表");
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>ID</th><th>等级</th><th>时间</th><th>类型</th><th>来源</th><th>水路</th><th>说明</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>ID</th><th>等级</th><th>时间</th><th>类型</th><th>来源</th><th>水路</th><th>说明</th><th>操作</th></tr></thead><tbody>");
     EventTableContext ctx = {false};
     (void)Esp32BaseAppEventLog::readLatest(offset, static_cast<uint16_t>(perPage), writeEventRow, &ctx);
     if (!ctx.wrote) {
-        Esp32BaseWeb::sendChunk("<tr><td colspan='7'>暂无事件</td></tr>");
+        Esp32BaseWeb::sendChunk("<tr><td colspan='8'>暂无事件</td></tr>");
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div>");
     Esp32BaseWeb::sendPagination({"/irrigation/events", nullptr, page, perPage, Esp32BaseAppEventLog::count()});
     Esp32BaseWeb::endPanel();
+    pageFooter();
+}
+
+void handleEventDetailPage() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    uint32_t id = 0;
+    pageHeader("事件详情");
+    Esp32BaseWeb::sendPageTitle("事件详情", "用用户能理解的语言说明这条灌溉业务事件。");
+    if (!readU32("id", &id)) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "事件 ID 无效", "请从事件记录列表重新进入详情。");
+        Esp32BaseWeb::beginPanel();
+        Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink secondary' href='/irrigation/events'>返回事件记录</a></div>");
+        Esp32BaseWeb::endPanel();
+        pageFooter();
+        return;
+    }
+    EventFindContext ctx = {id, false, {}};
+    const bool readOk = Esp32BaseAppEventLog::readLatest(0, Esp32BaseAppEventLog::count(), findEventById, &ctx);
+    if (!readOk) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER, "事件读取失败", Esp32BaseAppEventLog::lastError());
+    } else if (!ctx.found) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "事件不存在", "该事件可能已被新的记录覆盖。");
+    } else {
+        writeEventDetailPanel(ctx.event);
+    }
+    if (!ctx.found) {
+        Esp32BaseWeb::beginPanel();
+        Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink secondary' href='/irrigation/events'>返回事件记录</a></div>");
+        Esp32BaseWeb::endPanel();
+    }
     pageFooter();
 }
 
@@ -3234,11 +3514,12 @@ namespace IrrigationWeb {
 void begin() {
     const bool overviewOk = Esp32BaseWeb::addPage("/index", "首页", handleOverviewPage);
     const bool plansOk = Esp32BaseWeb::addPage("/irrigation/plans", "计划", handlePlansPage);
-    const bool settingsOk = Esp32BaseWeb::addPage("/irrigation/zones", "水路管理", handleSettingsPage);
-    const bool calibrationPageOk = Esp32BaseWeb::addPage("/irrigation/calibration", "流量校准", handleCalibrationPage);
-    const bool calibrationSamplePageOk = Esp32BaseWeb::addRoute("/irrigation/calibration/sample", Esp32BaseWeb::METHOD_GET, handleCalibrationSampleDetailPage);
     const bool recordsPageOk = Esp32BaseWeb::addPage("/irrigation/records", "浇水记录", handleRecordsPage);
     const bool eventsPageOk = Esp32BaseWeb::addPage("/irrigation/events", "事件记录", handleEventsPage);
+    const bool calibrationPageOk = Esp32BaseWeb::addPage("/irrigation/calibration", "流量校准", handleCalibrationPage);
+    const bool settingsOk = Esp32BaseWeb::addPage("/irrigation/zones", "水路管理", handleSettingsPage);
+    const bool calibrationSamplePageOk = Esp32BaseWeb::addRoute("/irrigation/calibration/sample", Esp32BaseWeb::METHOD_GET, handleCalibrationSampleDetailPage);
+    const bool eventDetailPageOk = Esp32BaseWeb::addRoute("/irrigation/events/detail", Esp32BaseWeb::METHOD_GET, handleEventDetailPage);
     const bool planEditOk = Esp32BaseWeb::addRoute("/irrigation/plan", Esp32BaseWeb::METHOD_GET, handlePlanEditPage);
     const bool statusOk = Esp32BaseWeb::addRoute("/api/v1/status", Esp32BaseWeb::METHOD_GET, handleStatusApi);
     const bool flowHistoryOk = Esp32BaseWeb::addRoute("/api/v1/flow/history", Esp32BaseWeb::METHOD_GET, handleFlowHistoryApi);
@@ -3269,8 +3550,8 @@ void begin() {
     const bool recordsOk = Esp32BaseWeb::addRoute("/api/v1/records", Esp32BaseWeb::METHOD_GET, handleRecordsApi);
     const bool eventsOk = Esp32BaseWeb::addRoute("/api/v1/events", Esp32BaseWeb::METHOD_GET, handleEventsApi);
     const bool routeResults[] = {
-        overviewOk, plansOk, settingsOk, calibrationPageOk, calibrationSamplePageOk,
-        recordsPageOk, eventsPageOk, planEditOk, statusOk, flowHistoryOk, calibrationStatusOk, configOk,
+        overviewOk, plansOk, recordsPageOk, eventsPageOk, calibrationPageOk, settingsOk,
+        calibrationSamplePageOk, eventDetailPageOk, planEditOk, statusOk, flowHistoryOk, calibrationStatusOk, configOk,
         zoneStartOk, zoneStopOk, allStopOk, zoneConfigOk, clearErrorOk,
         calibrationStartOk, calibrationStopOk, calibrationSampleOk, calibrationSampleUpdateOk,
         calibrationComputeOk, calibrationCandidateSaveOk, calibrationApplyOk, calibrationRestoreOk,
@@ -3286,7 +3567,7 @@ void begin() {
     if (failedRoutes > 0) {
         BusinessEventLog::appendWebRouteRegistrationFailed(failedRoutes);
     }
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s planEdit=%s status=%s flowHistory=%s calStatus=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s eventDetailPage=%s planEdit=%s status=%s flowHistory=%s calStatus=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
                     settingsOk ? "ok" : "fail",
@@ -3294,6 +3575,7 @@ void begin() {
                     calibrationSamplePageOk ? "ok" : "fail",
                     recordsPageOk ? "ok" : "fail",
                     eventsPageOk ? "ok" : "fail",
+                    eventDetailPageOk ? "ok" : "fail",
                     planEditOk ? "ok" : "fail",
                     statusOk ? "ok" : "fail",
                     flowHistoryOk ? "ok" : "fail",
