@@ -168,6 +168,18 @@ assert(flowMeter.includes('configureFlowRate') && flowMeter.includes('flowMillil
 assert(flowMeter.includes('MaxFlowHistoryPoints = 360'), 'flow chart history should cap each zone at 360 points');
 assert(flowCalibration.includes('stableWindowMs') && flowCalibration.includes('stableStepMs'), 'flow calibration should use sliding window stability detection');
 assert(flowCalibration.includes('computeRecommendation') && flowCalibration.includes('rateVariationPermille'), 'flow calibration should compute recommendations and stability diagnostics');
+assert(functionBody(web, 'handleCalibrationApplyApi').includes('FlowCalibration::active()'),
+       'applying calibration candidates must reject active calibration capture');
+assert(functionBody(web, 'handleCalibrationPreviousRestoreApi').includes('FlowCalibration::active()'),
+       'restoring previous calibration parameters must reject active calibration capture');
+{
+  const zoneTick = functionBody(read('src/domain/Zone.cpp'), 'Zone::tick');
+  const runningBranch = zoneTick.slice(zoneTick.indexOf('m_state == Irrigation::ZoneState::RUNNING'));
+  assert(runningBranch.indexOf('elapsedMs >= durationMs') !== -1 &&
+         runningBranch.indexOf('FLOW_NO_PULSE_TIMEOUT') !== -1 &&
+         runningBranch.indexOf('elapsedMs >= durationMs') < runningBranch.indexOf('FLOW_NO_PULSE_TIMEOUT'),
+         'running zones must finish completed tasks before evaluating no-pulse timeout');
+}
 
 assert(plans.includes('uint32_t planId'), 'plan id should be uint32_t');
 assert(plans.includes('nextPlanId'), 'plan store should persist a non-reused next plan id');

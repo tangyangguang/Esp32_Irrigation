@@ -79,6 +79,15 @@ void Zone::tick(uint32_t pulseCount, uint32_t flowMlPerMin, bool flowRateReady, 
         return;
     }
     if (m_state == Irrigation::ZoneState::RUNNING) {
+        if (elapsedMs >= durationMs) {
+            finish(Irrigation::TaskResult::COMPLETED,
+                   Irrigation::StopSource::DURATION_REACHED,
+                   Irrigation::StopScope::ZONE,
+                   pulseCount,
+                   epoch,
+                   nowMs);
+            return;
+        }
         m_runner.updateFlowStats(flowMlPerMin, flowRateReady, nowMs);
         const uint32_t noPulseMs = nowMs - runtime.lastPulseMs;
         if (noPulseMs >= static_cast<uint32_t>(task.configSnapshot.flowNoPulseTimeoutSec) * 1000UL) {
@@ -91,7 +100,7 @@ void Zone::tick(uint32_t pulseCount, uint32_t flowMlPerMin, bool flowRateReady, 
             return;
         }
     }
-    if (elapsedMs >= durationMs) {
+    if (m_state != Irrigation::ZoneState::RUNNING && elapsedMs >= durationMs) {
         finish(Irrigation::TaskResult::COMPLETED,
                Irrigation::StopSource::DURATION_REACHED,
                Irrigation::StopScope::ZONE,

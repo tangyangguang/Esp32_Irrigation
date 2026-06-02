@@ -2852,6 +2852,10 @@ void handleCalibrationApplyApi() {
         sendError(400, "invalid_zone");
         return;
     }
+    if (FlowCalibration::active()) {
+        sendError(409, "calibration_busy");
+        return;
+    }
     if (ZoneManager::isZoneBusy(zoneId)) {
         sendError(409, "zone_busy");
         return;
@@ -2883,6 +2887,10 @@ void handleCalibrationPreviousRestoreApi() {
     uint8_t zoneId = 0;
     if (!readZoneId(&zoneId)) {
         sendError(400, "invalid_zone");
+        return;
+    }
+    if (FlowCalibration::active()) {
+        sendError(409, "calibration_busy");
         return;
     }
     if (ZoneManager::isZoneBusy(zoneId)) {
