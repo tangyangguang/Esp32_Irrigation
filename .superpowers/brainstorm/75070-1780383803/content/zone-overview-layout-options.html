@@ -1,0 +1,142 @@
+<style>
+  .layout-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:stretch}
+  .layout-card{border:1px solid #d9e2ec;border-radius:8px;background:#fff;overflow:hidden;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .layout-card:hover{border-color:#2b6cb0;box-shadow:0 8px 24px rgba(15,23,42,.08)}
+  .layout-card.selected{border-color:#1d4ed8;box-shadow:0 0 0 3px rgba(37,99,235,.16)}
+  .layout-body{padding:12px;background:#f8fafc}
+  .layout-title{padding:12px 14px;border-top:1px solid #e2e8f0;background:#fff}
+  .layout-title h3{margin:0 0 4px;font-size:16px}
+  .layout-title p{margin:0;color:#64748b;font-size:13px;line-height:1.45}
+  .dash-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:10px}
+  .pill{display:inline-flex;align-items:center;min-height:20px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;padding:1px 6px;font-size:11px;color:#334155}
+  .pill.ok{border-color:#bbf7d0;background:#f0fdf4;color:#166534}
+  .pill.warn{border-color:#fed7aa;background:#fff7ed;color:#9a3412}
+  .pill.danger{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+  .mini-zone{border:1px solid #dbe3ec;border-radius:8px;background:#fff;padding:9px;margin-bottom:8px}
+  .mini-zone.dim{opacity:.56}
+  .z-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:8px}
+  .z-name{font-weight:750;color:#0f172a}
+  .z-sub{font-size:11px;color:#64748b;margin-top:1px}
+  .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}
+  .metric-box{border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;padding:5px 6px;min-height:34px}
+  .metric-box b{display:block;font-size:13px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .metric-box span{display:block;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart{height:44px;border:1px solid #e2e8f0;border-radius:6px;background:linear-gradient(#fff,#f8fafc);position:relative;overflow:hidden}
+  .chart:before{content:"";position:absolute;inset:8px 8px 9px;background:linear-gradient(135deg,transparent 0 18%,#0f766e 18% 21%,transparent 21% 34%,#0f766e 34% 38%,transparent 38% 52%,#0f766e 52% 55%,transparent 55% 70%,#0f766e 70% 74%,transparent 74%);opacity:.75}
+  .chart.empty:before{background:linear-gradient(90deg,#e2e8f0 0 100%);height:1px;top:50%;inset-inline:10px;opacity:1}
+  .actions-line{display:flex;justify-content:flex-end;gap:6px;margin-top:8px}
+  .btn{border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:4px 7px;font-size:11px;color:#0f172a}
+  .btn.primary{border-color:#86efac;background:#f0fdf4;color:#166534}
+  .btn.danger{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+  .variant-a .zone-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .variant-a .mini-zone{margin:0}
+  .variant-b .wide-zone{display:grid;grid-template-columns:130px minmax(0,1fr) 72px;gap:8px;align-items:center}
+  .variant-b .mini-zone{padding:8px}
+  .variant-b .metrics{grid-template-columns:repeat(3,minmax(0,1fr));margin:0}
+  .variant-b .actions-line{margin:0;flex-direction:column}
+  .variant-c .mini-zone.feature{padding:10px}
+  .variant-c .feature .chart{height:76px;margin-bottom:8px}
+  .variant-c .small-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+  .variant-c .small-zone{border:1px solid #dbe3ec;border-radius:8px;background:#fff;padding:7px}
+  .variant-c .small-zone .chart{height:28px;margin-top:6px}
+  .legend{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 18px;color:#64748b;font-size:12px}
+  @media(max-width:1100px){.layout-grid{grid-template-columns:1fr}.variant-a .zone-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+
+<h2>首页水路区域布局方向</h2>
+<p class="subtitle">三个方案都按“均衡运维”设计：每个水路都有固定区域，信息和流速图表都有固定位置。请重点看扫视效率、图表占比、操作位置是否顺手。</p>
+<div class="legend">
+  <span class="pill ok">待机</span>
+  <span class="pill warn">浇水中</span>
+  <span class="pill danger">异常</span>
+  <span class="pill">停用</span>
+</div>
+
+<div class="layout-grid">
+  <div class="layout-card variant-a" data-choice="a" onclick="toggleSelect(this)">
+    <div class="layout-body">
+      <div class="dash-head"><b>关键指标</b><span class="pill ok">2 / 4 启用</span></div>
+      <div class="zone-grid">
+        <div class="mini-zone">
+          <div class="z-head"><div><div class="z-name">水路 1</div><div class="z-sub">手动浇水</div></div><span class="pill warn">浇水中</span></div>
+          <div class="metrics"><div class="metric-box"><b>12:34</b><span>剩余</span></div><div class="metric-box"><b>1.84</b><span>L/min</span></div><div class="metric-box"><b>4.260</b><span>L</span></div></div>
+          <div class="chart"></div>
+          <div class="actions-line"><span class="btn danger">停止</span></div>
+        </div>
+        <div class="mini-zone">
+          <div class="z-head"><div><div class="z-name">水路 2</div><div class="z-sub">无运行任务</div></div><span class="pill ok">待机</span></div>
+          <div class="metrics"><div class="metric-box"><b>-</b><span>剩余</span></div><div class="metric-box"><b>-</b><span>L/min</span></div><div class="metric-box"><b>0.000</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="actions-line"><span class="btn primary">启动</span></div>
+        </div>
+        <div class="mini-zone dim">
+          <div class="z-head"><div><div class="z-name">水路 3</div><div class="z-sub">未启用</div></div><span class="pill">停用</span></div>
+          <div class="metrics"><div class="metric-box"><b>-</b><span>剩余</span></div><div class="metric-box"><b>-</b><span>L/min</span></div><div class="metric-box"><b>-</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="actions-line"><span class="btn">配置</span></div>
+        </div>
+        <div class="mini-zone dim">
+          <div class="z-head"><div><div class="z-name">水路 4</div><div class="z-sub">未启用</div></div><span class="pill">停用</span></div>
+          <div class="metrics"><div class="metric-box"><b>-</b><span>剩余</span></div><div class="metric-box"><b>-</b><span>L/min</span></div><div class="metric-box"><b>-</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="actions-line"><span class="btn">配置</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="layout-title">
+      <h3>A. 四宫格水路面板</h3>
+      <p>每路面积一致，桌面两列、手机一列。扫视最均衡，也最符合“一个水路一个区域”。</p>
+    </div>
+  </div>
+
+  <div class="layout-card variant-b" data-choice="b" onclick="toggleSelect(this)">
+    <div class="layout-body">
+      <div class="dash-head"><b>水路状态</b><span class="pill warn">1 路运行</span></div>
+      <div class="mini-zone wide-zone">
+        <div><div class="z-name">水路 1</div><div class="z-sub">浇水中 · 手动</div><span class="pill warn">浇水中</span></div>
+        <div><div class="metrics"><div class="metric-box"><b>12:34</b><span>剩余</span></div><div class="metric-box"><b>1.84</b><span>L/min</span></div><div class="metric-box"><b>4.260</b><span>L</span></div></div><div class="chart"></div></div>
+        <div class="actions-line"><span class="btn danger">停止</span></div>
+      </div>
+      <div class="mini-zone wide-zone">
+        <div><div class="z-name">水路 2</div><div class="z-sub">待机</div><span class="pill ok">待机</span></div>
+        <div><div class="metrics"><div class="metric-box"><b>-</b><span>剩余</span></div><div class="metric-box"><b>-</b><span>L/min</span></div><div class="metric-box"><b>0.000</b><span>L</span></div></div><div class="chart empty"></div></div>
+        <div class="actions-line"><span class="btn primary">启动</span></div>
+      </div>
+      <div class="mini-zone wide-zone dim">
+        <div><div class="z-name">水路 3</div><div class="z-sub">未启用</div><span class="pill">停用</span></div>
+        <div><div class="metrics"><div class="metric-box"><b>-</b><span>剩余</span></div><div class="metric-box"><b>-</b><span>L/min</span></div><div class="metric-box"><b>-</b><span>L</span></div></div><div class="chart empty"></div></div>
+        <div class="actions-line"><span class="btn">配置</span></div>
+      </div>
+      <div class="mini-zone wide-zone dim">
+        <div><div class="z-name">水路 4</div><div class="z-sub">未启用</div><span class="pill">停用</span></div>
+        <div><div class="metrics"><div class="metric-box"><b>-</b><span>剩余</span></div><div class="metric-box"><b>-</b><span>L/min</span></div><div class="metric-box"><b>-</b><span>L</span></div></div><div class="chart empty"></div></div>
+        <div class="actions-line"><span class="btn">配置</span></div>
+      </div>
+    </div>
+    <div class="layout-title">
+      <h3>B. 横向运维列表</h3>
+      <p>每路是一行，状态在左、图表在中、操作在右。适合桌面宽屏巡检，手机上会折叠得更长。</p>
+    </div>
+  </div>
+
+  <div class="layout-card variant-c" data-choice="c" onclick="toggleSelect(this)">
+    <div class="layout-body">
+      <div class="dash-head"><b>当前重点</b><span class="pill warn">水路 1</span></div>
+      <div class="mini-zone feature">
+        <div class="z-head"><div><div class="z-name">水路 1</div><div class="z-sub">浇水中 · 手动浇水</div></div><span class="pill warn">浇水中</span></div>
+        <div class="chart"></div>
+        <div class="metrics"><div class="metric-box"><b>12:34</b><span>剩余</span></div><div class="metric-box"><b>1.84</b><span>L/min</span></div><div class="metric-box"><b>4.260</b><span>L</span></div></div>
+        <div class="actions-line"><span class="btn danger">停止</span></div>
+      </div>
+      <div class="small-list">
+        <div class="small-zone"><div class="z-name">水路 2</div><span class="pill ok">待机</span><div class="chart empty"></div></div>
+        <div class="small-zone dim"><div class="z-name">水路 3</div><span class="pill">停用</span><div class="chart empty"></div></div>
+        <div class="small-zone dim"><div class="z-name">水路 4</div><span class="pill">停用</span><div class="chart empty"></div></div>
+      </div>
+    </div>
+    <div class="layout-title">
+      <h3>C. 运行水路突出</h3>
+      <p>运行中的水路图表最大，其他水路压缩。对看流速最舒服，但“每路固定区域”的一致性较弱。</p>
+    </div>
+  </div>
+</div>

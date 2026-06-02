@@ -1,0 +1,143 @@
+<style>
+  .scenario-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;align-items:start}
+  .scenario{border:1px solid #d9e2ec;border-radius:8px;background:#fff;overflow:hidden;cursor:pointer}
+  .scenario:hover{border-color:#2563eb;box-shadow:0 8px 24px rgba(15,23,42,.08)}
+  .scenario.selected{border-color:#1d4ed8;box-shadow:0 0 0 3px rgba(37,99,235,.16)}
+  .scenario h3{margin:0;padding:12px 14px;border-bottom:1px solid #e2e8f0;background:#fff;font-size:16px}
+  .scenario-note{margin:0;padding:0 14px 12px;color:#64748b;font-size:13px;line-height:1.45}
+  .mock-screen{background:#f8fafc;padding:12px}
+  .summary-row{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-bottom:10px}
+  .summary{border:1px solid #e2e8f0;border-radius:7px;background:#fff;padding:6px 7px;min-height:36px}
+  .summary b{display:block;font-size:14px;color:#0f172a}
+  .summary span{display:block;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .zone-grid{display:grid;gap:9px}
+  .one-enabled .zone-grid{grid-template-columns:minmax(0,1fr);max-width:420px;margin:0 auto}
+  .two-enabled .zone-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .four-enabled .zone-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .zone-card{border:1px solid #dbe3ec;border-radius:8px;background:#fff;padding:9px;min-width:0}
+  .zone-card.running{border-color:#fed7aa;background:#fffaf5}
+  .zone-card.error{border-color:#fecaca;background:#fffafa}
+  .z-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;margin-bottom:8px}
+  .z-name{font-weight:750;color:#0f172a}
+  .z-sub{font-size:11px;color:#64748b;margin-top:1px}
+  .pill{display:inline-flex;align-items:center;min-height:20px;border-radius:6px;border:1px solid #cbd5e1;background:#fff;padding:1px 6px;font-size:11px;color:#334155;white-space:nowrap}
+  .pill.ok{border-color:#bbf7d0;background:#f0fdf4;color:#166534}
+  .pill.warn{border-color:#fed7aa;background:#fff7ed;color:#9a3412}
+  .pill.danger{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+  .metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}
+  .metric{border:1px solid #e2e8f0;border-radius:6px;background:#f8fafc;padding:5px 6px;min-height:36px}
+  .metric b{display:block;font-size:13px;color:#0f172a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .metric span{display:block;font-size:10px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart{height:50px;border:1px solid #e2e8f0;border-radius:6px;background:#fff;position:relative;overflow:hidden}
+  .chart:before{content:"";position:absolute;inset:9px 9px 10px;background:linear-gradient(135deg,transparent 0 18%,#0f766e 18% 21%,transparent 21% 34%,#0f766e 34% 38%,transparent 38% 52%,#0f766e 52% 55%,transparent 55% 70%,#0f766e 70% 74%,transparent 74%);opacity:.78}
+  .chart.empty:before{background:#e2e8f0;height:1px;top:50%;left:10px;right:10px;opacity:1}
+  .action-row{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-top:8px}
+  .hint{font-size:11px;color:#64748b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .btn{border:1px solid #cbd5e1;border-radius:6px;background:#fff;padding:4px 7px;font-size:11px;color:#0f172a;white-space:nowrap}
+  .btn.primary{border-color:#86efac;background:#f0fdf4;color:#166534}
+  .btn.danger{border-color:#fecaca;background:#fef2f2;color:#991b1b}
+  .design-rule{margin-top:18px;border:1px solid #d9e2ec;border-radius:8px;background:#fff;padding:14px}
+  .design-rule h3{margin-top:0}
+  .design-rule ul{margin-bottom:0}
+  @media(max-width:1100px){.scenario-grid{grid-template-columns:1fr}.two-enabled .zone-grid,.four-enabled .zone-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+  @media(max-width:620px){.summary-row,.two-enabled .zone-grid,.four-enabled .zone-grid{grid-template-columns:1fr}.one-enabled .zone-grid{max-width:none}}
+</style>
+
+<h2>只显示启用水路时的首页布局</h2>
+<p class="subtitle">按你的约束，首页不显示停用水路。下面展示同一套版式在 1 路、2 路、4 路启用时的效果，避免只有 1 路时页面显得空或失衡。</p>
+
+<div class="scenario-grid">
+  <div class="scenario one-enabled" data-choice="one" onclick="toggleSelect(this)">
+    <div class="mock-screen">
+      <div class="summary-row">
+        <div class="summary"><b>正常</b><span>系统状态</span></div>
+        <div class="summary"><b>0 / 1</b><span>正在浇水</span></div>
+        <div class="summary"><b>2</b><span>今日计划</span></div>
+      </div>
+      <div class="zone-grid">
+        <div class="zone-card">
+          <div class="z-head"><div><div class="z-name">前院草坪</div><div class="z-sub">无运行任务</div></div><span class="pill ok">待机</span></div>
+          <div class="metrics"><div class="metric"><b>-</b><span>剩余</span></div><div class="metric"><b>-</b><span>L/min</span></div><div class="metric"><b>0.000</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="action-row"><span class="hint">流速图固定占位</span><span class="btn primary">启动</span></div>
+        </div>
+      </div>
+    </div>
+    <h3>1 路启用</h3>
+    <p class="scenario-note">单张水路卡不拉满整屏，居中并限制最大宽度；看起来像“当前唯一水路的工作台”，不会像缺了三块。</p>
+  </div>
+
+  <div class="scenario two-enabled" data-choice="two" onclick="toggleSelect(this)">
+    <div class="mock-screen">
+      <div class="summary-row">
+        <div class="summary"><b>正常</b><span>系统状态</span></div>
+        <div class="summary"><b>1 / 2</b><span>正在浇水</span></div>
+        <div class="summary"><b>4</b><span>今日计划</span></div>
+      </div>
+      <div class="zone-grid">
+        <div class="zone-card running">
+          <div class="z-head"><div><div class="z-name">前院草坪</div><div class="z-sub">手动浇水</div></div><span class="pill warn">浇水中</span></div>
+          <div class="metrics"><div class="metric"><b>12:34</b><span>剩余</span></div><div class="metric"><b>1.84</b><span>L/min</span></div><div class="metric"><b>4.260</b><span>L</span></div></div>
+          <div class="chart"></div>
+          <div class="action-row"><span class="hint">最近 10 分钟</span><span class="btn danger">停止</span></div>
+        </div>
+        <div class="zone-card">
+          <div class="z-head"><div><div class="z-name">后院花坛</div><div class="z-sub">无运行任务</div></div><span class="pill ok">待机</span></div>
+          <div class="metrics"><div class="metric"><b>-</b><span>剩余</span></div><div class="metric"><b>-</b><span>L/min</span></div><div class="metric"><b>0.000</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="action-row"><span class="hint">流速图固定占位</span><span class="btn primary">启动</span></div>
+        </div>
+      </div>
+    </div>
+    <h3>2 路启用</h3>
+    <p class="scenario-note">桌面两列并排，刚好对应本项目默认启用 1/2 路；手机自动单列，每张卡结构完全一致。</p>
+  </div>
+
+  <div class="scenario four-enabled" data-choice="four" onclick="toggleSelect(this)">
+    <div class="mock-screen">
+      <div class="summary-row">
+        <div class="summary"><b>1 路异常</b><span>系统状态</span></div>
+        <div class="summary"><b>1 / 4</b><span>正在浇水</span></div>
+        <div class="summary"><b>8</b><span>今日计划</span></div>
+      </div>
+      <div class="zone-grid">
+        <div class="zone-card running">
+          <div class="z-head"><div><div class="z-name">水路 1</div><div class="z-sub">计划浇水</div></div><span class="pill warn">浇水中</span></div>
+          <div class="metrics"><div class="metric"><b>08:12</b><span>剩余</span></div><div class="metric"><b>1.62</b><span>L/min</span></div><div class="metric"><b>2.940</b><span>L</span></div></div>
+          <div class="chart"></div>
+          <div class="action-row"><span class="hint">最近 10 分钟</span><span class="btn danger">停止</span></div>
+        </div>
+        <div class="zone-card">
+          <div class="z-head"><div><div class="z-name">水路 2</div><div class="z-sub">无运行任务</div></div><span class="pill ok">待机</span></div>
+          <div class="metrics"><div class="metric"><b>-</b><span>剩余</span></div><div class="metric"><b>-</b><span>L/min</span></div><div class="metric"><b>0.000</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="action-row"><span class="hint">流速图固定占位</span><span class="btn primary">启动</span></div>
+        </div>
+        <div class="zone-card error">
+          <div class="z-head"><div><div class="z-name">水路 3</div><div class="z-sub">启动后未检测到水流</div></div><span class="pill danger">异常</span></div>
+          <div class="metrics"><div class="metric"><b>-</b><span>剩余</span></div><div class="metric"><b>-</b><span>L/min</span></div><div class="metric"><b>0.000</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="action-row"><span class="hint">点击查看异常</span><span class="btn danger">清除</span></div>
+        </div>
+        <div class="zone-card">
+          <div class="z-head"><div><div class="z-name">水路 4</div><div class="z-sub">无运行任务</div></div><span class="pill ok">待机</span></div>
+          <div class="metrics"><div class="metric"><b>-</b><span>剩余</span></div><div class="metric"><b>-</b><span>L/min</span></div><div class="metric"><b>0.000</b><span>L</span></div></div>
+          <div class="chart empty"></div>
+          <div class="action-row"><span class="hint">流速图固定占位</span><span class="btn primary">启动</span></div>
+        </div>
+      </div>
+    </div>
+    <h3>4 路启用</h3>
+    <p class="scenario-note">四路时保持 2x2，避免一行四张导致图表过窄；异常卡用轻底色和红色状态，但区域尺寸不跳动。</p>
+  </div>
+</div>
+
+<div class="design-rule">
+  <h3>建议规则</h3>
+  <ul>
+    <li>首页只渲染启用水路；停用水路不占位，水路管理页负责展示 4 路完整配置。</li>
+    <li>启用 1 路：水路卡居中，设置最大宽度，图表和信息完整显示。</li>
+    <li>启用 2 或 4 路：桌面两列网格；手机单列。</li>
+    <li>启用 3 路：仍使用两列，第三张居左或居中需要再定一个细节规则。</li>
+  </ul>
+</div>

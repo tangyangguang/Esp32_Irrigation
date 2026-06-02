@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>灌溉首页水路卡片预览</title>
+  <style>
+    :root{
+      --bg:#f6f8fb;
+      --surface:#ffffff;
+      --soft:#f8fafc;
+      --line:#d9e2ec;
+      --line-soft:#e6edf5;
+      --text:#0f172a;
+      --muted:#64748b;
+      --ok:#166534;
+      --ok-soft:#f0fdf4;
+      --warn:#9a3412;
+      --warn-soft:#fff7ed;
+      --danger:#991b1b;
+      --danger-soft:#fef2f2;
+      --accent:#0f766e;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    }
+    .app{max-width:1160px;margin:0 auto;padding:24px 18px 40px}
+    header{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:18px}
+    h1{font-size:26px;line-height:1.15;margin:0 0 5px}
+    .subtitle{margin:0;color:var(--muted)}
+    .switcher{display:flex;flex-wrap:wrap;gap:7px;justify-content:flex-end}
+    .switcher button{
+      border:1px solid var(--line);
+      background:var(--surface);
+      color:var(--text);
+      border-radius:7px;
+      min-height:34px;
+      padding:0 11px;
+      font-weight:650;
+      cursor:pointer;
+    }
+    .switcher button.active{border-color:#2563eb;background:#eff6ff;color:#1d4ed8}
+    .panel{
+      border:1px solid var(--line);
+      border-radius:8px;
+      background:var(--surface);
+      padding:14px;
+      margin-bottom:14px;
+    }
+    .panel-title{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+    .panel-title h2{font-size:17px;margin:0}
+    .panel-title span{color:var(--muted);font-size:13px}
+    .metric-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+    .metric{
+      border:1px solid var(--line-soft);
+      background:var(--soft);
+      border-radius:8px;
+      padding:10px 11px;
+      min-height:64px;
+    }
+    .metric b{display:block;font-size:20px;line-height:1.05;margin-bottom:6px}
+    .metric span{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .weather-grid{display:grid;grid-template-columns:1.15fr repeat(3,minmax(0,.72fr));gap:10px}
+    .weather-now,.weather-day{
+      border:1px solid var(--line-soft);
+      background:var(--soft);
+      border-radius:8px;
+      padding:10px 11px;
+      min-width:0;
+    }
+    .weather-now b{display:block;font-size:22px;line-height:1.05;margin-bottom:6px}
+    .weather-now span,.weather-day span{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .weather-day strong{display:block;font-size:15px;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .weather-bars{height:30px;margin-top:8px;border-radius:6px;background:linear-gradient(90deg,#bfdbfe 0 38%,#bbf7d0 38% 74%,#fed7aa 74%);opacity:.72}
+    .zone-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+    .zone-grid.count-1{grid-template-columns:minmax(0,1.45fr) minmax(260px,.8fr);align-items:stretch}
+    .zone-card{
+      min-width:0;
+      border:1px solid var(--line);
+      background:var(--surface);
+      border-radius:8px;
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .zone-card.running{border-color:#fdba74;background:#fffaf5}
+    .zone-card.error{border-color:#fca5a5;background:#fffafa}
+    .zone-card.center-third:nth-child(3){grid-column:1 / -1;justify-self:center;width:min(520px,100%)}
+    .single-side{
+      border:1px solid var(--line);
+      background:var(--surface);
+      border-radius:8px;
+      padding:12px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    .single-side h3{font-size:16px;margin:0}
+    .side-row{display:flex;align-items:center;justify-content:space-between;gap:10px;border-top:1px solid var(--line-soft);padding-top:9px}
+    .side-row:first-of-type{border-top:0;padding-top:0}
+    .side-row b{font-size:15px}
+    .side-row span{color:var(--muted);font-size:12px;text-align:right}
+    .zone-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;min-height:42px}
+    .zone-name{font-size:18px;font-weight:750;line-height:1.15;margin-bottom:3px}
+    .task-line{color:var(--muted);font-size:13px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .tag{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:24px;
+      padding:0 8px;
+      border:1px solid var(--line);
+      border-radius:7px;
+      background:var(--surface);
+      color:var(--muted);
+      font-size:12px;
+      font-weight:750;
+      white-space:nowrap;
+    }
+    .tag.ok{border-color:#bbf7d0;background:var(--ok-soft);color:var(--ok)}
+    .tag.warn{border-color:#fed7aa;background:var(--warn-soft);color:var(--warn)}
+    .tag.danger{border-color:#fecaca;background:var(--danger-soft);color:var(--danger);cursor:pointer}
+    .plan-line{
+      display:flex;
+      align-items:center;
+      gap:7px;
+      min-height:34px;
+      border:1px solid var(--line-soft);
+      background:#fff;
+      border-radius:8px;
+      padding:6px 8px;
+      min-width:0;
+    }
+    .plan-label{color:var(--muted);font-size:12px;white-space:nowrap}
+    .plan-chips{display:flex;gap:5px;min-width:0;overflow:hidden}
+    .plan-chip{
+      display:inline-flex;
+      align-items:center;
+      min-height:22px;
+      max-width:150px;
+      border:1px solid #cbd5e1;
+      border-radius:7px;
+      background:var(--soft);
+      padding:0 7px;
+      font-size:12px;
+      color:#334155;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .plan-chip.next{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}
+    .plan-chip.muted{color:var(--muted)}
+    .zone-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+    .zone-metric{
+      border:1px solid var(--line-soft);
+      background:var(--soft);
+      border-radius:8px;
+      padding:8px 9px;
+      min-height:58px;
+      min-width:0;
+    }
+    .zone-metric b{display:block;font-size:18px;line-height:1.05;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .zone-metric span{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .chart-wrap{border:1px solid var(--line-soft);border-radius:8px;background:#fff;padding:8px 9px}
+    .chart-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;color:var(--muted);font-size:12px}
+    svg.chart{display:block;width:100%;height:74px;border-radius:6px;background:linear-gradient(#fff,#f8fafc)}
+    .footer-row{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:34px}
+    .runtime{color:var(--muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .actions{display:flex;gap:7px;justify-content:flex-end;flex:0 0 auto}
+    .btn{
+      border:1px solid var(--line);
+      background:var(--surface);
+      color:var(--text);
+      border-radius:7px;
+      min-height:32px;
+      padding:0 10px;
+      font-weight:750;
+    }
+    .btn.ok{border-color:#86efac;background:var(--ok-soft);color:var(--ok)}
+    .btn.danger{border-color:#fecaca;background:var(--danger-soft);color:var(--danger)}
+    .stop-all{display:flex;justify-content:flex-end;margin-top:12px}
+    .note{color:var(--muted);font-size:13px;margin:12px 0 0}
+    @media(max-width:760px){
+      .app{padding:18px 12px 32px}
+      header{align-items:flex-start;flex-direction:column}
+      .switcher{justify-content:flex-start}
+      .metric-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+      .weather-grid{grid-template-columns:1fr}
+      .zone-grid,.zone-grid.count-1{grid-template-columns:1fr}
+      .zone-card.center-third:nth-child(3){grid-column:auto;width:auto}
+      .zone-metrics{grid-template-columns:1fr}
+      .plan-line{align-items:flex-start;flex-direction:column}
+      .plan-chips{flex-wrap:wrap;overflow:visible}
+      .footer-row{align-items:stretch;flex-direction:column}
+      .actions{justify-content:flex-start}
+      svg.chart{height:68px}
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div>
+        <h1>灌溉总览</h1>
+        <p class="subtitle">启用水路自适应卡片预览：状态、任务、剩余时间、流速、水量和图表固定位置。</p>
+      </div>
+      <div class="switcher" aria-label="启用水路数量">
+        <button data-count="1">1 路启用</button>
+        <button data-count="2" class="active">2 路启用</button>
+        <button data-count="3">3 路启用</button>
+        <button data-count="4">4 路启用</button>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>关键指标</h2>
+        <span id="summaryHint">默认启用第 1、2 路</span>
+      </div>
+      <div class="metric-grid">
+        <div class="metric"><b id="safetyText">正常</b><span>系统状态</span></div>
+        <div class="metric"><b id="runningText">1 / 2</b><span>正在浇水 / 启用水路</span></div>
+        <div class="metric"><b id="planText">4</b><span>今日计划</span></div>
+        <div class="metric"><b id="errorText">0</b><span>异常提醒</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>天气预报</h2>
+        <span>仅展示天气，不自动改变浇水策略</span>
+      </div>
+      <div class="weather-grid">
+        <div class="weather-now">
+          <b>24°C · 多云</b>
+          <span>未来 24 小时降雨概率 35%，风力 2 级</span>
+          <div class="weather-bars" aria-hidden="true"></div>
+        </div>
+        <div class="weather-day"><strong>今天</strong><span>22-28°C</span><span>降雨 35%</span></div>
+        <div class="weather-day"><strong>明天</strong><span>21-27°C</span><span>降雨 70%</span></div>
+        <div class="weather-day"><strong>后天</strong><span>23-30°C</span><span>降雨 20%</span></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-title">
+        <h2>水路状态</h2>
+        <span>只显示启用水路</span>
+      </div>
+      <div id="zoneGrid" class="zone-grid"></div>
+      <div class="stop-all"><button id="stopAll" class="btn danger">全部停止</button></div>
+      <p class="note">说明：这是静态预览。实现时会继续使用现有状态 API 和流速历史 API，按钮仍保留 POST 与二次确认。</p>
+    </section>
+  </main>
+
+  <script>
+    const zones = [
+      {name:'前院草坪', state:'running', stateText:'浇水中', task:'手动浇水', remaining:'12分34秒', flow:'1.84', volume:'4.260', runtime:'已运行 7分26秒 / 目标 20分钟', action:'stop', plans:['07:30 15分钟','18:00 10分钟']},
+      {name:'后院花坛', state:'idle', stateText:'待机', task:'无运行任务', remaining:'-', flow:'-', volume:'0.000', runtime:'最近 10 分钟无流速', action:'start', plans:['06:50 12分钟','19:10 8分钟']},
+      {name:'菜园滴灌', state:'error', stateText:'异常', task:'启动后未检测到水流', remaining:'-', flow:'-', volume:'0.000', runtime:'点击异常标签查看详情', action:'clear', plans:['08:20 20分钟']},
+      {name:'果树区', state:'idle', stateText:'待机', task:'无运行任务', remaining:'-', flow:'-', volume:'0.000', runtime:'最近 10 分钟无流速', action:'start', plans:[]}
+    ];
+
+    function linePath(seed){
+      const pts = seed === 1
+        ? [[4,62],[42,58],[84,44],[126,38],[168,49],[210,30],[252,35],[296,24]]
+        : [[4,58],[42,50],[84,55],[126,34],[168,40],[210,28],[252,33],[296,22]];
+      return pts.map((p,i)=>(i?'L':'M')+p[0]+' '+p[1]).join(' ');
+    }
+
+    function chart(zone, index){
+      if(zone.state !== 'running'){
+        return '<svg class="chart" viewBox="0 0 300 74" preserveAspectRatio="none" role="img" aria-label="近期流速图表"><line x1="8" y1="57" x2="292" y2="57" stroke="#e2e8f0" vector-effect="non-scaling-stroke"/><text x="150" y="34" text-anchor="middle" fill="#94a3b8" font-size="12">无流速</text></svg>';
+      }
+      return '<svg class="chart" viewBox="0 0 300 74" preserveAspectRatio="none" role="img" aria-label="近期流速图表"><line x1="8" y1="62" x2="292" y2="62" stroke="#e2e8f0" vector-effect="non-scaling-stroke"/><path d="'+linePath(index)+'" fill="none" stroke="#0f766e" stroke-width="2.5" vector-effect="non-scaling-stroke"/><path d="'+linePath(index)+' L296 62 L4 62 Z" fill="#0f766e" opacity=".08"/></svg>';
+    }
+
+    function actionHtml(zone){
+      if(zone.action === 'stop') return '<button class="btn danger">停止</button>';
+      if(zone.action === 'clear') return '<button class="btn danger">清除异常</button>';
+      return '<button class="btn ok">启动</button>';
+    }
+
+    function plansHtml(zone){
+      if(!zone.plans || !zone.plans.length){
+        return '<div class="plan-line"><span class="plan-label">今日计划</span><div class="plan-chips"><span class="plan-chip muted">无启用计划</span></div></div>';
+      }
+      return '<div class="plan-line"><span class="plan-label">今日计划</span><div class="plan-chips">'+
+        zone.plans.map((p,i)=>'<span class="plan-chip '+(i===0?'next':'')+'">'+p+'</span>').join('')+
+        '</div></div>';
+    }
+
+    function singleSideHtml(){
+      return '<aside class="single-side">'+
+        '<h3>今日环境</h3>'+
+        '<div class="side-row"><b>多云 24°C</b><span>当前天气</span></div>'+
+        '<div class="side-row"><b>35%</b><span>24 小时降雨概率</span></div>'+
+        '<div class="side-row"><b>明天有雨</b><span>建议人工复核计划</span></div>'+
+        '<div class="side-row"><b>下一计划 07:30</b><span>15 分钟</span></div>'+
+      '</aside>';
+    }
+
+    function card(zone, index, centerThird){
+      const tone = zone.state === 'running' ? 'warn' : (zone.state === 'error' ? 'danger' : 'ok');
+      return '<article class="zone-card '+zone.state+(centerThird && index===2?' center-third':'')+'">'+
+        '<div class="zone-head"><div><div class="zone-name">'+zone.name+'</div><div class="task-line">'+zone.task+'</div></div><span class="tag '+tone+'">'+zone.stateText+'</span></div>'+
+        plansHtml(zone)+
+        '<div class="zone-metrics">'+
+          '<div class="zone-metric"><b>'+zone.remaining+'</b><span>剩余时间</span></div>'+
+          '<div class="zone-metric"><b>'+zone.flow+'</b><span>L/min 当前流速</span></div>'+
+          '<div class="zone-metric"><b>'+zone.volume+'</b><span>L 估算水量</span></div>'+
+        '</div>'+
+        '<div class="chart-wrap"><div class="chart-head"><span>近期流速</span><span>最近 10 分钟</span></div>'+chart(zone,index)+'</div>'+
+        '<div class="footer-row"><div class="runtime">'+zone.runtime+'</div><div class="actions">'+actionHtml(zone)+'</div></div>'+
+      '</article>';
+    }
+
+    function render(count){
+      const active = zones.slice(0,count);
+      const grid = document.getElementById('zoneGrid');
+      grid.className = 'zone-grid count-'+count;
+      const centerThird = count === 3;
+      grid.innerHTML = active.map((z,i)=>card(z,i,centerThird)).join('') + (count === 1 ? singleSideHtml() : '');
+      const running = active.filter(z=>z.state==='running').length;
+      const errors = active.filter(z=>z.state==='error').length;
+      document.getElementById('safetyText').textContent = errors ? errors+' 路异常' : '正常';
+      document.getElementById('runningText').textContent = running+' / '+count;
+      document.getElementById('planText').textContent = String(count * 2);
+      document.getElementById('errorText').textContent = String(errors);
+      document.getElementById('stopAll').disabled = running === 0;
+      document.getElementById('summaryHint').textContent = count === 1 ? '单路启用时居中限宽' : (count === 3 ? '三路启用时第三张居中' : '桌面两列，移动端单列');
+      document.querySelectorAll('.switcher button').forEach(b=>b.classList.toggle('active', Number(b.dataset.count)===count));
+    }
+
+    document.querySelectorAll('.switcher button').forEach(b=>b.addEventListener('click',()=>render(Number(b.dataset.count))));
+    render(2);
+  </script>
+</body>
+</html>
