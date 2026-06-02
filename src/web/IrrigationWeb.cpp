@@ -2024,7 +2024,7 @@ void handleCalibrationPage() {
     if (!canStopCapture) {
         Esp32BaseWeb::sendChunk(" calibration-stage-disabled");
     }
-    Esp32BaseWeb::sendChunk("' method='post' action='/api/v1/calibration/stop' onsubmit=\"return once(this)&&calibrationSubmit(this)\">");
+    Esp32BaseWeb::sendChunk("' method='post' action='/api/v1/calibration/stop' onsubmit=\"return confirm('确认停止校准出水？')&&once(this)&&calibrationSubmit(this)\">");
     writeOnePostHidden("source", "web_page");
     Esp32BaseWeb::sendChunk("<input type='submit' value='停止并输入水量'");
     if (!canStopCapture) {
@@ -2107,7 +2107,7 @@ void handleCalibrationPage() {
     if (!canCompute) {
         Esp32BaseWeb::sendChunk("<span class='calibration-action-note'>至少需要 1 条有效样本才能生成候选参数。</span>");
     }
-    Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/compute' onsubmit=\"return once(this)&&calibrationSubmit(this)\">");
+    Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/calibration/compute' onsubmit=\"return confirm('确认用当前样本生成候选参数？')&&once(this)&&calibrationSubmit(this)\">");
     writeOnePostHidden("source", "web_page");
     Esp32BaseWeb::sendChunk("<input type='submit' value='生成候选参数'");
     if (!canCompute) {

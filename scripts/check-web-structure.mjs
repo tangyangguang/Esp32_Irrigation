@@ -290,10 +290,10 @@ assert(web.includes('calibration-sample-summary') && web.includes('已保存 ') 
        'calibration samples panel should show the sample count as a compact summary');
 assert(web.includes('calibration-stage-control') && web.includes('calibration-stage-disabled'),
        'calibration collection action cards should use fixed controls and disabled visual states');
-assert(web.includes("action='/api/v1/calibration/stop' onsubmit=\\\"return once(this)&&calibrationSubmit(this)\\\""),
-       'calibration stop action should submit without a confirmation dialog');
-assert(web.includes("action='/api/v1/calibration/compute' onsubmit=\\\"return once(this)&&calibrationSubmit(this)\\\""),
-       'calibration compute action should submit without a confirmation dialog');
+assert(web.includes("action='/api/v1/calibration/stop' onsubmit=\\\"return confirm('确认停止校准出水？')&&once(this)&&calibrationSubmit(this)\\\""),
+       'calibration stop action should include a confirmation dialog');
+assert(web.includes("action='/api/v1/calibration/compute' onsubmit=\\\"return confirm('确认用当前样本生成候选参数？')&&once(this)&&calibrationSubmit(this)\\\""),
+       'calibration compute action should include a confirmation dialog');
 assert(web.includes("action='/api/v1/calibration/start' onsubmit=\\\"return confirm('确认开始校准出水？')") &&
        web.includes("action='/api/v1/calibration/sample' onsubmit=\\\"return confirm('确认保存本次校准样本？')") &&
        web.includes("action='/api/v1/calibration/clear' onsubmit=\\\"return confirm('确认清空当前校准样本？')"),
@@ -407,15 +407,18 @@ for (const marker of ["method='post'", 'method=\"post\"']) {
   let index = web.indexOf(marker);
   while (index !== -1) {
     const snippet = web.slice(index, index + 800);
-    const confirmationExempt = snippet.includes("action='/api/v1/calibration/stop'") ||
-                               snippet.includes("action='/api/v1/calibration/compute'");
-    if (!confirmationExempt) {
-      assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
-    }
+    assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
     assert(snippet.includes('once(this)'), `POST form must prevent duplicate submission near offset ${index}`);
     index = web.indexOf(marker, index + marker.length);
   }
 }
+
+assert(systemConfig.includes('saveFieldStored') &&
+       functionBody(read('src/storage/SystemConfigStore.cpp'), 'set').includes('saveFieldStored(config)'),
+       'SystemConfigStore::set must keep the App Config field keys synchronized with the blob');
+assert(systemConfig.includes('fieldStoredMatches') &&
+       systemConfig.includes('saveFieldStored(stored.data)'),
+       'SystemConfigStore must repair App Config field keys when loading an existing valid blob');
 
 assert(!allSource.includes('WateringSession'), 'old WateringSession references should be removed');
 assert(!allSource.includes('WateringPlanScheduler'), 'old WateringPlanScheduler references should be removed');

@@ -126,9 +126,58 @@ Irrigation::SystemConfig readFieldStored() {
     return SystemConfigStore::validate(config) ? config : defaults();
 }
 
+bool saveFieldStored(const Irrigation::SystemConfig& config) {
+    bool ok = true;
+    ok = writeU32(kKeyMaxDurationMin, secondsToMinutes(config.maxWateringDurationSec)) && ok;
+    ok = writeU32(kKeyGrace, config.scheduleGraceSec) && ok;
+    ok = writeU32(kKeyManualDefaultMin, secondsToMinutes(config.manualDefaultDurationSec)) && ok;
+    for (uint8_t i = 0; i < 6; ++i) {
+        ok = writeU32(kPresetMinuteKeys[i], secondsToMinutes(config.durationPresets[i])) && ok;
+    }
+    ok = writeBoolStored(kKeyLeakEnabled, config.idleLeakDetectionEnabled) && ok;
+    ok = writeU32(kKeyLeakWindow, config.idleLeakWindowSec) && ok;
+    ok = writeU32(kKeyLeakPulse, config.idleLeakPulseThreshold) && ok;
+    ok = writeU32(kKeyCalibrationSampleTarget, config.calibrationSampleTarget) && ok;
+    ok = writeU32(kKeyCalibrationMaxCaptureMin, config.calibrationMaxCaptureMin) && ok;
+    ok = writeU32(kKeyCalibrationDetailCaptureSec, config.calibrationDetailCaptureSec) && ok;
+    ok = writeU32(kKeyCalibrationDetailPulseLimit, config.calibrationDetailPulseLimit) && ok;
+    ok = writeU32(kKeyFlowRateWindowSec, config.flowRateWindowSec) && ok;
+    ok = writeU32(kKeyFlowChartIntervalSec, config.flowChartIntervalSec) && ok;
+    ok = writeU32(kKeyFlowChartHistoryMin, config.flowChartHistoryMin) && ok;
+    return ok;
+}
+
+bool fieldStoredMatches(const Irrigation::SystemConfig& config) {
+    const Irrigation::SystemConfig stored = readFieldStored();
+    if (stored.maxWateringDurationSec != config.maxWateringDurationSec ||
+        stored.scheduleGraceSec != config.scheduleGraceSec ||
+        stored.manualDefaultDurationSec != config.manualDefaultDurationSec ||
+        stored.idleLeakDetectionEnabled != config.idleLeakDetectionEnabled ||
+        stored.idleLeakWindowSec != config.idleLeakWindowSec ||
+        stored.idleLeakPulseThreshold != config.idleLeakPulseThreshold ||
+        stored.calibrationSampleTarget != config.calibrationSampleTarget ||
+        stored.calibrationMaxCaptureMin != config.calibrationMaxCaptureMin ||
+        stored.calibrationDetailCaptureSec != config.calibrationDetailCaptureSec ||
+        stored.calibrationDetailPulseLimit != config.calibrationDetailPulseLimit ||
+        stored.flowRateWindowSec != config.flowRateWindowSec ||
+        stored.flowChartIntervalSec != config.flowChartIntervalSec ||
+        stored.flowChartHistoryMin != config.flowChartHistoryMin) {
+        return false;
+    }
+    for (uint8_t i = 0; i < 6; ++i) {
+        if (stored.durationPresets[i] != config.durationPresets[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
 Irrigation::SystemConfig readStored() {
     StoredSystemConfig stored = {};
     if (Esp32BaseConfig::getPod(kNamespace, kKeyBlob, stored) && validStored(stored)) {
+        if (!fieldStoredMatches(stored.data)) {
+            (void)saveFieldStored(stored.data);
+        }
         return stored.data;
     }
     const Irrigation::SystemConfig config = readFieldStored();
@@ -345,6 +394,9 @@ bool validate(const Irrigation::SystemConfig& config) {
 
 bool set(const Irrigation::SystemConfig& config) {
     if (!validate(config)) {
+        return false;
+    }
+    if (!saveFieldStored(config)) {
         return false;
     }
     if (!Esp32BaseConfig::setPod(kNamespace, kKeyBlob, wrap(config))) {
