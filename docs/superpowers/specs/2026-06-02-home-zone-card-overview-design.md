@@ -67,6 +67,17 @@ Plan statuses are intentionally simple:
 - `运行中`: the plan is currently executing.
 - `未完成`: the plan is still pending or was not completed today.
 
+The visible status label stays simple, but the row should retain a short reason when the plan is not simply waiting for its scheduled time. Examples:
+
+- `未完成 · 未到时间`
+- `未完成 · 今日跳过`
+- `未完成 · 水路异常`
+- `未完成 · 漏水保护`
+- `未完成 · 配置无效`
+- `未完成 · 已错过`
+
+These reasons should be derived from the existing plan observation states where available. They prevent the UI from hiding important operational differences behind a generic "not completed" label.
+
 The plan card does not include a separate "next plan" feature block. The plan list is short enough that the next pending item is visible in context, and a separate block would duplicate the list.
 
 ## Information Priority
@@ -88,6 +99,21 @@ The home page should prioritize field readability in this order:
 
 The plan summary should avoid duplicate information. It should not show both raw plan count and a completed/total count. The planned-minute progress is higher value than raw plan count alone because it answers how much of today's planned watering has actually been completed.
 
+Recommended plan summary metrics:
+
+- Completion progress: completed plan count / today's plan count.
+- Planned-minute progress: completed planned minutes / total planned minutes.
+- Remaining planned minutes: total planned minutes minus completed planned minutes.
+
+Planned-minute progress must use a clear, conservative calculation:
+
+- Completed normally: count the plan's configured duration.
+- Running now: count the actual elapsed seconds for the running plan, rounded down to minutes for display.
+- Stopped early or fault-stopped: count actual runtime, not the configured duration.
+- Skipped, blocked, missed, rejected, or not yet due: count zero completed minutes.
+
+This avoids overstating completed watering when a plan starts but fails or is stopped early.
+
 ## Weather Forecast
 
 The home page includes a global weather forecast strip between the global metric panel and the zone rows.
@@ -96,10 +122,18 @@ Weather content:
 
 - Current weather summary: temperature, condition, 24-hour rain probability, and wind level if available.
 - Three-day forecast: today, tomorrow, and the following day, each with temperature range and rain probability.
+- Snapshot update time.
 
 Weather is display-only in this project. It must not automatically alter watering schedules, skip plans, or change valve behavior. Weather-based automation remains an external-system concern using explicit APIs, not controller-core logic.
 
 If no weather snapshot is available, the strip should show a compact unavailable state such as `暂无天气数据`, without blocking the rest of the home page.
+
+Weather freshness:
+
+- A weather snapshot must include its observation/update epoch when time is available.
+- Fresh data shows `更新于 HH:MM`.
+- Stale data shows `天气数据已过期` and should not look equivalent to fresh data.
+- If system time is not trusted, the weather strip should avoid precise freshness claims and show `天气时间未确认`.
 
 ## Data Flow
 
@@ -111,6 +145,17 @@ The existing status polling remains the primary update mechanism.
 - A stored or externally supplied weather snapshot provides the weather strip.
 
 The chart region stays visible for idle and error cards, but the history request can remain limited to running zones to avoid unnecessary network and rendering work.
+
+Flow chart rules:
+
+- The x-axis represents the configured recent history window, such as the existing flow chart history minutes.
+- The x-axis should show no more than 5-6 tick labels to stay readable on mobile and desktop.
+- The y-axis unit is `L/min`.
+- The y-axis maximum should be rounded up from recent data, but must keep a reasonable minimum ceiling, for example 2 L/min, so tiny readings are not visually exaggerated.
+- Idle and error cards show the same axes with an empty baseline, not a blank or collapsed chart.
+- SVG output should remain small enough for ESP32 Web serving: line path plus ticks/grid only, no heavy animation or per-sample labels.
+
+If current flow history contains too many points for readable display, render a downsampled path while preserving min/max trend shape.
 
 If the enabled zone set changes while the page is open, the existing structural reload behavior remains acceptable. A reload is clearer than trying to patch card additions/removals into a long-lived page.
 
@@ -152,7 +197,9 @@ Verification should cover:
 - Error zones show the error reason and can open the existing error dialog.
 - Plan cards show today's per-zone plan progress, planned-minute progress, remaining planned minutes, and all of today's plan entries.
 - Plan statuses are shown as `完成`, `运行中`, or `未完成`.
+- Non-trivial unfinished plans show a short reason such as skipped, blocked, leak-protected, configuration invalid, or missed.
 - Weather strip shows available weather data or a compact unavailable state.
+- Stale weather data is visibly marked as stale and does not look like fresh forecast data.
 - Weather display does not alter plan execution or valve behavior.
 - Leak alert state blocks start actions as before.
 - Stop, stop all, manual start, and clear error still use POST and confirmation.
