@@ -12,6 +12,7 @@
 #include "storage/RecordStore.h"
 #include "storage/ScheduleSkipStore.h"
 #include "storage/SystemConfigStore.h"
+#include "storage/WeatherSnapshotStore.h"
 #include "storage/ZoneConfigStore.h"
 #include "storage/ZoneErrorStore.h"
 #include "web/IrrigationWeb.h"
@@ -34,6 +35,7 @@ void begin() {
     ZoneErrorStore::begin();
     PlanStore::begin();
     ScheduleSkipStore::begin();
+    WeatherSnapshotStore::begin();
     FlowMeter::begin();
     FlowMeter::configureFlowRate(SystemConfigStore::current().flowRateWindowSec,
                                  SystemConfigStore::current().flowChartIntervalSec,

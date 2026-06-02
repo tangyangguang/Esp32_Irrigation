@@ -4,7 +4,7 @@
 
 **Goal:** Replace the home page table with a row-based operational dashboard showing global weather, per-zone runtime state, flow charts with axes, and today's per-zone plan progress.
 
-**Architecture:** Keep the change inside the irrigation application layer. Add a small weather snapshot store and publish API, derive today's plan display from existing `PlanStore`, `PlanExecutionTracker`, and `ZoneStatus`, and render the home page with server-generated HTML plus the existing `/api/v1/status` and `/api/v1/flow/history` polling.
+**Architecture:** Keep the change inside the irrigation application layer. Add a small weather snapshot store and publish API, derive today's plan display from `PlanStore`, read-only `PlanExecutionTracker` lookups, completed watering records in `RecordStore`, and live `ZoneStatus`, then render the home page with server-generated HTML plus the existing `/api/v1/status` and `/api/v1/flow/history` polling. The home page must never reset or persist plan execution tracker state while rendering; scheduler-owned state transitions stay in the scheduler.
 
 **Tech Stack:** ESP32 Arduino, PlatformIO, Esp32Base Web/AppConfig, C++17-style Arduino code, server-side HTML/SVG streaming via `Esp32BaseWeb`.
 
@@ -12,11 +12,12 @@
 
 ## File Structure
 
-- Modify `src/web/IrrigationWeb.cpp`: replace the home page table with row cards, add plan summary rendering, add weather strip rendering, improve flow chart SVG/JS, add weather publish route.
+- Modify `src/web/IrrigationWeb.cpp`: replace the home page table with row cards, add record-backed plan summary rendering, add weather strip rendering, improve flow chart SVG/JS, add weather publish route.
 - Modify `src/app/IrrigationApp.cpp`: initialize the weather snapshot store at startup.
 - Create `src/storage/WeatherSnapshotStore.h`: public weather snapshot storage API.
 - Create `src/storage/WeatherSnapshotStore.cpp`: NVS-backed weather snapshot persistence and validation.
 - Modify `platformio.ini`: increase `ESP32BASE_WEB_MAX_ROUTES` by one for the weather publish route.
+- Modify `scripts/check-web-structure.mjs`: keep the static web structure checks aligned with the increased route capacity and new overview structure.
 
 ## Task 1: Add Weather Snapshot Store
 
@@ -93,14 +94,48 @@ struct StoredSnapshot {
 
 WeatherSnapshotStore::Snapshot g_snapshot = {};
 
-bool validText(const char* text, size_t maxLen, bool allowEmpty) {
+bool validUtf8NoControl(const char* text, size_t maxLen, bool allowEmpty) {
     if (!text) return false;
     const size_t len = strnlen(text, maxLen);
     if (len >= maxLen) return false;
     if (!allowEmpty && len == 0) return false;
-    for (size_t i = 0; i < len; ++i) {
+    size_t i = 0;
+    while (i < len) {
         const unsigned char c = static_cast<unsigned char>(text[i]);
         if (c < 0x20 || c == 0x7F) return false;
+        if (c < 0x80) {
+            ++i;
+            continue;
+        }
+        uint8_t needed = 0;
+        uint32_t codepoint = 0;
+        if ((c & 0xE0) == 0xC0) {
+            needed = 1;
+            codepoint = c & 0x1F;
+            if (codepoint == 0) return false;
+        } else if ((c & 0xF0) == 0xE0) {
+            needed = 2;
+            codepoint = c & 0x0F;
+        } else if ((c & 0xF8) == 0xF0) {
+            needed = 3;
+            codepoint = c & 0x07;
+        } else {
+            return false;
+        }
+        if (i + needed >= len) return false;
+        for (uint8_t j = 1; j <= needed; ++j) {
+            const unsigned char cc = static_cast<unsigned char>(text[i + j]);
+            if ((cc & 0xC0) != 0x80) return false;
+            codepoint = (codepoint << 6) | (cc & 0x3F);
+        }
+        if ((needed == 1 && codepoint < 0x80) ||
+            (needed == 2 && codepoint < 0x800) ||
+            (needed == 3 && codepoint < 0x10000) ||
+            codepoint > 0x10FFFF ||
+            (codepoint >= 0xD800 && codepoint <= 0xDFFF)) {
+            return false;
+        }
+        i += static_cast<size_t>(needed) + 1U;
     }
     return true;
 }
@@ -153,13 +188,13 @@ bool clear() {
 
 bool validate(const Snapshot& snapshot) {
     if (!snapshot.exists) return true;
-    if (!validText(snapshot.condition, ConditionMaxBytes, false)) return false;
+    if (!validUtf8NoControl(snapshot.condition, ConditionMaxBytes, false)) return false;
     if (snapshot.currentTempC < -50 || snapshot.currentTempC > 80) return false;
     if (snapshot.rainProbability24hPercent > 100) return false;
     if (snapshot.windLevel > 17) return false;
     for (uint8_t i = 0; i < 3; ++i) {
         const ForecastDay& day = snapshot.days[i];
-        if (!validText(day.label, DayLabelMaxBytes, false)) return false;
+        if (!validUtf8NoControl(day.label, DayLabelMaxBytes, false)) return false;
         if (day.lowTempC < -50 || day.lowTempC > 80) return false;
         if (day.highTempC < -50 || day.highTempC > 80) return false;
         if (day.lowTempC > day.highTempC) return false;
@@ -197,6 +232,7 @@ git commit -m "Add weather snapshot store"
 
 **Files:**
 - Modify: `src/web/IrrigationWeb.cpp`
+- Modify: `scripts/check-web-structure.mjs`
 - Modify: `src/app/IrrigationApp.cpp`
 - Modify: `platformio.ini`
 
@@ -222,7 +258,7 @@ In `src/web/IrrigationWeb.cpp`, add with the other storage includes:
 #include "storage/WeatherSnapshotStore.h"
 ```
 
-- [ ] **Step 2: Add read helpers**
+- [ ] **Step 3: Add read helpers**
 
 Near the existing `readU8` and `readU16` helpers, add:
 
@@ -249,7 +285,7 @@ bool readTextParam(const char* name, char* out, size_t outLen) {
 }
 ```
 
-- [ ] **Step 3: Add weather publish handler**
+- [ ] **Step 4: Add weather publish handler**
 
 Add before the plan API handlers:
 
@@ -304,17 +340,31 @@ void handleWeatherSnapshotApi() {
 }
 ```
 
-- [ ] **Step 4: Register the route**
+- [ ] **Step 5: Register the route**
 
-In `IrrigationWeb::begin()`, add:
+In `IrrigationWeb::begin()`, add the route near the other API route registrations:
 
 ```cpp
 const bool weatherOk = Esp32BaseWeb::addRoute("/api/v1/weather/snapshot", Esp32BaseWeb::METHOD_POST, handleWeatherSnapshotApi);
 ```
 
-Include `weatherOk` in the route health log message.
+Then include `weatherOk` in both route-health paths:
 
-- [ ] **Step 5: Increase route limit**
+```cpp
+const bool routeResults[] = {
+    overviewOk, plansOk, recordsPageOk, eventsPageOk, calibrationPageOk, settingsOk,
+    calibrationSamplePageOk, eventDetailPageOk, planEditOk, statusOk, flowHistoryOk, calibrationStatusOk, configOk,
+    zoneStartOk, zoneStopOk, allStopOk, zoneConfigOk, clearErrorOk,
+    calibrationStartOk, calibrationStopOk, calibrationSampleOk, calibrationSampleUpdateOk,
+    calibrationComputeOk, calibrationCandidateSaveOk, calibrationApplyOk, calibrationRestoreOk,
+    calibrationClearOk, plansApiOk, planCreateOk, planUpdateOk, planDeleteOk,
+    planEnableOk, planDisableOk, skipOk, unskipOk, recordsOk, eventsOk, weatherOk,
+};
+```
+
+Also add `weather=%s` to the `ESP32BASE_LOG_I("irrigation.web", ...)` format string and pass `weatherOk ? "ok" : "fail"` before `IrrigationVersion::FirmwareVersion`.
+
+- [ ] **Step 6: Increase route limit**
 
 In `platformio.ini`, change:
 
@@ -328,7 +378,13 @@ to:
 -D ESP32BASE_WEB_MAX_ROUTES=43
 ```
 
-- [ ] **Step 6: Build**
+Also update `scripts/check-web-structure.mjs` so the route-capacity assertion expects 43:
+
+```js
+assert(pio.includes('-D ESP32BASE_WEB_MAX_ROUTES=43'), 'web route capacity should include weather snapshot API');
+```
+
+- [ ] **Step 7: Build**
 
 Run:
 
@@ -338,10 +394,18 @@ pio run
 
 Expected: build succeeds.
 
-- [ ] **Step 7: Commit**
+Run:
 
 ```bash
-git add src/web/IrrigationWeb.cpp platformio.ini
+node scripts/check-web-structure.mjs
+```
+
+Expected: structure checks pass with route capacity 43.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add src/web/IrrigationWeb.cpp src/app/IrrigationApp.cpp platformio.ini scripts/check-web-structure.mjs
 git commit -m "Add weather snapshot publish API"
 ```
 
@@ -360,7 +424,9 @@ struct TodayPlanDisplay {
     Irrigation::PlanDefinition plan;
     Irrigation::PlanObservationStatus observation;
     bool running;
+    bool completed;
     uint32_t completedSec;
+    Irrigation::TaskResult lastResult;
 };
 
 struct TodayPlanSummary {
@@ -369,9 +435,24 @@ struct TodayPlanSummary {
     uint32_t totalSec;
     uint32_t completedSec;
 };
+
+struct TodayPlanCompletion {
+    uint32_t planId;
+    uint32_t completedSec;
+    Irrigation::TaskResult result;
+};
 ```
 
-- [ ] **Step 2: Add minute-of-day helper**
+- [ ] **Step 2: Add include dependencies**
+
+Add with the other includes:
+
+```cpp
+#include "domain/PlanExecutionTracker.h"
+#include "storage/RecordStore.h"
+```
+
+- [ ] **Step 3: Add date and duration helpers**
 
 Add near the date/time helpers:
 
@@ -379,11 +460,35 @@ Add near the date/time helpers:
 uint16_t planMinuteOfDay(const Irrigation::PlanDefinition& plan) {
     return static_cast<uint16_t>(static_cast<uint16_t>(plan.timeHour) * 60U + plan.timeMinute);
 }
+
+uint32_t ymdFromEpoch(uint32_t epoch) {
+    if (epoch == 0) {
+        return 0;
+    }
+    const time_t value = static_cast<time_t>(epoch);
+    tm local = {};
+    if (localtime_r(&value, &local) == nullptr) {
+        return 0;
+    }
+    return static_cast<uint32_t>((local.tm_year + 1900) * 10000UL +
+                                 (local.tm_mon + 1) * 100UL +
+                                 local.tm_mday);
+}
+
+uint32_t recordRuntimeSec(const RecordStore::WateringRecord& record) {
+    if (record.endedUptimeMs > record.startedUptimeMs) {
+        return (record.endedUptimeMs - record.startedUptimeMs + 999UL) / 1000UL;
+    }
+    if (record.endedEpoch > record.startedEpoch) {
+        return record.endedEpoch - record.startedEpoch;
+    }
+    return 0;
+}
 ```
 
-- [ ] **Step 3: Add observation lookup**
+- [ ] **Step 4: Add observation lookup**
 
-Because the web layer does not own each zone's scheduler instance, use the persisted tracker directly by constructing a temporary tracker:
+Because the web layer does not own each zone's scheduler instance, use the persisted tracker directly by constructing a temporary tracker. This lookup must stay read-only. Do not call `resetNewDay()` or any method that persists NVS state from the home page render path.
 
 ```cpp
 Irrigation::PlanObservationStatus planObservationFor(uint8_t zoneId,
@@ -391,7 +496,6 @@ Irrigation::PlanObservationStatus planObservationFor(uint8_t zoneId,
                                                      uint32_t ymd) {
     PlanExecutionTracker tracker;
     tracker.begin(zoneId);
-    (void)tracker.resetNewDay(ymd);
     Irrigation::PlanObservationStatus status = Irrigation::PlanObservationStatus::NOT_EVALUATED;
     if (tracker.status(plan.planId, ymd, planMinuteOfDay(plan), &status)) {
         return status;
@@ -400,26 +504,98 @@ Irrigation::PlanObservationStatus planObservationFor(uint8_t zoneId,
 }
 ```
 
-Add include:
+- [ ] **Step 5: Add record-backed completion collection**
+
+Add a small bounded scan helper near the plan display helpers. `RecordStore` has 256 fixed records, so scanning the latest records once per enabled zone during server rendering is acceptable for the small fixed 4-zone product. This helper must only read records.
 
 ```cpp
-#include "domain/PlanExecutionTracker.h"
+struct TodayRecordCollectContext {
+    uint8_t zoneId;
+    uint32_t ymd;
+    TodayPlanCompletion* out;
+    uint8_t capacity;
+    uint8_t count;
+};
+
+int8_t findCompletionIndex(const TodayPlanCompletion* completions, uint8_t count, uint32_t planId) {
+    if (!completions || planId == Irrigation::NoPlanId) {
+        return -1;
+    }
+    for (uint8_t i = 0; i < count; ++i) {
+        if (completions[i].planId == planId) {
+            return static_cast<int8_t>(i);
+        }
+    }
+    return -1;
+}
+
+void collectTodayPlanRecord(const RecordStore::WateringRecord& record, void* user) {
+    TodayRecordCollectContext* ctx = static_cast<TodayRecordCollectContext*>(user);
+    if (!ctx || !ctx->out || ctx->capacity == 0) {
+        return;
+    }
+    if (record.zoneId != ctx->zoneId ||
+        record.planId == Irrigation::NoPlanId ||
+        record.taskType != static_cast<uint8_t>(Irrigation::TaskType::PLAN)) {
+        return;
+    }
+    const uint32_t endedYmd = ymdFromEpoch(record.endedEpoch);
+    if (endedYmd != ctx->ymd) {
+        return;
+    }
+    const uint32_t runtimeSec = recordRuntimeSec(record);
+    const int8_t existing = findCompletionIndex(ctx->out, ctx->count, record.planId);
+    if (existing >= 0) {
+        TodayPlanCompletion& completion = ctx->out[existing];
+        completion.completedSec += runtimeSec;
+        completion.result = static_cast<Irrigation::TaskResult>(record.result);
+        return;
+    }
+    if (ctx->count >= ctx->capacity) {
+        return;
+    }
+    TodayPlanCompletion& completion = ctx->out[ctx->count++];
+    completion.planId = record.planId;
+    completion.completedSec = runtimeSec;
+    completion.result = static_cast<Irrigation::TaskResult>(record.result);
+}
+
+uint8_t collectTodayPlanCompletions(uint8_t zoneId,
+                                    uint32_t ymd,
+                                    TodayPlanCompletion* out,
+                                    uint8_t capacity) {
+    if (!out || capacity == 0 || !PlanStore::validYmd(ymd)) {
+        return 0;
+    }
+    for (uint8_t i = 0; i < capacity; ++i) {
+        out[i] = {};
+        out[i].result = Irrigation::TaskResult::NONE;
+    }
+    TodayRecordCollectContext ctx = {};
+    ctx.zoneId = zoneId;
+    ctx.ymd = ymd;
+    ctx.out = out;
+    ctx.capacity = capacity;
+    (void)RecordStore::readLatest(0, RecordStore::Capacity, collectTodayPlanRecord, &ctx);
+    return ctx.count;
+}
 ```
 
-- [ ] **Step 4: Add status label helpers**
+- [ ] **Step 6: Add status label helpers**
 
 Add:
 
 ```cpp
-const char* todayPlanPrimaryStatus(Irrigation::PlanObservationStatus status, bool running, bool dueToday) {
+const char* todayPlanPrimaryStatus(bool completed, bool running) {
     if (running) return "运行中";
-    if (status == Irrigation::PlanObservationStatus::STARTED) return "完成";
-    if (!dueToday) return "未完成";
+    if (completed) return "完成";
     return "未完成";
 }
 
-const char* todayPlanReason(Irrigation::PlanObservationStatus status) {
-    switch (status) {
+const char* todayPlanReason(const TodayPlanDisplay& item) {
+    if (item.running) return "正在执行";
+    if (item.completed) return taskResultLabel(item.lastResult);
+    switch (item.observation) {
         case Irrigation::PlanObservationStatus::NOT_EVALUATED: return "未到时间";
         case Irrigation::PlanObservationStatus::SKIPPED_CALENDAR: return "今日跳过";
         case Irrigation::PlanObservationStatus::SKIPPED_DISABLED: return "水路停用";
@@ -431,13 +607,13 @@ const char* todayPlanReason(Irrigation::PlanObservationStatus status) {
         case Irrigation::PlanObservationStatus::SKIPPED_CONFIG_INVALID: return "配置无效";
         case Irrigation::PlanObservationStatus::REJECTED: return "启动拒绝";
         case Irrigation::PlanObservationStatus::MISSED: return "已错过";
-        case Irrigation::PlanObservationStatus::STARTED: return "正常完成";
+        case Irrigation::PlanObservationStatus::STARTED: return "已启动，等待记录";
         default: return "";
     }
 }
 ```
 
-- [ ] **Step 5: Add summary collection**
+- [ ] **Step 7: Add summary collection**
 
 Add:
 
@@ -454,6 +630,8 @@ uint8_t collectTodayPlans(uint8_t zoneId,
         return 0;
     }
     const Irrigation::ZoneStatus zoneStatus = ZoneManager::status(zoneId);
+    TodayPlanCompletion completions[Irrigation::MaxPlansPerZone] = {};
+    const uint8_t completionCount = collectTodayPlanCompletions(zoneId, ymd, completions, Irrigation::MaxPlansPerZone);
     uint8_t count = 0;
     for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone && count < capacity; ++slot) {
         const Irrigation::PlanDefinition& plan = PlanStore::getBySlot(zoneId, slot);
@@ -464,22 +642,25 @@ uint8_t collectTodayPlans(uint8_t zoneId,
         item.exists = true;
         item.plan = plan;
         item.observation = planObservationFor(zoneId, plan, ymd);
+        item.lastResult = Irrigation::TaskResult::NONE;
         item.running = zoneStatus.busy &&
                        zoneStatus.taskType == Irrigation::TaskType::PLAN &&
                        zoneStatus.planId == plan.planId;
         if (item.running) {
             item.completedSec = zoneStatus.elapsedSec;
-        } else if (item.observation == Irrigation::PlanObservationStatus::STARTED) {
-            item.completedSec = plan.durationSec;
-        } else {
-            item.completedSec = 0;
+        }
+        const int8_t completionIndex = findCompletionIndex(completions, completionCount, plan.planId);
+        if (completionIndex >= 0) {
+            item.completed = true;
+            item.completedSec += completions[completionIndex].completedSec;
+            item.lastResult = completions[completionIndex].result;
         }
         out[count++] = item;
         if (summary) {
             ++summary->total;
             summary->totalSec += plan.durationSec;
             summary->completedSec += item.completedSec;
-            if (item.observation == Irrigation::PlanObservationStatus::STARTED) {
+            if (item.completed) {
                 ++summary->completed;
             }
         }
@@ -488,7 +669,14 @@ uint8_t collectTodayPlans(uint8_t zoneId,
 }
 ```
 
-- [ ] **Step 6: Build**
+Important behavior:
+
+- A plan with tracker status `STARTED` is not automatically complete.
+- A stopped-early, fault-stopped, leak-protected, or manually stopped plan counts actual runtime seconds from `RecordStore`, not configured duration.
+- A currently running plan contributes live `ZoneStatus.elapsedSec` to completed seconds, but does not increment completed plan count until a record exists.
+- A skipped, blocked, missed, rejected, or not-yet-due plan contributes zero completed seconds.
+
+- [ ] **Step 8: Build**
 
 Run:
 
@@ -498,7 +686,7 @@ pio run
 
 Expected: build succeeds.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add src/web/IrrigationWeb.cpp
@@ -509,6 +697,7 @@ git commit -m "Add today plan display helpers"
 
 **Files:**
 - Modify: `src/web/IrrigationWeb.cpp`
+- Modify: `scripts/check-web-structure.mjs`
 
 - [ ] **Step 1: Add row layout CSS helper**
 
@@ -532,7 +721,7 @@ void writeOverviewStyles() {
 ".irr-zone-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}"
 ".irr-zone-metric{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:8px 9px;min-height:58px;min-width:0}"
 ".irr-zone-metric b{display:block;font-size:18px;line-height:1.05;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-zone-metric span{display:block;color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-zone-metric .label{display:block;color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
 ".irr-chart-wrap{border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff;padding:8px 9px;margin-bottom:10px}"
 ".irr-chart-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;color:var(--eb-muted);font-size:12px}"
 ".irr-flow-chart{width:100%;height:124px;display:block;border-radius:6px;background:linear-gradient(#fff,#f8fafc)}"
@@ -559,9 +748,25 @@ void writeOverviewStyles() {
 
 - [ ] **Step 2: Add weather strip renderer**
 
-Add:
+Add this complete renderer. Keep the freshness text inside the current-weather cell before closing that cell.
 
 ```cpp
+void writeHourMinuteHuman(uint32_t epoch) {
+    if (epoch == 0) {
+        Esp32BaseWeb::sendChunk("时间未同步");
+        return;
+    }
+    const time_t value = static_cast<time_t>(epoch);
+    tm local = {};
+    if (localtime_r(&value, &local) == nullptr) {
+        Esp32BaseWeb::sendChunk("时间无效");
+        return;
+    }
+    char text[8];
+    snprintf(text, sizeof(text), "%02d:%02d", local.tm_hour, local.tm_min);
+    Esp32BaseWeb::sendChunk(text);
+}
+
 void writeWeatherStrip() {
     WeatherSnapshotStore::Snapshot weather = {};
     Esp32BaseWeb::beginPanel("天气预报");
@@ -578,7 +783,22 @@ void writeWeatherStrip() {
     writeUInt(weather.rainProbability24hPercent);
     Esp32BaseWeb::sendChunk("% · 风力 ");
     writeUInt(weather.windLevel);
-    Esp32BaseWeb::sendChunk(" 级</span></div>");
+    Esp32BaseWeb::sendChunk(" 级</span>");
+#if ESP32BASE_ENABLE_NTP
+    const Esp32BaseNtp::TimeSnapshot timeSnapshot = Esp32BaseNtp::snapshot();
+    if (!timeSnapshot.synced || timeSnapshot.epochSec == 0) {
+        Esp32BaseWeb::sendChunk("<span>天气时间未确认</span>");
+    } else if (WeatherSnapshotStore::isStale(weather, timeSnapshot.epochSec)) {
+        Esp32BaseWeb::sendChunk("<span class='tag warn'>天气数据已过期</span>");
+    } else if (weather.updatedEpoch != 0) {
+        Esp32BaseWeb::sendChunk("<span>更新于 ");
+        writeHourMinuteHuman(weather.updatedEpoch);
+        Esp32BaseWeb::sendChunk("</span>");
+    }
+#else
+    Esp32BaseWeb::sendChunk("<span>天气时间未确认</span>");
+#endif
+    Esp32BaseWeb::sendChunk("</div>");
     for (uint8_t i = 0; i < 3; ++i) {
         Esp32BaseWeb::sendChunk("<div class='irr-weather-cell'><span class='irr-weather-value'>");
         Esp32BaseWeb::writeHtmlEscaped(weather.days[i].label);
@@ -593,25 +813,6 @@ void writeWeatherStrip() {
     Esp32BaseWeb::sendChunk("</div>");
     Esp32BaseWeb::endPanel();
 }
-```
-
-Then add weather freshness text to the current-weather cell:
-
-```cpp
-#if ESP32BASE_ENABLE_NTP
-    const Esp32BaseNtp::TimeSnapshot timeSnapshot = Esp32BaseNtp::snapshot();
-    if (!timeSnapshot.synced || timeSnapshot.epochSec == 0) {
-        Esp32BaseWeb::sendChunk("<span>天气时间未确认</span>");
-    } else if (WeatherSnapshotStore::isStale(weather, timeSnapshot.epochSec)) {
-        Esp32BaseWeb::sendChunk("<span class='tag warn'>天气数据已过期</span>");
-    } else if (weather.updatedEpoch != 0) {
-        Esp32BaseWeb::sendChunk("<span>更新于 ");
-        writeShortDateTimeHuman(weather.updatedEpoch);
-        Esp32BaseWeb::sendChunk("</span>");
-    }
-#else
-    Esp32BaseWeb::sendChunk("<span>天气时间未确认</span>");
-#endif
 ```
 
 - [ ] **Step 3: Add plan card renderer**
@@ -636,12 +837,12 @@ void writeTodayPlanCard(uint8_t zoneId, uint32_t ymd) {
     writeUInt(remainingSec / 60UL);
     Esp32BaseWeb::sendChunk("分钟</span><span>剩余时长</span></div></div><div class='irr-plan-list'>");
     if (count == 0) {
-        Esp32BaseWeb::sendChunk("<div class='irr-plan-item'><div><span class='irr-plan-time'>无启用计划</span><em class='irr-plan-note'>这一路今天不会自动浇水</em></div><span class='irr-plan-status pending'>待机</span></div>");
+        Esp32BaseWeb::sendChunk("<div class='irr-plan-item'><div><span class='irr-plan-time'>无启用计划</span><em class='irr-plan-note'>这一路今天不会自动浇水</em></div></div>");
     }
     for (uint8_t i = 0; i < count; ++i) {
         const TodayPlanDisplay& item = plans[i];
-        const char* primary = todayPlanPrimaryStatus(item.observation, item.running, true);
-        const char* reason = todayPlanReason(item.observation);
+        const char* primary = todayPlanPrimaryStatus(item.completed, item.running);
+        const char* reason = todayPlanReason(item);
         Esp32BaseWeb::sendChunk("<div class='irr-plan-item'><div><span class='irr-plan-time'>");
         writeTime(item.plan.timeHour, item.plan.timeMinute);
         Esp32BaseWeb::sendChunk(" · ");
@@ -669,10 +870,18 @@ const char* overviewCardStateClass(const Irrigation::ZoneStatus& status) {
     return "";
 }
 
-void writeZoneMetric(const char* label, const char* value) {
-    Esp32BaseWeb::sendChunk("<div class='irr-zone-metric'><b>");
+void writeZoneMetric(uint8_t zoneId, const char* attr, const char* label, const char* value) {
+    Esp32BaseWeb::sendChunk("<div class='irr-zone-metric'><b");
+    if (attr && attr[0]) {
+        Esp32BaseWeb::sendChunk(" ");
+        Esp32BaseWeb::sendChunk(attr);
+        Esp32BaseWeb::sendChunk("='");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("'");
+    }
+    Esp32BaseWeb::sendChunk(">");
     Esp32BaseWeb::writeHtmlEscaped(value);
-    Esp32BaseWeb::sendChunk("</b><span>");
+    Esp32BaseWeb::sendChunk("</b><span class='label'>");
     Esp32BaseWeb::writeHtmlEscaped(label);
     Esp32BaseWeb::sendChunk("</span></div>");
 }
@@ -682,13 +891,21 @@ void writeZoneOverviewRow(uint8_t zoneId, const Irrigation::ZoneStatus& status, 
     char remaining[24];
     char flow[24];
     char volume[24];
-    snprintf(remaining, sizeof(remaining), "%lus", static_cast<unsigned long>(status.remainingSec));
+    if (status.busy) {
+        snprintf(remaining, sizeof(remaining), "%lus", static_cast<unsigned long>(status.remainingSec));
+    } else {
+        strlcpy(remaining, "-", sizeof(remaining));
+    }
     if (status.busy && status.flowRateReady) {
         snprintf(flow, sizeof(flow), "%lu.%03lu", static_cast<unsigned long>(status.flowMlPerMin / 1000UL), static_cast<unsigned long>(status.flowMlPerMin % 1000UL));
     } else {
         strlcpy(flow, "-", sizeof(flow));
     }
-    snprintf(volume, sizeof(volume), "%lu.%03lu", static_cast<unsigned long>(status.estimatedMilliliters / 1000UL), static_cast<unsigned long>(status.estimatedMilliliters % 1000UL));
+    if (status.busy) {
+        snprintf(volume, sizeof(volume), "%lu.%03lu", static_cast<unsigned long>(status.estimatedMilliliters / 1000UL), static_cast<unsigned long>(status.estimatedMilliliters % 1000UL));
+    } else {
+        strlcpy(volume, "-", sizeof(volume));
+    }
 
     Esp32BaseWeb::sendChunk("<section class='irr-zone-row'><article class='irr-zone-card");
     Esp32BaseWeb::sendChunk(overviewCardStateClass(status));
@@ -725,9 +942,9 @@ void writeZoneOverviewRow(uint8_t zoneId, const Irrigation::ZoneStatus& status, 
         Esp32BaseWeb::sendChunk("</span>");
     }
     Esp32BaseWeb::sendChunk("</div></div><div class='irr-zone-metrics'>");
-    writeZoneMetric("剩余时间", remaining);
-    writeZoneMetric("L/min 当前流速", flow);
-    writeZoneMetric("L 估算水量", volume);
+    writeZoneMetric(zoneId, "data-irr-remaining", "剩余时间", remaining);
+    writeZoneMetric(zoneId, "data-irr-flow", "L/min 当前流速", flow);
+    writeZoneMetric(zoneId, "data-irr-ml", "L 估算水量", volume);
     Esp32BaseWeb::sendChunk("</div><div class='irr-chart-wrap'><div class='irr-chart-head'><span>近期流速</span><span data-irr-flow-chart-label='");
     writeUInt(zoneId);
     Esp32BaseWeb::sendChunk("'>");
@@ -774,9 +991,9 @@ void writeZoneOverviewRow(uint8_t zoneId, const Irrigation::ZoneStatus& status, 
 }
 ```
 
-- [ ] **Step 5: Replace the table loop**
+- [ ] **Step 5: Replace the table block and preserve existing interactions**
 
-In `handleOverviewPage()`, replace the `<table class='part'>` block with:
+In `handleOverviewPage()`, replace the current water-status table and old sparkline rows with the row layout below. Keep the existing overview script block, `writeManualStartDialog()`, `Esp32BaseWeb::endPanel()`, and `pageFooter()` after this block; Task 5 updates that script for the new DOM.
 
 ```cpp
 writeWeatherStrip();
@@ -784,15 +1001,63 @@ writeWeatherStrip();
 Esp32BaseWeb::beginPanel("水路状态");
 writeOverviewStyles();
 Esp32BaseWeb::sendChunk("<div class='irr-zone-rows'>");
+bool wroteStatus = false;
 for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
     const Irrigation::ZoneStatus status = ZoneManager::status(zoneId);
     if (!status.enabled) continue;
+    wroteStatus = true;
     writeZoneOverviewRow(zoneId, status, currentYmd());
 }
 Esp32BaseWeb::sendChunk("</div>");
+if (!wroteStatus) {
+    Esp32BaseWeb::sendChunk("<p class='muted'>暂无启用水路</p>");
+}
+Esp32BaseWeb::sendChunk("<div class='actions'><form method='post' action='/api/v1/zones/stop-all' onsubmit=\"return confirm('确认停止全部水路？')&&once(this)\">");
+writeOnePostHidden("source", "web_page");
+Esp32BaseWeb::sendChunk("<input id='irrStopAll' class='danger' type='submit' value='全部停止'");
+Esp32BaseWeb::sendChunk(runningCount > 0 ? "" : " disabled");
+Esp32BaseWeb::sendChunk("></form></div>");
+for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+    const Irrigation::ZoneStatus status = ZoneManager::status(zoneId);
+    if (status.enabled && status.errorActive) {
+        writeZoneErrorDialog(zoneId, ZoneManager::config(zoneId), ZoneErrorStore::get(zoneId));
+    }
+}
 ```
 
-- [ ] **Step 6: Build**
+Do not remove these existing homepage features:
+
+- Stop-all POST form with `confirm()` and `once(this)`.
+- Per-zone error detail dialogs.
+- Manual start dialog and its asynchronous submit script.
+- Overview polling script, which Task 5 rewrites for the new card DOM.
+
+- [ ] **Step 6: Update overview structure checks**
+
+In `scripts/check-web-structure.mjs`, replace the old overview table/sparkline assertions with card-oriented assertions:
+
+```js
+assert(web.includes('writeWeatherStrip()'), 'overview should render the weather forecast strip');
+assert(web.includes('writeZoneOverviewRow(zoneId, status, currentYmd())'), 'overview should render one row per enabled zone');
+assert(web.includes('writeTodayPlanCard(zoneId, ymd)'), 'overview zone rows should include today plan cards');
+assert(web.includes('irr-zone-row') && web.includes('irr-zone-card') && web.includes('irr-plan-card'), 'overview should use row/card layout classes');
+assert(web.includes('data-irr-runtime') && web.includes('data-irr-remaining') && web.includes('data-irr-flow') && web.includes('data-irr-ml'), 'overview card metrics should expose live-update targets');
+assert(web.includes('irrFlowChart') && web.includes('flowHistory'), 'overview should render recent per-zone flow chart data');
+assert(web.includes('L/min') && web.includes('无流速'), 'overview flow chart should include axes/unit labels and an idle baseline state');
+assert(web.includes('collectTodayPlanCompletions') && web.includes('RecordStore::readLatest'), 'today plan progress should use watering records');
+assert(!web.includes('resetNewDay(ymd)'), 'overview rendering must not reset plan execution tracker state');
+assert(!web.includes('<table class=\\'part\\'><thead><tr><th>水路</th><th>状态</th><th>任务</th><th>目标时长'), 'overview should not render the old water-status table');
+```
+
+Remove or revise old assertions that specifically require the previous overview table, such as:
+
+```js
+assert(web.includes('writeLitersFromMilliliters(status.estimatedMilliliters)'), 'overview initial estimated water should use liters');
+```
+
+The new overview renders initial estimated water through the card metric formatter and updates it with `irrOverviewLiters()`.
+
+- [ ] **Step 7: Build**
 
 Run:
 
@@ -802,19 +1067,113 @@ pio run
 
 Expected: build succeeds.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Run structure checks**
+
+Run:
 
 ```bash
-git add src/web/IrrigationWeb.cpp
+node scripts/check-web-structure.mjs
+```
+
+Expected: structure checks pass with the new overview card assertions.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add src/web/IrrigationWeb.cpp scripts/check-web-structure.mjs
 git commit -m "Render home overview as zone rows"
 ```
 
-## Task 5: Improve Flow Chart Rendering
+## Task 5: Improve Flow Chart Rendering And Live Updates
 
 **Files:**
 - Modify: `src/web/IrrigationWeb.cpp`
 
-- [ ] **Step 1: Replace JS chart draw function**
+- [ ] **Step 1: Replace overview live-update helpers**
+
+Replace the old table-oriented `irrOverviewRenderState()`, `irrOverviewRenderActions()`, `irrFlowChart()`, and `irrOverviewApplyStatus()` helpers with card-oriented versions. Keep the existing escaping, duration, flow, liter, refresh, and scheduling helpers.
+
+```js
+function irrOverviewRenderState(z){
+  var e=document.querySelector('[data-irr-state="'+z.zoneId+'"]');
+  if(!e)return;
+  if(z.errorActive){
+    e.innerHTML='<button type="button" class="tag danger" style="border:0;cursor:pointer" onclick="irrFaultOpen(\\'irrFaultDialog'+z.zoneId+'\\')">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</button>';
+    return;
+  }
+  e.innerHTML='<span class="tag'+irrOverviewStateTone(z.state)+'">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</span>';
+}
+
+function irrOverviewRenderActions(row,z,leak){
+  var e=document.querySelector('[data-irr-actions="'+z.zoneId+'"]');
+  if(!e)return;
+  var name=irrOverviewEscape(row.dataset.zoneName||('水路 '+z.zoneId));
+  if(z.busy){
+    e.innerHTML='<form method="post" action="/api/v1/zone/stop" onsubmit="return confirm(\\'确认停止该水路？\\')&&once(this)"><input type="hidden" name="source" value="web_page"><input type="hidden" name="zoneId" value="'+z.zoneId+'"><input class="fsaction" type="submit" value="停止"></form>';
+    return;
+  }
+  if(z.errorActive){
+    e.innerHTML='<form method="post" action="/api/v1/zone/clear-error" onsubmit="return confirm(\\'确认清除该水路异常？\\')&&once(this)"><input type="hidden" name="source" value="web_page"><input type="hidden" name="zoneId" value="'+z.zoneId+'"><input class="fsaction" type="submit" value="清除异常"></form>';
+    return;
+  }
+  e.innerHTML=leak?'<span class="muted">漏水告警中</span>':'<button class="btnlink compact ok" type="button" data-zone-id="'+z.zoneId+'" data-zone-name="'+name+'" onclick="irrManualOpen(this)">启动</button>';
+}
+
+function irrFlowChart(id,busy){
+  if(!busy){
+    irrFlowChartDraw(id,[],10);
+    return;
+  }
+  fetch('/api/v1/flow/history?zoneId='+id,{headers:{Accept:'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){
+    if(!j||!j.ok)return;
+    irrFlowChartDraw(id,j.flowHistory||[],j.historyMin||10);
+    var label=document.querySelector('[data-irr-flow-chart-label="'+id+'"]');
+    if(label)label.textContent=String(j.historyMin||'')+' 分钟';
+  }).catch(function(){});
+}
+
+function irrOverviewApplyStatus(data){
+  if(!data||!data.ok||!data.zones)return;
+  var enabled=0,running=0,errors=0,structural=false;
+  data.zones.forEach(function(z){
+    if(!z.enabled)return;
+    enabled++;
+    if(z.busy)running++;
+    if(z.errorActive)errors++;
+    var row=document.querySelector('[data-irr-zone-row="'+z.zoneId+'"]');
+    if(!row){structural=true;return;}
+    var busy=z.busy?'1':'0',err=z.errorActive?'1':'0';
+    if(row.dataset.error!==err){structural=true;return;}
+    row.dataset.state=z.state;
+    row.dataset.busy=busy;
+    row.dataset.error=err;
+    row.classList.toggle('running',!!z.busy);
+    row.classList.toggle('error',!!z.errorActive);
+    irrOverviewRenderState(z);
+    var e=document.querySelector('[data-irr-task="'+z.zoneId+'"]');
+    if(e)e.textContent=z.busy?(z.taskLabel||'浇水中'):(z.errorActive?(z.errorLabel||'水路异常'):'无运行任务');
+    e=document.querySelector('[data-irr-remaining="'+z.zoneId+'"]');
+    if(e)e.textContent=z.busy?irrOverviewDuration(z.remainingSec):'-';
+    e=document.querySelector('[data-irr-flow="'+z.zoneId+'"]');
+    if(e)e.textContent=irrOverviewFlow(z.flowMlPerMin,z.flowRateReady,z.busy);
+    e=document.querySelector('[data-irr-ml="'+z.zoneId+'"]');
+    if(e)e.textContent=z.busy?irrOverviewLiters(z.estimatedMl):'-';
+    e=document.querySelector('[data-irr-runtime="'+z.zoneId+'"]');
+    if(e)e.textContent='已运行 '+irrOverviewDuration(z.elapsedSec)+' / 目标 '+irrOverviewDuration(z.targetSec);
+    irrFlowChart(z.zoneId,z.busy);
+    irrOverviewRenderActions(row,z,data.leakAlertActive);
+  });
+  if(enabled!==document.querySelectorAll('[data-irr-zone-row]').length)structural=true;
+  if(structural){location.reload();return;}
+  irrOverviewSetMetric('irrMetricRunning',running+' / '+enabled);
+  irrOverviewSetMetric('irrMetricErrors',String(errors));
+  irrOverviewSetMetric('irrMetricSafety',data.leakAlertActive?'漏水告警':(errors>0?errors+' 路异常':'正常'));
+  var stop=document.getElementById('irrStopAll');
+  if(stop)stop.disabled=running<=0;
+}
+```
+
+- [ ] **Step 2: Replace JS chart draw function**
 
 Replace `irrFlowChartDraw()` with an SVG axis renderer:
 
@@ -860,20 +1219,6 @@ function irrFlowChartDraw(id,points,historyMin){
 }
 ```
 
-- [ ] **Step 2: Pass history length**
-
-In `irrFlowChart()`, change:
-
-```js
-irrFlowChartDraw(id,j.flowHistory||[]);
-```
-
-to:
-
-```js
-irrFlowChartDraw(id,j.flowHistory||[],j.historyMin||10);
-```
-
 - [ ] **Step 3: Build and inspect generated HTML manually**
 
 Run:
@@ -888,7 +1233,7 @@ Expected: build succeeds.
 
 ```bash
 git add src/web/IrrigationWeb.cpp
-git commit -m "Add axes to home flow charts"
+git commit -m "Update home overview chart and polling"
 ```
 
 ## Task 6: Final Verification
@@ -906,7 +1251,17 @@ pio run
 
 Expected: build succeeds.
 
-- [ ] **Step 2: Check route capacity**
+- [ ] **Step 2: Static structure checks**
+
+Run:
+
+```bash
+node scripts/check-web-structure.mjs
+```
+
+Expected: structure checks pass, including route capacity 43 and the updated home overview markers.
+
+- [ ] **Step 3: Check route capacity**
 
 Run:
 
@@ -916,7 +1271,7 @@ rg -n "ESP32BASE_WEB_MAX_ROUTES|weatherOk|addRoute" platformio.ini src/web/Irrig
 
 Expected: route limit is at least one higher than before and weather route registration is present.
 
-- [ ] **Step 3: Source safety scan**
+- [ ] **Step 4: Source safety scan**
 
 Run:
 
@@ -926,7 +1281,33 @@ rg -n "LittleFS|WebServer|server\\.|ESP\\.restart|esp_deep_sleep" src
 
 Expected: no new direct base-library bypasses were introduced.
 
-- [ ] **Step 4: Manual browser/hardware caveat**
+- [ ] **Step 5: Plan-data correctness scan**
+
+Run:
+
+```bash
+rg -n "resetNewDay|RecordStore::readLatest|collectTodayPlanCompletions|PlanObservationStatus::STARTED" src/web/IrrigationWeb.cpp
+```
+
+Expected:
+
+- `resetNewDay` does not appear in `src/web/IrrigationWeb.cpp`.
+- `collectTodayPlanCompletions` and `RecordStore::readLatest` appear in the today-plan helper code.
+- `PlanObservationStatus::STARTED` is not used to increment completed plan count or to assign full planned duration.
+
+- [ ] **Step 6: Browser visual verification**
+
+Using the in-app Browser against the local device or dev target, verify:
+
+- 1 enabled zone renders as one full-width row with runtime card and today-plan card; it must not look sparse or broken.
+- 2 enabled zones render as two rows with the same structure as the 1-zone case.
+- 4 enabled zones render as four rows without horizontal overflow.
+- Mobile-width layout stacks runtime card above plan card without overlapping text or controls.
+- Idle zones show chart axes and an empty baseline instead of a blank/collapsed chart.
+- Running zones update remaining time, flow, estimated volume, and chart without reloading.
+- Weather strip shows either forecast data with freshness text or compact `暂无天气数据`.
+
+- [ ] **Step 7: Manual browser/hardware caveat**
 
 Record in final handoff:
 
@@ -934,12 +1315,12 @@ Record in final handoff:
 PlatformIO build passed. Web layout has not been verified on physical ESP32 hardware unless a device test is explicitly run. Weather publishing API is implemented as display-only and does not alter schedules or valves.
 ```
 
-- [ ] **Step 5: Commit any verification fixes**
+- [ ] **Step 8: Commit any verification fixes**
 
 If verification required fixes:
 
 ```bash
-git add src/web/IrrigationWeb.cpp platformio.ini src/storage/WeatherSnapshotStore.h src/storage/WeatherSnapshotStore.cpp
+git add src/web/IrrigationWeb.cpp src/app/IrrigationApp.cpp platformio.ini scripts/check-web-structure.mjs src/storage/WeatherSnapshotStore.h src/storage/WeatherSnapshotStore.cpp
 git commit -m "Fix home overview verification issues"
 ```
 
