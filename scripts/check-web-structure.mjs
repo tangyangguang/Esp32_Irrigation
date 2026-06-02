@@ -272,6 +272,20 @@ assert(web.includes('calibration-collect-status') && web.includes('接水状态'
        'calibration collection area should separate collection status from current zone parameters');
 assert(web.includes('calibration-compact-workflow') && web.includes('calibration-inline-form'),
        'calibration collection actions should use compact inline layout');
+assert(!web.includes('calibrationProgressSamples'),
+       'calibration collection status should not render the sample-count card');
+assert(web.includes('calibration-sample-summary') && web.includes('已保存 ') && web.includes('有效 ') && web.includes('容量 '),
+       'calibration samples panel should show the sample count as a compact summary');
+assert(web.includes('calibration-stage-control') && web.includes('calibration-stage-disabled'),
+       'calibration collection action cards should use fixed controls and disabled visual states');
+assert(web.includes("action='/api/v1/calibration/stop' onsubmit=\\\"return once(this)&&calibrationSubmit(this)\\\""),
+       'calibration stop action should submit without a confirmation dialog');
+assert(web.includes("action='/api/v1/calibration/compute' onsubmit=\\\"return once(this)&&calibrationSubmit(this)\\\""),
+       'calibration compute action should submit without a confirmation dialog');
+assert(web.includes("action='/api/v1/calibration/start' onsubmit=\\\"return confirm('确认开始校准出水？')") &&
+       web.includes("action='/api/v1/calibration/sample' onsubmit=\\\"return confirm('确认保存本次校准样本？')") &&
+       web.includes("action='/api/v1/calibration/clear' onsubmit=\\\"return confirm('确认清空当前校准样本？')"),
+       'other important calibration POST actions should keep confirmation dialogs');
 assert(web.includes('calibrationProgressStart') && web.includes('/api/v1/calibration/status') && web.includes('setInterval(calibrationProgressUpdate,1000)'),
        'calibration page should refresh collection progress from the status API every second');
 assert(web.includes('calibrationSubmit(this)') && web.includes('calibrationReplaceSections') && web.includes('DOMParser'),
@@ -381,7 +395,11 @@ for (const marker of ["method='post'", 'method=\"post\"']) {
   let index = web.indexOf(marker);
   while (index !== -1) {
     const snippet = web.slice(index, index + 800);
-    assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
+    const confirmationExempt = snippet.includes("action='/api/v1/calibration/stop'") ||
+                               snippet.includes("action='/api/v1/calibration/compute'");
+    if (!confirmationExempt) {
+      assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
+    }
     assert(snippet.includes('once(this)'), `POST form must prevent duplicate submission near offset ${index}`);
     index = web.indexOf(marker, index + marker.length);
   }
