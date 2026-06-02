@@ -290,14 +290,15 @@ assert(web.includes('calibration-sample-summary') && web.includes('已保存 ') 
        'calibration samples panel should show the sample count as a compact summary');
 assert(web.includes('calibration-stage-control') && web.includes('calibration-stage-disabled'),
        'calibration collection action cards should use fixed controls and disabled visual states');
-assert(web.includes("action='/api/v1/calibration/stop' onsubmit=\\\"return confirm('确认停止校准出水？')&&once(this)&&calibrationSubmit(this)\\\""),
-       'calibration stop action should include a confirmation dialog');
+assert(web.includes("action='/api/v1/calibration/stop' onsubmit=\\\"return once(this)&&calibrationSubmit(this)\\\""),
+       'calibration stop action should not include a confirmation dialog by design');
 assert(web.includes("action='/api/v1/calibration/compute' onsubmit=\\\"return confirm('确认用当前样本生成候选参数？')&&once(this)&&calibrationSubmit(this)\\\""),
        'calibration compute action should include a confirmation dialog');
 assert(web.includes("action='/api/v1/calibration/start' onsubmit=\\\"return confirm('确认开始校准出水？')") &&
-       web.includes("action='/api/v1/calibration/sample' onsubmit=\\\"return confirm('确认保存本次校准样本？')") &&
        web.includes("action='/api/v1/calibration/clear' onsubmit=\\\"return confirm('确认清空当前校准样本？')"),
        'other important calibration POST actions should keep confirmation dialogs');
+assert(web.includes("action='/api/v1/calibration/sample' onsubmit=\\\"return once(this)&&calibrationSubmit(this)\\\""),
+       'calibration sample save action should not include a confirmation dialog by design');
 assert(web.includes('calibrationProgressStart') && web.includes('/api/v1/calibration/status') && web.includes('setInterval(calibrationProgressUpdate,1000)'),
        'calibration page should refresh collection progress from the status API every second');
 assert(web.includes('calibrationSubmit(this)') && web.includes('calibrationReplaceSections') && web.includes('DOMParser'),
@@ -327,9 +328,21 @@ assert(web.includes('irrOverviewRefreshMs') && web.includes('30000') && web.incl
 assert(web.includes('/api/v1/status') && web.includes('irrOverviewApplyStatus'), 'overview should refresh from the lightweight status API');
 assert(web.includes('/api/v1/flow/history') && web.includes('handleFlowHistoryApi'), 'web API should expose single-zone flow chart history');
 assert(web.includes('data-irr-flow') && web.includes('irrOverviewFlow') && web.includes('流速'), 'overview should display current flow rate instead of pulse count');
-assert(web.includes('irrFlowChart') && web.includes('flowHistory'), 'overview should render recent per-zone flow sparkline data');
+assert(web.includes('writeWeatherStrip()'), 'overview should render the weather forecast strip');
+assert(web.includes('const uint32_t todayYmd = currentYmd()') &&
+       web.includes('writeZoneOverviewRow(zoneId, status, todayYmd)'),
+       'overview should render enabled-zone rows against one consistent today value');
+assert(web.includes('writeTodayPlanCard(zoneId, ymd)'), 'overview zone rows should include today plan cards');
+assert(web.includes('irr-zone-row') && web.includes('irr-zone-card') && web.includes('irr-plan-card'), 'overview should use row/card layout classes');
+assert(web.includes('data-irr-runtime') && web.includes('data-irr-remaining') && web.includes('data-irr-flow') && web.includes('data-irr-ml'), 'overview card metrics should expose live-update targets');
+assert(web.includes('irrFlowChart') && web.includes('flowHistory'), 'overview should render recent per-zone flow chart data');
+assert(web.includes('L/min') && web.includes('无流速'), 'overview flow chart should include axes/unit labels and an idle baseline state');
+assert(web.includes('collectTodayPlanCompletions') && web.includes('RecordStore::readLatest'), 'today plan progress should use watering records');
+assert(web.includes('todayPlanResultCompleted') && web.includes('item.lastResult != Irrigation::TaskResult::NONE'),
+       'today plan cards should count only successful watering as completed while still showing non-completed record results');
+assert(!web.includes('resetNewDay(ymd)'), 'overview rendering must not reset plan execution tracker state');
+assert(!web.includes("<table class='part'><thead><tr><th>水路</th><th>状态</th><th>任务</th><th>目标时长"), 'overview should not render the old water-status table');
 assert(web.includes('irrOverviewLiters') && web.includes("+' L'"), 'overview estimated water should render in liters');
-assert(web.includes('writeLitersFromMilliliters(status.estimatedMilliliters)'), 'overview initial estimated water should use liters');
 assert(web.includes('irrOverviewRenderState') && web.includes('irrOverviewRenderActions'), 'overview should update zone state/action cells in place');
 assert(!web.includes('if(changed){location.reload();return;}'), 'overview status polling should not reload the whole page for normal running state changes');
 assert(web.includes('irrManualSend') && web.includes('X-Esp32Base-Ajax') && web.includes('irrOverviewPollNow'), 'manual start should submit asynchronously and refresh status immediately');
@@ -407,7 +420,10 @@ for (const marker of ["method='post'", 'method=\"post\"']) {
   let index = web.indexOf(marker);
   while (index !== -1) {
     const snippet = web.slice(index, index + 800);
-    assert(snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
+    const confirmationOptional =
+      snippet.includes("action='/api/v1/calibration/stop'") ||
+      snippet.includes("action='/api/v1/calibration/sample'");
+    assert(confirmationOptional || snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
     assert(snippet.includes('once(this)'), `POST form must prevent duplicate submission near offset ${index}`);
     index = web.indexOf(marker, index + marker.length);
   }
@@ -438,6 +454,6 @@ assert(read('src/domain/ZoneManager.cpp').includes('FlowCalibration::active()') 
        'manual starts should reject active calibration and stop-all should clear calibration state');
 
 assert(pio.includes('-D ESP32BASE_PROFILE=ESP32BASE_PROFILE_FULL'), 'project should keep Esp32Base full profile');
-assert(pio.includes('-D ESP32BASE_WEB_MAX_ROUTES=42'), 'web route capacity should include calibration status API');
+assert(pio.includes('-D ESP32BASE_WEB_MAX_ROUTES=43'), 'web route capacity should include weather snapshot API');
 assert(calibrationDoc.includes('detailPulseDeltas') && calibrationDoc.includes('滑动窗口') && calibrationDoc.includes('stablePulsePerLiter'), 'flow calibration design doc should describe raw pulse detail and final parameters');
 assert(roadReadme.includes('04-flow-calibration.md'), 'road management docs index should link the flow calibration design');

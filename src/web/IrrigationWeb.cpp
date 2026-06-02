@@ -11,12 +11,14 @@
 #include "domain/FlowCalibration.h"
 #include "domain/FlowMeter.h"
 #include "domain/MaintenanceService.h"
+#include "domain/PlanExecutionTracker.h"
 #include "domain/SafetyManager.h"
 #include "domain/ZoneManager.h"
 #include "storage/PlanStore.h"
 #include "storage/RecordStore.h"
 #include "storage/ScheduleSkipStore.h"
 #include "storage/SystemConfigStore.h"
+#include "storage/WeatherSnapshotStore.h"
 #include "storage/ZoneConfigStore.h"
 #include "storage/ZoneErrorStore.h"
 
@@ -118,6 +120,33 @@ bool readU8(const char* name, uint8_t* value) {
     return true;
 }
 
+bool readI16(const char* name, int16_t* value) {
+    char text[16] = "";
+    if (!value || !Esp32BaseWeb::getParam(name, text, sizeof(text))) {
+        return false;
+    }
+    char* end = nullptr;
+    const long parsed = strtol(text, &end, 10);
+    if (!end || *end != '\0' || parsed < -32768L || parsed > 32767L) {
+        return false;
+    }
+    *value = static_cast<int16_t>(parsed);
+    return true;
+}
+
+bool readTextParam(const char* name, char* out, size_t outLen) {
+    char text[96] = "";
+    if (!out || outLen == 0 || !Esp32BaseWeb::getParam(name, text, sizeof(text))) {
+        return false;
+    }
+    const size_t len = strlen(text);
+    if (len == 0 || len >= outLen) {
+        return false;
+    }
+    strlcpy(out, text, outLen);
+    return true;
+}
+
 bool readBool(const char* name, bool* value) {
     char text[8] = "";
     if (!value || !Esp32BaseWeb::getParam(name, text, sizeof(text))) {
@@ -156,7 +185,10 @@ bool readOptionalZoneId(uint8_t* zoneId) {
 }
 
 const char* zoneErrorLabel(Irrigation::ZoneErrorCode code);
+const char* zoneErrorClearConfirm(Irrigation::ZoneErrorCode code);
+const char* zoneStateLabel(Irrigation::ZoneState state);
 const char* taskTypeLabel(Irrigation::TaskType type);
+const char* taskResultLabel(Irrigation::TaskResult result);
 
 bool readYmd(const char* name, uint32_t* ymd) {
     char text[16] = "";
@@ -935,6 +967,496 @@ uint8_t countPlansForDate(uint32_t ymd) {
     return count;
 }
 
+struct TodayPlanDisplay {
+    bool exists;
+    Irrigation::PlanDefinition plan;
+    Irrigation::PlanObservationStatus observation;
+    bool running;
+    bool completed;
+    uint32_t completedSec;
+    Irrigation::TaskResult lastResult;
+};
+
+struct TodayPlanSummary {
+    uint8_t total;
+    uint8_t completed;
+    uint32_t totalSec;
+    uint32_t completedSec;
+};
+
+struct TodayPlanCompletion {
+    uint32_t planId;
+    uint32_t completedSec;
+    Irrigation::TaskResult result;
+};
+
+bool todayPlanResultCompleted(Irrigation::TaskResult result) {
+    return result == Irrigation::TaskResult::COMPLETED;
+}
+
+uint16_t planMinuteOfDay(const Irrigation::PlanDefinition& plan) {
+    return static_cast<uint16_t>(static_cast<uint16_t>(plan.timeHour) * 60U + plan.timeMinute);
+}
+
+uint32_t ymdFromEpoch(uint32_t epoch) {
+    if (epoch == 0) {
+        return 0;
+    }
+    const time_t value = static_cast<time_t>(epoch);
+    tm local = {};
+    if (localtime_r(&value, &local) == nullptr) {
+        return 0;
+    }
+    return static_cast<uint32_t>((local.tm_year + 1900) * 10000UL +
+                                 (local.tm_mon + 1) * 100UL +
+                                 local.tm_mday);
+}
+
+uint32_t recordRuntimeSec(const RecordStore::WateringRecord& record) {
+    if (record.endedUptimeMs > record.startedUptimeMs) {
+        return (record.endedUptimeMs - record.startedUptimeMs + 999UL) / 1000UL;
+    }
+    if (record.endedEpoch > record.startedEpoch) {
+        return record.endedEpoch - record.startedEpoch;
+    }
+    return 0;
+}
+
+Irrigation::PlanObservationStatus planObservationFor(uint8_t zoneId,
+                                                     const Irrigation::PlanDefinition& plan,
+                                                     uint32_t ymd) {
+    PlanExecutionTracker tracker;
+    tracker.begin(zoneId);
+    Irrigation::PlanObservationStatus status = Irrigation::PlanObservationStatus::NOT_EVALUATED;
+    if (tracker.status(plan.planId, ymd, planMinuteOfDay(plan), &status)) {
+        return status;
+    }
+    return Irrigation::PlanObservationStatus::NOT_EVALUATED;
+}
+
+struct TodayRecordCollectContext {
+    uint8_t zoneId;
+    uint32_t ymd;
+    TodayPlanCompletion* out;
+    uint8_t capacity;
+    uint8_t count;
+};
+
+int8_t findCompletionIndex(const TodayPlanCompletion* completions, uint8_t count, uint32_t planId) {
+    if (!completions || planId == Irrigation::NoPlanId) {
+        return -1;
+    }
+    for (uint8_t i = 0; i < count; ++i) {
+        if (completions[i].planId == planId) {
+            return static_cast<int8_t>(i);
+        }
+    }
+    return -1;
+}
+
+void collectTodayPlanRecord(const RecordStore::WateringRecord& record, void* user) {
+    TodayRecordCollectContext* ctx = static_cast<TodayRecordCollectContext*>(user);
+    if (!ctx || !ctx->out || ctx->capacity == 0) {
+        return;
+    }
+    if (record.zoneId != ctx->zoneId ||
+        record.planId == Irrigation::NoPlanId ||
+        record.taskType != static_cast<uint8_t>(Irrigation::TaskType::PLAN)) {
+        return;
+    }
+    const uint32_t endedYmd = ymdFromEpoch(record.endedEpoch);
+    if (endedYmd != ctx->ymd) {
+        return;
+    }
+    const uint32_t runtimeSec = recordRuntimeSec(record);
+    const int8_t existing = findCompletionIndex(ctx->out, ctx->count, record.planId);
+    if (existing >= 0) {
+        TodayPlanCompletion& completion = ctx->out[existing];
+        completion.completedSec += runtimeSec;
+        return;
+    }
+    if (ctx->count >= ctx->capacity) {
+        return;
+    }
+    TodayPlanCompletion& completion = ctx->out[ctx->count++];
+    completion.planId = record.planId;
+    completion.completedSec = runtimeSec;
+    completion.result = static_cast<Irrigation::TaskResult>(record.result);
+}
+
+uint8_t collectTodayPlanCompletions(uint8_t zoneId,
+                                    uint32_t ymd,
+                                    TodayPlanCompletion* out,
+                                    uint8_t capacity) {
+    if (!out || capacity == 0 || !PlanStore::validYmd(ymd)) {
+        return 0;
+    }
+    for (uint8_t i = 0; i < capacity; ++i) {
+        out[i] = {};
+        out[i].result = Irrigation::TaskResult::NONE;
+    }
+    TodayRecordCollectContext ctx = {};
+    ctx.zoneId = zoneId;
+    ctx.ymd = ymd;
+    ctx.out = out;
+    ctx.capacity = capacity;
+    (void)RecordStore::readLatest(0, RecordStore::Capacity, collectTodayPlanRecord, &ctx);
+    return ctx.count;
+}
+
+const char* todayPlanPrimaryStatus(bool completed, bool running) {
+    if (running) return "运行中";
+    if (completed) return "完成";
+    return "未完成";
+}
+
+const char* todayPlanReason(const TodayPlanDisplay& item) {
+    if (item.running) return "正在执行";
+    if (item.lastResult != Irrigation::TaskResult::NONE) return taskResultLabel(item.lastResult);
+    switch (item.observation) {
+        case Irrigation::PlanObservationStatus::NOT_EVALUATED: return "未到时间";
+        case Irrigation::PlanObservationStatus::SKIPPED_CALENDAR: return "今日跳过";
+        case Irrigation::PlanObservationStatus::SKIPPED_DISABLED: return "水路停用";
+        case Irrigation::PlanObservationStatus::SKIPPED_BUSY: return "水路忙碌";
+        case Irrigation::PlanObservationStatus::SKIPPED_ERROR: return "水路异常";
+        case Irrigation::PlanObservationStatus::SKIPPED_LEAK: return "漏水保护";
+        case Irrigation::PlanObservationStatus::SKIPPED_RESET: return "恢复出厂";
+        case Irrigation::PlanObservationStatus::SKIPPED_CYCLE: return "非执行日";
+        case Irrigation::PlanObservationStatus::SKIPPED_CONFIG_INVALID: return "配置无效";
+        case Irrigation::PlanObservationStatus::REJECTED: return "启动拒绝";
+        case Irrigation::PlanObservationStatus::MISSED: return "已错过";
+        case Irrigation::PlanObservationStatus::STARTED: return "已启动，等待记录";
+        default: return "";
+    }
+}
+
+uint8_t collectTodayPlans(uint8_t zoneId,
+                          uint32_t ymd,
+                          TodayPlanDisplay* out,
+                          uint8_t capacity,
+                          TodayPlanSummary* summary) {
+    if (summary) {
+        *summary = {};
+    }
+    if (!out || capacity == 0 || !PlanStore::validYmd(ymd)) {
+        return 0;
+    }
+    const Irrigation::ZoneStatus zoneStatus = ZoneManager::status(zoneId);
+    TodayPlanCompletion completions[Irrigation::MaxPlansPerZone] = {};
+    const uint8_t completionCount = collectTodayPlanCompletions(zoneId, ymd, completions, Irrigation::MaxPlansPerZone);
+    uint8_t count = 0;
+    for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone && count < capacity; ++slot) {
+        const Irrigation::PlanDefinition& plan = PlanStore::getBySlot(zoneId, slot);
+        if (!plan.exists || !plan.enabled || !PlanStore::shouldRunOnDate(plan, ymd)) {
+            continue;
+        }
+        TodayPlanDisplay item = {};
+        item.exists = true;
+        item.plan = plan;
+        item.observation = planObservationFor(zoneId, plan, ymd);
+        item.lastResult = Irrigation::TaskResult::NONE;
+        item.running = zoneStatus.busy &&
+                       zoneStatus.taskType == Irrigation::TaskType::PLAN &&
+                       zoneStatus.planId == plan.planId;
+        if (item.running) {
+            item.completedSec = zoneStatus.elapsedSec;
+        }
+        const int8_t completionIndex = findCompletionIndex(completions, completionCount, plan.planId);
+        if (completionIndex >= 0) {
+            item.completed = todayPlanResultCompleted(completions[completionIndex].result);
+            item.completedSec += completions[completionIndex].completedSec;
+            item.lastResult = completions[completionIndex].result;
+        }
+        out[count++] = item;
+        if (summary) {
+            ++summary->total;
+            summary->totalSec += plan.durationSec;
+            summary->completedSec += item.completedSec;
+            if (item.completed) {
+                ++summary->completed;
+            }
+        }
+    }
+    return count;
+}
+
+void writeOverviewStyles() {
+    Esp32BaseWeb::sendChunk("<style>"
+".irr-overview-weather{display:grid;grid-template-columns:minmax(0,1.2fr) repeat(3,minmax(0,.7fr));gap:10px}"
+".irr-weather-cell{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:10px 11px;min-width:0}"
+".irr-weather-value{display:block;font-size:20px;line-height:1.1;margin-bottom:6px}"
+".irr-weather-cell span{display:block;color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-zone-rows{display:grid;gap:12px}"
+".irr-zone-row{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,.85fr);gap:12px;align-items:stretch}"
+".irr-zone-card,.irr-plan-card{border:1px solid var(--eb-line);background:var(--eb-surface);border-radius:8px;padding:12px;min-width:0}"
+".irr-zone-card.running,.irr-zone-row.running .irr-zone-card{border-color:#fdba74;background:#fffaf5}"
+".irr-zone-card.error,.irr-zone-row.error .irr-zone-card{border-color:#fca5a5;background:#fffafa}"
+".irr-zone-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}"
+".irr-zone-name{font-size:18px;font-weight:750;line-height:1.15;margin-bottom:3px}"
+".irr-zone-task{color:var(--eb-muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-zone-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}"
+".irr-zone-metric{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:8px 9px;min-height:58px;min-width:0}"
+".irr-zone-metric b{display:block;font-size:18px;line-height:1.05;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-zone-metric .label{display:block;color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-chart-wrap{border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff;padding:8px 9px;margin-bottom:10px}"
+".irr-chart-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;color:var(--eb-muted);font-size:12px}"
+".irr-flow-chart{width:100%;height:124px;display:block;border-radius:6px;background:linear-gradient(#fff,#f8fafc)}"
+".irr-zone-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:34px}"
+".irr-zone-runtime{color:var(--eb-muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-plan-card h3{font-size:16px;margin:0 0 10px}"
+".irr-plan-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px}"
+".irr-plan-summary div{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:7px;padding:6px 7px;min-width:0}"
+".irr-plan-summary .value{display:block;font-size:15px;line-height:1.05;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-plan-summary span{display:block;color:var(--eb-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-plan-list{display:grid;gap:7px}"
+".irr-plan-item{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--eb-line-soft);padding-top:7px;min-width:0}"
+".irr-plan-item:first-child{border-top:0;padding-top:0}"
+".irr-plan-time{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-plan-note{display:block;color:var(--eb-muted);font-size:12px;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-plan-status{display:inline-flex;align-items:center;justify-content:center;min-height:22px;border:1px solid var(--eb-line);border-radius:7px;padding:0 7px;font-size:12px;font-weight:750;white-space:nowrap;align-self:flex-start}"
+".irr-plan-status.done{border-color:#bbf7d0;background:#f0fdf4;color:#166534}"
+".irr-plan-status.running{border-color:#fed7aa;background:#fff7ed;color:#9a3412}"
+".irr-plan-status.pending{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}"
+"@media(max-width:760px){.irr-overview-weather{grid-template-columns:1fr}.irr-zone-row{grid-template-columns:1fr}.irr-zone-metrics,.irr-plan-summary{grid-template-columns:1fr}.irr-zone-footer{align-items:stretch;flex-direction:column}.irr-flow-chart{height:118px}}"
+"</style>");
+}
+
+void writeHourMinuteHuman(uint32_t epoch) {
+    if (epoch == 0) {
+        Esp32BaseWeb::sendChunk("时间未同步");
+        return;
+    }
+    const time_t value = static_cast<time_t>(epoch);
+    tm local = {};
+    if (localtime_r(&value, &local) == nullptr) {
+        Esp32BaseWeb::sendChunk("时间无效");
+        return;
+    }
+    char text[8];
+    snprintf(text, sizeof(text), "%02d:%02d", local.tm_hour, local.tm_min);
+    Esp32BaseWeb::sendChunk(text);
+}
+
+void writeWeatherStrip() {
+    WeatherSnapshotStore::Snapshot weather = {};
+    Esp32BaseWeb::beginPanel("天气预报");
+    if (!WeatherSnapshotStore::get(&weather)) {
+        Esp32BaseWeb::sendChunk("<p class='muted'>暂无天气数据</p>");
+        Esp32BaseWeb::endPanel();
+        return;
+    }
+    Esp32BaseWeb::sendChunk("<div class='irr-overview-weather'><div class='irr-weather-cell'><span class='irr-weather-value'>");
+    writeInt(weather.currentTempC);
+    Esp32BaseWeb::sendChunk("°C · ");
+    Esp32BaseWeb::writeHtmlEscaped(weather.condition);
+    Esp32BaseWeb::sendChunk("</span><span>24 小时降雨 ");
+    writeUInt(weather.rainProbability24hPercent);
+    Esp32BaseWeb::sendChunk("% · 风力 ");
+    writeUInt(weather.windLevel);
+    Esp32BaseWeb::sendChunk(" 级</span>");
+#if ESP32BASE_ENABLE_NTP
+    const Esp32BaseNtp::TimeSnapshot timeSnapshot = Esp32BaseNtp::snapshot();
+    if (!timeSnapshot.synced || timeSnapshot.epochSec == 0) {
+        Esp32BaseWeb::sendChunk("<span>天气时间未确认</span>");
+    } else if (WeatherSnapshotStore::isStale(weather, timeSnapshot.epochSec)) {
+        Esp32BaseWeb::sendChunk("<span class='tag warn'>天气数据已过期</span>");
+    } else if (weather.updatedEpoch != 0) {
+        Esp32BaseWeb::sendChunk("<span>更新于 ");
+        writeHourMinuteHuman(weather.updatedEpoch);
+        Esp32BaseWeb::sendChunk("</span>");
+    }
+#else
+    Esp32BaseWeb::sendChunk("<span>天气时间未确认</span>");
+#endif
+    Esp32BaseWeb::sendChunk("</div>");
+    for (uint8_t i = 0; i < 3; ++i) {
+        Esp32BaseWeb::sendChunk("<div class='irr-weather-cell'><span class='irr-weather-value'>");
+        Esp32BaseWeb::writeHtmlEscaped(weather.days[i].label);
+        Esp32BaseWeb::sendChunk("</span><span>");
+        writeInt(weather.days[i].lowTempC);
+        Esp32BaseWeb::sendChunk("-");
+        writeInt(weather.days[i].highTempC);
+        Esp32BaseWeb::sendChunk("°C</span><span>降雨 ");
+        writeUInt(weather.days[i].rainProbabilityPercent);
+        Esp32BaseWeb::sendChunk("%</span></div>");
+    }
+    Esp32BaseWeb::sendChunk("</div>");
+    Esp32BaseWeb::endPanel();
+}
+
+void writeTodayPlanCard(uint8_t zoneId, uint32_t ymd) {
+    TodayPlanDisplay plans[Irrigation::MaxPlansPerZone] = {};
+    TodayPlanSummary summary = {};
+    const uint8_t count = collectTodayPlans(zoneId, ymd, plans, Irrigation::MaxPlansPerZone, &summary);
+    Esp32BaseWeb::sendChunk("<aside class='irr-plan-card'><h3>今日计划</h3><div class='irr-plan-summary'><div><span class='value'>");
+    writeUInt(summary.completed);
+    Esp32BaseWeb::sendChunk(" / ");
+    writeUInt(summary.total);
+    Esp32BaseWeb::sendChunk("</span><span>完成进度</span></div><div><span class='value'>");
+    writeUInt(summary.completedSec / 60UL);
+    Esp32BaseWeb::sendChunk(" / ");
+    writeUInt(summary.totalSec / 60UL);
+    Esp32BaseWeb::sendChunk("分钟</span><span>已浇 / 总时长</span></div><div><span class='value'>");
+    const uint32_t remainingSec = summary.totalSec > summary.completedSec ? summary.totalSec - summary.completedSec : 0;
+    writeUInt(remainingSec / 60UL);
+    Esp32BaseWeb::sendChunk("分钟</span><span>剩余时长</span></div></div><div class='irr-plan-list'>");
+    if (count == 0) {
+        Esp32BaseWeb::sendChunk("<div class='irr-plan-item'><div><span class='irr-plan-time'>无启用计划</span><em class='irr-plan-note'>这一路今天不会自动浇水</em></div></div>");
+    }
+    for (uint8_t i = 0; i < count; ++i) {
+        const TodayPlanDisplay& item = plans[i];
+        const char* primary = todayPlanPrimaryStatus(item.completed, item.running);
+        const char* reason = todayPlanReason(item);
+        Esp32BaseWeb::sendChunk("<div class='irr-plan-item'><div><span class='irr-plan-time'>");
+        writeTime(item.plan.timeHour, item.plan.timeMinute);
+        Esp32BaseWeb::sendChunk(" · ");
+        writeDuration(item.plan.durationSec);
+        Esp32BaseWeb::sendChunk("</span><em class='irr-plan-note'>");
+        Esp32BaseWeb::writeHtmlEscaped(reason);
+        Esp32BaseWeb::sendChunk("</em></div><span class='irr-plan-status ");
+        Esp32BaseWeb::sendChunk(strcmp(primary, "完成") == 0 ? "done" : (strcmp(primary, "运行中") == 0 ? "running" : "pending"));
+        Esp32BaseWeb::sendChunk("'>");
+        Esp32BaseWeb::writeHtmlEscaped(primary);
+        Esp32BaseWeb::sendChunk("</span></div>");
+    }
+    Esp32BaseWeb::sendChunk("</div></aside>");
+}
+
+const char* overviewCardStateClass(const Irrigation::ZoneStatus& status) {
+    if (status.errorActive) return " error";
+    if (status.busy) return " running";
+    return "";
+}
+
+void writeZoneMetric(uint8_t zoneId, const char* attr, const char* label, const char* value) {
+    Esp32BaseWeb::sendChunk("<div class='irr-zone-metric'><b");
+    if (attr && attr[0]) {
+        Esp32BaseWeb::sendChunk(" ");
+        Esp32BaseWeb::sendChunk(attr);
+        Esp32BaseWeb::sendChunk("='");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("'");
+    }
+    Esp32BaseWeb::sendChunk(">");
+    Esp32BaseWeb::writeHtmlEscaped(value);
+    Esp32BaseWeb::sendChunk("</b><span class='label'>");
+    Esp32BaseWeb::writeHtmlEscaped(label);
+    Esp32BaseWeb::sendChunk("</span></div>");
+}
+
+void writeZoneOverviewRow(uint8_t zoneId, const Irrigation::ZoneStatus& status, uint32_t ymd) {
+    const Irrigation::ZoneConfig& config = ZoneManager::config(zoneId);
+    char remaining[24];
+    char flow[24];
+    char volume[24];
+    if (status.busy) {
+        formatDurationHuman(status.remainingSec, remaining, sizeof(remaining));
+    } else {
+        strlcpy(remaining, "-", sizeof(remaining));
+    }
+    if (status.busy && status.flowRateReady) {
+        snprintf(flow, sizeof(flow), "%lu.%03lu L/min",
+                 static_cast<unsigned long>(status.flowMlPerMin / 1000UL),
+                 static_cast<unsigned long>(status.flowMlPerMin % 1000UL));
+    } else {
+        strlcpy(flow, "-", sizeof(flow));
+    }
+    if (status.busy) {
+        snprintf(volume, sizeof(volume), "%lu.%03lu L",
+                 static_cast<unsigned long>(status.estimatedMilliliters / 1000UL),
+                 static_cast<unsigned long>(status.estimatedMilliliters % 1000UL));
+    } else {
+        strlcpy(volume, "-", sizeof(volume));
+    }
+
+    Esp32BaseWeb::sendChunk("<section class='irr-zone-row'><article class='irr-zone-card");
+    Esp32BaseWeb::sendChunk(overviewCardStateClass(status));
+    Esp32BaseWeb::sendChunk("' data-irr-zone-row='");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk("' data-state='");
+    Esp32BaseWeb::writeHtmlEscaped(Irrigation::zoneStateName(status.state));
+    Esp32BaseWeb::sendChunk("' data-busy='");
+    Esp32BaseWeb::sendChunk(status.busy ? "1" : "0");
+    Esp32BaseWeb::sendChunk("' data-error='");
+    Esp32BaseWeb::sendChunk(status.errorActive ? "1" : "0");
+    Esp32BaseWeb::sendChunk("' data-zone-name='");
+    Esp32BaseWeb::writeHtmlEscaped(config.name);
+    Esp32BaseWeb::sendChunk("'><div class='irr-zone-head'><div><div class='irr-zone-name'>");
+    Esp32BaseWeb::writeHtmlEscaped(config.name);
+    Esp32BaseWeb::sendChunk("</div><div class='irr-zone-task' data-irr-task='");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk("'>");
+    Esp32BaseWeb::writeHtmlEscaped(status.busy ? taskTypeLabel(status.taskType) : (status.errorActive ? zoneErrorLabel(status.errorCode) : "无运行任务"));
+    Esp32BaseWeb::sendChunk("</div></div><div data-irr-state='");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk("'>");
+    if (status.errorActive) {
+        Esp32BaseWeb::sendChunk("<button type='button' class='tag danger' style='border:0;cursor:pointer' onclick='irrFaultOpen(\"irrFaultDialog");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("\")'>");
+        Esp32BaseWeb::writeHtmlEscaped(zoneStateLabel(status.state));
+        Esp32BaseWeb::sendChunk("</button>");
+    } else {
+        Esp32BaseWeb::sendChunk("<span class='tag");
+        Esp32BaseWeb::sendChunk(uiToneForState(status.state));
+        Esp32BaseWeb::sendChunk("'>");
+        Esp32BaseWeb::writeHtmlEscaped(zoneStateLabel(status.state));
+        Esp32BaseWeb::sendChunk("</span>");
+    }
+    Esp32BaseWeb::sendChunk("</div></div><div class='irr-zone-metrics'>");
+    writeZoneMetric(zoneId, "data-irr-remaining", "剩余时间", remaining);
+    writeZoneMetric(zoneId, "data-irr-flow", "当前流速", flow);
+    writeZoneMetric(zoneId, "data-irr-ml", "估算水量", volume);
+    Esp32BaseWeb::sendChunk("</div><div class='irr-chart-wrap'><div class='irr-chart-head'><span>近期流速</span><span data-irr-flow-chart-label='");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk("'>");
+    writeUInt(SystemConfigStore::current().flowChartHistoryMin);
+    Esp32BaseWeb::sendChunk(" 分钟</span></div><svg class='irr-flow-chart' id='irrFlowChart");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk("' viewBox='0 0 360 124' preserveAspectRatio='none' role='img' aria-label='近期流速图表'></svg></div><div class='irr-zone-footer'><div class='irr-zone-runtime' data-irr-runtime='");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk("'>");
+    if (status.busy) {
+        Esp32BaseWeb::sendChunk("已运行 ");
+        writeDurationHuman(status.elapsedSec);
+        Esp32BaseWeb::sendChunk(" / 目标 ");
+        writeDurationHuman(status.targetSec);
+    } else {
+        Esp32BaseWeb::sendChunk("当前无运行任务");
+    }
+    Esp32BaseWeb::sendChunk("</div><div class='fsactions' data-irr-actions='");
+    writeUInt(zoneId);
+    Esp32BaseWeb::sendChunk("'>");
+    if (status.busy) {
+        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/zone/stop' onsubmit=\"return confirm('确认停止该水路？')&&once(this)\">");
+        writeOnePostHidden("source", "web_page");
+        writeHiddenU32("zoneId", zoneId);
+        Esp32BaseWeb::sendChunk("<input class='fsaction' type='submit' value='停止'></form>");
+    }
+    if (status.errorActive) {
+        Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/zone/clear-error' onsubmit=\"return confirm('");
+        Esp32BaseWeb::writeHtmlEscaped(zoneErrorClearConfirm(status.errorCode));
+        Esp32BaseWeb::sendChunk("')&&once(this)\">");
+        writeOnePostHidden("source", "web_page");
+        writeHiddenU32("zoneId", zoneId);
+        Esp32BaseWeb::sendChunk("<input class='fsaction' type='submit' value='清除异常'></form>");
+    }
+    if (!status.busy && !status.errorActive) {
+        if (ZoneManager::leakAlertActive()) {
+            Esp32BaseWeb::sendChunk("<span class='muted'>漏水告警中</span>");
+        } else {
+            Esp32BaseWeb::sendChunk("<button class='btnlink compact ok' type='button' data-zone-id='");
+            writeUInt(zoneId);
+            Esp32BaseWeb::sendChunk("' data-zone-name='");
+            Esp32BaseWeb::writeHtmlEscaped(config.name);
+            Esp32BaseWeb::sendChunk("' onclick='irrManualOpen(this)'>启动</button>");
+        }
+    }
+    Esp32BaseWeb::sendChunk("</div></div></article>");
+    writeTodayPlanCard(zoneId, ymd);
+    Esp32BaseWeb::sendChunk("</section>");
+}
+
 void writeShortDateTimeHuman(uint32_t epoch) {
     if (epoch == 0) {
         Esp32BaseWeb::sendChunk("时间未同步");
@@ -1608,7 +2130,8 @@ void handleOverviewPage() {
             ++errorCount;
         }
     }
-    const uint8_t todayPlanCount = countPlansForDate(currentYmd());
+    const uint32_t todayYmd = currentYmd();
+    const uint8_t todayPlanCount = countPlansForDate(todayYmd);
 
     char runningText[16];
     char errorText[16];
@@ -1634,115 +2157,25 @@ void handleOverviewPage() {
     Esp32BaseWeb::endMetricGrid();
     Esp32BaseWeb::endPanel();
 
+    writeOverviewStyles();
+    writeWeatherStrip();
+
     Esp32BaseWeb::beginPanel("水路状态");
-    Esp32BaseWeb::sendChunk("<style>.irr-flow-chart-row td{padding-top:0}.irr-flow-chart-box{display:none;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);padding:8px 10px;margin:0 0 6px}.irr-flow-chart-box.active{display:block}.irr-flow-chart-head{display:flex;justify-content:space-between;gap:8px;color:var(--eb-muted);font-size:12px;margin-bottom:4px}.irr-flow-chart{width:100%;height:54px;display:block;background:#fff;border:1px solid var(--eb-line-soft);border-radius:6px}</style>");
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>水路</th><th>状态</th><th>任务</th><th>目标时长</th><th>剩余时间</th><th>流速</th><th>估算水量</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='irr-zone-rows'>");
     bool wroteStatus = false;
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         const Irrigation::ZoneStatus status = ZoneManager::status(zoneId);
         if (!status.enabled) {
             continue;
         }
-        const Irrigation::ZoneConfig& config = ZoneManager::config(zoneId);
         wroteStatus = true;
-        Esp32BaseWeb::sendChunk("<tr data-irr-zone-row='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("' data-state='");
-        Esp32BaseWeb::writeHtmlEscaped(Irrigation::zoneStateName(status.state));
-        Esp32BaseWeb::sendChunk("' data-busy='");
-        Esp32BaseWeb::sendChunk(status.busy ? "1" : "0");
-        Esp32BaseWeb::sendChunk("' data-error='");
-        Esp32BaseWeb::sendChunk(status.errorActive ? "1" : "0");
-        Esp32BaseWeb::sendChunk("' data-zone-name='");
-        Esp32BaseWeb::writeHtmlEscaped(config.name);
-        Esp32BaseWeb::sendChunk("'><td>");
-        Esp32BaseWeb::writeHtmlEscaped(config.name);
-        Esp32BaseWeb::sendChunk("</td><td data-irr-state='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'>");
-        if (status.errorActive) {
-            Esp32BaseWeb::sendChunk("<button type='button' class='tag danger' style='border:0;cursor:pointer' onclick='irrFaultOpen(\"irrFaultDialog");
-            writeUInt(zoneId);
-            Esp32BaseWeb::sendChunk("\")'>");
-            Esp32BaseWeb::writeHtmlEscaped(zoneStateLabel(status.state));
-            Esp32BaseWeb::sendChunk("</button>");
-        } else {
-            Esp32BaseWeb::sendChunk("<span class='tag");
-            Esp32BaseWeb::sendChunk(uiToneForState(status.state));
-            Esp32BaseWeb::sendChunk("'>");
-            Esp32BaseWeb::writeHtmlEscaped(zoneStateLabel(status.state));
-            Esp32BaseWeb::sendChunk("</span>");
-        }
-        Esp32BaseWeb::sendChunk("</td><td data-irr-task='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'>");
-        Esp32BaseWeb::writeHtmlEscaped(status.busy ? taskTypeLabel(status.taskType) : "-");
-        Esp32BaseWeb::sendChunk("</td><td data-irr-target='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'>");
-        writeDurationHuman(status.targetSec);
-        Esp32BaseWeb::sendChunk("</td><td data-irr-remaining='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'>");
-        writeDurationHuman(status.remainingSec);
-        Esp32BaseWeb::sendChunk("</td><td data-irr-flow='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'>");
-        if (status.busy && status.flowRateReady) {
-            writeFlowRate(status.flowMlPerMin);
-        } else {
-            Esp32BaseWeb::sendChunk("-");
-        }
-        Esp32BaseWeb::sendChunk("</td><td data-irr-ml='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'>");
-        writeLitersFromMilliliters(status.estimatedMilliliters);
-        Esp32BaseWeb::sendChunk("</td><td data-irr-actions='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'><div class='fsactions'>");
-        if (status.busy) {
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/zone/stop' onsubmit=\"return confirm('确认停止该水路？')&&once(this)\">");
-            writeOnePostHidden("source", "web_page");
-            writeHiddenU32("zoneId", zoneId);
-            Esp32BaseWeb::sendChunk("<input class='fsaction' type='submit' value='停止'></form>");
-        }
-        if (status.errorActive) {
-            Esp32BaseWeb::sendChunk("<form method='post' action='/api/v1/zone/clear-error' onsubmit=\"return confirm('");
-            Esp32BaseWeb::writeHtmlEscaped(zoneErrorClearConfirm(status.errorCode));
-            Esp32BaseWeb::sendChunk("')&&once(this)\">");
-            writeOnePostHidden("source", "web_page");
-            writeHiddenU32("zoneId", zoneId);
-            Esp32BaseWeb::sendChunk("<input class='fsaction' type='submit' value='清除异常'></form>");
-        }
-        if (!status.busy && !status.errorActive) {
-            if (ZoneManager::leakAlertActive()) {
-                Esp32BaseWeb::sendChunk("<span class='muted'>漏水告警中</span>");
-            } else {
-                Esp32BaseWeb::sendChunk("<button class='btnlink compact ok' type='button' data-zone-id='");
-                writeUInt(zoneId);
-                Esp32BaseWeb::sendChunk("' data-zone-name='");
-                Esp32BaseWeb::writeHtmlEscaped(config.name);
-                Esp32BaseWeb::sendChunk("' onclick='irrManualOpen(this)'>启动</button>");
-            }
-        }
-        Esp32BaseWeb::sendChunk("</div></td></tr><tr class='irr-flow-chart-row' data-irr-flow-row='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'><td colspan='8'><div class='irr-flow-chart-box");
-        Esp32BaseWeb::sendChunk(status.busy ? " active" : "");
-        Esp32BaseWeb::sendChunk("' id='irrFlowChartBox");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'><div class='irr-flow-chart-head'><span>近期流速</span><span data-irr-flow-chart-label='");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("'>");
-        writeUInt(SystemConfigStore::current().flowChartHistoryMin);
-        Esp32BaseWeb::sendChunk(" 分钟</span></div><svg class='irr-flow-chart' id='irrFlowChart");
-        writeUInt(zoneId);
-        Esp32BaseWeb::sendChunk("' viewBox='0 0 300 54' preserveAspectRatio='none' role='img' aria-label='近期流速图表'></svg></div></td></tr>");
+        writeZoneOverviewRow(zoneId, status, todayYmd);
     }
+    Esp32BaseWeb::sendChunk("</div>");
     if (!wroteStatus) {
-        Esp32BaseWeb::sendChunk("<tr><td colspan='8'>暂无启用水路</td></tr>");
+        Esp32BaseWeb::sendChunk("<p class='muted'>暂无启用水路</p>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div><div class='actions'><form method='post' action='/api/v1/zones/stop-all' onsubmit=\"return confirm('确认停止全部水路？')&&once(this)\">");
+    Esp32BaseWeb::sendChunk("<div class='actions'><form method='post' action='/api/v1/zones/stop-all' onsubmit=\"return confirm('确认停止全部水路？')&&once(this)\">");
     writeOnePostHidden("source", "web_page");
     Esp32BaseWeb::sendChunk("<input id='irrStopAll' class='danger' type='submit' value='全部停止'");
     Esp32BaseWeb::sendChunk(runningCount > 0 ? "" : " disabled");
@@ -1765,14 +2198,15 @@ void handleOverviewPage() {
                             "function irrOverviewSetMetric(id,value){var e=document.querySelector('#'+id+' b');if(e)e.textContent=value;}"
                             "function irrOverviewRefreshMs(data){if(document.hidden)return 60000;return data&&data.zones&&data.zones.some(function(z){return z.busy;})?1000:30000;}"
                             "function irrOverviewInitialFast(){return !!document.querySelector('[data-irr-zone-row][data-busy=\"1\"]');}"
-                            "function irrOverviewRenderState(z){var e=document.querySelector('[data-irr-state=\"'+z.zoneId+'\"]');if(e)e.innerHTML='<span class=\"tag'+irrOverviewStateTone(z.state)+'\">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</span>';}"
-                            "function irrOverviewRenderActions(row,z,leak){var e=document.querySelector('[data-irr-actions=\"'+z.zoneId+'\"]');if(!e)return;var name=irrOverviewEscape(row.dataset.zoneName||('水路 '+z.zoneId));if(z.busy){e.innerHTML='<div class=\"fsactions\"><form method=\"post\" action=\"/api/v1/zone/stop\" onsubmit=\"return confirm(\\'确认停止该水路？\\')&&once(this)\"><input type=\"hidden\" name=\"source\" value=\"web_page\"><input type=\"hidden\" name=\"zoneId\" value=\"'+z.zoneId+'\"><input class=\"fsaction\" type=\"submit\" value=\"停止\"></form></div>';return;}e.innerHTML=leak?'<div class=\"fsactions\"><span class=\"muted\">漏水告警中</span></div>':'<div class=\"fsactions\"><button class=\"btnlink compact ok\" type=\"button\" data-zone-id=\"'+z.zoneId+'\" data-zone-name=\"'+name+'\" onclick=\"irrManualOpen(this)\">启动</button></div>';}"
-                            "function irrFlowChartDraw(id,points){var svg=document.getElementById('irrFlowChart'+id);if(!svg)return;points=points||[];var max=0;for(var i=0;i<points.length;i++)max=Math.max(max,parseInt(points[i]||0,10)||0);svg.innerHTML='';if(points.length<2||max<=0){return;}var w=300,h=54,d='';for(var j=0;j<points.length;j++){var x=points.length===1?0:(j*(w-2)/(points.length-1)+1),y=h-3-((parseInt(points[j]||0,10)||0)*(h-8)/max);d+=(j?'L':'M')+x.toFixed(1)+' '+y.toFixed(1);}svg.innerHTML='<path d=\"'+d+'\" fill=\"none\" stroke=\"#0f766e\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/><line x1=\"0\" y1=\"'+(h-3)+'\" x2=\"300\" y2=\"'+(h-3)+'\" stroke=\"#e2e8f0\" vector-effect=\"non-scaling-stroke\"/>';}"
-                            "function irrFlowChart(id,busy){var box=document.getElementById('irrFlowChartBox'+id);if(box)box.classList.toggle('active',!!busy);if(!busy)return;fetch('/api/v1/flow/history?zoneId='+id,{headers:{Accept:'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){if(!j||!j.ok)return;irrFlowChartDraw(id,j.flowHistory||[]);var label=document.querySelector('[data-irr-flow-chart-label=\"'+id+'\"]');if(label)label.textContent=String(j.historyMin||'')+' 分钟';}).catch(function(){});}"
-                            "function irrOverviewApplyStatus(data){if(!data||!data.ok||!data.zones)return;var enabled=0,running=0,errors=0,structural=false;data.zones.forEach(function(z){if(!z.enabled)return;enabled++;if(z.busy)running++;if(z.errorActive)errors++;var row=document.querySelector('[data-irr-zone-row=\"'+z.zoneId+'\"]');if(!row){structural=true;return;}var busy=z.busy?'1':'0',err=z.errorActive?'1':'0';if(row.dataset.error!==err){structural=true;return;}row.dataset.state=z.state;row.dataset.busy=busy;row.dataset.error=err;irrOverviewRenderState(z);var e=document.querySelector('[data-irr-task=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?(z.taskLabel||'浇水中'):'-';e=document.querySelector('[data-irr-target=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewDuration(z.targetSec);e=document.querySelector('[data-irr-remaining=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewDuration(z.remainingSec);e=document.querySelector('[data-irr-flow=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewFlow(z.flowMlPerMin,z.flowRateReady,z.busy);e=document.querySelector('[data-irr-ml=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewLiters(z.estimatedMl);irrFlowChart(z.zoneId,z.busy);irrOverviewRenderActions(row,z,data.leakAlertActive);});if(enabled!==document.querySelectorAll('[data-irr-zone-row]').length)structural=true;if(structural){location.reload();return;}irrOverviewSetMetric('irrMetricRunning',running+' / '+enabled);irrOverviewSetMetric('irrMetricErrors',String(errors));irrOverviewSetMetric('irrMetricSafety',data.leakAlertActive?'漏水告警':(errors>0?errors+' 路异常':'正常'));var stop=document.getElementById('irrStopAll');if(stop)stop.disabled=running<=0;}"
+                            "function irrOverviewRenderState(z){var e=document.querySelector('[data-irr-state=\"'+z.zoneId+'\"]');if(!e)return;if(z.errorActive){e.innerHTML='<button type=\"button\" class=\"tag danger\" style=\"border:0;cursor:pointer\" onclick=\"irrFaultOpen(\\'irrFaultDialog'+z.zoneId+'\\')\">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</button>';return;}e.innerHTML='<span class=\"tag'+irrOverviewStateTone(z.state)+'\">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</span>';}"
+                            "function irrOverviewRenderActions(row,z,leak){var e=document.querySelector('[data-irr-actions=\"'+z.zoneId+'\"]');if(!e)return;var name=irrOverviewEscape(row.dataset.zoneName||('水路 '+z.zoneId));if(z.busy){e.innerHTML='<form method=\"post\" action=\"/api/v1/zone/stop\" onsubmit=\"return confirm(\\'确认停止该水路？\\')&&once(this)\"><input type=\"hidden\" name=\"source\" value=\"web_page\"><input type=\"hidden\" name=\"zoneId\" value=\"'+z.zoneId+'\"><input class=\"fsaction\" type=\"submit\" value=\"停止\"></form>';return;}if(z.errorActive){e.innerHTML='<form method=\"post\" action=\"/api/v1/zone/clear-error\" onsubmit=\"return confirm(\\'确认清除该水路异常？\\')&&once(this)\"><input type=\"hidden\" name=\"source\" value=\"web_page\"><input type=\"hidden\" name=\"zoneId\" value=\"'+z.zoneId+'\"><input class=\"fsaction\" type=\"submit\" value=\"清除异常\"></form>';return;}e.innerHTML=leak?'<span class=\"muted\">漏水告警中</span>':'<button class=\"btnlink compact ok\" type=\"button\" data-zone-id=\"'+z.zoneId+'\" data-zone-name=\"'+name+'\" onclick=\"irrManualOpen(this)\">启动</button>';}"
+                            "function irrFlowChartDraw(id,points,historyMin){var svg=document.getElementById('irrFlowChart'+id);if(!svg)return;points=points||[];historyMin=parseInt(historyMin||10,10)||10;var max=0;for(var i=0;i<points.length;i++)max=Math.max(max,parseInt(points[i]||0,10)||0);var yMax=Math.max(2000,Math.ceil(max/500)*500);var w=360,h=124,left=42,right=12,top=18,bottom=28,plotW=w-left-right,plotH=h-top-bottom;var html='';for(var gy=0;gy<=4;gy++){var value=Math.round((yMax*gy)/4),y=top+plotH-(plotH*gy/4);html+='<line x1=\"'+left+'\" y1=\"'+y+'\" x2=\"'+(w-right)+'\" y2=\"'+y+'\" stroke=\"#e2e8f0\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+(left-7)+'\" y=\"'+(y+4)+'\" text-anchor=\"end\" fill=\"#64748b\" font-size=\"10\">'+(value/1000).toFixed(value%1000?1:0)+'</text>';}var labels=5;for(var tx=0;tx<labels;tx++){var x=left+(plotW*tx/(labels-1)),min=Math.round(-historyMin+(historyMin*tx/(labels-1)));html+='<line x1=\"'+x+'\" y1=\"'+(top+plotH)+'\" x2=\"'+x+'\" y2=\"'+(top+plotH+4)+'\" stroke=\"#cbd5e1\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+x+'\" y=\"'+(h-9)+'\" text-anchor=\"middle\" fill=\"#64748b\" font-size=\"10\">'+(tx===labels-1?'现在':String(min))+'</text>';}html+='<line x1=\"'+left+'\" y1=\"'+top+'\" x2=\"'+left+'\" y2=\"'+(top+plotH)+'\" stroke=\"#94a3b8\" vector-effect=\"non-scaling-stroke\"/>';html+='<line x1=\"'+left+'\" y1=\"'+(top+plotH)+'\" x2=\"'+(w-right)+'\" y2=\"'+(top+plotH)+'\" stroke=\"#94a3b8\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"6\" y=\"13\" fill=\"#64748b\" font-size=\"10\">L/min</text>';if(points.length>=2&&max>0){var d='';for(var j=0;j<points.length;j++){var px=left+(plotW*j/(points.length-1));var py=top+plotH-((parseInt(points[j]||0,10)||0)*plotH/yMax);d+=(j?'L':'M')+px.toFixed(1)+' '+py.toFixed(1);}html+='<path d=\"'+d+' L'+(w-right)+' '+(top+plotH)+' L'+left+' '+(top+plotH)+' Z\" fill=\"#0f766e\" opacity=\".08\"/>';html+='<path d=\"'+d+'\" fill=\"none\" stroke=\"#0f766e\" stroke-width=\"2.2\" vector-effect=\"non-scaling-stroke\"/>';}else{html+='<line x1=\"'+left+'\" y1=\"'+(top+plotH)+'\" x2=\"'+(w-right)+'\" y2=\"'+(top+plotH)+'\" stroke=\"#cbd5e1\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+(left+plotW/2)+'\" y=\"'+(top+plotH/2)+'\" text-anchor=\"middle\" fill=\"#94a3b8\" font-size=\"12\">无流速</text>';}svg.innerHTML=html;}"
+                            "function irrFlowChart(id,busy){if(!busy){irrFlowChartDraw(id,[],10);return;}fetch('/api/v1/flow/history?zoneId='+id,{headers:{Accept:'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){if(!j||!j.ok)return;irrFlowChartDraw(id,j.flowHistory||[],j.historyMin||10);var label=document.querySelector('[data-irr-flow-chart-label=\"'+id+'\"]');if(label)label.textContent=String(j.historyMin||'')+' 分钟';}).catch(function(){});}"
+                            "function irrOverviewApplyStatus(data){if(!data||!data.ok||!data.zones)return;var enabled=0,running=0,errors=0,structural=false;data.zones.forEach(function(z){if(!z.enabled)return;enabled++;if(z.busy)running++;if(z.errorActive)errors++;var row=document.querySelector('[data-irr-zone-row=\"'+z.zoneId+'\"]');if(!row){structural=true;return;}var busy=z.busy?'1':'0',err=z.errorActive?'1':'0';if(row.dataset.error!==err){structural=true;return;}row.dataset.state=z.state;row.dataset.busy=busy;row.dataset.error=err;row.classList.toggle('running',!!z.busy);row.classList.toggle('error',!!z.errorActive);irrOverviewRenderState(z);var e=document.querySelector('[data-irr-task=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?(z.taskLabel||'浇水中'):(z.errorActive?(z.errorCode||'水路异常'):'无运行任务');e=document.querySelector('[data-irr-remaining=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?irrOverviewDuration(z.remainingSec):'-';e=document.querySelector('[data-irr-flow=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewFlow(z.flowMlPerMin,z.flowRateReady,z.busy);e=document.querySelector('[data-irr-ml=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?irrOverviewLiters(z.estimatedMl):'-';e=document.querySelector('[data-irr-runtime=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?('已运行 '+irrOverviewDuration(z.elapsedSec)+' / 目标 '+irrOverviewDuration(z.targetSec)):'当前无运行任务';irrFlowChart(z.zoneId,z.busy);irrOverviewRenderActions(row,z,data.leakAlertActive);});if(enabled!==document.querySelectorAll('[data-irr-zone-row]').length)structural=true;if(structural){location.reload();return;}irrOverviewSetMetric('irrMetricRunning',running+' / '+enabled);irrOverviewSetMetric('irrMetricErrors',String(errors));irrOverviewSetMetric('irrMetricSafety',data.leakAlertActive?'漏水告警':(errors>0?errors+' 路异常':'正常'));var stop=document.getElementById('irrStopAll');if(stop)stop.disabled=running<=0;}"
                             "var irrOverviewTimer=0;function irrOverviewSchedule(ms){if(irrOverviewTimer)clearTimeout(irrOverviewTimer);irrOverviewTimer=setTimeout(irrOverviewPoll,ms);}"
                             "function irrOverviewPoll(){fetch('/api/v1/status',{headers:{Accept:'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){irrOverviewApplyStatus(j);irrOverviewSchedule(irrOverviewRefreshMs(j));}).catch(function(){irrOverviewSchedule(45000);});}"
                             "function irrOverviewPollNow(){irrOverviewSchedule(0);}"
+                            "document.querySelectorAll('[data-irr-zone-row]').forEach(function(row){irrFlowChart(parseInt(row.getAttribute('data-irr-zone-row'),10),row.dataset.busy==='1');});"
                             "irrOverviewSchedule(irrOverviewInitialFast()?1000:30000);"
                             "</script>");
     writeManualStartDialog();
@@ -2214,7 +2648,7 @@ void handleCalibrationPage() {
     if (!canStopCapture) {
         Esp32BaseWeb::sendChunk(" calibration-stage-disabled");
     }
-    Esp32BaseWeb::sendChunk("' method='post' action='/api/v1/calibration/stop' onsubmit=\"return confirm('确认停止校准出水？')&&once(this)&&calibrationSubmit(this)\">");
+    Esp32BaseWeb::sendChunk("' method='post' action='/api/v1/calibration/stop' onsubmit=\"return once(this)&&calibrationSubmit(this)\">");
     writeOnePostHidden("source", "web_page");
     Esp32BaseWeb::sendChunk("<input type='submit' value='停止并输入水量'");
     if (!canStopCapture) {
@@ -2234,7 +2668,7 @@ void handleCalibrationPage() {
     if (!canSaveCaptureSample) {
         Esp32BaseWeb::sendChunk(" calibration-stage-disabled");
     }
-    Esp32BaseWeb::sendChunk("' method='post' action='/api/v1/calibration/sample' onsubmit=\"return confirm('确认保存本次校准样本？')&&once(this)&&calibrationSubmit(this)\">");
+    Esp32BaseWeb::sendChunk("' method='post' action='/api/v1/calibration/sample' onsubmit=\"return once(this)&&calibrationSubmit(this)\">");
     writeOnePostHidden("source", "web_page");
     Esp32BaseWeb::sendChunk("<p class='field short'><label>实际水量 ml</label><input name='actualMl' type='number' min='1' max='100000' required");
     if (!canSaveCaptureSample) {
@@ -3471,6 +3905,55 @@ void handleScheduleUnskipApi() {
     handleScheduleSkipApi(false);
 }
 
+void handleWeatherSnapshotApi() {
+    if (!checkBusinessPost("irrigation.weather.snapshot")) {
+        return;
+    }
+
+    WeatherSnapshotStore::Snapshot snapshot = {};
+    snapshot.exists = true;
+
+    if (!readU32("updatedEpoch", &snapshot.updatedEpoch) ||
+        !readI16("currentTempC", &snapshot.currentTempC) ||
+        !readTextParam("condition", snapshot.condition, sizeof(snapshot.condition)) ||
+        !readU8("rainProbability24hPercent", &snapshot.rainProbability24hPercent) ||
+        !readU8("windLevel", &snapshot.windLevel)) {
+        sendError(400, "invalid_weather_snapshot");
+        return;
+    }
+
+    static constexpr const char* kLabels[] = {"today", "tomorrow", "dayAfter"};
+    for (uint8_t i = 0; i < 3; ++i) {
+        char name[40];
+        snprintf(name, sizeof(name), "%sLabel", kLabels[i]);
+        if (!readTextParam(name, snapshot.days[i].label, sizeof(snapshot.days[i].label))) {
+            sendError(400, "invalid_weather_day");
+            return;
+        }
+        snprintf(name, sizeof(name), "%sLowTempC", kLabels[i]);
+        if (!readI16(name, &snapshot.days[i].lowTempC)) {
+            sendError(400, "invalid_weather_day");
+            return;
+        }
+        snprintf(name, sizeof(name), "%sHighTempC", kLabels[i]);
+        if (!readI16(name, &snapshot.days[i].highTempC)) {
+            sendError(400, "invalid_weather_day");
+            return;
+        }
+        snprintf(name, sizeof(name), "%sRainProbabilityPercent", kLabels[i]);
+        if (!readU8(name, &snapshot.days[i].rainProbabilityPercent)) {
+            sendError(400, "invalid_weather_day");
+            return;
+        }
+    }
+
+    if (!WeatherSnapshotStore::set(snapshot)) {
+        sendError(400, "invalid_weather_snapshot");
+        return;
+    }
+    sendOk();
+}
+
 void handleRecordsApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     if (!Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
@@ -3549,6 +4032,7 @@ void begin() {
     const bool unskipOk = Esp32BaseWeb::addRoute("/api/v1/schedule/unskip", Esp32BaseWeb::METHOD_POST, handleScheduleUnskipApi);
     const bool recordsOk = Esp32BaseWeb::addRoute("/api/v1/records", Esp32BaseWeb::METHOD_GET, handleRecordsApi);
     const bool eventsOk = Esp32BaseWeb::addRoute("/api/v1/events", Esp32BaseWeb::METHOD_GET, handleEventsApi);
+    const bool weatherOk = Esp32BaseWeb::addRoute("/api/v1/weather/snapshot", Esp32BaseWeb::METHOD_POST, handleWeatherSnapshotApi);
     const bool routeResults[] = {
         overviewOk, plansOk, recordsPageOk, eventsPageOk, calibrationPageOk, settingsOk,
         calibrationSamplePageOk, eventDetailPageOk, planEditOk, statusOk, flowHistoryOk, calibrationStatusOk, configOk,
@@ -3556,7 +4040,7 @@ void begin() {
         calibrationStartOk, calibrationStopOk, calibrationSampleOk, calibrationSampleUpdateOk,
         calibrationComputeOk, calibrationCandidateSaveOk, calibrationApplyOk, calibrationRestoreOk,
         calibrationClearOk, plansApiOk, planCreateOk, planUpdateOk, planDeleteOk,
-        planEnableOk, planDisableOk, skipOk, unskipOk, recordsOk, eventsOk,
+        planEnableOk, planDisableOk, skipOk, unskipOk, recordsOk, eventsOk, weatherOk,
     };
     uint8_t failedRoutes = 0;
     for (uint8_t i = 0; i < sizeof(routeResults) / sizeof(routeResults[0]); ++i) {
@@ -3567,7 +4051,7 @@ void begin() {
     if (failedRoutes > 0) {
         BusinessEventLog::appendWebRouteRegistrationFailed(failedRoutes);
     }
-    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s eventDetailPage=%s planEdit=%s status=%s flowHistory=%s calStatus=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s firmware=%s",
+    ESP32BASE_LOG_I("irrigation.web", "routes overview=%s plans=%s zones=%s calibration=%s calSamplePage=%s recordsPage=%s eventsPage=%s eventDetailPage=%s planEdit=%s status=%s flowHistory=%s calStatus=%s config=%s zoneStart=%s zoneStop=%s allStop=%s zoneConfig=%s clearError=%s calStart=%s calStop=%s calSample=%s calSampleUpdate=%s calCompute=%s calCandidateSave=%s calApply=%s calRestore=%s calClear=%s plansApi=%s planCreate=%s planUpdate=%s planDelete=%s planEnable=%s planDisable=%s skip=%s unskip=%s records=%s events=%s weather=%s firmware=%s",
                     overviewOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",
                     settingsOk ? "ok" : "fail",
@@ -3605,6 +4089,7 @@ void begin() {
                     unskipOk ? "ok" : "fail",
                     recordsOk ? "ok" : "fail",
                     eventsOk ? "ok" : "fail",
+                    weatherOk ? "ok" : "fail",
                     IrrigationVersion::FirmwareVersion);
 }
 
