@@ -20,6 +20,8 @@ const flowConfigStoreHeader = read('src/storage/FlowConfigStore.h');
 const systemConfigStore = read('src/storage/SystemConfigStore.cpp');
 const zoneManager = read('src/domain/ZoneManager.cpp');
 const zoneScheduler = read('src/domain/ZoneScheduler.cpp');
+const localControl = read('src/domain/LocalControl.cpp');
+const safetyManager = read('src/domain/SafetyManager.cpp');
 
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
@@ -33,6 +35,8 @@ assert(
 );
 assert(!pins.includes('MaxRoads'), 'hardware model must not expose legacy MaxRoads');
 assert(!pins.includes('DefaultRoadEnabledMask'), 'hardware model must not expose legacy DefaultRoadEnabledMask');
+assert(!pins.includes('StartOkButton'), 'Pins.h must not keep legacy local button aliases');
+assert(!pins.includes('Road1UpButton'), 'Pins.h must not keep legacy road-specific button aliases');
 
 assert(
   zoneTypes.includes('MaxFlowMeters = IrrigationPins::MaxFlowMeters'),
@@ -149,5 +153,17 @@ assert(zoneManager.includes('!flowBusy(config.flowId)'), 'Zone starts should rej
 assert(zoneScheduler.includes('queuedPlanMaxDelaySec'), 'scheduler should honor queuedPlanMaxDelaySec');
 assert(zoneScheduler.includes('ZoneManager::startPlan'), 'scheduler should start plans through ZoneManager');
 assert(!zoneScheduler.includes('zone.start('), 'scheduler must not bypass Flow mutual exclusion');
+
+assert(localControl.includes('kConfirmWindowMs = 5000'), 'local control should use a five-second same-button confirmation window');
+assert(localControl.includes('IrrigationPins::ButtonPrevZone'), 'local control should use the previous-zone button');
+assert(localControl.includes('IrrigationPins::ButtonNextZone'), 'local control should use the next-zone button');
+assert(localControl.includes('IrrigationPins::ButtonSelect'), 'local control should use the select/start-stop button');
+assert(localControl.includes('IrrigationPins::ButtonStopAll'), 'local control should use the Stop All button');
+assert(localControl.includes('IrrigationPins::ButtonInfo'), 'local control should support the optional info button');
+assert(localControl.includes('Irrigation::MaxZones'), 'local control should scan all configured zones');
+assert(!localControl.includes('kLocalButtonZoneMax'), 'local control must not cap local operation to Zone 1/2');
+assert(!localControl.includes('Road1UpButton') && !localControl.includes('Road2DownButton'), 'local control must not use legacy road-specific buttons');
+assert(!safetyManager.includes('ZoneManager::startManual'), 'SafetyManager should not own local zone operations');
+assert(!safetyManager.includes('Road1UpButton') && !safetyManager.includes('Road2DownButton'), 'SafetyManager must not special-case Zone 1/2');
 
 console.log('check-web-structure passed');

@@ -37,16 +37,6 @@ static constexpr uint8_t MaxZones = 6;
 // Bit mask, not zone count: bit0 enables zone 1 ... bit5 enables zone 6.
 static constexpr uint8_t DefaultZoneEnabledMask = 0x03;
 
-// Transitional aliases for modules that are replaced in later redesign tasks.
-// They intentionally map onto the new physical button roles and must not be
-// used by new code.
-static constexpr uint8_t StartOkButton = ButtonSelect;
-static constexpr uint8_t StopAllButton = ButtonStopAll;
-static constexpr uint8_t MenuBackButton = ButtonInfo;
-static constexpr uint8_t LockButton = 33;
-static constexpr uint8_t Road1UpButton = ButtonPrevZone;
-static constexpr uint8_t Road2DownButton = ButtonNextZone;
-
 static constexpr uint32_t ValvePwmFrequency = 1000;
 static constexpr uint8_t ValvePullInDutyPercent = 100;
 static constexpr uint8_t ValveHoldDutyPercent = 70;

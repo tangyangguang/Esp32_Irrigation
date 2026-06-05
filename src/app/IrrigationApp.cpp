@@ -4,6 +4,7 @@
 
 #include "domain/FlowMeter.h"
 #include "domain/FlowCalibration.h"
+#include "domain/LocalControl.h"
 #include "domain/MaintenanceService.h"
 #include "domain/SafetyManager.h"
 #include "domain/ValveController.h"
@@ -43,6 +44,7 @@ void begin() {
     FlowCalibration::begin();
     ZoneManager::begin();
     SafetyManager::begin();
+    LocalControl::begin();
     MaintenanceService::begin();
     IrrigationWeb::begin();
     ESP32BASE_LOG_I("irrigation", "application ready");
@@ -55,6 +57,7 @@ void handle() {
     FlowCalibration::handle(system);
     ZoneManager::handle();
     SafetyManager::handle();
+    LocalControl::handle();
     ValveController::handle();
     MaintenanceService::handle();
 }
