@@ -467,6 +467,20 @@ Do not special-case Zone 1/2. The local selector is built from all enabled Zones
 
 Local starts use `manualDefaultDurationSec`, never enter the schedule queue, and return the same blocked reasons as Web/API: `zone_disabled`, `zone_fault`, `leak_protected`, `flow_disabled`, `flow_busy`, `calibration_active`.
 
+Local start and stop actions require a simple same-button confirmation:
+
+```text
+Button3 first press on stopped selected Zone: show confirm_start for that zoneId.
+Button3 second press within 5 seconds: revalidate and start that same zoneId.
+Button3 first press on running selected Zone: show confirm_stop_zone for that zoneId.
+Button3 second press within 5 seconds: stop that same zoneId.
+Button4 first press: show confirm_stop_all.
+Button4 second press within 5 seconds: stop all zones and abort active calibration/learning.
+Button1/Button2 selection changes, Button5 page changes, or timeout: cancel pending confirmation.
+```
+
+The pending confirmation stores `action` and `zoneId` so a later selection change cannot execute against the wrong Zone. Start confirmation must re-run the normal start validation at execution time; if state changed, show the same blocked reason as Web/API.
+
 The I2C display shows only operational status in this redesign: selected enabled Zone, active Flow, flow rate, estimated volume, blocked reason, queue count, and fault summary. Do not implement Flow calibration editing, Zone baseline editing, plan editing, Zone learning, calibration sample entry, or numeric input on the local display.
 
 - [ ] **Step 6: Verify**
@@ -485,6 +499,7 @@ Zone 1 assigned Flow 1 and Zone 2 assigned Flow 2: both can run.
 Stop all closes all six valve outputs.
 Local buttons can select and start any enabled Zone, including Zone3..6 after they are enabled.
 Disabled Zones do not appear on the local operation screen and cannot be started locally.
+Local start, selected-zone stop, and Stop All require same-button confirmation.
 I2C display shows selected enabled Zone and blockedReason without allowing config edits or calibration/learning input.
 ```
 
@@ -1115,6 +1130,7 @@ local previous/next enabled-zone controls
 local selected-zone start/stop control
 local disabled zones hidden from local operation screen
 local Stop All aborts calibration/learning
+local start/stop/Stop All same-button confirmation
 I2C status display does not expose config editing, calibration, or learning input
 ```
 
