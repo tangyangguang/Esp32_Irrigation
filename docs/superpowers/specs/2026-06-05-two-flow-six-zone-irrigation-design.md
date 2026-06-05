@@ -94,6 +94,21 @@ I2C SDA/SCL
 
 GPIO35/36/39 等输入专用脚只能用于流量计或按钮，不能用于阀门输出。阀门 PWM 输出必须使用可输出 GPIO，并通过 MOSFET、继电器模块或专用驱动器控制，不能由 ESP32 GPIO 直驱。
 
+推荐固定引脚：
+
+```text
+Flow1Input = GPIO32
+Flow2Input = GPIO35
+Valve1Output = GPIO16
+Valve2Output = GPIO14
+Valve3Output = GPIO13
+Valve4Output = GPIO27
+Valve5Output = GPIO4
+Valve6Output = GPIO5
+```
+
+GPIO4/GPIO5 在 ESP32 DevKit 上可作为输出使用；实际 PCB 设计时不要让外部阀门驱动在上电启动阶段强拉这些脚。如果后续板级验证发现启动受影响，再整体换 pin map。
+
 ## Configuration Model
 
 配置拆成 Flow 配置和 Zone 配置。参数来源枚举先定义一次，Flow 参数和 Zone 学习参数共用：
@@ -129,7 +144,7 @@ struct FlowMeterCalibrationProfile {
 };
 
 struct FlowMeterConfig {
-    uint8_t id;                 // 1..2
+    uint8_t flowId;             // 1..2
     uint8_t pulsePin;           // read-only hardware pin
     bool enabled;
     FlowMeterCalibrationProfile activeCalibration;
@@ -172,10 +187,10 @@ struct ZoneFlowBaselineProfile {
 };
 
 struct ZoneConfig {
-    uint8_t id;                 // 1..6
+    uint8_t zoneId;             // 1..6
     char name[32];
     uint8_t valvePin;           // read-only hardware pin
-    uint8_t flowMeterId;        // 1 or 2
+    uint8_t flowId;             // 1 or 2
     bool enabled;
     bool hasLearnedBaseline;
     ZoneFlowBaselineProfile activeBaseline;
@@ -199,7 +214,7 @@ Zone.hasPendingBaseline 表示是否有待应用的正常流量基线。
 Zone.hasRollbackBaseline 表示是否有可回退的上一套正常流量基线。
 ```
 
-第一版 Web 不提供 `flowMeterId = 0`，启用的 Zone 必须归属一个启用的 Flow。这样缺水保护和运行记录始终有流量依据。
+第一版 Web 不提供 `flowId = 0`，启用的 Zone 必须归属一个启用的 Flow。这样缺水保护和运行记录始终有流量依据。
 
 存储边界也必须拆开，避免把 Flow 计量参数塞回 Zone 配置：
 
@@ -459,6 +474,8 @@ Flow 校准分两种。
 7. 显示每个样本的预测误差和总体误差。
 ```
 
+拟合实现也使用固定点/整数中间值，不把 `float` 或 `double` 作为业务参数、记录字段或持久化字段。页面可以显示换算后的小数，但存储和运行逻辑只保存固定点整数。
+
 2 点公式：
 
 ```text
@@ -571,12 +588,15 @@ Zone 学习
 校准 API 也按新对象重写，不保留旧路径语义：
 
 ```text
-Flow pending calibration save/apply/rollback
+Flow config save
+Zone config save
+Flow calibration pending save/apply/rollback
 Flow calibration sample start/stop/save/clear/fit
-Zone baseline learning start/stop/save pending/apply/rollback
+Zone baseline pending save/apply/rollback
+Zone baseline learning start/stop
 ```
 
-可以继续使用 `/api/v1/calibration/*` 前缀，但请求字段和语义必须是新模型。不提供旧 `startupPulseLimit`、`startupEstimatedMl`、`stablePulsePerLiter` 的兼容入口。
+API 路径重新命名为新模型，不沿用旧校准路径语义。不提供旧 `startupPulseLimit`、`startupEstimatedMl`、`stablePulsePerLiter` 的兼容入口。
 
 校准采集期间的安全规则：
 
@@ -681,7 +701,7 @@ leakProtectionActive
 
 ```text
 zoneId
-flowMeterId
+flowId
 kUlPerMinPerHzSnapshot
 offsetMilliHzSnapshot
 warningFreqMilliHzSnapshot
@@ -715,7 +735,7 @@ result
 stopSource
 ```
 
-记录必须保存 `flowMeterId` 和关键 Flow/Zone 参数快照。这样即使以后 Zone 改归属或 Flow 重新校准，历史记录仍能解释当时使用哪个 Flow、哪组 K+Offset 和哪组异常阈值计量。
+记录必须保存 `flowId` 和关键 Flow/Zone 参数快照。这样即使以后 Zone 改归属或 Flow 重新校准，历史记录仍能解释当时使用哪个 Flow、哪组 K+Offset 和哪组异常阈值计量。
 
 缺水/无脉冲异常记录不保存多次停水恢复片段。第一版缺水即停，因此只需要保存第一次进入无脉冲观察、最后一次有脉冲、确认异常并停机的时间点，以及停机前脉冲和估算水量。
 
@@ -828,6 +848,39 @@ Zone 正常流量学习
 ```
 
 所有状态改变操作必须使用 POST、鉴权、二次确认。Web/API 输出继续做 HTML/JSON escape。
+
+API 使用干净的新路径，不保留旧字段或旧路径语义：
+
+```text
+GET  /api/v1/status
+GET  /api/v1/flows
+GET  /api/v1/zones
+GET  /api/v1/flows/history?flowId=1
+
+POST /api/v1/zones/start
+POST /api/v1/zones/stop
+POST /api/v1/zones/stop-all
+
+POST /api/v1/flows/config
+POST /api/v1/zones/config
+
+POST /api/v1/flows/calibration/pending
+POST /api/v1/flows/calibration/apply
+POST /api/v1/flows/calibration/rollback
+POST /api/v1/flows/calibration/samples/start
+POST /api/v1/flows/calibration/samples/stop
+POST /api/v1/flows/calibration/samples/save
+POST /api/v1/flows/calibration/samples/clear
+POST /api/v1/flows/calibration/fit
+
+POST /api/v1/zones/baseline/pending
+POST /api/v1/zones/baseline/apply
+POST /api/v1/zones/baseline/rollback
+POST /api/v1/zones/baseline/learning/start
+POST /api/v1/zones/baseline/learning/stop
+```
+
+所有 ID 使用请求体或 query 中的 `flowId`、`zoneId`。不要再使用 `road`、`channel`、`line`、`candidateFlow`、`previousFlow` 这类旧模型或含义不清的字段名。
 
 ## Storage
 

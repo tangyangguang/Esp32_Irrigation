@@ -17,7 +17,7 @@
 ```text
 MaxFlowMeters = 2
 MaxZones = 6
-Zone.flowMeterId = 1 or 2
+Zone.flowId = 1 or 2
 同一 Flow 下 Zone 互斥
 不同 Flow 下 Zone 可并行
 Flow 参数 = K + Offset + 有效频率范围 + 建压时间 + 采样窗口
@@ -94,6 +94,8 @@ static constexpr uint8_t Valve1 = 16;
 static constexpr uint8_t Valve2 = 14;
 static constexpr uint8_t Valve3 = 13;
 static constexpr uint8_t Valve4 = 27;
+static constexpr uint8_t Valve5 = 4;
+static constexpr uint8_t Valve6 = 5;
 
 static constexpr uint8_t Flow1 = 32;
 static constexpr uint8_t Flow2 = 35;
@@ -103,7 +105,7 @@ static constexpr uint8_t MaxZones = 6;
 static constexpr uint8_t DefaultZoneEnabledMask = 0x03;
 ```
 
-Before writing `Valve5` and `Valve6`, confirm the real board wiring. Do not assign provisional GPIO4/GPIO5, input-only pins, or boot-sensitive pins without a board-level decision. If the fifth and sixth valve pins are not confirmed, stop this task and ask for the hardware pin map instead of committing guessed firmware.
+GPIO4/GPIO5 are the recommended Valve5/Valve6 outputs for the first clean board model. Do not add a runtime fallback or compatibility pin map. If later board validation shows boot interaction or wiring changes, update this single pin map directly.
 
 - [ ] **Step 2: Replace domain limits**
 
@@ -124,6 +126,7 @@ Change `scripts/check-web-structure.mjs` assertions from fixed 4-road expectatio
 ```js
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
+assert(pins.includes('Valve5 = 4') && pins.includes('Valve6 = 5'), 'hardware model should use fixed GPIO4/GPIO5 for valve 5 and 6');
 assert(pins.includes('DefaultZoneEnabledMask = 0x03'), 'default hardware enable mask should enable zone 1 and 2');
 ```
 
@@ -136,7 +139,7 @@ node scripts/check-web-structure.mjs
 pio run
 ```
 
-Expected after this task: no commit until the firmware compiles. If the only blocker is unconfirmed `Valve5`/`Valve6` GPIO, stop and ask for the pin map.
+Expected after this task: no commit until the firmware compiles with the fixed Valve5/Valve6 GPIO4/GPIO5 pin map.
 
 - [ ] **Step 5: Commit**
 
@@ -207,7 +210,7 @@ struct ZoneFlowBaselineProfile {
 };
 
 struct FlowMeterConfig {
-    uint8_t id;
+    uint8_t flowId;
     uint8_t pulsePin;
     bool enabled;
     FlowMeterCalibrationProfile activeCalibration;
@@ -221,7 +224,7 @@ struct ZoneConfig {
     uint8_t zoneId;
     char name[NameMaxBytes];
     uint8_t valvePin;
-    uint8_t flowMeterId;
+    uint8_t flowId;
     bool enabled;
     bool hasLearnedBaseline;
     ZoneFlowBaselineProfile activeBaseline;
@@ -241,7 +244,7 @@ Flow 1: enabled, pulsePin=Flow1, activeCalibration has defaults
 Flow 2: disabled, pulsePin=Flow2, activeCalibration has defaults
 Flow hasPendingCalibration=false, hasRollbackCalibration=false
 Flow calibration defaults: k=244897, offset=0, warningFreq=4000, minValidFreq=500, maxValidFreq=0, pressurizeSec=5, sampleWindowSec=2
-Zone 1..6: flowMeterId=1
+Zone 1..6: flowId=1
 Zone 1/2: enabled
 Zone 3..6: disabled
 Zone baseline: hasLearnedBaseline=false, hasPendingBaseline=false, hasRollbackBaseline=false, low=100, high=3000, flowFaultConfirmSec=15, lowFlowAction=STOP_ZONE, highFlowAction=STOP_ZONE, noPulseTimeoutSec=10
@@ -408,7 +411,7 @@ Start rule:
 ```text
 Zone enabled
 Flow enabled
-activeZoneByFlow[flowMeterId] == 0
+activeZoneByFlow[flowId] == 0
 duration valid
 no leak/reset protection
 ```
@@ -550,6 +553,8 @@ kUlPerMinPerHz = K * 1000000
 offsetMilliHz = 0
 ```
 
+Implement this calculation with fixed-point integer arithmetic and `int64_t` intermediates. Do not store or pass `float`/`double` in config, record, or API payloads.
+
 - [ ] **Step 4: Implement multi-point Flow calibration**
 
 Fit:
@@ -561,6 +566,8 @@ Offset = b / a
 ```
 
 Reject apply when `a <= 0`. Warn but allow save when sample frequency span is narrow. Save the fitted `minValidFreqMilliHz` as the lower reliable sample frequency unless the user manually overrides it.
+
+The fit output must be `kUlPerMinPerHz` and `offsetMilliHz`. Use fixed-point integer math for the persisted result; UI display may format decimal values from those integers.
 
 - [ ] **Step 5: Implement Zone learning**
 
@@ -619,7 +626,7 @@ Every watering record snapshots:
 
 ```text
 zoneId
-flowMeterId
+flowId
 kUlPerMinPerHz
 offsetMilliHz
 warningFreqMilliHz
@@ -639,7 +646,9 @@ actualSec
 startPulse
 endPulse
 estimatedMl
-avg/min/max flow
+avgFlowMlPerMin
+minFlowMlPerMin
+maxFlowMlPerMin
 lastPulseAtSec
 firstNoPulseAtSec
 faultConfirmedAtSec
@@ -657,6 +666,7 @@ Result/error taxonomy:
 
 ```text
 TaskResult:
+  NONE
   COMPLETED
   USER_STOPPED
   FLOW_NO_PULSE_TIMEOUT
@@ -668,12 +678,14 @@ TaskResult:
   REJECTED
 
 ZoneErrorCode:
+  NONE
   FLOW_NO_PULSE_TIMEOUT
   FLOW_LOW
   FLOW_HIGH
   CONFIG_INVALID
 
 FlowFaultCode:
+  NONE
   IDLE_LEAK
 ```
 
@@ -695,7 +707,7 @@ struct ZoneFault {
 
 struct FlowLeakFault {
     bool active;
-    uint8_t flowMeterId;
+    uint8_t flowId;
     uint32_t occurredEpoch;
     uint32_t occurredUptimeMs;
     uint16_t windowSec;
@@ -766,26 +778,30 @@ Required API groups:
 
 ```text
 GET  /api/v1/status
-GET  /api/v1/flow/history?flowId=1
-POST /api/v1/zone/start
-POST /api/v1/zone/stop
+GET  /api/v1/flows
+GET  /api/v1/zones
+GET  /api/v1/flows/history?flowId=1
+POST /api/v1/zones/start
+POST /api/v1/zones/stop
 POST /api/v1/zones/stop-all
-POST /api/v1/flow/save-pending-calibration
-POST /api/v1/flow/apply-pending-calibration
-POST /api/v1/flow/rollback-calibration
-POST /api/v1/calibration/flow/start
-POST /api/v1/calibration/flow/stop
-POST /api/v1/calibration/flow/save-sample
-POST /api/v1/calibration/flow/clear-samples
-POST /api/v1/calibration/flow/fit
-POST /api/v1/zone-learning/start
-POST /api/v1/zone-learning/stop
-POST /api/v1/zone-learning/save-pending-baseline
-POST /api/v1/zone-learning/apply-pending-baseline
-POST /api/v1/zone-learning/rollback-baseline
+POST /api/v1/flows/config
+POST /api/v1/zones/config
+POST /api/v1/flows/calibration/pending
+POST /api/v1/flows/calibration/apply
+POST /api/v1/flows/calibration/rollback
+POST /api/v1/flows/calibration/samples/start
+POST /api/v1/flows/calibration/samples/stop
+POST /api/v1/flows/calibration/samples/save
+POST /api/v1/flows/calibration/samples/clear
+POST /api/v1/flows/calibration/fit
+POST /api/v1/zones/baseline/pending
+POST /api/v1/zones/baseline/apply
+POST /api/v1/zones/baseline/rollback
+POST /api/v1/zones/baseline/learning/start
+POST /api/v1/zones/baseline/learning/stop
 ```
 
-All changing operations use POST, auth, and JavaScript confirm on pages.
+All changing operations use POST, auth, and JavaScript confirm on pages. Payload fields use `flowId` and `zoneId`; do not use old `road`, `candidateFlow`, `previousFlow`, or startup-compensation field names anywhere.
 
 - [ ] **Step 3: Add install warning text**
 
