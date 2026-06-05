@@ -8,6 +8,8 @@ static constexpr uint8_t Road1 = 1;
 static constexpr uint8_t Road2 = 2;
 static constexpr uint8_t Road3 = 3;
 static constexpr uint8_t Road4 = 4;
+static constexpr uint8_t Road5 = 5;
+static constexpr uint8_t Road6 = 6;
 
 void begin();
 void handle();

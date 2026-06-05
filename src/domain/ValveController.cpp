@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
 
+#include "domain/ZoneTypes.h"
 #include "Pins.h"
 
 namespace {
@@ -12,16 +13,18 @@ static constexpr uint8_t kValvePins[] = {
     IrrigationPins::Valve2,
     IrrigationPins::Valve3,
     IrrigationPins::Valve4,
+    IrrigationPins::Valve5,
+    IrrigationPins::Valve6,
 };
 
-static constexpr uint8_t kPwmChannels[] = {0, 1, 2, 3};
+static constexpr uint8_t kPwmChannels[] = {0, 1, 2, 3, 4, 5};
 
 static bool g_ready = false;
-static bool g_open[IrrigationPins::MaxRoads] = {};
-static uint32_t g_openedMs[IrrigationPins::MaxRoads] = {};
+static bool g_open[Irrigation::MaxZones] = {};
+static uint32_t g_openedMs[Irrigation::MaxZones] = {};
 
 bool roadIndex(uint8_t road, uint8_t* index) {
-    if (road < 1 || road > IrrigationPins::MaxRoads) {
+    if (road < 1 || road > Irrigation::MaxZones) {
         return false;
     }
     *index = road - 1;
@@ -43,7 +46,7 @@ bool canLog() {
 namespace ValveController {
 
 void begin() {
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+    for (uint8_t i = 0; i < Irrigation::MaxZones; ++i) {
         pinMode(kValvePins[i], OUTPUT);
         ledcSetup(kPwmChannels[i], IrrigationPins::ValvePwmFrequency, 8);
         ledcAttachPin(kValvePins[i], kPwmChannels[i]);
@@ -55,7 +58,7 @@ void begin() {
 void handle() {
     const uint32_t now = millis();
     const uint32_t holdDuty = static_cast<uint32_t>(IrrigationPins::ValveHoldDutyPercent) * 255UL / 100UL;
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+    for (uint8_t i = 0; i < Irrigation::MaxZones; ++i) {
         if (g_open[i] && g_openedMs[i] != 0 && now - g_openedMs[i] >= IrrigationPins::ValvePullInMs) {
             ledcWrite(kPwmChannels[i], holdDuty);
         }
@@ -96,7 +99,7 @@ void allOff(const char* reason) {
     if (!g_ready) {
         begin();
     }
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+    for (uint8_t i = 0; i < Irrigation::MaxZones; ++i) {
         if (g_open[i]) {
             writeValve(i, false);
         } else {

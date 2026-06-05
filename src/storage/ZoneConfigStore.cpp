@@ -28,13 +28,17 @@ static constexpr uint8_t kValvePins[] = {
     IrrigationPins::Valve2,
     IrrigationPins::Valve3,
     IrrigationPins::Valve4,
+    IrrigationPins::Valve5,
+    IrrigationPins::Valve6,
 };
 
 static constexpr uint8_t kFlowPins[] = {
     IrrigationPins::Flow1,
-    IrrigationPins::Flow2,
-    IrrigationPins::Flow3,
-    IrrigationPins::Flow4,
+    IrrigationPins::Flow1,
+    IrrigationPins::Flow1,
+    IrrigationPins::Flow1,
+    IrrigationPins::Flow1,
+    IrrigationPins::Flow1,
 };
 
 static constexpr const char* kDefaultNames[] = {
@@ -42,6 +46,8 @@ static constexpr const char* kDefaultNames[] = {
     "Zone 2",
     "Zone 3",
     "Zone 4",
+    "Zone 5",
+    "Zone 6",
 };
 
 void key(char* out, size_t len, uint8_t zoneId) {

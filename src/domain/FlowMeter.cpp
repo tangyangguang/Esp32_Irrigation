@@ -5,6 +5,7 @@
 #include <freertos/task.h>
 #include <string.h>
 
+#include "domain/ZoneTypes.h"
 #include "Pins.h"
 
 namespace {
@@ -12,31 +13,29 @@ namespace {
 static constexpr uint8_t kFlowPins[] = {
     IrrigationPins::Flow1,
     IrrigationPins::Flow2,
-    IrrigationPins::Flow3,
-    IrrigationPins::Flow4,
 };
 static constexpr uint8_t kMaxFlowWindowSec = 30;
 
-volatile uint32_t g_pulses[IrrigationPins::MaxRoads] = {};
+volatile uint32_t g_pulses[Irrigation::MaxFlowMeters] = {};
 portMUX_TYPE g_pulseMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t g_lastSampleMs = 0;
-uint32_t g_lastSamplePulses[IrrigationPins::MaxRoads] = {};
-uint32_t g_ratePerMinuteX1000[IrrigationPins::MaxRoads] = {};
-uint32_t g_flowMlPerMin[IrrigationPins::MaxRoads] = {};
-bool g_flowReady[IrrigationPins::MaxRoads] = {};
-uint16_t g_stablePulsePerLiter[IrrigationPins::MaxRoads] = {450, 450, 450, 450};
+uint32_t g_lastSamplePulses[Irrigation::MaxFlowMeters] = {};
+uint32_t g_ratePerMinuteX1000[Irrigation::MaxFlowMeters] = {};
+uint32_t g_flowMlPerMin[Irrigation::MaxFlowMeters] = {};
+bool g_flowReady[Irrigation::MaxFlowMeters] = {};
+uint16_t g_stablePulsePerLiter[Irrigation::MaxFlowMeters] = {450, 450};
 uint16_t g_flowRateWindowSec = 5;
 uint16_t g_flowChartIntervalSec = 5;
 uint16_t g_flowChartHistoryMin = 10;
 uint16_t g_flowHistoryLimit = 120;
 uint32_t g_lastHistoryMs = 0;
-uint32_t g_deltaHistory[IrrigationPins::MaxRoads][kMaxFlowWindowSec] = {};
-uint16_t g_deltaMsHistory[IrrigationPins::MaxRoads][kMaxFlowWindowSec] = {};
-uint8_t g_deltaHistoryPos[IrrigationPins::MaxRoads] = {};
-uint8_t g_deltaHistoryFilled[IrrigationPins::MaxRoads] = {};
-uint16_t g_flowHistory[IrrigationPins::MaxRoads][FlowMeter::MaxFlowHistoryPoints] = {};
-uint16_t g_flowHistoryHead[IrrigationPins::MaxRoads] = {};
-uint16_t g_flowHistoryCount[IrrigationPins::MaxRoads] = {};
+uint32_t g_deltaHistory[Irrigation::MaxFlowMeters][kMaxFlowWindowSec] = {};
+uint16_t g_deltaMsHistory[Irrigation::MaxFlowMeters][kMaxFlowWindowSec] = {};
+uint8_t g_deltaHistoryPos[Irrigation::MaxFlowMeters] = {};
+uint8_t g_deltaHistoryFilled[Irrigation::MaxFlowMeters] = {};
+uint16_t g_flowHistory[Irrigation::MaxFlowMeters][FlowMeter::MaxFlowHistoryPoints] = {};
+uint16_t g_flowHistoryHead[Irrigation::MaxFlowMeters] = {};
+uint16_t g_flowHistoryCount[Irrigation::MaxFlowMeters] = {};
 volatile bool g_captureActive = false;
 volatile uint8_t g_captureIndex = 0;
 volatile uint32_t g_captureStartedMs = 0;
@@ -86,20 +85,8 @@ void IRAM_ATTR onFlow2Pulse() {
     portEXIT_CRITICAL_ISR(&g_pulseMux);
 }
 
-void IRAM_ATTR onFlow3Pulse() {
-    portENTER_CRITICAL_ISR(&g_pulseMux);
-    recordPulse(2);
-    portEXIT_CRITICAL_ISR(&g_pulseMux);
-}
-
-void IRAM_ATTR onFlow4Pulse() {
-    portENTER_CRITICAL_ISR(&g_pulseMux);
-    recordPulse(3);
-    portEXIT_CRITICAL_ISR(&g_pulseMux);
-}
-
 bool roadIndex(uint8_t road, uint8_t* index) {
-    if (road < 1 || road > IrrigationPins::MaxRoads) {
+    if (road < 1 || road > Irrigation::MaxFlowMeters) {
         return false;
     }
     *index = road - 1;
@@ -132,7 +119,7 @@ uint16_t computeHistoryLimit(uint16_t intervalSec, uint16_t historyMin) {
 }
 
 void clearRoadFlowHistory(uint8_t index) {
-    if (index >= IrrigationPins::MaxRoads) {
+    if (index >= Irrigation::MaxFlowMeters) {
         return;
     }
     memset(g_deltaHistory[index], 0, sizeof(g_deltaHistory[index]));
@@ -148,13 +135,13 @@ void clearRoadFlowHistory(uint8_t index) {
 }
 
 void clearAllFlowHistory() {
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+    for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
         clearRoadFlowHistory(i);
     }
 }
 
 void pushHistoryPoint(uint8_t index, uint32_t mlPerMin) {
-    if (index >= IrrigationPins::MaxRoads || g_flowHistoryLimit == 0) {
+    if (index >= Irrigation::MaxFlowMeters || g_flowHistoryLimit == 0) {
         return;
     }
     if (mlPerMin > 65535UL) {
@@ -201,13 +188,13 @@ namespace FlowMeter {
 
 void begin() {
     using Handler = void (*)();
-    static constexpr Handler handlers[] = {onFlow1Pulse, onFlow2Pulse, onFlow3Pulse, onFlow4Pulse};
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+    static constexpr Handler handlers[] = {onFlow1Pulse, onFlow2Pulse};
+    for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
         pinMode(kFlowPins[i], INPUT);
         attachInterrupt(digitalPinToInterrupt(kFlowPins[i]), handlers[i], RISING);
     }
     g_lastSampleMs = millis();
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+    for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
         g_lastSamplePulses[i] = pulseCount(i + 1);
     }
     g_lastHistoryMs = g_lastSampleMs;
@@ -219,7 +206,7 @@ void handle() {
     if (elapsedMs < 1000UL) {
         return;
     }
-    for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+    for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
         const uint32_t pulses = pulseCount(i + 1);
         const uint32_t delta = pulses >= g_lastSamplePulses[i] ? pulses - g_lastSamplePulses[i] : 0;
         sampleRoad(i, delta, elapsedMs);
@@ -227,7 +214,7 @@ void handle() {
     }
     g_lastSampleMs = now;
     if (now - g_lastHistoryMs >= static_cast<uint32_t>(g_flowChartIntervalSec) * 1000UL) {
-        for (uint8_t i = 0; i < IrrigationPins::MaxRoads; ++i) {
+        for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
             pushHistoryPoint(i, g_flowMlPerMin[i]);
         }
         g_lastHistoryMs = now;

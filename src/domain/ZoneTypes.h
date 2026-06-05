@@ -6,9 +6,11 @@
 
 namespace Irrigation {
 
-static constexpr uint8_t MaxZones = IrrigationPins::MaxRoads;
+static constexpr uint8_t MaxFlowMeters = IrrigationPins::MaxFlowMeters;
+static constexpr uint8_t MaxZones = IrrigationPins::MaxZones;
 static constexpr uint8_t MaxPlansPerZone = 6;
 static constexpr uint8_t TotalPlanSlots = MaxZones * MaxPlansPerZone;
+static constexpr uint8_t ScheduleQueueCapacity = 12;
 static constexpr uint8_t NameMaxBytes = 32;
 static constexpr uint32_t NoPlanId = 0;
 static constexpr uint8_t NoPlanSlot = 0xFF;
