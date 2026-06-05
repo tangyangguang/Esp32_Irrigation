@@ -13,7 +13,7 @@ public:
     void reset();
     void tick(Zone& zone,
               const Irrigation::SystemConfig& systemConfig,
-              bool leakAlertActive,
+              bool flowLeakActive,
               uint32_t trustedEpoch,
               uint32_t nowMs);
     bool eligible(uint32_t trustedEpoch) const;
@@ -24,7 +24,7 @@ private:
     bool observePlan(Zone& zone,
                      const Irrigation::PlanDefinition& plan,
                      const Irrigation::SystemConfig& systemConfig,
-                     bool leakAlertActive,
+                     bool flowLeakActive,
                      uint32_t ymd,
                      uint16_t minuteOfDay,
                      uint32_t dueEpoch,

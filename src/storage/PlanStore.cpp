@@ -11,18 +11,20 @@
 
 namespace {
 
-static constexpr const char* kNamespace = "irr_plan";
-static constexpr const char* kKeyBlob = "plans";
-static constexpr uint32_t kBlobMagic = 0x49504C42UL;
-static constexpr uint16_t kBlobVersion = 1;
+static constexpr const char* kNamespace = "irr_plan_v1";
+static constexpr const char* kKeyNext = "next";
+static constexpr uint32_t kMagic = 0x49504C4EUL;
+static constexpr uint16_t kVersion = 1;
 
-struct StoredPlansBlob {
+struct StoredPlan {
     uint32_t magic;
     uint16_t version;
     uint16_t size;
-    uint32_t nextPlanId;
-    Irrigation::PlanDefinition plans[Irrigation::TotalPlanSlots];
+    Irrigation::PlanDefinition data;
 };
+
+static_assert(sizeof(StoredPlan) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN,
+              "StoredPlan must fit Esp32BaseConfig blob storage");
 
 Irrigation::PlanDefinition g_plans[Irrigation::TotalPlanSlots] = {};
 uint32_t g_nextPlanId = 1;
@@ -35,6 +37,10 @@ bool flatIndex(uint8_t zoneId, uint8_t slotIndex, uint8_t* index) {
     }
     *index = static_cast<uint8_t>((zoneId - 1) * Irrigation::MaxPlansPerZone + slotIndex);
     return true;
+}
+
+void planKey(char* out, size_t len, uint8_t zoneId, uint8_t slotIndex) {
+    snprintf(out, len, "p%u_%u", static_cast<unsigned>(zoneId), static_cast<unsigned>(slotIndex));
 }
 
 Irrigation::PlanDefinition defaultPlan(uint8_t zoneId, uint8_t slotIndex) {
@@ -52,6 +58,15 @@ Irrigation::PlanDefinition defaultPlan(uint8_t zoneId, uint8_t slotIndex) {
     plan.cycleStartYmd = 0;
     plan.createdAt = 0;
     return plan;
+}
+
+StoredPlan wrap(const Irrigation::PlanDefinition& plan) {
+    StoredPlan stored = {};
+    stored.magic = kMagic;
+    stored.version = kVersion;
+    stored.size = sizeof(stored);
+    stored.data = plan;
+    return stored;
 }
 
 uint32_t currentEpoch() {
@@ -84,22 +99,13 @@ bool ymdToTime(uint32_t ymd, time_t* out) {
            normalized.tm_mday == value.tm_mday;
 }
 
-bool blobLooksValid(const StoredPlansBlob& stored) {
-    if (stored.magic != kBlobMagic ||
-        stored.version != kBlobVersion ||
-        stored.size != sizeof(stored) ||
-        stored.nextPlanId == 0) {
-        return false;
-    }
-    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
-        const Irrigation::PlanDefinition& plan = stored.plans[i];
-        const uint8_t expectedZone = static_cast<uint8_t>(i / Irrigation::MaxPlansPerZone + 1);
-        const uint8_t expectedSlot = static_cast<uint8_t>(i % Irrigation::MaxPlansPerZone);
-        if (plan.zoneId != expectedZone || plan.slotIndex != expectedSlot || !PlanStore::validate(plan)) {
-            return false;
-        }
-    }
-    return true;
+bool validStored(const StoredPlan& stored, uint8_t zoneId, uint8_t slotIndex) {
+    return stored.magic == kMagic &&
+           stored.version == kVersion &&
+           stored.size == sizeof(stored) &&
+           stored.data.zoneId == zoneId &&
+           stored.data.slotIndex == slotIndex &&
+           PlanStore::validate(stored.data);
 }
 
 uint32_t recoverNextPlanId(uint32_t storedNext) {
@@ -115,34 +121,30 @@ uint32_t recoverNextPlanId(uint32_t storedNext) {
     return next;
 }
 
-bool saveAllPlansBlob() {
-    StoredPlansBlob stored = {};
-    stored.magic = kBlobMagic;
-    stored.version = kBlobVersion;
-    stored.size = sizeof(stored);
-    stored.nextPlanId = g_nextPlanId == 0 ? 1 : g_nextPlanId;
-    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
-        stored.plans[i] = g_plans[i];
-    }
-    return Esp32BaseConfig::setPod(kNamespace, kKeyBlob, stored);
+bool saveNextPlanId() {
+    return Esp32BaseConfig::setInt(kNamespace, kKeyNext, static_cast<int32_t>(g_nextPlanId == 0 ? 1 : g_nextPlanId));
 }
 
-bool loadAllPlansBlob() {
-    StoredPlansBlob stored = {};
-    if (!Esp32BaseConfig::getPod(kNamespace, kKeyBlob, stored)) {
+bool savePlanSlot(uint8_t zoneId, uint8_t slotIndex, const Irrigation::PlanDefinition& plan) {
+    if (!PlanStore::validate(plan)) {
         return false;
     }
-    if (!blobLooksValid(stored)) {
+    char key[12];
+    planKey(key, sizeof(key), zoneId, slotIndex);
+    return Esp32BaseConfig::setPod(kNamespace, key, wrap(plan));
+}
+
+bool planIdExists(uint32_t planId) {
+    if (planId == 0) {
         return false;
     }
     for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
-        g_plans[i] = stored.plans[i];
+        if (g_plans[i].exists && g_plans[i].planId == planId) {
+            return true;
+        }
     }
-    g_nextPlanId = recoverNextPlanId(stored.nextPlanId);
-    return true;
+    return false;
 }
-
-bool planIdExists(uint32_t planId);
 
 uint32_t nextAvailablePlanId() {
     uint32_t candidate = g_nextPlanId == 0 ? 1 : g_nextPlanId;
@@ -179,44 +181,42 @@ uint32_t validCycleMask(uint8_t days) {
     return days >= 32 ? 0xFFFFFFFFUL : ((1UL << days) - 1UL);
 }
 
-bool planIdExists(uint32_t planId) {
-    if (planId == 0) {
-        return false;
-    }
-    for (uint8_t i = 0; i < Irrigation::TotalPlanSlots; ++i) {
-        if (g_plans[i].exists && g_plans[i].planId == planId) {
-            return true;
-        }
-    }
-    return false;
-}
-
 }
 
 namespace PlanStore {
 
 void begin() {
-    g_nextPlanId = 1;
     uint16_t invalidCount = 0;
     g_schemaResetDetected = false;
+    g_nextPlanId = static_cast<uint32_t>(Esp32BaseConfig::getInt(kNamespace, kKeyNext, 1));
+    if (g_nextPlanId == 0) {
+        g_nextPlanId = 1;
+        ++invalidCount;
+    }
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
             uint8_t index = 0;
             (void)flatIndex(zoneId, slot, &index);
             g_plans[index] = defaultPlan(zoneId, slot);
+            char key[12];
+            planKey(key, sizeof(key), zoneId, slot);
+            StoredPlan stored = {};
+            if (!Esp32BaseConfig::getPod(kNamespace, key, stored)) {
+                continue;
+            }
+            if (validStored(stored, zoneId, slot)) {
+                g_plans[index] = stored.data;
+            } else {
+                ++invalidCount;
+            }
         }
     }
-    StoredPlansBlob stored = {};
-    if (Esp32BaseConfig::getPod(kNamespace, kKeyBlob, stored)) {
-        if (!loadAllPlansBlob()) {
-            ++invalidCount;
-        }
-    }
+    g_nextPlanId = recoverNextPlanId(g_nextPlanId);
+    (void)saveNextPlanId();
     if (invalidCount > 0) {
         g_schemaResetDetected = true;
         BusinessEventLog::appendConfigSchemaReset("plans", invalidCount);
     }
-    (void)saveAllPlansBlob();
 }
 
 bool clear() {
@@ -231,7 +231,7 @@ bool clear() {
             g_plans[index] = defaultPlan(zoneId, slot);
         }
     }
-    return saveAllPlansBlob();
+    return saveNextPlanId();
 }
 
 bool create(uint8_t zoneId, Irrigation::PlanDefinition* out) {
@@ -250,34 +250,34 @@ bool create(uint8_t zoneId, const Irrigation::PlanDefinition& draft, Irrigation:
             continue;
         }
         Irrigation::PlanDefinition plan = defaultPlan(zoneId, slot);
-        plan.exists = true;
         const Irrigation::PlanDefinition oldPlan = g_plans[index];
         const uint32_t oldNextPlanId = g_nextPlanId;
+        plan.exists = true;
         plan.planId = nextAvailablePlanId();
         snprintf(plan.name, sizeof(plan.name), "计划 %u", static_cast<unsigned>(slot + 1));
-        plan.enabled = false;
         if (draft.exists && draft.name[0] != '\0') {
             strlcpy(plan.name, draft.name, sizeof(plan.name));
         }
         if (draft.exists) {
             plan.enabled = draft.enabled;
+            if (draft.timeHour <= 23 && draft.timeMinute <= 59) {
+                plan.timeHour = draft.timeHour;
+                plan.timeMinute = draft.timeMinute;
+            }
+            if (draft.durationSec > 0) {
+                plan.durationSec = draft.durationSec;
+            }
+            if (draft.cycleDays > 0) {
+                plan.cycleDays = draft.cycleDays;
+            }
+            if (draft.cycleMask > 0) {
+                plan.cycleMask = draft.cycleMask;
+            }
+            if (validYmd(draft.cycleStartYmd)) {
+                plan.cycleStartYmd = draft.cycleStartYmd;
+            }
         }
-        if (draft.exists && draft.timeHour <= 23 && draft.timeMinute <= 59) {
-            plan.timeHour = draft.timeHour;
-            plan.timeMinute = draft.timeMinute;
-        }
-        if (draft.exists && draft.durationSec > 0) {
-            plan.durationSec = draft.durationSec;
-        }
-        if (draft.exists && draft.cycleDays > 0) {
-            plan.cycleDays = draft.cycleDays;
-        }
-        if (draft.exists && draft.cycleMask > 0) {
-            plan.cycleMask = draft.cycleMask;
-        }
-        if (draft.exists && validYmd(draft.cycleStartYmd)) {
-            plan.cycleStartYmd = draft.cycleStartYmd;
-        } else if (!currentYmdValue(&plan.cycleStartYmd)) {
+        if (!validYmd(plan.cycleStartYmd) && !currentYmdValue(&plan.cycleStartYmd)) {
             return false;
         }
         plan.createdAt = currentEpoch();
@@ -289,7 +289,7 @@ bool create(uint8_t zoneId, const Irrigation::PlanDefinition& draft, Irrigation:
         if (g_nextPlanId == 0) {
             g_nextPlanId = 1;
         }
-        if (!saveAllPlansBlob()) {
+        if (!savePlanSlot(zoneId, slot, plan) || !saveNextPlanId()) {
             g_plans[index] = oldPlan;
             g_nextPlanId = oldNextPlanId;
             return false;
@@ -310,9 +310,9 @@ bool remove(uint32_t planId) {
         const uint8_t zoneId = g_plans[i].zoneId;
         const uint8_t slot = g_plans[i].slotIndex;
         const Irrigation::PlanDefinition oldPlan = g_plans[i];
-        Irrigation::PlanDefinition plan = defaultPlan(zoneId, slot);
+        const Irrigation::PlanDefinition plan = defaultPlan(zoneId, slot);
         g_plans[i] = plan;
-        if (!saveAllPlansBlob()) {
+        if (!savePlanSlot(zoneId, slot, plan)) {
             g_plans[i] = oldPlan;
             return false;
         }
@@ -334,7 +334,7 @@ bool set(uint32_t planId, const Irrigation::PlanDefinition& plan) {
         }
         const Irrigation::PlanDefinition oldPlan = g_plans[i];
         g_plans[i] = plan;
-        if (!saveAllPlansBlob()) {
+        if (!savePlanSlot(plan.zoneId, plan.slotIndex, plan)) {
             g_plans[i] = oldPlan;
             return false;
         }

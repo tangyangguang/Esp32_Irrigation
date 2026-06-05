@@ -48,6 +48,10 @@ void planObject(uint32_t planId, char* out, size_t len) {
     snprintf(out, len, "plan:%lu", static_cast<unsigned long>(planId));
 }
 
+void flowObject(uint8_t flowId, char* out, size_t len) {
+    snprintf(out, len, "flow:%u", static_cast<unsigned>(flowId));
+}
+
 Esp32BaseAppEventLog::Level levelForObservation(Irrigation::PlanObservationStatus status) {
     switch (status) {
         case Irrigation::PlanObservationStatus::SKIPPED_CALENDAR:
@@ -310,6 +314,25 @@ void appendLeakDetected(uint8_t zoneId,
                       "idle flow detected");
 }
 
+void appendFlowIdleLeakDetected(uint8_t flowId,
+                                uint32_t observedPulses,
+                                uint16_t pulseThreshold,
+                                uint16_t windowSec) {
+    char object[16];
+    flowObject(flowId, object, sizeof(object));
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_ERROR,
+                      "monitor",
+                      "flow_idle_leak_detected",
+                      "idle_flow",
+                      object,
+                      0,
+                      static_cast<int32_t>(observedPulses),
+                      pulseThreshold,
+                      windowSec,
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
+                      "flow idle movement detected");
+}
+
 void appendZoneLocked(uint8_t zoneId, Irrigation::ZoneErrorCode code, Irrigation::TaskResult result) {
     char object[16];
     zoneObject(zoneId, object, sizeof(object));
@@ -379,7 +402,7 @@ void appendFlowCalibrationApplied(uint8_t flowId,
                                   const Irrigation::FlowMeterCalibrationProfile& newProfile,
                                   const char* source) {
     char object[16];
-    snprintf(object, sizeof(object), "flow:%u", static_cast<unsigned>(flowId));
+    flowObject(flowId, object, sizeof(object));
     (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
                       source && source[0] ? source : "web",
                       "flow_calibration_applied",
@@ -398,7 +421,7 @@ void appendFlowCalibrationRestored(uint8_t flowId,
                                    const Irrigation::FlowMeterCalibrationProfile& newProfile,
                                    const char* source) {
     char object[16];
-    snprintf(object, sizeof(object), "flow:%u", static_cast<unsigned>(flowId));
+    flowObject(flowId, object, sizeof(object));
     (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
                       source && source[0] ? source : "web",
                       "flow_calibration_restored",
@@ -410,6 +433,44 @@ void appendFlowCalibrationRestored(uint8_t flowId,
                       newProfile.offsetMilliHz,
                       Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
                       "flow calibration restored");
+}
+
+void appendZoneBaselineApplied(uint8_t zoneId,
+                               const Irrigation::ZoneFlowBaselineProfile& oldProfile,
+                               const Irrigation::ZoneFlowBaselineProfile& newProfile,
+                               const char* source) {
+    char object[16];
+    zoneObject(zoneId, object, sizeof(object));
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
+                      source && source[0] ? source : "web",
+                      "zone_baseline_applied",
+                      "pending",
+                      object,
+                      0,
+                      static_cast<int32_t>(oldProfile.learnedFlowMlPerMin),
+                      static_cast<int32_t>(newProfile.learnedFlowMlPerMin),
+                      static_cast<int32_t>(newProfile.lowFlowPermille),
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
+                      "zone baseline applied");
+}
+
+void appendZoneBaselineRestored(uint8_t zoneId,
+                                const Irrigation::ZoneFlowBaselineProfile& oldProfile,
+                                const Irrigation::ZoneFlowBaselineProfile& newProfile,
+                                const char* source) {
+    char object[16];
+    zoneObject(zoneId, object, sizeof(object));
+    (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
+                      source && source[0] ? source : "web",
+                      "zone_baseline_restored",
+                      "rollback",
+                      object,
+                      0,
+                      static_cast<int32_t>(oldProfile.learnedFlowMlPerMin),
+                      static_cast<int32_t>(newProfile.learnedFlowMlPerMin),
+                      static_cast<int32_t>(newProfile.lowFlowPermille),
+                      Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
+                      "zone baseline restored");
 }
 
 }

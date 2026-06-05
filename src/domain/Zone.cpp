@@ -167,7 +167,7 @@ bool Zone::start(Irrigation::TaskType type,
     if (!m_runner.start(type, source, planId, planSlot, planName, targetSec, pulseCount, epoch, nowMs, flowSampleWindowSec, m_config, flowConfig)) {
         return false;
     }
-    if (!ValveController::setRoad(m_config.zoneId, true, "zone start")) {
+    if (!ValveController::setZone(m_config.zoneId, true, "zone start")) {
         m_runner.reset();
         return false;
     }

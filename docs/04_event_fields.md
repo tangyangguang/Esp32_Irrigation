@@ -27,13 +27,11 @@
 | `flow_no_pulse_stop` | `error` | `monitor` | `no_pulse_timeout` | `zone:<id>` | `value1` 为 flowId，`value2` 为 noPulseTimeoutSec，`value3` 为停机前脉冲数 | Zone 稳定阶段无原始脉冲超时并被关闭。 |
 | `flow_low_fault` | `warn`/`error` | `monitor` | `low_flow` | `zone:<id>` | `code` 为 action，`value1` 为 flowId，`value2` 为当前流量，`value3` 为阈值 | 有效计量样本连续低于 Zone 正常流量阈值。 |
 | `flow_high_fault` | `warn`/`error` | `monitor` | `high_flow` | `zone:<id>` | `code` 为 action，`value1` 为 flowId，`value2` 为当前流量，`value3` 为阈值 | 有效计量样本连续高于 Zone 正常流量阈值。 |
-| `idle_leak_detected` | `error` | `monitor` | `idle_flow` | `flow:<id>` | `value1` 为窗口内脉冲数，`value2` 为阈值，`value3` 为窗口秒 | 没有 Zone 运行时某个 Flow 检测到异常脉冲。 |
-| `flow_pending_calibration_saved` | `info` | `web`/`api` | `manual`/`single_point`/`multi_point` | `flow:<id>` | `value1` 为 kUlPerMinPerHz，`value2` 为 offsetMilliHz | Flow 待应用 K+Offset 参数已保存。 |
-| `flow_params_applied` | `info` | `web`/`api` | `apply_pending` | `flow:<id>` | `value1` 为旧 k，`value2` 为新 k，`value3` 为新 offset | Flow 待应用参数被应用，旧参数进入 rollback。 |
-| `flow_calibration_rolled_back` | `info` | `web`/`api` | `rollback` | `flow:<id>` | `value1` 为恢复后的 k，`value2` 为恢复后的 offset | Flow 参数回退。 |
-| `zone_pending_baseline_saved` | `info` | `web`/`api` | `manual`/`learned` | `zone:<id>` | `value1` 为 learnedFlowMlPerMin，`value2` 为 lowFlowPermille，`value3` 为 highFlowPermille | Zone 待应用正常流量基线已保存。 |
-| `zone_learning_applied` | `info` | `web`/`api` | `apply_pending` | `zone:<id>` | `value1` 为 learnedFlowMlPerMin | Zone 待应用基线被应用，旧基线进入 rollback。 |
-| `zone_baseline_rolled_back` | `info` | `web`/`api` | `rollback` | `zone:<id>` | `value1` 为恢复后的 learnedFlowMlPerMin | Zone 正常流量基线回退。 |
+| `flow_idle_leak_detected` | `error` | `monitor` | `idle_flow` | `flow:<id>` | `value1` 为窗口内脉冲数，`value2` 为阈值，`value3` 为窗口秒 | 没有 Zone 运行时某个 Flow 检测到异常脉冲。 |
+| `flow_calibration_applied` | `info` | `web`/`api` | `pending` | `flow:<id>` | `value1` 为旧 k，`value2` 为新 k，`value3` 为新 offset | Flow 待应用 K+Offset 参数被应用，旧参数进入 rollback。 |
+| `flow_calibration_restored` | `info` | `web`/`api` | `rollback` | `flow:<id>` | `value1` 为旧 k，`value2` 为恢复后 k，`value3` 为恢复后 offset | Flow 参数回退。 |
+| `zone_baseline_applied` | `info` | `web`/`api` | `pending` | `zone:<id>` | `value1` 为旧 learnedFlowMlPerMin，`value2` 为新 learnedFlowMlPerMin，`value3` 为新 lowFlowPermille | Zone 待应用基线被应用，旧基线进入 rollback。 |
+| `zone_baseline_restored` | `info` | `web`/`api` | `rollback` | `zone:<id>` | `value1` 为旧 learnedFlowMlPerMin，`value2` 为恢复后 learnedFlowMlPerMin，`value3` 为恢复后 lowFlowPermille | Zone 正常流量基线回退。 |
 | `zone_fault_cleared` | `info` | `web`/`api` | `manual_clear` | `zone:<id>` | `code` 为清除前 ZoneErrorCode | 用户清除指定 ZoneFault。 |
 | `flow_leak_fault_cleared` | `info` | `web`/`api` | `manual_clear` | `flow:<id>` | `code` 为清除前 FlowFaultCode | 用户清除指定 FlowLeakFault。 |
 | `record_store_recovered` | `warn` | `storage` | `meta_rebuilt` | `system:irrigation` | `value1` 为恢复记录数，`value2` 为 nextRecordId | 启动时从 committed 浇水记录重建 RecordStore 元数据。 |

@@ -15,8 +15,11 @@ const zoneTypes = read('src/domain/ZoneTypes.h');
 const valveController = read('src/domain/ValveController.cpp');
 const zoneConfigStore = read('src/storage/ZoneConfigStore.cpp');
 const zoneConfigStoreHeader = read('src/storage/ZoneConfigStore.h');
+const flowAlertStore = read('src/storage/FlowAlertStore.cpp');
+const flowAlertStoreHeader = read('src/storage/FlowAlertStore.h');
 const flowConfigStore = read('src/storage/FlowConfigStore.cpp');
 const flowConfigStoreHeader = read('src/storage/FlowConfigStore.h');
+const planStore = read('src/storage/PlanStore.cpp');
 const systemConfigStore = read('src/storage/SystemConfigStore.cpp');
 const zoneManager = read('src/domain/ZoneManager.cpp');
 const zoneScheduler = read('src/domain/ZoneScheduler.cpp');
@@ -26,6 +29,7 @@ const safetyManager = read('src/domain/SafetyManager.cpp');
 const flowCalibration = read('src/domain/FlowCalibration.cpp');
 const displayService = read('src/domain/DisplayService.cpp');
 const irrigationWeb = read('src/web/IrrigationWeb.cpp');
+const platformio = read('platformio.ini');
 
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
@@ -65,6 +69,8 @@ assert(
     valveController.includes('Irrigation::MaxZones'),
   'valve controller should be sized for six fixed valve outputs',
 );
+assert(valveController.includes('bool setZone(uint8_t zoneId'), 'valve controller should expose Zone naming');
+assert(!valveController.includes('setRoad') && !valveController.includes('road='), 'valve controller must not keep Road naming');
 
 assert(zoneTypes.includes('enum class ParameterSource'), 'domain should define ParameterSource');
 assert(zoneTypes.includes('enum class FlowFaultAction'), 'domain should define FlowFaultAction');
@@ -128,6 +134,16 @@ assert(zoneConfigStore.includes('highFlowPermille = 3000'), 'zone baseline defau
 assert(zoneConfigStore.includes('flowFaultConfirmSec = 15'), 'zone baseline default fault confirmation should be 15 seconds');
 assert(zoneConfigStore.includes('noPulseTimeoutSec = 10'), 'zone baseline default no pulse timeout should be 10 seconds');
 assert(zoneConfigStore.includes('StoredZoneConfig') && zoneConfigStore.includes('CONFIG_BLOB_MAX_LEN'), 'zone config store should assert blob size');
+assert(zoneConfigStoreHeader.includes('savePendingBaseline'), 'zone config store should expose pending baseline saves');
+assert(zoneConfigStoreHeader.includes('applyPendingBaseline'), 'zone config store should expose pending baseline apply');
+assert(zoneConfigStoreHeader.includes('restoreRollbackBaseline'), 'zone config store should expose rollback baseline restore');
+assert(zoneConfigStore.includes('config.pendingBaseline') && zoneConfigStore.includes('config.rollbackBaseline'), 'zone config store should persist pending and rollback baselines');
+
+assert(flowAlertStoreHeader.includes('namespace FlowAlertStore'), 'FlowAlertStore header should exist');
+assert(flowAlertStore.includes('irr_falert_v1'), 'FlowAlertStore should use clean namespace irr_falert_v1');
+assert(flowAlertStore.includes('FlowAlertStore::FlowAlert flows[Irrigation::MaxFlowMeters]'), 'Flow alerts should be stored per Flow');
+assert(flowAlertStore.includes('setIdleLeak'), 'FlowAlertStore should support Flow-level idle leak alerts');
+assert(!flowAlertStore.includes('zone:'), 'FlowAlertStore should not store Flow alerts as Zone faults');
 
 assert(systemConfigStore.includes('irr_sys_v1'), 'system config should use clean namespace irr_sys_v1');
 assert(!systemConfigStore.includes('kKeyBlob'), 'system config should not keep a canonical blob key');
@@ -150,8 +166,17 @@ assert(systemConfigStore.includes('queuedPlanMaxDelaySec'), 'system config shoul
 assert(systemConfigStore.includes('idleLeakWindowSec'), 'system config should include idle leak window');
 assert(systemConfigStore.includes('idleLeakPulseThreshold'), 'system config should include idle leak pulse threshold');
 
+assert(planStore.includes('irr_plan_v1'), 'plan config should use clean namespace irr_plan_v1');
+assert(planStore.includes('planKey') && planStore.includes('"p%u_%u"'), 'plan config should save each Zone/slot under a separate key');
+assert(planStore.includes('kKeyNext') && planStore.includes('setInt(kNamespace, kKeyNext'), 'plan config should persist next plan id as a scalar');
+assert(!planStore.includes('StoredPlansBlob'), 'plan config must not keep one large legacy blob');
+assert(!planStore.includes('kKeyBlob'), 'plan config must not keep a canonical blob key');
+
 assert(zoneManager.includes('bool flowBusy(uint8_t flowId)'), 'ZoneManager should own Flow-level busy checks');
 assert(zoneManager.includes('zone.config().flowId == flowId'), 'Flow busy checks should use ZoneConfig.flowId');
+assert(zoneManager.includes('FlowAlertStore::idleLeakActive(config.flowId)'), 'blockedReason should reject zones under a Flow leak alert');
+assert(zoneManager.includes('BusinessEventLog::appendFlowIdleLeakDetected'), 'idle leak detection should record Flow-level events');
+assert(!zoneManager.includes('BusinessEventLog::appendLeakDetected(zoneId'), 'idle leak detection should not record Flow leaks as Zone leaks');
 assert(zoneManager.includes('bool startPlan('), 'ZoneManager should expose a unified plan start entrypoint');
 assert(zoneManager.includes('return strcmp(ZoneManager::blockedReason(zoneId), "none") == 0'), 'Zone starts should reject same-Flow concurrency through blockedReason');
 assert(zoneManager.includes('return "flow_busy"'), 'blockedReason should expose same-Flow busy rejection');
@@ -190,6 +215,12 @@ assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/zones"'), 'we
 assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/flows"'), 'web should expose a Flow config page');
 assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/calibration"'), 'web should expose a calibration page');
 assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/settings"'), 'web should expose a system settings page');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/plans"'), 'web should expose a plan page');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/records"'), 'web should expose a records page');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/events"'), 'web should expose an events page');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/api/v1/plans"'), 'web should expose plan JSON API');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/api/v1/records"'), 'web should expose records JSON API');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/api/v1/events"'), 'web should expose business events JSON API');
 assert(irrigationWeb.includes('for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId)'), 'web pages should scan all configured zones');
 assert(irrigationWeb.includes('if (!config.enabled)') && irrigationWeb.includes('continue;'), 'home page should hide disabled zones');
 assert(irrigationWeb.includes('enabledPresent'), 'web forms should be able to submit unchecked enabled boxes');
@@ -198,7 +229,12 @@ assert(irrigationWeb.includes('ZoneManager::isZoneBusy(zoneId)'), 'web should re
 assert(irrigationWeb.includes('FlowConfigStore::savePendingCalibration'), 'web should save manual K+Offset edits as pending calibration');
 assert(irrigationWeb.includes('FlowConfigStore::applyPendingCalibration'), 'web should expose pending calibration apply');
 assert(irrigationWeb.includes('FlowConfigStore::restoreRollbackCalibration'), 'web should expose calibration rollback restore');
+assert(irrigationWeb.includes('ZoneConfigStore::savePendingBaseline'), 'web should save manual Zone baselines as pending');
+assert(irrigationWeb.includes('ZoneConfigStore::applyPendingBaseline'), 'web should expose pending Zone baseline apply');
+assert(irrigationWeb.includes('ZoneConfigStore::restoreRollbackBaseline'), 'web should expose Zone baseline rollback restore');
+assert(irrigationWeb.includes('ZoneManager::isFlowBusy(flowId)'), 'web should reject Flow calibration apply while that Flow is running');
 assert(irrigationWeb.includes('queuedPlanMaxDelaySec'), 'web settings should expose queued plan max delay');
 assert(!irrigationWeb.includes('kLocalButtonZoneMax'), 'web must not inherit local Zone 1/2 cap');
+assert(platformio.includes('ESP32BASE_WEB_MAX_ROUTES=64'), 'route capacity should cover the expanded irrigation API surface');
 
 console.log('check-web-structure passed');

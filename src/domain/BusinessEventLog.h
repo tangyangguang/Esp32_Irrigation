@@ -32,6 +32,10 @@ void appendLeakDetected(uint8_t zoneId,
                         uint32_t observedPulses,
                         uint16_t pulseThreshold,
                         uint16_t windowSec);
+void appendFlowIdleLeakDetected(uint8_t flowId,
+                                uint32_t observedPulses,
+                                uint16_t pulseThreshold,
+                                uint16_t windowSec);
 void appendZoneLocked(uint8_t zoneId, Irrigation::ZoneErrorCode code, Irrigation::TaskResult result);
 void appendAlertCleared(uint8_t zoneId, bool allZones, const char* source);
 void appendFactoryResetRequested(const char* source);
@@ -44,6 +48,14 @@ void appendFlowCalibrationRestored(uint8_t flowId,
                                    const Irrigation::FlowMeterCalibrationProfile& oldProfile,
                                    const Irrigation::FlowMeterCalibrationProfile& newProfile,
                                    const char* source);
+void appendZoneBaselineApplied(uint8_t zoneId,
+                               const Irrigation::ZoneFlowBaselineProfile& oldProfile,
+                               const Irrigation::ZoneFlowBaselineProfile& newProfile,
+                               const char* source);
+void appendZoneBaselineRestored(uint8_t zoneId,
+                                const Irrigation::ZoneFlowBaselineProfile& oldProfile,
+                                const Irrigation::ZoneFlowBaselineProfile& newProfile,
+                                const char* source);
 
 const char* sourceFromStart(Irrigation::StartSource source);
 const char* sourceFromStop(Irrigation::StopSource source);

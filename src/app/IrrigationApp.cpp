@@ -11,6 +11,7 @@
 #include "domain/ValveController.h"
 #include "domain/ZoneManager.h"
 #include "storage/PlanStore.h"
+#include "storage/FlowAlertStore.h"
 #include "storage/FlowConfigStore.h"
 #include "storage/RecordStore.h"
 #include "storage/ScheduleSkipStore.h"
@@ -35,6 +36,7 @@ void begin() {
     RecordStore::begin();
     SystemConfigStore::begin();
     FlowConfigStore::begin();
+    FlowAlertStore::begin();
     ZoneConfigStore::begin();
     ZoneErrorStore::begin();
     PlanStore::begin();

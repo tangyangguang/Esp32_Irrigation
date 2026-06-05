@@ -243,6 +243,77 @@ bool set(uint8_t zoneId, const Irrigation::ZoneConfig& config) {
     return true;
 }
 
+bool savePendingBaseline(uint8_t zoneId, const Irrigation::ZoneFlowBaselineProfile& profile) {
+    uint8_t index = 0;
+    if (!Irrigation::zoneIndex(zoneId, &index)) {
+        return false;
+    }
+    Irrigation::ZoneConfig config = g_configs[index];
+    config.pendingBaseline = normalizedBaseline(profile);
+    config.hasPendingBaseline = true;
+    return set(zoneId, config);
+}
+
+bool applyPendingBaseline(uint8_t zoneId,
+                          Irrigation::ZoneFlowBaselineProfile* oldProfile,
+                          Irrigation::ZoneFlowBaselineProfile* newProfile) {
+    uint8_t index = 0;
+    if (!Irrigation::zoneIndex(zoneId, &index)) {
+        return false;
+    }
+    Irrigation::ZoneConfig config = g_configs[index];
+    if (!config.hasPendingBaseline || !validateBaseline(config.pendingBaseline)) {
+        return false;
+    }
+    const Irrigation::ZoneFlowBaselineProfile oldValue = config.activeBaseline;
+    const Irrigation::ZoneFlowBaselineProfile newValue = normalizedBaseline(config.pendingBaseline);
+    config.rollbackBaseline = oldValue;
+    config.hasRollbackBaseline = true;
+    config.activeBaseline = newValue;
+    config.hasLearnedBaseline = newValue.learnedFlowMlPerMin > 0;
+    config.pendingBaseline = {};
+    config.hasPendingBaseline = false;
+    if (!set(zoneId, config)) {
+        return false;
+    }
+    if (oldProfile) {
+        *oldProfile = oldValue;
+    }
+    if (newProfile) {
+        *newProfile = newValue;
+    }
+    return true;
+}
+
+bool restoreRollbackBaseline(uint8_t zoneId,
+                             Irrigation::ZoneFlowBaselineProfile* oldProfile,
+                             Irrigation::ZoneFlowBaselineProfile* restoredProfile) {
+    uint8_t index = 0;
+    if (!Irrigation::zoneIndex(zoneId, &index)) {
+        return false;
+    }
+    Irrigation::ZoneConfig config = g_configs[index];
+    if (!config.hasRollbackBaseline || !validateBaseline(config.rollbackBaseline)) {
+        return false;
+    }
+    const Irrigation::ZoneFlowBaselineProfile oldValue = config.activeBaseline;
+    const Irrigation::ZoneFlowBaselineProfile restored = normalizedBaseline(config.rollbackBaseline);
+    config.activeBaseline = restored;
+    config.hasLearnedBaseline = restored.learnedFlowMlPerMin > 0;
+    config.rollbackBaseline = oldValue;
+    config.hasRollbackBaseline = true;
+    if (!set(zoneId, config)) {
+        return false;
+    }
+    if (oldProfile) {
+        *oldProfile = oldValue;
+    }
+    if (restoredProfile) {
+        *restoredProfile = restored;
+    }
+    return true;
+}
+
 bool schemaResetDetected() {
     return g_schemaResetDetected;
 }

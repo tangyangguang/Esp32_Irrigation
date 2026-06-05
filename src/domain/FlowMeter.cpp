@@ -86,11 +86,11 @@ void IRAM_ATTR onFlow2Pulse() {
     portEXIT_CRITICAL_ISR(&g_pulseMux);
 }
 
-bool roadIndex(uint8_t road, uint8_t* index) {
-    if (road < 1 || road > Irrigation::MaxFlowMeters) {
+bool flowIndex(uint8_t flowId, uint8_t* index) {
+    if (flowId < 1 || flowId > Irrigation::MaxFlowMeters) {
         return false;
     }
-    *index = road - 1;
+    *index = flowId - 1;
     return true;
 }
 
@@ -119,7 +119,7 @@ uint16_t computeHistoryLimit(uint16_t intervalSec, uint16_t historyMin) {
     return static_cast<uint16_t>(points);
 }
 
-void clearRoadFlowHistory(uint8_t index) {
+void clearFlowHistory(uint8_t index) {
     if (index >= Irrigation::MaxFlowMeters) {
         return;
     }
@@ -137,7 +137,7 @@ void clearRoadFlowHistory(uint8_t index) {
 
 void clearAllFlowHistory() {
     for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
-        clearRoadFlowHistory(i);
+        clearFlowHistory(i);
     }
 }
 
@@ -155,7 +155,7 @@ void pushHistoryPoint(uint8_t index, uint32_t mlPerMin) {
     }
 }
 
-void sampleRoad(uint8_t index, uint32_t delta, uint32_t elapsedMs) {
+void sampleFlow(uint8_t index, uint32_t delta, uint32_t elapsedMs) {
     g_deltaHistory[index][g_deltaHistoryPos[index]] = delta;
     g_deltaMsHistory[index][g_deltaHistoryPos[index]] = elapsedMs > 65535UL ? 65535U : static_cast<uint16_t>(elapsedMs);
     g_deltaHistoryPos[index] = static_cast<uint8_t>((g_deltaHistoryPos[index] + 1U) % kMaxFlowWindowSec);
@@ -218,7 +218,7 @@ void handle() {
     for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
         const uint32_t pulses = pulseCount(i + 1);
         const uint32_t delta = pulses >= g_lastSamplePulses[i] ? pulses - g_lastSamplePulses[i] : 0;
-        sampleRoad(i, delta, elapsedMs);
+        sampleFlow(i, delta, elapsedMs);
         g_lastSamplePulses[i] = pulses;
     }
     g_lastSampleMs = now;
@@ -251,7 +251,7 @@ void configureFlowRate(uint16_t windowSec, uint16_t chartIntervalSec, uint16_t c
 
 void configureCalibration(uint8_t flowId, int32_t kUlPerMinPerHz, int32_t offsetMilliHz) {
     uint8_t index = 0;
-    if (!roadIndex(flowId, &index) || kUlPerMinPerHz <= 0) {
+    if (!flowIndex(flowId, &index) || kUlPerMinPerHz <= 0) {
         return;
     }
     if (g_kUlPerMinPerHz[index] == kUlPerMinPerHz && g_offsetMilliHz[index] == offsetMilliHz) {
@@ -259,12 +259,12 @@ void configureCalibration(uint8_t flowId, int32_t kUlPerMinPerHz, int32_t offset
     }
     g_kUlPerMinPerHz[index] = kUlPerMinPerHz;
     g_offsetMilliHz[index] = offsetMilliHz;
-    clearRoadFlowHistory(index);
+    clearFlowHistory(index);
 }
 
-uint32_t pulseCount(uint8_t road) {
+uint32_t pulseCount(uint8_t flowId) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index)) {
+    if (!flowIndex(flowId, &index)) {
         return 0;
     }
     portENTER_CRITICAL(&g_pulseMux);
@@ -273,25 +273,25 @@ uint32_t pulseCount(uint8_t road) {
     return count;
 }
 
-uint32_t pulseRatePerMinuteX1000(uint8_t road) {
+uint32_t pulseRatePerMinuteX1000(uint8_t flowId) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index)) {
+    if (!flowIndex(flowId, &index)) {
         return 0;
     }
     return g_ratePerMinuteX1000[index];
 }
 
-uint32_t flowMillilitersPerMinute(uint8_t road) {
+uint32_t flowMillilitersPerMinute(uint8_t flowId) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index)) {
+    if (!flowIndex(flowId, &index)) {
         return 0;
     }
     return g_flowMlPerMin[index];
 }
 
-bool flowRateReady(uint8_t road) {
+bool flowRateReady(uint8_t flowId) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index)) {
+    if (!flowIndex(flowId, &index)) {
         return false;
     }
     return g_flowReady[index];
@@ -309,9 +309,9 @@ uint16_t historyDepthMin() {
     return g_historyDepthMin;
 }
 
-uint16_t readFlowHistory(uint8_t road, uint16_t* out, uint16_t capacity) {
+uint16_t readFlowHistory(uint8_t flowId, uint16_t* out, uint16_t capacity) {
     uint8_t index = 0;
-    if (!out || capacity == 0 || !roadIndex(road, &index)) {
+    if (!out || capacity == 0 || !flowIndex(flowId, &index)) {
         return 0;
     }
     uint16_t count = g_flowHistoryCount[index];
@@ -328,9 +328,9 @@ uint16_t readFlowHistory(uint8_t road, uint16_t* out, uint16_t capacity) {
     return count;
 }
 
-bool beginCapture(uint8_t road, uint32_t detailCaptureMs, uint16_t detailPulseLimit) {
+bool beginCapture(uint8_t flowId, uint32_t detailCaptureMs, uint16_t detailPulseLimit) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index) || detailCaptureMs == 0 || detailPulseLimit == 0) {
+    if (!flowIndex(flowId, &index) || detailCaptureMs == 0 || detailPulseLimit == 0) {
         return false;
     }
     if (detailPulseLimit > 5000) {

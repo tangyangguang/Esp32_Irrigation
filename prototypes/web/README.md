@@ -4,19 +4,19 @@
 
 真实运行页面以 `src/web/IrrigationWeb.cpp` 生成的服务端 HTML 为准；本目录是静态设计稿，不代表当前固件一定逐字一致。
 
-## 当前版本
+## 当前状态
 
-本版按当前固件页面组织导航：
+本目录是历史静态原型归档，不作为当前固件验收依据。当前真实页面由 `src/web/IrrigationWeb.cpp` 生成，路由为：
 
-`首页 / 计划 / 水路管理 / 流量校准 / 浇水记录 / 事件记录`
+`/irrigation / /irrigation/flows / /irrigation/zones / /irrigation/plans / /irrigation/calibration / /irrigation/settings / /irrigation/records / /irrigation/events`
 
 ## 页面清单
 
 - `index.html`：原型入口和评审状态。
-- `dashboard.html`：首页，展示设备状态、已启用水路浇水状态、手动启动、停止操作和异常提示；静态稿中出现的停用水路展示不作为当前固件验收依据。
-- `manual.html`：历史占位页，说明手动浇水已合并到首页。
-- `plans.html`：旧近期计划目标稿，当前固件未实现为真实页面。
-- `plan-config.html`：计划配置目标稿，当前固件的 `/irrigation/plans` 直接承担计划列表和修改入口。
+- `dashboard.html`：历史首页原型，真实首页以 `/irrigation` 为准。
+- `manual.html`：历史占位页，手动浇水已合并到 `/irrigation`。
+- `plans.html`：历史近期计划目标稿，真实计划页以 `/irrigation/plans` 为准。
+- `plan-config.html`：历史计划配置目标稿，真实计划页以 `/irrigation/plans` 为准。
 - `plan-edit.html`：编辑单一路计划的执行时间、循环规则和目标时长。
 - `records.html`：浇水任务历史记录。
 - `settings.html`：水路启用、名称、固定引脚、流量和安全阈值。
@@ -25,9 +25,9 @@
 
 | 原型文件 | 当前真实路由 | 说明 |
 |---|---|---|
-| `dashboard.html` | `/index` | 首页和手动浇水。 |
+| `dashboard.html` | `/irrigation` | 首页和手动浇水。 |
 | `manual.html` | 无真实路由 | 手动浇水已合并到首页。 |
-| `plans.html` | 无真实路由 | 近期计划和跳过操作仍是目标稿，不作为当前固件验收依据。 |
+| `plans.html` | `/irrigation/plans` | 历史近期计划原型。 |
 | `plan-config.html` | `/irrigation/plans` | 计划列表。 |
 | `plan-edit.html` | `/irrigation/plan?planId=<id>` | 单条计划编辑。 |
 | `records.html` | `/irrigation/records` | 历史浇水记录。 |

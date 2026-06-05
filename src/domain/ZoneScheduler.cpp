@@ -91,7 +91,7 @@ const PlanExecutionTracker& ZoneScheduler::tracker() const {
 
 void ZoneScheduler::tick(Zone& zone,
                          const Irrigation::SystemConfig& systemConfig,
-                         bool leakAlertActive,
+                         bool flowLeakActive,
                          uint32_t trustedEpoch,
                          uint32_t nowMs) {
     if (!Irrigation::validZoneId(m_zoneId) || trustedEpoch == 0) {
@@ -154,14 +154,14 @@ void ZoneScheduler::tick(Zone& zone,
         if (m_tracker.isHandled(plan.planId, ymd, minuteOfDay)) {
             continue;
         }
-        (void)observePlan(zone, plan, systemConfig, leakAlertActive, ymd, minuteOfDay, dueEpoch, trustedEpoch, nowMs);
+        (void)observePlan(zone, plan, systemConfig, flowLeakActive, ymd, minuteOfDay, dueEpoch, trustedEpoch, nowMs);
     }
 }
 
 bool ZoneScheduler::observePlan(Zone& zone,
                                 const Irrigation::PlanDefinition& plan,
                                 const Irrigation::SystemConfig& systemConfig,
-                                bool leakAlertActive,
+                                bool flowLeakActive,
                                 uint32_t ymd,
                                 uint16_t minuteOfDay,
                                 uint32_t dueEpoch,
@@ -181,7 +181,7 @@ bool ZoneScheduler::observePlan(Zone& zone,
         status = Irrigation::PlanObservationStatus::SKIPPED_DISABLED;
     } else if (zone.isError()) {
         status = Irrigation::PlanObservationStatus::SKIPPED_ERROR;
-    } else if (leakAlertActive) {
+    } else if (flowLeakActive) {
         status = Irrigation::PlanObservationStatus::SKIPPED_LEAK;
     } else if (MaintenanceService::factoryResetPending()) {
         status = Irrigation::PlanObservationStatus::SKIPPED_RESET;

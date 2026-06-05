@@ -8,6 +8,7 @@
 #include "domain/SafetyManager.h"
 #include "domain/ValveController.h"
 #include "domain/ZoneManager.h"
+#include "storage/FlowAlertStore.h"
 #include "storage/PlanStore.h"
 #include "storage/ScheduleSkipStore.h"
 #include "storage/SystemConfigStore.h"
@@ -47,17 +48,19 @@ void handle() {
     ValveController::allOff("factory reset");
 
     const bool systemOk = SystemConfigStore::clear();
+    const bool flowAlertsOk = FlowAlertStore::clear();
     const bool zonesOk = ZoneConfigStore::clear();
     const bool errorsOk = ZoneErrorStore::clear();
     const bool plansOk = PlanStore::clear();
     const bool planExecOk = PlanExecutionTracker::clearPersistent();
     const bool skipsOk = ScheduleSkipStore::clear();
-    BusinessEventLog::appendFactoryResetExecuted(systemOk && zonesOk && errorsOk && plansOk && planExecOk && skipsOk,
+    BusinessEventLog::appendFactoryResetExecuted(systemOk && flowAlertsOk && zonesOk && errorsOk && plansOk && planExecOk && skipsOk,
                                                  g_requestSource);
     SafetyManager::clearFactoryResetRequest();
 
-    ESP32BASE_LOG_W("maintenance", "factory reset system=%s zones=%s errors=%s plans=%s planExec=%s skips=%s",
+    ESP32BASE_LOG_W("maintenance", "factory reset system=%s flowAlerts=%s zones=%s errors=%s plans=%s planExec=%s skips=%s",
                     systemOk ? "ok" : "fail",
+                    flowAlertsOk ? "ok" : "fail",
                     zonesOk ? "ok" : "fail",
                     errorsOk ? "ok" : "fail",
                     plansOk ? "ok" : "fail",

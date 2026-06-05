@@ -23,11 +23,11 @@ static bool g_ready = false;
 static bool g_open[Irrigation::MaxZones] = {};
 static uint32_t g_openedMs[Irrigation::MaxZones] = {};
 
-bool roadIndex(uint8_t road, uint8_t* index) {
-    if (road < 1 || road > Irrigation::MaxZones) {
+bool zoneIndex(uint8_t zoneId, uint8_t* index) {
+    if (zoneId < 1 || zoneId > Irrigation::MaxZones) {
         return false;
     }
-    *index = road - 1;
+    *index = zoneId - 1;
     return true;
 }
 
@@ -65,12 +65,12 @@ void handle() {
     }
 }
 
-bool setRoad(uint8_t road, bool open, const char* reason) {
+bool setZone(uint8_t zoneId, bool open, const char* reason) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index)) {
+    if (!zoneIndex(zoneId, &index)) {
         if (canLog()) {
-            ESP32BASE_LOG_W("valve", "invalid road=%u action=%s reason=%s",
-                            static_cast<unsigned>(road),
+            ESP32BASE_LOG_W("valve", "invalid zone=%u action=%s reason=%s",
+                            static_cast<unsigned>(zoneId),
                             open ? "open" : "close",
                             reason ? reason : "");
         }
@@ -82,8 +82,8 @@ bool setRoad(uint8_t road, bool open, const char* reason) {
     if (g_open[index] != open) {
         writeValve(index, open);
         if (canLog()) {
-            ESP32BASE_LOG_I("valve", "road=%u state=%s reason=%s",
-                            static_cast<unsigned>(road),
+            ESP32BASE_LOG_I("valve", "zone=%u state=%s reason=%s",
+                            static_cast<unsigned>(zoneId),
                             open ? "open" : "closed",
                             reason ? reason : "");
         }
@@ -91,8 +91,8 @@ bool setRoad(uint8_t road, bool open, const char* reason) {
     return true;
 }
 
-bool off(uint8_t road, const char* reason) {
-    return setRoad(road, false, reason);
+bool off(uint8_t zoneId, const char* reason) {
+    return setZone(zoneId, false, reason);
 }
 
 void allOff(const char* reason) {
@@ -111,9 +111,9 @@ void allOff(const char* reason) {
     }
 }
 
-bool isOpen(uint8_t road) {
+bool isOpen(uint8_t zoneId) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index)) {
+    if (!zoneIndex(zoneId, &index)) {
         return false;
     }
     return g_open[index];

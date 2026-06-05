@@ -4,19 +4,12 @@
 
 namespace ValveController {
 
-static constexpr uint8_t Road1 = 1;
-static constexpr uint8_t Road2 = 2;
-static constexpr uint8_t Road3 = 3;
-static constexpr uint8_t Road4 = 4;
-static constexpr uint8_t Road5 = 5;
-static constexpr uint8_t Road6 = 6;
-
 void begin();
 void handle();
 
-bool setRoad(uint8_t road, bool open, const char* reason);
-bool off(uint8_t road, const char* reason);
+bool setZone(uint8_t zoneId, bool open, const char* reason);
+bool off(uint8_t zoneId, const char* reason);
 void allOff(const char* reason);
-bool isOpen(uint8_t road);
+bool isOpen(uint8_t zoneId);
 
 }
