@@ -191,6 +191,75 @@ bool set(uint8_t flowId, const Irrigation::FlowMeterConfig& config) {
     return true;
 }
 
+bool savePendingCalibration(uint8_t flowId, const Irrigation::FlowMeterCalibrationProfile& profile) {
+    uint8_t index = 0;
+    if (!validFlowId(flowId, &index)) {
+        return false;
+    }
+    Irrigation::FlowMeterConfig config = g_configs[index];
+    config.pendingCalibration = normalizedCalibration(profile);
+    config.hasPendingCalibration = true;
+    return set(flowId, config);
+}
+
+bool applyPendingCalibration(uint8_t flowId,
+                             Irrigation::FlowMeterCalibrationProfile* oldProfile,
+                             Irrigation::FlowMeterCalibrationProfile* newProfile) {
+    uint8_t index = 0;
+    if (!validFlowId(flowId, &index)) {
+        return false;
+    }
+    Irrigation::FlowMeterConfig config = g_configs[index];
+    if (!config.hasPendingCalibration || !validateCalibration(config.pendingCalibration)) {
+        return false;
+    }
+    const Irrigation::FlowMeterCalibrationProfile oldValue = config.activeCalibration;
+    const Irrigation::FlowMeterCalibrationProfile newValue = normalizedCalibration(config.pendingCalibration);
+    config.rollbackCalibration = oldValue;
+    config.hasRollbackCalibration = true;
+    config.activeCalibration = newValue;
+    config.pendingCalibration = {};
+    config.hasPendingCalibration = false;
+    if (!set(flowId, config)) {
+        return false;
+    }
+    if (oldProfile) {
+        *oldProfile = oldValue;
+    }
+    if (newProfile) {
+        *newProfile = newValue;
+    }
+    return true;
+}
+
+bool restoreRollbackCalibration(uint8_t flowId,
+                                Irrigation::FlowMeterCalibrationProfile* oldProfile,
+                                Irrigation::FlowMeterCalibrationProfile* restoredProfile) {
+    uint8_t index = 0;
+    if (!validFlowId(flowId, &index)) {
+        return false;
+    }
+    Irrigation::FlowMeterConfig config = g_configs[index];
+    if (!config.hasRollbackCalibration || !validateCalibration(config.rollbackCalibration)) {
+        return false;
+    }
+    const Irrigation::FlowMeterCalibrationProfile oldValue = config.activeCalibration;
+    const Irrigation::FlowMeterCalibrationProfile restored = normalizedCalibration(config.rollbackCalibration);
+    config.activeCalibration = restored;
+    config.rollbackCalibration = oldValue;
+    config.hasRollbackCalibration = true;
+    if (!set(flowId, config)) {
+        return false;
+    }
+    if (oldProfile) {
+        *oldProfile = oldValue;
+    }
+    if (restoredProfile) {
+        *restoredProfile = restored;
+    }
+    return true;
+}
+
 uint32_t estimateMilliliters(const Irrigation::FlowMeterCalibrationProfile& raw,
                              uint32_t pulses,
                              uint32_t durationMs) {

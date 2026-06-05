@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "domain/BusinessEventLog.h"
+#include "domain/FlowCalibration.h"
 #include "domain/FlowMeter.h"
 #include "domain/ZoneManager.h"
 #include "storage/FlowConfigStore.h"
@@ -403,6 +404,80 @@ void handleFlowConfigApi() {
     sendOk();
 }
 
+void handleCalibrationStartApi() {
+    uint8_t zoneId = 0;
+    if (!readZoneId(&zoneId)) {
+        sendError(400, "invalid_zone_id");
+        return;
+    }
+    if (!FlowCalibration::start(zoneId, SystemConfigStore::current())) {
+        sendError(409, FlowCalibration::lastError());
+        return;
+    }
+    sendOk();
+}
+
+void handleCalibrationStopApi() {
+    if (!FlowCalibration::stop()) {
+        sendError(409, FlowCalibration::lastError());
+        return;
+    }
+    sendOk();
+}
+
+void handleCalibrationSampleApi() {
+    uint32_t actualMl = 0;
+    if (!readU32("actualMl", &actualMl) || actualMl == 0) {
+        sendError(400, "invalid_actual_ml");
+        return;
+    }
+    if (!FlowCalibration::submitActualMilliliters(actualMl)) {
+        sendError(409, FlowCalibration::lastError());
+        return;
+    }
+    sendOk();
+}
+
+void handleCalibrationSavePendingApi() {
+    if (!FlowCalibration::saveCandidate()) {
+        sendError(409, FlowCalibration::lastError());
+        return;
+    }
+    sendOk();
+}
+
+void handleCalibrationApplyApi() {
+    uint8_t flowId = 0;
+    if (!readFlowId(&flowId)) {
+        sendError(400, "invalid_flow_id");
+        return;
+    }
+    Irrigation::FlowMeterCalibrationProfile oldProfile = {};
+    Irrigation::FlowMeterCalibrationProfile newProfile = {};
+    if (!FlowConfigStore::applyPendingCalibration(flowId, &oldProfile, &newProfile)) {
+        sendError(409, "apply_pending_failed");
+        return;
+    }
+    BusinessEventLog::appendFlowCalibrationApplied(flowId, oldProfile, newProfile, "web");
+    sendOk();
+}
+
+void handleCalibrationRestoreApi() {
+    uint8_t flowId = 0;
+    if (!readFlowId(&flowId)) {
+        sendError(400, "invalid_flow_id");
+        return;
+    }
+    Irrigation::FlowMeterCalibrationProfile oldProfile = {};
+    Irrigation::FlowMeterCalibrationProfile restoredProfile = {};
+    if (!FlowConfigStore::restoreRollbackCalibration(flowId, &oldProfile, &restoredProfile)) {
+        sendError(409, "restore_rollback_failed");
+        return;
+    }
+    BusinessEventLog::appendFlowCalibrationRestored(flowId, oldProfile, restoredProfile, "web");
+    sendOk();
+}
+
 void handleConfigApi() {
     if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_GET)) {
         const Irrigation::SystemConfig& config = SystemConfigStore::current();
@@ -470,6 +545,12 @@ void begin() {
         Esp32BaseWeb::addRoute("/api/v1/manual/stop-all", Esp32BaseWeb::METHOD_POST, handleStopAllApi) &&
         Esp32BaseWeb::addRoute("/api/v1/zones/config", Esp32BaseWeb::METHOD_POST, handleZoneConfigApi) &&
         Esp32BaseWeb::addRoute("/api/v1/flows/config", Esp32BaseWeb::METHOD_POST, handleFlowConfigApi) &&
+        Esp32BaseWeb::addRoute("/api/v1/calibration/start", Esp32BaseWeb::METHOD_POST, handleCalibrationStartApi) &&
+        Esp32BaseWeb::addRoute("/api/v1/calibration/stop", Esp32BaseWeb::METHOD_POST, handleCalibrationStopApi) &&
+        Esp32BaseWeb::addRoute("/api/v1/calibration/sample", Esp32BaseWeb::METHOD_POST, handleCalibrationSampleApi) &&
+        Esp32BaseWeb::addRoute("/api/v1/calibration/pending/save", Esp32BaseWeb::METHOD_POST, handleCalibrationSavePendingApi) &&
+        Esp32BaseWeb::addRoute("/api/v1/calibration/pending/apply", Esp32BaseWeb::METHOD_POST, handleCalibrationApplyApi) &&
+        Esp32BaseWeb::addRoute("/api/v1/calibration/rollback/restore", Esp32BaseWeb::METHOD_POST, handleCalibrationRestoreApi) &&
         Esp32BaseWeb::addRoute("/api/v1/config", Esp32BaseWeb::METHOD_GET, handleConfigApi) &&
         Esp32BaseWeb::addRoute("/api/v1/config", Esp32BaseWeb::METHOD_POST, handleConfigApi);
     if (!ok) {

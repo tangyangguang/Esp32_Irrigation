@@ -22,6 +22,7 @@ const zoneManager = read('src/domain/ZoneManager.cpp');
 const zoneScheduler = read('src/domain/ZoneScheduler.cpp');
 const localControl = read('src/domain/LocalControl.cpp');
 const safetyManager = read('src/domain/SafetyManager.cpp');
+const flowCalibration = read('src/domain/FlowCalibration.cpp');
 
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
@@ -165,5 +166,9 @@ assert(!localControl.includes('kLocalButtonZoneMax'), 'local control must not ca
 assert(!localControl.includes('Road1UpButton') && !localControl.includes('Road2DownButton'), 'local control must not use legacy road-specific buttons');
 assert(!safetyManager.includes('ZoneManager::startManual'), 'SafetyManager should not own local zone operations');
 assert(!safetyManager.includes('Road1UpButton') && !safetyManager.includes('Road2DownButton'), 'SafetyManager must not special-case Zone 1/2');
+
+assert(flowCalibration.includes('actualMl * 60000ULL') || flowCalibration.includes('totalActualMl * 60000ULL'), 'calibration should compute K from measured volume and pulse count');
+assert(flowCalibration.includes('FlowConfigStore::savePendingCalibration'), 'calibration should save pending Flow calibration, not Zone parameters');
+assert(!flowCalibration.includes('ZoneConfigStore::saveCandidate'), 'calibration must not save legacy Zone flow candidates');
 
 console.log('check-web-structure passed');
