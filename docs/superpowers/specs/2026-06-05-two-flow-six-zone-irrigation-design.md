@@ -68,7 +68,7 @@ Valve
 
 Zone 到 Flow 的归属不要求连续、不要求按编号分组，完全按真实水管拓扑配置。
 
-Flow 1 和 Flow 2 应代表不同计量点。不要在同一根主管上串联两个 Flow 后把它们当成两个独立组使用。
+Flow 1 和 Flow 2 应代表两条不同供水管上的不同计量点。不要在同一根主管上串联两个 Flow 后把它们当成两个独立组使用。
 
 本系统不建模水塔、泵或供水源为独立软件资源。软件规则只基于 Flow 归属判断互斥和并行。现场部署时必须注意：如果 Flow 1 和 Flow 2 共用同一个水塔、同一个增压泵或同一条供水能力有限的主管，虽然软件允许不同 Flow 下的 Zone 并行，实际运行仍可能导致压力下降、喷头不均、低流量误报或泵负载异常。推荐连接方式是一个泵下默认顺序浇水；只有确认 Flow 1 和 Flow 2 对应的真实供水能力足够时，才配置同时运行的计划。
 
@@ -107,6 +107,8 @@ struct FlowMeterConfig {
     bool enabled;
     int32_t kUlPerMinPerHz;
     int32_t offsetMilliHz;
+    uint32_t minValidFreqMilliHz;
+    uint32_t maxValidFreqMilliHz;
     uint16_t pressurizeSec;
     uint16_t sampleWindowSec;
 };
@@ -117,6 +119,7 @@ K + Offset 只使用固定点数持久化，不使用 `float` 作为配置存储
 ```text
 kUlPerMinPerHz  = K * 1,000,000
 offsetMilliHz   = Offset * 1,000
+minValidFreqMilliHz / maxValidFreqMilliHz 使用 mHz
 ```
 
 示例：
@@ -142,6 +145,42 @@ struct ZoneConfig {
     uint16_t noPulseTimeoutSec;
 };
 ```
+
+候选参数和上一套参数是新模型的一部分，不继承旧校准结构：
+
+```cpp
+enum class ParameterSource : uint8_t {
+    NONE = 0,
+    MANUAL = 1,
+    SINGLE_POINT = 2,
+    MULTI_POINT = 3,
+    LEARNED = 4,
+};
+
+struct FlowMeterParameterSlot {
+    bool exists;
+    ParameterSource source;
+    int32_t kUlPerMinPerHz;
+    int32_t offsetMilliHz;
+    uint32_t minValidFreqMilliHz;
+    uint32_t maxValidFreqMilliHz;
+    uint16_t pressurizeSec;
+    uint16_t sampleWindowSec;
+    uint32_t updatedAt;
+};
+
+struct ZoneLearningSlot {
+    bool exists;
+    ParameterSource source;
+    uint32_t learnedFlowMlPerMin;
+    uint16_t lowFlowPermille;
+    uint16_t highFlowPermille;
+    uint16_t noPulseTimeoutSec;
+    uint32_t updatedAt;
+};
+```
+
+每个 Flow 保存 `current`、`candidate`、`previous` 三套 `FlowMeterParameterSlot`；每个 Zone 保存 `current`、`candidate`、`previous` 三套 `ZoneLearningSlot`。这样手工修改、单点校准、多点校准和自动学习都走同一套候选应用流程，不需要为来源设计多套存储格式。
 
 第一版 Web 不提供 `flowMeterId = 0`，启用的 Zone 必须归属一个启用的 Flow。这样缺水保护和运行记录始终有流量依据。
 
@@ -181,13 +220,21 @@ if pulseDelta == 0:
   flowUlPerMin = 0
 else:
   freqMilliHz = pulseDelta * 1,000,000 / elapsedMs
-  effectiveMilliHz = freqMilliHz + offsetMilliHz
-  flowUlPerMin = max(0, kUlPerMinPerHz * effectiveMilliHz / 1000)
+  if freqMilliHz < minValidFreqMilliHz:
+    flowUlPerMin = 0
+  else if maxValidFreqMilliHz > 0 and freqMilliHz > maxValidFreqMilliHz:
+    mark sample invalid
+    flowUlPerMin = 0
+  else:
+    effectiveMilliHz = freqMilliHz + offsetMilliHz
+    flowUlPerMin = max(0, kUlPerMinPerHz * effectiveMilliHz / 1000)
 
 volumeUl += flowUlPerMin * elapsedMs / 60000
 ```
 
 所有乘法中间值使用 `int64_t`，避免高频脉冲或长采样窗口造成溢出。`pulseDelta == 0` 时流量必须强制为 0；即使 `offsetMilliHz` 为正，也不能在无脉冲窗口中产生虚假流量。
+
+`minValidFreqMilliHz` 用来处理低频边界：当喷头太少、流量计刚好偶发脉冲、或水流低于传感器可靠量程时，不应因为正 Offset 把极低频脉冲放大成有效出水量。默认值建议由实测决定；没有实测前可先设为 `1000`，即 1 Hz。`maxValidFreqMilliHz = 0` 表示不启用上限检查；启用上限时只标记样本异常，不直接推断具体故障原因。
 
 如果 `Offset = 0`，模型退化为普通 P/L 模型：
 
@@ -202,6 +249,8 @@ K = 60 / pulsesPerLiter
 ```text
 kUlPerMinPerHz: 1..2000000
 offsetMilliHz: -50000..50000
+minValidFreqMilliHz: 0..60000
+maxValidFreqMilliHz: 0 或 1000..200000
 ```
 
 超出范围、计算结果非有限或运行时换算结果异常的配置必须拒绝保存。
@@ -320,6 +369,7 @@ Zone 3 等 Zone 1 完成后开始
 队列只保存在内存，不做持久化恢复。
 设备重启后按计划宽限期重新评估，不恢复重启前内存队列。
 队列容量固定，建议 12 个任务；满时记录 queue_full 并拒绝新任务。
+排队任务最长等待 queuedPlanMaxDelaySec，默认 3600 秒；超过后记录 queue_expired 并丢弃。
 排队任务仍受单次最长浇水时长、Zone 启用状态、Flow 启用状态、漏水保护和恢复出厂保护约束。
 ```
 
@@ -410,6 +460,8 @@ Flow 参数页面必须允许手工修改：
 ```text
 kUlPerMinPerHz
 offsetMilliHz
+minValidFreqMilliHz
+maxValidFreqMilliHz
 pressurizeSec
 sampleWindowSec
 ```
@@ -474,6 +526,10 @@ Zone 学习期间，不允许普通手动/计划浇水启动。
 停止全部必须中止当前校准或学习并关阀。
 待机漏水检测不参与校准采集判断。
 校准采样只允许同时打开一个 Zone。
+采样 Zone 必须 enabled。
+采样 Zone 必须归属目标 Flow。
+目标 Flow 必须 enabled 且当前空闲。
+系统不能处于漏水保护、恢复出厂保护或阀门错误状态。
 ```
 
 Flow 单点或多点采样必须选择一个实际出水的 Zone 作为采样执行水路；样本归属 Flow，而不是归属 Zone。只有所选 Zone 归属目标 Flow 时，才能用于该 Flow 校准。
@@ -568,12 +624,20 @@ stopSource
 
 ```text
 Zone 启动被同 Flow 互斥拒绝
+计划任务进入队列
+计划队列任务启动
+计划队列满
+计划队列任务过期
 无流量停止
 低流量停止
 高流量停止
 待机漏水
 Flow K+Offset 参数应用
+Flow K+Offset 候选保存
+Flow K+Offset 参数回退
 Zone 正常流量学习应用
+Zone 正常流量候选保存
+Zone 正常流量参数回退
 ```
 
 ## Web And API
@@ -596,6 +660,8 @@ Flow 1/2 启用状态
 输入 GPIO 只读显示
 kUlPerMinPerHz
 offsetMilliHz
+minValidFreqMilliHz
+maxValidFreqMilliHz
 pressurizeSec
 sampleWindowSec
 校准入口
@@ -631,7 +697,7 @@ Zone 正常流量学习
 Flow 配置 namespace: irr_flow_v1
 Zone 配置 namespace: irr_zone_v1
 记录文件: /irr/records_v1.bin
-事件仍使用 Esp32BaseAppEventLog 或新业务事件字段
+事件仍使用 Esp32BaseAppEventLog，灌溉业务只新增事件类型和字段，不另建事件存储
 ```
 
 旧配置、旧 namespace、旧记录文件不读取、不迁移、不清理。设备部署前由用户格式化。
