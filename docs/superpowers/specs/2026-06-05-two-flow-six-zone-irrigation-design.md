@@ -176,6 +176,15 @@ struct ZoneConfig {
 
 候选参数和上一套参数是新模型的一部分，不继承旧校准结构。每个 Flow 保存 `current`、`candidate`、`previous` 三套 `FlowMeterParameterSlot`；每个 Zone 保存 `current`、`candidate`、`previous` 三套 `ZoneLearningSlot`。这样手工修改、单点校准、多点校准和自动学习都走同一套候选应用流程，不需要为来源设计多套存储格式。
 
+`exists` 语义固定如下，避免和启用状态混淆：
+
+```text
+Flow.current.exists 必须始终为 true；Flow.enabled 只表示该 Flow 是否参与运行。
+Flow.candidate.exists / Flow.previous.exists 表示是否存在可应用或可回退参数。
+Zone.currentLearning.exists=false 表示该 Zone 尚未学习正常流量，此时不启用高低流量比例判断。
+Zone.candidateLearning.exists / Zone.previousLearning.exists 表示是否存在可应用或可回退学习参数。
+```
+
 第一版 Web 不提供 `flowMeterId = 0`，启用的 Zone 必须归属一个启用的 Flow。这样缺水保护和运行记录始终有流量依据。
 
 默认配置：
@@ -183,13 +192,15 @@ struct ZoneConfig {
 ```text
 Flow 1 enabled, current.exists=true
 Flow 2 disabled, current.exists=true
+Flow candidate.exists=false, previous.exists=false
 Flow 默认 kUlPerMinPerHz=244897, offsetMilliHz=0
 Flow 默认 minValidFreqMilliHz=4000, maxValidFreqMilliHz=0
 Flow 默认 pressurizeSec=5, sampleWindowSec=2
 Zone 1..6 -> Flow 1
 Zone 1/2 enabled
 Zone 3..6 disabled
-Zone 学习默认 currentLearning.exists=false, lowFlowPermille=700, highFlowPermille=1300, noPulseTimeoutSec=10
+Zone 学习默认 currentLearning.exists=false, candidateLearning.exists=false, previousLearning.exists=false
+Zone 学习默认 lowFlowPermille=700, highFlowPermille=1300, noPulseTimeoutSec=10
 ```
 
 如果用户启用 Flow 2，可任意把 Zone 归属到 Flow 1 或 Flow 2。

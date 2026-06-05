@@ -125,8 +125,6 @@ Change `scripts/check-web-structure.mjs` assertions from fixed 4-road expectatio
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
 assert(pins.includes('DefaultZoneEnabledMask = 0x03'), 'default hardware enable mask should enable zone 1 and 2');
-assert(zoneTypes.includes('kUlPerMinPerHz') && zoneTypes.includes('offsetMilliHz'), 'flow config should use fixed-point K+Offset');
-assert(!zoneTypes.includes('startupPulseLimit'), 'old two-stage startup pulse calibration must be removed');
 ```
 
 - [ ] **Step 4: Verify**
@@ -225,12 +223,13 @@ struct ZoneConfig {
 Defaults:
 
 ```text
-Flow 1: enabled, pulsePin=Flow1, k=244897, offset=0, minValidFreq=4000, maxValidFreq=0, pressurizeSec=5, sampleWindowSec=2
-Flow 2: disabled, pulsePin=Flow2, same parameters
+Flow 1: enabled, current.exists=true, pulsePin=Flow1, k=244897, offset=0, minValidFreq=4000, maxValidFreq=0, pressurizeSec=5, sampleWindowSec=2
+Flow 2: disabled, current.exists=true, pulsePin=Flow2, same parameters
+Flow candidate.exists=false, previous.exists=false
 Zone 1..6: flowMeterId=1
 Zone 1/2: enabled
 Zone 3..6: disabled
-Zone learning: exists=false, low=700, high=1300, noPulseTimeoutSec=10
+Zone learning: current.exists=false, candidate.exists=false, previous.exists=false, low=700, high=1300, noPulseTimeoutSec=10
 ```
 
 - [ ] **Step 3: Use new namespaces**
@@ -262,10 +261,25 @@ Default `queuedPlanMaxDelaySec = 3600`.
 Run:
 
 ```bash
+node scripts/check-web-structure.mjs
 pio run
 ```
 
-Expected: no compile errors from deleted config fields. If a deleted field is still referenced, fix the reference in the same task before committing.
+Expected: `check-web-structure` includes this assertion after the config rewrite:
+
+```js
+assert(zoneTypes.includes('kUlPerMinPerHz') &&
+       zoneTypes.includes('offsetMilliHz') &&
+       zoneTypes.includes('minValidFreqMilliHz') &&
+       zoneTypes.includes('maxValidFreqMilliHz'),
+       'flow config should use fixed-point K+Offset with valid frequency bounds');
+assert(!zoneTypes.includes('startupPulseLimit') &&
+       !zoneTypes.includes('startupEstimatedMl') &&
+       !zoneTypes.includes('stablePulsePerLiter'),
+       'old two-stage startup pulse calibration fields must be removed from config types');
+```
+
+No compile errors from deleted config fields are allowed. If a deleted field is still referenced, fix the reference in the same task before committing.
 
 - [ ] **Step 6: Commit**
 
