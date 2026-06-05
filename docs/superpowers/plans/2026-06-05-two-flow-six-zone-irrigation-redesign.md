@@ -56,6 +56,9 @@ src/domain/ValveController.*
 src/domain/ZoneManager.* / Zone.* / ZoneTaskRunner.*
   重写 Zone 状态机、Flow 占用、同 Flow 互斥、不同 Flow 并行。
 
+src/domain/LocalControl.* / DisplayService.*
+  实现 5 个本地按钮和 I2C 屏幕状态显示；本地按钮调用同一套 Zone 启停服务，不做本地配置菜单。
+
 src/domain/ZoneScheduler.* / PlanExecutionTracker.*
   改为按 Zone 触发，并实现同 Flow 冲突的内存排队。
 
@@ -366,6 +369,8 @@ volumeUl += static_cast<uint64_t>(flowUlPerMin) * elapsedMs / 60000ULL;
 
 No-water protection must use raw pulse presence, not `flowUlPerMin`. If `pulseDelta > 0` but frequency is below `minValidFreqMilliHz`, mark the sample as below metering range and show unreliable volume, but do not treat it as no water.
 
+Low/high flow fault confirmation must only use valid metered samples. Samples with `belowMeteringRange=true` do not count as low-flow confirmation; samples with `sampleInvalid=true` do not count as high-flow confirmation. They are observations for status, records, and warnings, not automatic stop evidence.
+
 Expose `belowMeteringRange(flowId)` and `frequencyMilliHz(flowId)` so Zone runtime, records, and Web status can distinguish:
 
 ```text
@@ -403,6 +408,10 @@ git commit -m "refactor: calculate flow with fixed-point K offset"
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/Zone.*`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/ZoneManager.*`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/ZoneTaskRunner.*`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/LocalControl.h`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/LocalControl.cpp`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/DisplayService.h`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/DisplayService.cpp`
 
 - [ ] **Step 1: Expand valves to six outputs**
 
@@ -442,7 +451,23 @@ After `pressurizeSec`, if no pulse exceeds `noPulseTimeoutSec`, close only the c
 
 Do not keep the old separate `FLOW_START_TIMEOUT` state. Startup and running no-pulse protection are both represented by `FLOW_NO_PULSE_TIMEOUT`; the record timestamps explain whether it happened immediately after pressurize or later during watering.
 
-- [ ] **Step 5: Verify**
+- [ ] **Step 5: Implement local buttons and I2C status**
+
+Local buttons use the same Zone start/stop service as Web/API:
+
+```text
+Button1: Zone 1 quick start/stop
+Button2: Zone 2 quick start/stop
+Button3: Stop All, and abort active calibration/learning
+Button4: select next enabled Zone
+Button5: start/stop selected Zone
+```
+
+Local starts use `manualDefaultDurationSec`, never enter the schedule queue, and return the same blocked reasons as Web/API: `zone_disabled`, `zone_fault`, `leak_protected`, `flow_disabled`, `flow_busy`, `calibration_active`.
+
+The I2C display shows only operational status in this redesign: running Zone, active Flow, flow rate, estimated volume, selected Zone, blocked reason, queue count, and fault summary. Do not implement Flow calibration editing, Zone baseline editing, plan editing, or numeric input on the local display.
+
+- [ ] **Step 6: Verify**
 
 Run:
 
@@ -456,12 +481,14 @@ Bench tests after firmware flash:
 Zone 1 and Zone 3 both assigned Flow 1: second start rejected.
 Zone 1 assigned Flow 1 and Zone 2 assigned Flow 2: both can run.
 Stop all closes all six valve outputs.
+Button1/2 quick start default enabled zones, Button4/5 can operate Zone3..6 after enabled.
+I2C display shows selected Zone and blockedReason without allowing config edits.
 ```
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/domain/ValveController.* src/domain/Zone.* src/domain/ZoneManager.* src/domain/ZoneTaskRunner.*
+git add src/domain/ValveController.* src/domain/Zone.* src/domain/ZoneManager.* src/domain/ZoneTaskRunner.* src/domain/LocalControl.* src/domain/DisplayService.*
 git commit -m "refactor: run zones by flow occupancy"
 ```
 
@@ -613,6 +640,8 @@ lowFlowAction = existing active baseline or default STOP_ZONE
 highFlowAction = existing active baseline or default STOP_ZONE
 noPulseTimeoutSec = existing active baseline or default 10
 ```
+
+Zone learning must ignore windows where the Flow sample is below metering range or invalid. If all stable windows are below the reliable metering range, the page may still show observed pulses and frequency, but it must not create an active-looking learned baseline without a warning; the result should stay pending/manual-review at most.
 
 - [ ] **Step 6: Verify**
 
@@ -908,6 +937,8 @@ GET  /api/v1/flows
 GET  /api/v1/zones
 GET  /api/v1/plans
 GET  /api/v1/flows/history?flowId=1
+GET  /api/v1/records
+GET  /api/v1/events
 POST /api/v1/zones/start
 POST /api/v1/zones/stop
 POST /api/v1/zones/stop-all
@@ -981,6 +1012,8 @@ faults.zoneFaults[]
 faults.flowLeakFaults[]
 faults.leakProtectionActive
 ```
+
+`GET /api/v1/records` returns paged watering records from `/irr/records_v1.bin`; `GET /api/v1/events` returns paged irrigation business events from `Esp32BaseAppEventLog`. Both are read-only, escaped JSON responses, and neither creates a second event store.
 
 After the route rewrite, count all registered application routes and update `ESP32BASE_WEB_MAX_ROUTES` in `platformio.ini` if the new Web/API surface exceeds the current capacity. Do not keep an undersized legacy route limit.
 
@@ -1058,6 +1091,8 @@ K+Offset manual/single/multi-point
 Zone learning
 no-pulse stop
 below metering range does not trigger no-water stop
+below metering range does not accumulate low-flow stop confirmation
+invalid high-frequency sample does not accumulate high-flow stop confirmation
 low/high flow default action stops zone
 low/high flow can be configured record-only
 idle leak detection
@@ -1071,6 +1106,10 @@ Flow and Zone pages show active/pending/rollback sections
 calibration and learning controls are mutually exclusive
 all mutating forms have confirm
 install warning for shared pump
+local Button1/2 quick controls
+local Button4/5 selected-zone controls
+local Stop All aborts calibration/learning
+I2C status display does not expose config editing
 ```
 
 - [ ] **Step 3: Update maintenance cleanup**

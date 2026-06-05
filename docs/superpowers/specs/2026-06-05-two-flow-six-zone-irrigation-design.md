@@ -109,6 +109,42 @@ Valve6Output = GPIO5
 
 GPIO4/GPIO5 在 ESP32 DevKit 上可作为输出使用；其中 GPIO5 是 ESP32 strapping pin，上电复位阶段会参与启动配置采样。阀门驱动必须保证 GPIO5 在复位采样期间不被外部强拉到错误电平；建议由 MOSFET/驱动输入的高阻状态和合适下拉保证默认关阀。如果后续板级验证发现启动受影响，再整体换 pin map。
 
+## Local Interaction Model
+
+本地 5 个按钮和 I2C 屏幕只做现场快捷操作和状态查看，不承担完整配置、校准和计划编辑功能。完整配置仍通过 Web/API 完成，避免在小屏和少量按钮上做复杂菜单。
+
+推荐按钮语义：
+
+```text
+Button 1: Zone 1 快捷启动/停止
+Button 2: Zone 2 快捷启动/停止
+Button 3: Stop All；如果正在校准或学习，则中止当前采样/学习并关阀
+Button 4: 选择下一个 enabled Zone
+Button 5: 启动/停止当前选中的 Zone
+```
+
+Zone 1/2 有独立快捷键，是因为默认启用第 1、2 路；Zone 3..6 通过 Button 4/5 选择操作。这样 5 个按钮可以覆盖 6 路阀门，又不引入多层本地菜单。
+
+本地按钮必须调用和 Web/API 相同的业务服务校验：
+
+```text
+Zone disabled、ZoneFault、Flow disabled、Flow busy、leakProtectionActive、calibration/learning active 时拒绝启动。
+手动启动不进入计划队列，Flow 忙时直接拒绝。
+本地启动使用 manualDefaultDurationSec。
+Stop All 立即关闭所有 Zone，并中止校准/学习。
+```
+
+I2C 屏幕第一版只显示运行状态：
+
+```text
+当前运行 Zone、归属 Flow、实时流量、累计水量
+当前选中 Zone、能否启动和 blockedReason
+队列数量
+ZoneFault / FlowLeakFault 摘要
+```
+
+不在第一版本地交互里实现 Flow 参数编辑、Zone 基线编辑、计划编辑或校准样本输入。这些操作需要输入数字和确认流程，放在 Web 页面更可靠。
+
 ## Configuration Model
 
 配置拆成 Flow 配置和 Zone 配置。参数来源枚举先定义一次，Flow 参数和 Zone 学习参数共用：
@@ -641,15 +677,17 @@ Zone 学习必须在页面提供用户操作入口。用户行为是：选择 Zo
   稳定阶段持续无脉冲，关闭该 Zone 并记录缺水/无流量。
 
 低流量：
-  当前流量连续 flowFaultConfirmSec 秒 < learnedFlowMlPerMin * lowFlowPermille / 1000。
+  有效计量样本的当前流量连续 flowFaultConfirmSec 秒 < learnedFlowMlPerMin * lowFlowPermille / 1000。
   lowFlowAction=STOP_ZONE 时关闭该 Zone；lowFlowAction=RECORD_ONLY 时只记录事件和记录标记。
 
 高流量：
-  当前流量连续 flowFaultConfirmSec 秒 > learnedFlowMlPerMin * highFlowPermille / 1000。
+  有效计量样本的当前流量连续 flowFaultConfirmSec 秒 > learnedFlowMlPerMin * highFlowPermille / 1000。
   highFlowAction=STOP_ZONE 时关闭该 Zone；highFlowAction=RECORD_ONLY 时只记录事件和记录标记。
 ```
 
 如果某个 Zone 尚未学习正常流量，系统仍可用无脉冲保护和总流量记录，但不启用高低流量比例判断。
+
+低/高流量比例判断只使用 `minValidFreqMilliHz <= freqMilliHz` 且未超过 `maxValidFreqMilliHz` 的有效计量样本。`pulseDelta > 0` 但低于计量下限的样本只设置 `belowMeteringRangeObserved`，不累计低流量确认时间；超过上限的样本只设置 `sampleInvalidObserved`，不累计高流量确认时间。这样可以区分“确实没水”“有很小水流但计量不可靠”“有效计量下的异常低/高流量”，避免少量小喷头或低水塔压力被误判为停水。
 
 `flowFaultConfirmSec` 是 Zone 级可配置项，默认 15 秒。该值用于过滤喷头瞬时波动、气泡和压力短时变化；不建议低于 5 秒。低流量默认阈值为正常流量的 10%，目的是适应水塔低水位时仍能慢速浇水；高流量默认阈值为正常流量的 300%，目的是只在明显脱管、爆管或喷头大量脱落时触发。低/高流量默认动作都是 `STOP_ZONE`，但可改成 `RECORD_ONLY`。
 
@@ -938,7 +976,7 @@ Zone 配置
   手工编辑基线只保存 pendingBaseline，不直接覆盖 activeBaseline。
 
 计划
-  计划保存时必须指定 enabled Zone。
+  计划保存时必须指定有效 Zone。
   如果 Zone 禁用，允许保存 disabled 计划，不允许启用该计划。
   如果目标 Zone 归属的 Flow 禁用，不允许启用该计划。
   删除计划必须二次确认。
@@ -967,6 +1005,8 @@ GET  /api/v1/flows
 GET  /api/v1/zones
 GET  /api/v1/plans
 GET  /api/v1/flows/history?flowId=1
+GET  /api/v1/records
+GET  /api/v1/events
 
 POST /api/v1/zones/start
 POST /api/v1/zones/stop
@@ -1029,6 +1069,8 @@ queue[]
 faults
   zoneFaults[], flowLeakFaults[], leakProtectionActive
 ```
+
+`GET /api/v1/records` 分页读取 `/irr/records_v1.bin` 中的浇水记录；`GET /api/v1/events` 分页读取 `Esp32BaseAppEventLog` 中的灌溉业务事件。两者都是只读 JSON，不另建第二套事件存储。
 
 ## Storage
 
@@ -1140,6 +1182,12 @@ CalibrationService
 ScheduleService
   面向 Zone 触发计划，不直接操作 Flow 或 Valve。
 
+LocalControlService
+  管理 5 个本地按钮，复用 ZoneService 的启停校验，不实现配置菜单。
+
+DisplayService
+  管理 I2C 屏幕状态显示，只显示运行、队列和故障摘要。
+
 RecordService
   保存新格式浇水记录。
 ```
@@ -1166,6 +1214,8 @@ K+Offset 快速校准计算正确
 K+Offset 多点拟合计算正确
 无脉冲窗口不因正 Offset 产生虚假流量
 有脉冲但低于计量下限时不触发无水停机
+低于计量下限时不累计低流量停机确认
+高频无效样本不累计高流量停机确认
 Zone 学习能保存正常流量
 无脉冲能停止对应 Zone
 低流量、高流量按动作配置停止或只记录
