@@ -70,6 +70,8 @@ Zone 到 Flow 的归属不要求连续、不要求按编号分组，完全按真
 
 Flow 1 和 Flow 2 应代表不同计量点。不要在同一根主管上串联两个 Flow 后把它们当成两个独立组使用。
 
+本系统不建模水塔、泵或供水源为独立软件资源。软件规则只基于 Flow 归属判断互斥和并行。现场部署时必须注意：如果 Flow 1 和 Flow 2 共用同一个水塔、同一个增压泵或同一条供水能力有限的主管，虽然软件允许不同 Flow 下的 Zone 并行，实际运行仍可能导致压力下降、喷头不均、低流量误报或泵负载异常。推荐连接方式是一个泵下默认顺序浇水；只有确认 Flow 1 和 Flow 2 对应的真实供水能力足够时，才配置同时运行的计划。
+
 ## Pin Model
 
 引脚模型从固定 4 路改为：
@@ -103,11 +105,26 @@ struct FlowMeterConfig {
     uint8_t id;                 // 1..2
     uint8_t pulsePin;           // read-only hardware pin
     bool enabled;
-    float kLitersPerMinutePerHz;
-    float offsetHz;
+    int32_t kUlPerMinPerHz;
+    int32_t offsetMilliHz;
     uint16_t pressurizeSec;
     uint16_t sampleWindowSec;
 };
+```
+
+K + Offset 只使用固定点数持久化，不使用 `float` 作为配置存储格式：
+
+```text
+kUlPerMinPerHz  = K * 1,000,000
+offsetMilliHz   = Offset * 1,000
+```
+
+示例：
+
+```text
+K = 0.1749 L/min/Hz      -> kUlPerMinPerHz = 174900
+Offset = 3.136 Hz        -> offsetMilliHz = 3136
+K = 60 / 245 L/min/Hz    -> kUlPerMinPerHz = 244897, offsetMilliHz = 0
 ```
 
 Zone 配置：
@@ -160,11 +177,17 @@ Offset  频率偏移量，单位 Hz
 实现上每个采样窗口计算：
 
 ```text
-elapsedSec = elapsedMs / 1000
-f = pulseDelta / elapsedSec
-flowMlPerMin = max(0, K * (f + Offset)) * 1000
-volumeMl += flowMlPerMin * elapsedSec / 60
+if pulseDelta == 0:
+  flowUlPerMin = 0
+else:
+  freqMilliHz = pulseDelta * 1,000,000 / elapsedMs
+  effectiveMilliHz = freqMilliHz + offsetMilliHz
+  flowUlPerMin = max(0, kUlPerMinPerHz * effectiveMilliHz / 1000)
+
+volumeUl += flowUlPerMin * elapsedMs / 60000
 ```
+
+所有乘法中间值使用 `int64_t`，避免高频脉冲或长采样窗口造成溢出。`pulseDelta == 0` 时流量必须强制为 0；即使 `offsetMilliHz` 为正，也不能在无脉冲窗口中产生虚假流量。
 
 如果 `Offset = 0`，模型退化为普通 P/L 模型：
 
@@ -173,6 +196,15 @@ K = 60 / pulsesPerLiter
 ```
 
 但新系统的持久化参数只保存 `K` 和 `Offset`，不再保存旧的 `stablePulsePerLiter`、`startupPulseLimit`、`startupEstimatedMl`。
+
+建议参数范围：
+
+```text
+kUlPerMinPerHz: 1..2000000
+offsetMilliHz: -50000..50000
+```
+
+超出范围、计算结果非有限或运行时换算结果异常的配置必须拒绝保存。
 
 ## Startup And Pressurize Handling
 
@@ -192,6 +224,17 @@ pressurizeSec 后：
 ```
 
 无脉冲启动保护可以在 `pressurizeSec` 后再进入严格判断，也可以使用独立的 `noPulseTimeoutSec` 作为启动后最大等待。实现时应避免刚开阀的前几秒误报缺水。
+
+第一版缺水策略固定为异常即停，不等待来水恢复：
+
+```text
+稳定阶段持续无脉冲超过 noPulseTimeoutSec
+  -> 关闭当前 Zone
+  -> 写入无流量异常记录
+  -> 不自动恢复、不自动补浇
+```
+
+不设计“停水等待、来水后继续”的状态机。该模式会增加泵空转、电磁阀长时间开启和补浇语义不清的风险。
 
 ## Runtime Rules
 
@@ -226,6 +269,59 @@ Zone 1 和 Zone 2 可同时运行。
 ```
 
 运行中的 Zone 从其归属 Flow 读取脉冲、实时流量和累计水量。由于同一 Flow 下互斥，该 Flow 的读数可以明确归属到当前 Zone。
+
+## Schedule Queueing
+
+计划触发必须尊重 Flow 互斥规则。多个计划同时触发且目标 Zone 不能同时运行时，第一版采用内存队列顺序执行，而不是直接跳过。
+
+队列规则：
+
+```text
+1. 计划到点后生成一个待执行任务。
+2. 任务按 scheduledEpoch 排序。
+3. scheduledEpoch 相同时按 zoneId 升序排序。
+4. 如果目标 Zone 归属的 Flow 空闲，则立即启动。
+5. 如果 Flow 忙，则任务留在内存队列等待。
+6. 当前 Zone 完成后，调度器重新扫描队列并启动可运行任务。
+```
+
+例子：
+
+```text
+08:00 Zone 1 计划 5 分钟，Zone 1 -> Flow 1
+08:00 Zone 2 计划 10 分钟，Zone 2 -> Flow 1
+08:00 Zone 3 计划 3 分钟，Zone 3 -> Flow 1
+
+执行顺序：
+08:00-08:05 Zone 1
+08:05-08:15 Zone 2
+08:15-08:18 Zone 3
+```
+
+如果：
+
+```text
+Zone 1 -> Flow 1
+Zone 2 -> Flow 2
+Zone 3 -> Flow 1
+```
+
+则：
+
+```text
+08:00 Zone 1 和 Zone 2 可同时开始
+Zone 3 等 Zone 1 完成后开始
+```
+
+队列边界：
+
+```text
+手动启动不排队，资源忙时直接拒绝。
+队列只保存在内存，不做持久化恢复。
+设备重启后按计划宽限期重新评估，不恢复重启前内存队列。
+队列容量固定，建议 12 个任务；满时记录 queue_full 并拒绝新任务。
+排队任务仍受单次最长浇水时长、Zone 启用状态、Flow 启用状态、漏水保护和恢复出厂保护约束。
+```
 
 ## Flow Calibration
 
@@ -271,6 +367,21 @@ Offset 可为正或负
 K * (f + Offset) 小于 0 时运行时按 0 流量处理
 样本流量范围过窄时提示 Offset 可信度不足
 ```
+
+多点校准质量门槛：
+
+```text
+有效样本实际流量 >= 1 L/min
+有效样本采集时长 >= 30 秒
+有效样本实际水量 >= 1 L
+至少 2 个有效样本才能计算 Offset
+3 个及以上有效样本才推荐启用 Offset
+最大频率和最小频率差建议 >= 30%
+拟合平均误差 > 10% 时不建议应用
+abs(offsetMilliHz) 不应大于典型工作频率的 50%，否则提示参数可疑
+```
+
+如果样本数量不足或频率范围过窄，系统可以退回到 `offsetMilliHz = 0` 的快速校准模型，只保存由样本平均得到的 `kUlPerMinPerHz`。
 
 用户应优先采集明显不同的流量点，例如少喷头、中等喷头、多喷头。流量点过于集中时，可以保存结果，但页面必须显示该结果只是局部拟合。
 
@@ -329,6 +440,13 @@ Flow 1 检测到待机流动，请检查该 Flow 下的电磁阀和管路。
 ```text
 zoneId
 flowMeterId
+kUlPerMinPerHzSnapshot
+offsetMilliHzSnapshot
+pressurizeSecSnapshot
+sampleWindowSecSnapshot
+learnedFlowMlPerMinSnapshot
+lowFlowPermilleSnapshot
+highFlowPermilleSnapshot
 startedAt
 endedAt
 targetSec
@@ -339,11 +457,19 @@ estimatedMl
 avgFlowMlPerMin
 minFlowMlPerMin
 maxFlowMlPerMin
+lastPulseAtSec
+firstNoPulseAtSec
+faultConfirmedAtSec
+noPulseTimeoutSecSnapshot
+pulsesBeforeFault
+estimatedMlBeforeFault
 result
 stopSource
 ```
 
-记录必须保存 `flowMeterId` 快照。这样即使以后 Zone 改归属，历史记录仍能解释当时使用哪个 Flow 计量。
+记录必须保存 `flowMeterId` 和关键 Flow/Zone 参数快照。这样即使以后 Zone 改归属或 Flow 重新校准，历史记录仍能解释当时使用哪个 Flow、哪组 K+Offset 和哪组异常阈值计量。
+
+缺水/无脉冲异常记录不保存多次停水恢复片段。第一版缺水即停，因此只需要保存第一次进入无脉冲观察、最后一次有脉冲、确认异常并停机的时间点，以及停机前脉冲和估算水量。
 
 业务事件至少覆盖：
 
@@ -375,8 +501,8 @@ Flow 设置页：
 ```text
 Flow 1/2 启用状态
 输入 GPIO 只读显示
-K
-Offset
+kUlPerMinPerHz
+offsetMilliHz
 pressurizeSec
 sampleWindowSec
 校准入口
@@ -459,8 +585,11 @@ pio run
 6 路 Valve PWM 输出正常
 同一 Flow 下 Zone 启动互斥
 不同 Flow 下 Zone 可并行
+同一 Flow 下计划冲突能按队列顺序执行
+手动启动在 Flow 忙时拒绝且不入队
 K+Offset 快速校准计算正确
 K+Offset 多点拟合计算正确
+无脉冲窗口不因正 Offset 产生虚假流量
 Zone 学习能保存正常流量
 无脉冲、低流量、高流量能停止对应 Zone
 待机 Flow 脉冲触发漏水保护
