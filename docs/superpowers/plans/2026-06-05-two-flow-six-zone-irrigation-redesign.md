@@ -62,7 +62,7 @@ src/domain/ZoneScheduler.* / PlanExecutionTracker.*
 src/domain/FlowCalibration.*
   删除旧启动补偿校准，重写 Flow K+Offset 校准和 Zone 正常流量学习。
 
-src/storage/ZoneConfigStore.* / SystemConfigStore.* / PlanStore.* / RecordStore.* / ZoneErrorStore.*
+src/storage/FlowConfigStore.* / ZoneConfigStore.* / SystemConfigStore.* / PlanStore.* / RecordStore.* / FaultStateStore.*
   使用新 schema 和新 namespace；不做旧格式迁移。
 
 src/domain/BusinessEventLog.*
@@ -72,10 +72,10 @@ src/web/IrrigationWeb.*
   重写业务页面和 API 字段，保持 Esp32Base Web 输出、POST、confirm、escape 规则。
 
 scripts/check-web-structure.mjs
-  更新结构检查到 2 Flow / 6 Zone / K+Offset 新模型。
+  更新结构检查到 2 Flow / 6 Zone / K+Offset 新模型，删除旧启动补偿和固定 4 路断言。
 
-README.md / PROJECT_PLAN.md / docs/*.md
-  同步入口文档，避免继续描述固定 4 路旧模型。
+README.md / PROJECT_PLAN.md / docs/*.md / docs/road-management/*.md
+  同步入口文档；仍有价值的旧 road-management 文档必须改写为新模型，不能继续被结构检查脚本当成当前依据。
 ```
 
 ## Task 1: Constants And Pins
@@ -149,6 +149,8 @@ git commit -m "refactor: define two-flow six-zone hardware model"
 
 **Files:**
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/ZoneTypes.h`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/FlowConfigStore.h`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/FlowConfigStore.cpp`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/ZoneConfigStore.h`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/ZoneConfigStore.cpp`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/SystemConfigStore.h`
@@ -250,11 +252,13 @@ Zone baseline: hasLearnedBaseline=false, hasPendingBaseline=false, hasRollbackBa
 Use:
 
 ```text
-Flow config namespace: irr_flow_v1
-Zone config namespace: irr_zone_v1
+FlowConfigStore namespace: irr_flow_v1
+ZoneConfigStore namespace: irr_zone_v1
 ```
 
 Do not read old namespaces. If schema is missing or invalid, write defaults and log a schema reset event.
+
+`FlowConfigStore` owns only `FlowMeterConfig[2]` and Flow calibration pending/rollback state. `ZoneConfigStore` owns only `ZoneConfig[6]` and Zone baseline pending/rollback state. Do not store Flow K+Offset parameters inside `ZoneConfigStore`; otherwise arbitrary `Zone -> Flow` assignment will duplicate and desynchronize calibration parameters.
 
 - [ ] **Step 4: Add queue config**
 
@@ -272,6 +276,8 @@ uint32_t manualDefaultDurationSec;
 Default `queuedPlanMaxDelaySec = 3600`.
 Default `idleLeakWindowSec = 15`.
 Default `idleLeakPulseThreshold = 5`.
+
+After adding `queuedPlanMaxDelaySec`, update `platformio.ini` `ESP32BASE_APP_CONFIG_MAX_FIELDS` if the App Config registration count exceeds the old value. The current old value is `19`, which only covers the pre-redesign field set.
 
 - [ ] **Step 5: Verify**
 
@@ -302,7 +308,7 @@ No compile errors from deleted config fields are allowed. If a deleted field is 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/domain/ZoneTypes.h src/storage/ZoneConfigStore.* src/storage/SystemConfigStore.*
+git add src/domain/ZoneTypes.h src/storage/FlowConfigStore.* src/storage/ZoneConfigStore.* src/storage/SystemConfigStore.* platformio.ini
 git commit -m "refactor: replace irrigation config schema"
 ```
 
@@ -414,6 +420,8 @@ If `Zone 1 -> Flow 1` and `Zone 2 -> Flow 2`, both may run. Do not add a global 
 - [ ] **Step 4: Stop on no pulse**
 
 After `pressurizeSec`, if no pulse exceeds `noPulseTimeoutSec`, close only the current Zone, clear Flow occupancy, write result `FLOW_NO_PULSE_TIMEOUT`.
+
+Do not keep the old separate `FLOW_START_TIMEOUT` state. Startup and running no-pulse protection are both represented by `FLOW_NO_PULSE_TIMEOUT`; the record timestamps explain whether it happened immediately after pressurize or later during watering.
 
 - [ ] **Step 5: Verify**
 
@@ -595,7 +603,9 @@ git commit -m "refactor: calibrate flow meters with K offset"
 **Files:**
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/RecordStore.*`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/BusinessEventLog.*`
-- Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/ZoneErrorStore.*`
+- Replace: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/ZoneErrorStore.*`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/FaultStateStore.h`
+- Add: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/FaultStateStore.cpp`
 
 - [ ] **Step 1: Replace record schema**
 
@@ -635,9 +645,65 @@ firstNoPulseAtSec
 faultConfirmedAtSec
 pulsesBeforeFault
 estimatedMlBeforeFault
+lowFlowObserved
+highFlowObserved
+belowMeteringRangeObserved
+sampleInvalidObserved
 result
 stopSource
 ```
+
+Result/error taxonomy:
+
+```text
+TaskResult:
+  COMPLETED
+  USER_STOPPED
+  FLOW_NO_PULSE_TIMEOUT
+  FLOW_LOW_STOPPED
+  FLOW_HIGH_STOPPED
+  LEAK_PROTECTED
+  FACTORY_RESET_PROTECTED
+  CONFIG_INVALID
+  REJECTED
+
+ZoneErrorCode:
+  FLOW_NO_PULSE_TIMEOUT
+  FLOW_LOW
+  FLOW_HIGH
+  CONFIG_INVALID
+
+FlowFaultCode:
+  IDLE_LEAK
+```
+
+If low/high flow action is `RECORD_ONLY`, do not set a Zone error and do not change the final task result to low/high stopped; only set the observation flag and write an event. If action is `STOP_ZONE`, close the Zone and use `FLOW_LOW_STOPPED` or `FLOW_HIGH_STOPPED`.
+
+- [ ] **Step 1b: Replace ZoneErrorStore with FaultStateStore**
+
+`FaultStateStore` stores both Zone-level errors and Flow-level idle leak protection:
+
+```cpp
+struct ZoneFault {
+    bool active;
+    Irrigation::ZoneErrorCode code;
+    uint32_t occurredEpoch;
+    uint32_t occurredUptimeMs;
+    Irrigation::StopSource source;
+    Irrigation::TaskResult result;
+};
+
+struct FlowLeakFault {
+    bool active;
+    uint8_t flowMeterId;
+    uint32_t occurredEpoch;
+    uint32_t occurredUptimeMs;
+    uint16_t windowSec;
+    uint16_t pulseCount;
+};
+```
+
+Flow-level idle leak must not be stored as a fake Zone error. Clearing leak protection clears `FlowLeakFault[2]`; clearing a Zone error clears only that Zone.
 
 - [ ] **Step 2: Use Esp32BaseAppEventLog only**
 
@@ -672,7 +738,7 @@ pio run
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/storage/RecordStore.* src/domain/BusinessEventLog.* src/storage/ZoneErrorStore.*
+git add src/storage/RecordStore.* src/domain/BusinessEventLog.* src/storage/FaultStateStore.* src/storage/ZoneErrorStore.*
 git commit -m "refactor: record irrigation flow model events"
 ```
 
@@ -700,6 +766,7 @@ Required API groups:
 
 ```text
 GET  /api/v1/status
+GET  /api/v1/flow/history?flowId=1
 POST /api/v1/zone/start
 POST /api/v1/zone/stop
 POST /api/v1/zones/stop-all
@@ -755,6 +822,10 @@ git commit -m "refactor: rebuild irrigation web for flow zone model"
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/02_next_implementation_plan.md`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/03_web_validation_checklist.md`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/04_event_fields.md`
+- Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/road-management/README.md`
+- Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/road-management/02-zone-unit-design.md`
+- Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/road-management/03-plan-management.md`
+- Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/road-management/04-flow-calibration.md`
 
 - [ ] **Step 1: Replace old product wording**
 
