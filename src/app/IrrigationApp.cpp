@@ -2,6 +2,7 @@
 
 #include <Esp32Base.h>
 
+#include "domain/DisplayService.h"
 #include "domain/FlowMeter.h"
 #include "domain/FlowCalibration.h"
 #include "domain/LocalControl.h"
@@ -45,6 +46,7 @@ void begin() {
     ZoneManager::begin();
     SafetyManager::begin();
     LocalControl::begin();
+    DisplayService::begin();
     MaintenanceService::begin();
     IrrigationWeb::begin();
     ESP32BASE_LOG_I("irrigation", "application ready");
@@ -58,6 +60,7 @@ void handle() {
     ZoneManager::handle();
     SafetyManager::handle();
     LocalControl::handle();
+    DisplayService::handle();
     ValveController::handle();
     MaintenanceService::handle();
 }

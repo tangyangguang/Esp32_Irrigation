@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <Esp32Base.h>
+#include <string.h>
 
 #include "domain/BusinessEventLog.h"
 #include "domain/FlowCalibration.h"
@@ -73,16 +74,7 @@ bool flowBusy(uint8_t flowId) {
 }
 
 bool canStart(uint8_t zoneId) {
-    if (!Irrigation::validZoneId(zoneId) || ZoneErrorStore::leakAlertActive() || FlowCalibration::active()) {
-        return false;
-    }
-    const Zone& zone = g_zones[indexFor(zoneId)];
-    const Irrigation::ZoneConfig& config = zone.config();
-    if (!config.enabled || zone.isBusy() || zone.isError()) {
-        return false;
-    }
-    const Irrigation::FlowMeterConfig& flow = FlowConfigStore::get(config.flowId);
-    return flow.enabled && !flowBusy(config.flowId);
+    return strcmp(ZoneManager::blockedReason(zoneId), "none") == 0;
 }
 
 void checkIdleLeaks(uint32_t nowMs) {
@@ -245,6 +237,37 @@ bool isFlowBusy(uint8_t flowId) {
 
 bool canStartZoneNow(uint8_t zoneId) {
     return canStart(zoneId);
+}
+
+const char* blockedReason(uint8_t zoneId) {
+    if (!Irrigation::validZoneId(zoneId)) {
+        return "invalid_zone";
+    }
+    if (ZoneErrorStore::leakAlertActive()) {
+        return "leak_protected";
+    }
+    if (FlowCalibration::active()) {
+        return "calibration_active";
+    }
+    const Zone& zone = g_zones[indexFor(zoneId)];
+    const Irrigation::ZoneConfig& config = zone.config();
+    if (!config.enabled) {
+        return "zone_disabled";
+    }
+    if (zone.isError()) {
+        return "zone_fault";
+    }
+    if (zone.isBusy()) {
+        return "zone_busy";
+    }
+    const Irrigation::FlowMeterConfig& flow = FlowConfigStore::get(config.flowId);
+    if (!flow.enabled) {
+        return "flow_disabled";
+    }
+    if (flowBusy(config.flowId)) {
+        return "flow_busy";
+    }
+    return "none";
 }
 
 bool leakAlertActive() {

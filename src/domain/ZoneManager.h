@@ -27,6 +27,7 @@ bool isBusy();
 bool isZoneBusy(uint8_t zoneId);
 bool isFlowBusy(uint8_t flowId);
 bool canStartZoneNow(uint8_t zoneId);
+const char* blockedReason(uint8_t zoneId);
 bool leakAlertActive();
 Irrigation::ZoneStatus status(uint8_t zoneId);
 const Irrigation::ZoneConfig& config(uint8_t zoneId);

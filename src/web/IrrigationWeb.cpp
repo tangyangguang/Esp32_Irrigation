@@ -192,6 +192,12 @@ void writeStatusJson(const Irrigation::ZoneStatus& status) {
     writeBool(status.enabled);
     Esp32BaseWeb::sendChunk(",\"busy\":");
     writeBool(status.busy);
+    const char* reason = ZoneManager::blockedReason(status.zoneId);
+    Esp32BaseWeb::sendChunk(",\"canStart\":");
+    writeBool(reason && strcmp(reason, "none") == 0);
+    Esp32BaseWeb::sendChunk(",\"blockedReason\":\"");
+    Esp32BaseWeb::writeJsonEscaped(reason ? reason : "unknown");
+    Esp32BaseWeb::sendChunk("\"");
     Esp32BaseWeb::sendChunk(",\"errorActive\":");
     writeBool(status.errorActive);
     Esp32BaseWeb::sendChunk(",\"errorCode\":");

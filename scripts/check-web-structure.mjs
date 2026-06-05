@@ -24,6 +24,7 @@ const zoneRuntime = read('src/domain/Zone.cpp');
 const localControl = read('src/domain/LocalControl.cpp');
 const safetyManager = read('src/domain/SafetyManager.cpp');
 const flowCalibration = read('src/domain/FlowCalibration.cpp');
+const displayService = read('src/domain/DisplayService.cpp');
 
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
@@ -151,7 +152,8 @@ assert(systemConfigStore.includes('idleLeakPulseThreshold'), 'system config shou
 assert(zoneManager.includes('bool flowBusy(uint8_t flowId)'), 'ZoneManager should own Flow-level busy checks');
 assert(zoneManager.includes('zone.config().flowId == flowId'), 'Flow busy checks should use ZoneConfig.flowId');
 assert(zoneManager.includes('bool startPlan('), 'ZoneManager should expose a unified plan start entrypoint');
-assert(zoneManager.includes('!flowBusy(config.flowId)'), 'Zone starts should reject same-Flow concurrency');
+assert(zoneManager.includes('return strcmp(ZoneManager::blockedReason(zoneId), "none") == 0'), 'Zone starts should reject same-Flow concurrency through blockedReason');
+assert(zoneManager.includes('return "flow_busy"'), 'blockedReason should expose same-Flow busy rejection');
 assert(zoneScheduler.includes('queuedPlanMaxDelaySec'), 'scheduler should honor queuedPlanMaxDelaySec');
 assert(zoneScheduler.includes('ZoneManager::startPlan'), 'scheduler should start plans through ZoneManager');
 assert(!zoneScheduler.includes('zone.start('), 'scheduler must not bypass Flow mutual exclusion');
@@ -175,5 +177,12 @@ assert(!safetyManager.includes('Road1UpButton') && !safetyManager.includes('Road
 assert(flowCalibration.includes('actualMl * 60000ULL') || flowCalibration.includes('totalActualMl * 60000ULL'), 'calibration should compute K from measured volume and pulse count');
 assert(flowCalibration.includes('FlowConfigStore::savePendingCalibration'), 'calibration should save pending Flow calibration, not Zone parameters');
 assert(!flowCalibration.includes('ZoneConfigStore::saveCandidate'), 'calibration must not save legacy Zone flow candidates');
+
+assert(displayService.includes('Wire.begin(IrrigationPins::I2cSda, IrrigationPins::I2cScl)'), 'display service should use configured I2C pins');
+assert(displayService.includes('LocalControl::selectedZoneId()'), 'display service should show the locally selected zone');
+assert(displayService.includes('ZoneManager::blockedReason'), 'display service should show blockedReason');
+assert(displayService.includes('fitLine'), 'display service should constrain LCD1602 line length');
+assert(!displayService.includes('FlowConfigStore::set'), 'display service must not edit flow calibration');
+assert(!displayService.includes('ZoneConfigStore::set'), 'display service must not edit zone config');
 
 console.log('check-web-structure passed');
