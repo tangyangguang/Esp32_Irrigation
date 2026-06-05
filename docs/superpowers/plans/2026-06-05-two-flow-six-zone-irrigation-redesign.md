@@ -87,15 +87,13 @@ README.md / PROJECT_PLAN.md / docs/*.md
 
 - [ ] **Step 1: Replace old hardware constants**
 
-Set the board model to:
+Set the board model to two flow inputs and six valve outputs. The first four valve pins and two flow pins keep the current board assignment:
 
 ```cpp
 static constexpr uint8_t Valve1 = 16;
 static constexpr uint8_t Valve2 = 14;
 static constexpr uint8_t Valve3 = 13;
 static constexpr uint8_t Valve4 = 27;
-static constexpr uint8_t Valve5 = 4;
-static constexpr uint8_t Valve6 = 5;
 
 static constexpr uint8_t Flow1 = 32;
 static constexpr uint8_t Flow2 = 35;
@@ -105,7 +103,7 @@ static constexpr uint8_t MaxZones = 6;
 static constexpr uint8_t DefaultZoneEnabledMask = 0x03;
 ```
 
-GPIO4/GPIO5 are provisional board outputs. Before PCB or final wiring, verify they do not conflict with the actual relay/MOSFET board, boot straps, or attached peripherals.
+Before writing `Valve5` and `Valve6`, confirm the real board wiring. Do not assign provisional GPIO4/GPIO5, input-only pins, or boot-sensitive pins without a board-level decision. If the fifth and sixth valve pins are not confirmed, stop this task and ask for the hardware pin map instead of committing guessed firmware.
 
 - [ ] **Step 2: Replace domain limits**
 
@@ -140,7 +138,7 @@ node scripts/check-web-structure.mjs
 pio run
 ```
 
-Expected after this task: the structure script may still fail on later modules that have not been rewritten; `pio run` should compile only if dependent code has already been adapted. Record any expected temporary failures in the task commit message.
+Expected after this task: no commit until the firmware compiles. If the only blocker is unconfirmed `Valve5`/`Valve6` GPIO, stop and ask for the pin map.
 
 - [ ] **Step 5: Commit**
 
@@ -227,7 +225,7 @@ struct ZoneConfig {
 Defaults:
 
 ```text
-Flow 1: enabled, pulsePin=Flow1, k=244897, offset=0, minValidFreq=1000, maxValidFreq=0, pressurizeSec=5, sampleWindowSec=2
+Flow 1: enabled, pulsePin=Flow1, k=244897, offset=0, minValidFreq=4000, maxValidFreq=0, pressurizeSec=5, sampleWindowSec=2
 Flow 2: disabled, pulsePin=Flow2, same parameters
 Zone 1..6: flowMeterId=1
 Zone 1/2: enabled
@@ -267,7 +265,7 @@ Run:
 pio run
 ```
 
-Expected: compile errors only in modules still referencing deleted fields; fix those references in later tasks.
+Expected: no compile errors from deleted config fields. If a deleted field is still referenced, fix the reference in the same task before committing.
 
 - [ ] **Step 6: Commit**
 
@@ -490,6 +488,8 @@ sampleWindowSec >= 1
 
 - [ ] **Step 3: Implement single-point Flow calibration**
 
+Single-point calibration must choose both a target Flow and one enabled Zone that belongs to that Flow. The sample opens only that Zone, because a Flow by itself cannot produce water.
+
 Formula:
 
 ```text
@@ -516,7 +516,7 @@ K = a
 Offset = b / a
 ```
 
-Reject apply when `a <= 0`. Warn but allow save when sample frequency span is narrow.
+Reject apply when `a <= 0`. Warn but allow save when sample frequency span is narrow. Save the fitted `minValidFreqMilliHz` as the lower reliable sample frequency unless the user manually overrides it.
 
 - [ ] **Step 5: Implement Zone learning**
 
@@ -580,14 +580,18 @@ sampleWindowSec
 learnedFlowMlPerMin
 lowFlowPermille
 highFlowPermille
+noPulseTimeoutSec
 targetSec
 actualSec
 startPulse
 endPulse
 estimatedMl
 avg/min/max flow
+lastPulseAtSec
 firstNoPulseAtSec
 faultConfirmedAtSec
+pulsesBeforeFault
+estimatedMlBeforeFault
 result
 stopSource
 ```
@@ -662,10 +666,13 @@ POST /api/v1/flow/restore-previous
 POST /api/v1/calibration/flow/start
 POST /api/v1/calibration/flow/stop
 POST /api/v1/calibration/flow/save-sample
+POST /api/v1/calibration/flow/clear-samples
 POST /api/v1/calibration/flow/fit
 POST /api/v1/zone-learning/start
 POST /api/v1/zone-learning/stop
+POST /api/v1/zone-learning/save-candidate
 POST /api/v1/zone-learning/apply-candidate
+POST /api/v1/zone-learning/restore-previous
 ```
 
 All changing operations use POST, auth, and JavaScript confirm on pages.
