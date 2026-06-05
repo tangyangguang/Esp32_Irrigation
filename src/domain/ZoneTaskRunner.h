@@ -14,8 +14,9 @@ public:
                uint32_t pulseCount,
                uint32_t epoch,
                uint32_t nowMs,
-               uint16_t flowRateWindowSec,
-               const Irrigation::ZoneConfig& config);
+               uint16_t flowSampleWindowSec,
+               const Irrigation::ZoneConfig& config,
+               const Irrigation::FlowMeterConfig& flowConfig);
     bool active() const;
     const Irrigation::ActiveTask& task() const;
     const Irrigation::TaskRuntime& runtime() const;

@@ -9,6 +9,7 @@
 #include "domain/ValveController.h"
 #include "domain/ZoneManager.h"
 #include "storage/PlanStore.h"
+#include "storage/FlowConfigStore.h"
 #include "storage/RecordStore.h"
 #include "storage/ScheduleSkipStore.h"
 #include "storage/SystemConfigStore.h"
@@ -31,15 +32,14 @@ void registerAppConfig() {
 void begin() {
     RecordStore::begin();
     SystemConfigStore::begin();
+    FlowConfigStore::begin();
     ZoneConfigStore::begin();
     ZoneErrorStore::begin();
     PlanStore::begin();
     ScheduleSkipStore::begin();
     WeatherSnapshotStore::begin();
     FlowMeter::begin();
-    FlowMeter::configureFlowRate(SystemConfigStore::current().flowRateWindowSec,
-                                 SystemConfigStore::current().flowChartIntervalSec,
-                                 SystemConfigStore::current().flowChartHistoryMin);
+    FlowMeter::configureFlowRate(5, 5, 10);
     FlowCalibration::begin();
     ZoneManager::begin();
     SafetyManager::begin();
@@ -50,7 +50,7 @@ void begin() {
 
 void handle() {
     const Irrigation::SystemConfig& system = SystemConfigStore::current();
-    FlowMeter::configureFlowRate(system.flowRateWindowSec, system.flowChartIntervalSec, system.flowChartHistoryMin);
+    FlowMeter::configureFlowRate(5, 5, 10);
     FlowMeter::handle();
     FlowCalibration::handle(system);
     ZoneManager::handle();

@@ -63,20 +63,22 @@ enum class TaskResult : uint8_t {
     NONE = 0,
     COMPLETED = 1,
     USER_STOPPED = 2,
-    FLOW_START_TIMEOUT = 3,
+    FLOW_LOW_STOPPED = 3,
     FLOW_NO_PULSE_TIMEOUT = 4,
-    LEAK_PROTECTED = 5,
+    FLOW_HIGH_STOPPED = 5,
     FACTORY_RESET_PROTECTED = 6,
     CONFIG_INVALID = 7,
     REJECTED = 8,
+    IDLE_FLOW_PROTECTED = 9,
 };
 
 enum class ZoneErrorCode : uint8_t {
     NONE = 0,
-    FLOW_START_TIMEOUT = 1,
+    FLOW_LOW = 1,
     FLOW_NO_PULSE_TIMEOUT = 2,
-    LEAK_DETECTED = 3,
+    FLOW_HIGH = 3,
     CONFIG_INVALID = 4,
+    IDLE_FLOW_DETECTED = 5,
 };
 
 enum class SkipReason : uint8_t {
@@ -100,50 +102,79 @@ enum class PlanObservationStatus : uint8_t {
     MISSED = 11,
 };
 
-struct FlowParameters {
-    uint16_t startupPulseLimit;
-    uint16_t startupEstimatedMl;
-    uint16_t stablePulsePerLiter;
+enum class ParameterSource : uint8_t {
+    NONE = 0,
+    MANUAL = 1,
+    SINGLE_POINT = 2,
+    MULTI_POINT = 3,
+    LEARNED = 4,
 };
 
-struct FlowCandidateSlot {
-    bool exists;
-    uint8_t reserved[3];
-    FlowParameters params;
+enum class FlowFaultAction : uint8_t {
+    RECORD_ONLY = 1,
+    STOP_ZONE = 2,
+};
+
+struct FlowMeterCalibrationProfile {
+    ParameterSource source;
+    uint8_t reserved0[3];
+    int32_t kUlPerMinPerHz;
+    int32_t offsetMilliHz;
+    uint32_t warningFreqMilliHz;
+    uint32_t minValidFreqMilliHz;
+    uint32_t maxValidFreqMilliHz;
+    uint16_t pressurizeSec;
+    uint16_t sampleWindowSec;
+    uint32_t updatedAt;
+};
+
+struct ZoneFlowBaselineProfile {
+    ParameterSource source;
+    uint8_t reserved0[3];
+    uint32_t learnedFlowMlPerMin;
+    uint16_t lowFlowPermille;
+    uint16_t highFlowPermille;
+    uint16_t flowFaultConfirmSec;
+    FlowFaultAction lowFlowAction;
+    FlowFaultAction highFlowAction;
+    uint16_t noPulseTimeoutSec;
+    uint32_t updatedAt;
+};
+
+struct FlowMeterConfig {
+    uint8_t flowId;
+    uint8_t pulsePin;
+    bool enabled;
+    bool hasPendingCalibration;
+    bool hasRollbackCalibration;
+    uint8_t reserved0[3];
+    FlowMeterCalibrationProfile activeCalibration;
+    FlowMeterCalibrationProfile pendingCalibration;
+    FlowMeterCalibrationProfile rollbackCalibration;
 };
 
 struct ZoneConfig {
     uint8_t zoneId;
     char name[NameMaxBytes];
     uint8_t valvePin;
-    uint8_t flowPin;
+    uint8_t flowId;
     bool enabled;
-    FlowParameters flow;
-    FlowCandidateSlot candidateFlow;
-    bool previousFlowExists;
-    uint8_t reservedFlow[3];
-    FlowParameters previousFlow;
-    uint16_t startTimeoutSec;
-    uint16_t flowNoPulseTimeoutSec;
-    bool suppressError;
-    uint8_t reserved[3];
+    bool hasLearnedBaseline;
+    bool hasPendingBaseline;
+    bool hasRollbackBaseline;
+    uint8_t reserved0[2];
+    ZoneFlowBaselineProfile activeBaseline;
+    ZoneFlowBaselineProfile pendingBaseline;
+    ZoneFlowBaselineProfile rollbackBaseline;
 };
 
 struct SystemConfig {
     uint32_t maxWateringDurationSec;
     uint16_t scheduleGraceSec;
+    uint16_t queuedPlanMaxDelaySec;
     uint32_t manualDefaultDurationSec;
-    uint32_t durationPresets[6];
-    bool idleLeakDetectionEnabled;
-    uint8_t calibrationSampleTarget;
     uint16_t idleLeakWindowSec;
     uint16_t idleLeakPulseThreshold;
-    uint16_t calibrationMaxCaptureMin;
-    uint16_t calibrationDetailCaptureSec;
-    uint16_t calibrationDetailPulseLimit;
-    uint16_t flowRateWindowSec;
-    uint16_t flowChartIntervalSec;
-    uint16_t flowChartHistoryMin;
 };
 
 struct PlanDefinition {
@@ -164,11 +195,10 @@ struct PlanDefinition {
 };
 
 struct ZoneConfigSnapshot {
-    FlowParameters flow;
-    uint16_t startTimeoutSec;
-    uint16_t flowNoPulseTimeoutSec;
-    bool suppressError;
-    uint8_t reserved[1];
+    uint8_t flowId;
+    uint8_t reserved0[3];
+    FlowMeterCalibrationProfile calibration;
+    ZoneFlowBaselineProfile baseline;
 };
 
 struct ActiveTask {
@@ -183,7 +213,7 @@ struct ActiveTask {
     uint32_t startedUptimeMs;
     uint32_t startedPulseCount;
     ZoneConfigSnapshot configSnapshot;
-    uint16_t flowRateWindowSec;
+    uint16_t flowSampleWindowSec;
     uint16_t reserved;
 };
 
@@ -249,12 +279,13 @@ inline const char* taskResultName(TaskResult result) {
     switch (result) {
         case TaskResult::COMPLETED: return "completed";
         case TaskResult::USER_STOPPED: return "user_stopped";
-        case TaskResult::FLOW_START_TIMEOUT: return "flow_start_timeout";
+        case TaskResult::FLOW_LOW_STOPPED: return "flow_low_stopped";
         case TaskResult::FLOW_NO_PULSE_TIMEOUT: return "flow_no_pulse_timeout";
-        case TaskResult::LEAK_PROTECTED: return "leak_protected";
+        case TaskResult::FLOW_HIGH_STOPPED: return "flow_high_stopped";
         case TaskResult::FACTORY_RESET_PROTECTED: return "factory_reset_protected";
         case TaskResult::CONFIG_INVALID: return "config_invalid";
         case TaskResult::REJECTED: return "rejected";
+        case TaskResult::IDLE_FLOW_PROTECTED: return "idle_flow_protected";
         case TaskResult::NONE:
         default: return "none";
     }

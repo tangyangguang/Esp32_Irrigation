@@ -9,8 +9,8 @@
 
 #include "domain/BusinessEventLog.h"
 #include "domain/ValveController.h"
+#include "storage/FlowConfigStore.h"
 #include "storage/RecordStore.h"
-#include "storage/ZoneConfigStore.h"
 
 void Zone::begin(const Irrigation::ZoneConfig& config, const ZoneErrorStore::ZoneError& error, uint32_t nowMs) {
     m_config = config;
@@ -66,10 +66,10 @@ void Zone::tick(uint32_t pulseCount, uint32_t flowMlPerMin, bool flowRateReady, 
             m_runner.markRunningStarted(nowMs);
             return;
         }
-        const uint32_t startLimitMs = static_cast<uint32_t>(task.configSnapshot.startTimeoutSec) * 1000UL;
+        const uint32_t startLimitMs = static_cast<uint32_t>(task.configSnapshot.baseline.noPulseTimeoutSec) * 1000UL;
         const uint32_t effectiveStartLimitMs = startLimitMs < durationMs ? startLimitMs : durationMs;
         if (elapsedMs >= effectiveStartLimitMs) {
-            finish(Irrigation::TaskResult::FLOW_START_TIMEOUT,
+            finish(Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT,
                    Irrigation::StopSource::FLOW_MONITOR,
                    Irrigation::StopScope::ZONE,
                    pulseCount,
@@ -90,7 +90,7 @@ void Zone::tick(uint32_t pulseCount, uint32_t flowMlPerMin, bool flowRateReady, 
         }
         m_runner.updateFlowStats(flowMlPerMin, flowRateReady, nowMs);
         const uint32_t noPulseMs = nowMs - runtime.lastPulseMs;
-        if (noPulseMs >= static_cast<uint32_t>(task.configSnapshot.flowNoPulseTimeoutSec) * 1000UL) {
+        if (noPulseMs >= static_cast<uint32_t>(task.configSnapshot.baseline.noPulseTimeoutSec) * 1000UL) {
             finish(Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT,
                    Irrigation::StopSource::FLOW_MONITOR,
                    Irrigation::StopScope::ZONE,
@@ -118,7 +118,7 @@ bool Zone::start(Irrigation::TaskType type,
                  const char* planName,
                  uint32_t targetSec,
                  uint32_t maxWateringDurationSec,
-                 uint16_t flowRateWindowSec,
+                 uint16_t flowSampleWindowSec,
                  uint32_t pulseCount,
                  uint32_t epoch,
                  uint32_t nowMs) {
@@ -126,7 +126,11 @@ bool Zone::start(Irrigation::TaskType type,
     if (m_state != Irrigation::ZoneState::IDLE || !m_config.enabled || targetSec < 1 || targetSec > maxWateringDurationSec) {
         return false;
     }
-    if (!m_runner.start(type, source, planId, planSlot, planName, targetSec, pulseCount, epoch, nowMs, flowRateWindowSec, m_config)) {
+    const Irrigation::FlowMeterConfig& flowConfig = FlowConfigStore::get(m_config.flowId);
+    if (!flowConfig.enabled) {
+        return false;
+    }
+    if (!m_runner.start(type, source, planId, planSlot, planName, targetSec, pulseCount, epoch, nowMs, flowSampleWindowSec, m_config, flowConfig)) {
         return false;
     }
     if (!ValveController::setRoad(m_config.zoneId, true, "zone start")) {
@@ -149,16 +153,16 @@ bool Zone::stop(Irrigation::StopSource source, Irrigation::StopScope scope, Irri
 
 bool Zone::markLeak(uint32_t pulseCount, uint32_t epoch, uint32_t nowMs) {
     if (m_runner.active()) {
-        finish(Irrigation::TaskResult::LEAK_PROTECTED,
+        finish(Irrigation::TaskResult::IDLE_FLOW_PROTECTED,
                Irrigation::StopSource::LEAK_MONITOR,
                Irrigation::StopScope::ALL,
                pulseCount,
                epoch,
                nowMs);
     }
-    persistError(Irrigation::ZoneErrorCode::LEAK_DETECTED,
+    persistError(Irrigation::ZoneErrorCode::IDLE_FLOW_DETECTED,
                  Irrigation::StopSource::LEAK_MONITOR,
-                 Irrigation::TaskResult::LEAK_PROTECTED);
+                 Irrigation::TaskResult::IDLE_FLOW_PROTECTED);
     m_error = ZoneErrorStore::get(m_config.zoneId);
     refreshStateFromConfigAndError();
     return true;
@@ -191,8 +195,9 @@ void Zone::finish(Irrigation::TaskResult result, Irrigation::StopSource source, 
     record.endedUptimeMs = nowMs;
     record.startedPulseCount = task.startedPulseCount;
     record.endedPulseCount = finished.endedPulseCount;
-    record.estimatedMilliliters = ZoneConfigStore::estimateMilliliters(task.configSnapshot, pulses);
-    record.flowRateWindowSec = task.flowRateWindowSec;
+    const uint32_t durationMs = finished.endedUptimeMs >= task.startedUptimeMs ? finished.endedUptimeMs - task.startedUptimeMs : 0;
+    record.estimatedMilliliters = FlowConfigStore::estimateMilliliters(task.configSnapshot.calibration, pulses, durationMs);
+    record.flowSampleWindowSec = task.flowSampleWindowSec;
     record.flowStatsValid = m_runner.runtime().flowStatsValid;
     record.maxFlowMlPerMin = m_runner.runtime().maxFlowMlPerMin;
     record.maxFlowFirstAtSec = m_runner.runtime().maxFlowFirstAtSec;
@@ -203,17 +208,22 @@ void Zone::finish(Irrigation::TaskResult result, Irrigation::StopSource source, 
         BusinessEventLog::appendRecordAppendFailed(m_config.zoneId, task.planId, result);
     }
 
-    const bool error = result == Irrigation::TaskResult::FLOW_START_TIMEOUT || result == Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT;
+    const bool error = result == Irrigation::TaskResult::FLOW_LOW_STOPPED ||
+                       result == Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT ||
+                       result == Irrigation::TaskResult::FLOW_HIGH_STOPPED;
     if (error) {
-        BusinessEventLog::appendFlowFault(m_config.zoneId, result, task.targetSec, pulses, !task.configSnapshot.suppressError);
-    } else if (result == Irrigation::TaskResult::LEAK_PROTECTED || result == Irrigation::TaskResult::FACTORY_RESET_PROTECTED) {
+        BusinessEventLog::appendFlowFault(m_config.zoneId, result, task.targetSec, pulses, true);
+    } else if (result == Irrigation::TaskResult::IDLE_FLOW_PROTECTED || result == Irrigation::TaskResult::FACTORY_RESET_PROTECTED) {
         BusinessEventLog::appendSafetyStop(m_config.zoneId, result, BusinessEventLog::sourceFromStop(source));
     }
-    if (result == Irrigation::TaskResult::FLOW_START_TIMEOUT && !task.configSnapshot.suppressError) {
-        persistError(Irrigation::ZoneErrorCode::FLOW_START_TIMEOUT, source, result);
-        m_error = ZoneErrorStore::get(m_config.zoneId);
-    } else if (result == Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT && !task.configSnapshot.suppressError) {
+    if (result == Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT) {
         persistError(Irrigation::ZoneErrorCode::FLOW_NO_PULSE_TIMEOUT, source, result);
+        m_error = ZoneErrorStore::get(m_config.zoneId);
+    } else if (result == Irrigation::TaskResult::FLOW_LOW_STOPPED) {
+        persistError(Irrigation::ZoneErrorCode::FLOW_LOW, source, result);
+        m_error = ZoneErrorStore::get(m_config.zoneId);
+    } else if (result == Irrigation::TaskResult::FLOW_HIGH_STOPPED) {
+        persistError(Irrigation::ZoneErrorCode::FLOW_HIGH, source, result);
         m_error = ZoneErrorStore::get(m_config.zoneId);
     }
     refreshStateFromConfigAndError();
@@ -267,7 +277,7 @@ Irrigation::ZoneStatus Zone::status(uint32_t pulseCount, uint32_t flowRatePerMin
     status.busy = isBusy();
     status.errorActive = m_error.active;
     status.errorCode = m_error.errorCode;
-    status.leakAlert = m_error.active && m_error.errorCode == Irrigation::ZoneErrorCode::LEAK_DETECTED;
+    status.leakAlert = m_error.active && m_error.errorCode == Irrigation::ZoneErrorCode::IDLE_FLOW_DETECTED;
     status.flowRatePerMinuteX1000 = flowRatePerMinuteX1000;
     status.flowMlPerMin = flowMlPerMin;
     status.flowRateReady = flowRateReady;
@@ -279,7 +289,8 @@ Irrigation::ZoneStatus Zone::status(uint32_t pulseCount, uint32_t flowRatePerMin
         status.elapsedSec = m_runner.elapsedMs(nowMs) / 1000UL;
         status.remainingSec = status.elapsedSec < task.targetSec ? task.targetSec - status.elapsedSec : 0;
         status.pulses = pulseCount >= task.startedPulseCount ? pulseCount - task.startedPulseCount : 0;
-        status.estimatedMilliliters = ZoneConfigStore::estimateMilliliters(task.configSnapshot, status.pulses);
+        const uint32_t durationMs = m_runner.elapsedMs(nowMs);
+        status.estimatedMilliliters = FlowConfigStore::estimateMilliliters(task.configSnapshot.calibration, status.pulses, durationMs);
     }
     return status;
 }

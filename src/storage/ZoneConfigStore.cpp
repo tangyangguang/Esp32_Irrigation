@@ -8,9 +8,9 @@
 
 namespace {
 
-static constexpr const char* kNamespace = "irr_zone";
-static constexpr uint32_t kMagic = 0x495A4346UL;
-static constexpr uint16_t kVersion = 3;
+static constexpr const char* kNamespace = "irr_zone_v1";
+static constexpr uint32_t kMagic = 0x495A4F4EUL;
+static constexpr uint16_t kVersion = 1;
 
 struct StoredZoneConfig {
     uint32_t magic;
@@ -18,6 +18,9 @@ struct StoredZoneConfig {
     uint16_t size;
     Irrigation::ZoneConfig data;
 };
+
+static_assert(sizeof(StoredZoneConfig) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN,
+              "StoredZoneConfig must fit Esp32BaseConfig blob storage");
 
 Irrigation::ZoneConfig g_configs[Irrigation::MaxZones] = {};
 Irrigation::ZoneConfig g_invalid = {};
@@ -30,15 +33,6 @@ static constexpr uint8_t kValvePins[] = {
     IrrigationPins::Valve4,
     IrrigationPins::Valve5,
     IrrigationPins::Valve6,
-};
-
-static constexpr uint8_t kFlowPins[] = {
-    IrrigationPins::Flow1,
-    IrrigationPins::Flow1,
-    IrrigationPins::Flow1,
-    IrrigationPins::Flow1,
-    IrrigationPins::Flow1,
-    IrrigationPins::Flow1,
 };
 
 static constexpr const char* kDefaultNames[] = {
@@ -90,19 +84,29 @@ bool validUtf8NoControl(const char* text, size_t maxLen) {
     return i > 0 && i < maxLen && s[i] == 0;
 }
 
+Irrigation::ZoneFlowBaselineProfile normalizedBaseline(Irrigation::ZoneFlowBaselineProfile profile) {
+    if (profile.source == Irrigation::ParameterSource::NONE) {
+        profile.source = Irrigation::ParameterSource::MANUAL;
+    }
+    if (profile.lowFlowAction != Irrigation::FlowFaultAction::RECORD_ONLY &&
+        profile.lowFlowAction != Irrigation::FlowFaultAction::STOP_ZONE) {
+        profile.lowFlowAction = Irrigation::FlowFaultAction::STOP_ZONE;
+    }
+    if (profile.highFlowAction != Irrigation::FlowFaultAction::RECORD_ONLY &&
+        profile.highFlowAction != Irrigation::FlowFaultAction::STOP_ZONE) {
+        profile.highFlowAction = Irrigation::FlowFaultAction::STOP_ZONE;
+    }
+    return profile;
+}
+
 Irrigation::ZoneConfig defaultConfig(uint8_t zoneId) {
     Irrigation::ZoneConfig config = {};
     config.zoneId = zoneId;
     strlcpy(config.name, kDefaultNames[zoneId - 1], sizeof(config.name));
     config.valvePin = kValvePins[zoneId - 1];
-    config.flowPin = kFlowPins[zoneId - 1];
+    config.flowId = 1;
     config.enabled = zoneId <= 2;
-    config.flow.startupPulseLimit = 0;
-    config.flow.startupEstimatedMl = 0;
-    config.flow.stablePulsePerLiter = 450;
-    config.startTimeoutSec = 30;
-    config.flowNoPulseTimeoutSec = 10;
-    config.suppressError = true;
+    config.activeBaseline = ZoneConfigStore::defaultBaseline();
     return config;
 }
 
@@ -125,6 +129,19 @@ bool validStored(const StoredZoneConfig& stored) {
 }
 
 namespace ZoneConfigStore {
+
+Irrigation::ZoneFlowBaselineProfile defaultBaseline() {
+    Irrigation::ZoneFlowBaselineProfile profile = {};
+    profile.source = Irrigation::ParameterSource::MANUAL;
+    profile.learnedFlowMlPerMin = 0;
+    profile.lowFlowPermille = 100;
+    profile.highFlowPermille = 3000;
+    profile.flowFaultConfirmSec = 15;
+    profile.lowFlowAction = Irrigation::FlowFaultAction::STOP_ZONE;
+    profile.highFlowAction = Irrigation::FlowFaultAction::STOP_ZONE;
+    profile.noPulseTimeoutSec = 10;
+    return profile;
+}
 
 void begin() {
     uint16_t invalidCount = 0;
@@ -170,35 +187,17 @@ bool validateName(const char* name) {
     return validUtf8NoControl(name, Irrigation::NameMaxBytes);
 }
 
-Irrigation::FlowParameters normalizeFlowParameters(Irrigation::FlowParameters params) {
-    if (params.startupPulseLimit == 0) {
-        params.startupEstimatedMl = 0;
-    }
-    return params;
-}
-
-bool validateFlowParameters(const Irrigation::FlowParameters& raw) {
-    const Irrigation::FlowParameters params = normalizeFlowParameters(raw);
-    return params.startupPulseLimit <= 10000 &&
-           params.startupEstimatedMl <= 10000 &&
-           params.stablePulsePerLiter >= 1 &&
-           params.stablePulsePerLiter <= 10000;
-}
-
-bool flowParametersEqual(const Irrigation::FlowParameters& a, const Irrigation::FlowParameters& b) {
-    const Irrigation::FlowParameters left = normalizeFlowParameters(a);
-    const Irrigation::FlowParameters right = normalizeFlowParameters(b);
-    return left.startupPulseLimit == right.startupPulseLimit &&
-           left.startupEstimatedMl == right.startupEstimatedMl &&
-           left.stablePulsePerLiter == right.stablePulsePerLiter;
-}
-
-bool validateCandidate(uint8_t zoneId, const Irrigation::FlowCandidateSlot& slot) {
-    (void)zoneId;
-    if (!slot.exists) {
-        return true;
-    }
-    return validateFlowParameters(slot.params);
+bool validateBaseline(const Irrigation::ZoneFlowBaselineProfile& raw) {
+    const Irrigation::ZoneFlowBaselineProfile profile = normalizedBaseline(raw);
+    const uint8_t source = static_cast<uint8_t>(profile.source);
+    return source <= static_cast<uint8_t>(Irrigation::ParameterSource::LEARNED) &&
+           profile.learnedFlowMlPerMin <= 1000000UL &&
+           profile.lowFlowPermille <= profile.highFlowPermille &&
+           profile.highFlowPermille <= 10000 &&
+           profile.flowFaultConfirmSec >= 1 &&
+           profile.flowFaultConfirmSec <= 300 &&
+           profile.noPulseTimeoutSec >= 1 &&
+           profile.noPulseTimeoutSec <= 300;
 }
 
 bool validate(const Irrigation::ZoneConfig& config) {
@@ -206,33 +205,30 @@ bool validate(const Irrigation::ZoneConfig& config) {
     if (!Irrigation::zoneIndex(config.zoneId, &index)) {
         return false;
     }
-    if (config.valvePin != kValvePins[index] || config.flowPin != kFlowPins[index]) {
+    if (config.valvePin != kValvePins[index]) {
         return false;
     }
     return validateName(config.name) &&
-           validateFlowParameters(config.flow) &&
-           validateCandidate(config.zoneId, config.candidateFlow) &&
-           (!config.previousFlowExists || validateFlowParameters(config.previousFlow)) &&
-           config.startTimeoutSec >= 1 &&
-           config.startTimeoutSec <= 300 &&
-           config.flowNoPulseTimeoutSec >= 1 &&
-           config.flowNoPulseTimeoutSec <= 300;
+           config.flowId >= 1 &&
+           config.flowId <= Irrigation::MaxFlowMeters &&
+           validateBaseline(config.activeBaseline) &&
+           (!config.hasPendingBaseline || validateBaseline(config.pendingBaseline)) &&
+           (!config.hasRollbackBaseline || validateBaseline(config.rollbackBaseline));
 }
 
 bool set(uint8_t zoneId, const Irrigation::ZoneConfig& config) {
     uint8_t index = 0;
     Irrigation::ZoneConfig normalized = config;
-    normalized.flow = normalizeFlowParameters(normalized.flow);
-    if (normalized.candidateFlow.exists) {
-        normalized.candidateFlow.params = normalizeFlowParameters(normalized.candidateFlow.params);
-        memset(normalized.candidateFlow.reserved, 0, sizeof(normalized.candidateFlow.reserved));
+    normalized.activeBaseline = normalizedBaseline(normalized.activeBaseline);
+    if (normalized.hasPendingBaseline) {
+        normalized.pendingBaseline = normalizedBaseline(normalized.pendingBaseline);
     } else {
-        normalized.candidateFlow = {};
+        normalized.pendingBaseline = {};
     }
-    if (normalized.previousFlowExists) {
-        normalized.previousFlow = normalizeFlowParameters(normalized.previousFlow);
+    if (normalized.hasRollbackBaseline) {
+        normalized.rollbackBaseline = normalizedBaseline(normalized.rollbackBaseline);
     } else {
-        normalized.previousFlow = {};
+        normalized.rollbackBaseline = {};
     }
     if (!Irrigation::zoneIndex(zoneId, &index) || zoneId != normalized.zoneId || !validate(normalized)) {
         return false;
@@ -245,85 +241,6 @@ bool set(uint8_t zoneId, const Irrigation::ZoneConfig& config) {
     }
     g_configs[index] = normalized;
     return true;
-}
-
-bool saveCandidate(uint8_t zoneId, Irrigation::FlowParameters params) {
-    if (!Irrigation::validZoneId(zoneId)) {
-        return false;
-    }
-    Irrigation::ZoneConfig config = get(zoneId);
-    config.candidateFlow.exists = true;
-    memset(config.candidateFlow.reserved, 0, sizeof(config.candidateFlow.reserved));
-    config.candidateFlow.params = normalizeFlowParameters(params);
-    return set(zoneId, config);
-}
-
-bool applyCandidate(uint8_t zoneId, Irrigation::FlowParameters* oldParams, Irrigation::FlowParameters* newParams) {
-    if (!Irrigation::validZoneId(zoneId)) {
-        return false;
-    }
-    Irrigation::ZoneConfig config = get(zoneId);
-    if (!config.candidateFlow.exists || flowParametersEqual(config.flow, config.candidateFlow.params)) {
-        return false;
-    }
-    const Irrigation::FlowParameters oldFlow = normalizeFlowParameters(config.flow);
-    const Irrigation::FlowParameters newFlow = normalizeFlowParameters(config.candidateFlow.params);
-    config.previousFlowExists = true;
-    config.previousFlow = oldFlow;
-    config.flow = newFlow;
-    if (!set(zoneId, config)) {
-        return false;
-    }
-    if (oldParams) {
-        *oldParams = oldFlow;
-    }
-    if (newParams) {
-        *newParams = newFlow;
-    }
-    return true;
-}
-
-bool restorePrevious(uint8_t zoneId, Irrigation::FlowParameters* oldParams, Irrigation::FlowParameters* newParams) {
-    if (!Irrigation::validZoneId(zoneId)) {
-        return false;
-    }
-    Irrigation::ZoneConfig config = get(zoneId);
-    if (!config.previousFlowExists || flowParametersEqual(config.flow, config.previousFlow)) {
-        return false;
-    }
-    const Irrigation::FlowParameters oldFlow = normalizeFlowParameters(config.flow);
-    const Irrigation::FlowParameters restored = normalizeFlowParameters(config.previousFlow);
-    config.flow = restored;
-    config.previousFlow = oldFlow;
-    if (!set(zoneId, config)) {
-        return false;
-    }
-    if (oldParams) {
-        *oldParams = oldFlow;
-    }
-    if (newParams) {
-        *newParams = restored;
-    }
-    return true;
-}
-
-uint32_t estimateMilliliters(const Irrigation::FlowParameters& raw, uint32_t pulses) {
-    const Irrigation::FlowParameters params = normalizeFlowParameters(raw);
-    if (params.stablePulsePerLiter == 0) {
-        return 0;
-    }
-    if (params.startupPulseLimit == 0) {
-        return static_cast<uint32_t>((static_cast<uint64_t>(pulses) * 1000ULL) / params.stablePulsePerLiter);
-    }
-    const uint32_t startupPulses = pulses < params.startupPulseLimit ? pulses : params.startupPulseLimit;
-    const uint32_t stablePulses = pulses > params.startupPulseLimit ? pulses - params.startupPulseLimit : 0;
-    const uint64_t startupMl = (static_cast<uint64_t>(startupPulses) * params.startupEstimatedMl) / params.startupPulseLimit;
-    const uint64_t stableMl = (static_cast<uint64_t>(stablePulses) * 1000ULL) / params.stablePulsePerLiter;
-    return static_cast<uint32_t>(startupMl + stableMl);
-}
-
-uint32_t estimateMilliliters(const Irrigation::ZoneConfigSnapshot& snapshot, uint32_t pulses) {
-    return estimateMilliliters(snapshot.flow, pulses);
 }
 
 bool schemaResetDetected() {

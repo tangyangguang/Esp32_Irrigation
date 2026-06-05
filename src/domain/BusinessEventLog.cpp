@@ -80,17 +80,14 @@ const char* reasonForSkip(Irrigation::SkipReason reason) {
 
 const char* reasonForZoneError(Irrigation::ZoneErrorCode code) {
     switch (code) {
-        case Irrigation::ZoneErrorCode::FLOW_START_TIMEOUT: return "flow_start_timeout";
+        case Irrigation::ZoneErrorCode::FLOW_LOW: return "flow_low";
         case Irrigation::ZoneErrorCode::FLOW_NO_PULSE_TIMEOUT: return "flow_no_pulse_timeout";
-        case Irrigation::ZoneErrorCode::LEAK_DETECTED: return "leak_detected";
+        case Irrigation::ZoneErrorCode::FLOW_HIGH: return "flow_high";
         case Irrigation::ZoneErrorCode::CONFIG_INVALID: return "config_invalid";
+        case Irrigation::ZoneErrorCode::IDLE_FLOW_DETECTED: return "idle_flow_detected";
         case Irrigation::ZoneErrorCode::NONE:
         default: return "none";
     }
-}
-
-int32_t packU16(uint16_t high, uint16_t low) {
-    return static_cast<int32_t>((static_cast<uint32_t>(high) << 16) | static_cast<uint32_t>(low));
 }
 
 }
@@ -377,42 +374,42 @@ void appendFactoryResetExecuted(bool ok, const char* source) {
                       "factory reset executed");
 }
 
-void appendFlowCandidateApplied(uint8_t zoneId,
-                                const Irrigation::FlowParameters& oldParams,
-                                const Irrigation::FlowParameters& newParams,
-                                const char* source) {
+void appendFlowCalibrationApplied(uint8_t flowId,
+                                  const Irrigation::FlowMeterCalibrationProfile& oldProfile,
+                                  const Irrigation::FlowMeterCalibrationProfile& newProfile,
+                                  const char* source) {
     char object[16];
-    zoneObject(zoneId, object, sizeof(object));
+    snprintf(object, sizeof(object), "flow:%u", static_cast<unsigned>(flowId));
     (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
                       source && source[0] ? source : "web",
-                      "flow_params_applied",
-                      "candidate",
+                      "flow_calibration_applied",
+                      "pending",
                       object,
                       0,
-                      packU16(oldParams.startupPulseLimit, oldParams.startupEstimatedMl),
-                      packU16(newParams.startupPulseLimit, newParams.startupEstimatedMl),
-                      packU16(oldParams.stablePulsePerLiter, newParams.stablePulsePerLiter),
+                      oldProfile.kUlPerMinPerHz,
+                      newProfile.kUlPerMinPerHz,
+                      newProfile.offsetMilliHz,
                       Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
-                      "candidate applied");
+                      "flow calibration applied");
 }
 
-void appendFlowPreviousRestored(uint8_t zoneId,
-                                const Irrigation::FlowParameters& oldParams,
-                                const Irrigation::FlowParameters& newParams,
-                                const char* source) {
+void appendFlowCalibrationRestored(uint8_t flowId,
+                                   const Irrigation::FlowMeterCalibrationProfile& oldProfile,
+                                   const Irrigation::FlowMeterCalibrationProfile& newProfile,
+                                   const char* source) {
     char object[16];
-    zoneObject(zoneId, object, sizeof(object));
+    snprintf(object, sizeof(object), "flow:%u", static_cast<unsigned>(flowId));
     (void)appendEvent(Esp32BaseAppEventLog::LEVEL_INFO,
                       source && source[0] ? source : "web",
-                      "flow_params_restored",
-                      "previous",
+                      "flow_calibration_restored",
+                      "rollback",
                       object,
                       0,
-                      packU16(oldParams.startupPulseLimit, oldParams.startupEstimatedMl),
-                      packU16(newParams.startupPulseLimit, newParams.startupEstimatedMl),
-                      packU16(oldParams.stablePulsePerLiter, newParams.stablePulsePerLiter),
+                      oldProfile.kUlPerMinPerHz,
+                      newProfile.kUlPerMinPerHz,
+                      newProfile.offsetMilliHz,
                       Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3,
-                      "previous restored");
+                      "flow calibration restored");
 }
 
 }

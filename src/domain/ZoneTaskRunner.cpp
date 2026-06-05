@@ -17,8 +17,9 @@ bool ZoneTaskRunner::start(Irrigation::TaskType type,
                            uint32_t pulseCount,
                            uint32_t epoch,
                            uint32_t nowMs,
-                           uint16_t flowRateWindowSec,
-                           const Irrigation::ZoneConfig& config) {
+                           uint16_t flowSampleWindowSec,
+                           const Irrigation::ZoneConfig& config,
+                           const Irrigation::FlowMeterConfig& flowConfig) {
     if (m_task.active || targetSec == 0) {
         return false;
     }
@@ -35,13 +36,10 @@ bool ZoneTaskRunner::start(Irrigation::TaskType type,
     m_task.startedEpoch = epoch;
     m_task.startedUptimeMs = nowMs;
     m_task.startedPulseCount = pulseCount;
-    m_task.flowRateWindowSec = flowRateWindowSec;
-    m_task.configSnapshot.flow.startupPulseLimit = config.flow.startupPulseLimit;
-    m_task.configSnapshot.flow.startupEstimatedMl = config.flow.startupEstimatedMl;
-    m_task.configSnapshot.flow.stablePulsePerLiter = config.flow.stablePulsePerLiter;
-    m_task.configSnapshot.startTimeoutSec = config.startTimeoutSec;
-    m_task.configSnapshot.flowNoPulseTimeoutSec = config.flowNoPulseTimeoutSec;
-    m_task.configSnapshot.suppressError = config.suppressError;
+    m_task.flowSampleWindowSec = flowSampleWindowSec;
+    m_task.configSnapshot.flowId = config.flowId;
+    m_task.configSnapshot.calibration = flowConfig.activeCalibration;
+    m_task.configSnapshot.baseline = config.activeBaseline;
     m_runtime.lastPulseCount = pulseCount;
     m_runtime.lastPulseMs = nowMs;
     m_runtime.firstPulseSeen = false;
@@ -82,7 +80,7 @@ void ZoneTaskRunner::updateFlowStats(uint32_t flowMlPerMin, bool flowRateReady, 
     if (!m_task.active || m_runtime.runningStartedMs == 0 || !flowRateReady) {
         return;
     }
-    const uint32_t windowMs = static_cast<uint32_t>(m_task.flowRateWindowSec) * 1000UL;
+    const uint32_t windowMs = static_cast<uint32_t>(m_task.flowSampleWindowSec) * 1000UL;
     if (nowMs - m_runtime.runningStartedMs < windowMs) {
         return;
     }

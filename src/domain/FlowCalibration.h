@@ -31,7 +31,7 @@ struct Sample {
     uint16_t* windowPulses;
     uint16_t windowPulseCount;
     uint32_t stableStartMs;
-    uint16_t startupPulseInSample;
+    uint16_t analysisPulseCount;
     uint32_t stableRatePerMinuteX1000;
     uint16_t rateVariationPermille;
     char invalidReason[24];
@@ -47,10 +47,10 @@ struct SampleError {
 
 struct Recommendation {
     bool valid;
-    uint8_t zoneId;
+    uint8_t flowId;
     uint8_t sampleCount;
     uint8_t stableDetectedCount;
-    Irrigation::FlowParameters flow;
+    Irrigation::FlowMeterCalibrationProfile calibration;
     uint16_t volumeSpanPermille;
     uint16_t pulseSpanPermille;
     uint16_t averageErrorPermille;

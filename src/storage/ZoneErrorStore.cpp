@@ -53,7 +53,7 @@ bool persist() {
 
 bool hasLeakErrors() {
     for (uint8_t i = 0; i < Irrigation::MaxZones; ++i) {
-        if (g_state.zones[i].active && g_state.zones[i].errorCode == Irrigation::ZoneErrorCode::LEAK_DETECTED) {
+        if (g_state.zones[i].active && g_state.zones[i].errorCode == Irrigation::ZoneErrorCode::IDLE_FLOW_DETECTED) {
             return true;
         }
     }
@@ -105,7 +105,7 @@ bool setError(uint8_t zoneId, Irrigation::ZoneErrorCode code, Irrigation::StopSo
     error.occurredUptimeMs = millis();
     error.source = source;
     error.result = result;
-    if (code == Irrigation::ZoneErrorCode::LEAK_DETECTED) {
+    if (code == Irrigation::ZoneErrorCode::IDLE_FLOW_DETECTED) {
         g_state.leakAlertActive = true;
     }
     return persist();

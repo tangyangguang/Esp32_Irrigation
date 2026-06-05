@@ -8,14 +8,14 @@
 
 namespace {
 
-static constexpr const char* kPath = "/irr_records.bin";
-static constexpr const char* kNamespace = "irr_rec";
+static constexpr const char* kPath = "/irr/records_v1.bin";
+static constexpr const char* kNamespace = "irr_rec_v1";
 static constexpr const char* kKeyInitialized = "init";
 static constexpr const char* kKeyMeta = "meta";
 static constexpr uint32_t kMagic = 0x49525245UL;
 static constexpr uint32_t kCommitMagic = 0x4952434DUL;
 static constexpr uint32_t kMetaMagic = 0x4952524DUL;
-static constexpr uint16_t kVersion = 5;
+static constexpr uint16_t kVersion = 1;
 static constexpr uint16_t kMetaVersion = 1;
 
 struct StoreMeta {

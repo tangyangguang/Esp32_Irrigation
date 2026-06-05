@@ -20,7 +20,7 @@ public:
                const char* planName,
                uint32_t targetSec,
                uint32_t maxWateringDurationSec,
-               uint16_t flowRateWindowSec,
+               uint16_t flowSampleWindowSec,
                uint32_t pulseCount,
                uint32_t epoch,
                uint32_t nowMs);
@@ -40,8 +40,6 @@ private:
     void refreshStateFromConfigAndError();
     void finish(Irrigation::TaskResult result, Irrigation::StopSource source, Irrigation::StopScope scope, uint32_t pulseCount, uint32_t epoch, uint32_t nowMs);
     void persistError(Irrigation::ZoneErrorCode code, Irrigation::StopSource source, Irrigation::TaskResult result);
-    uint32_t estimateMl(uint32_t pulses) const;
-
     Irrigation::ZoneConfig m_config = {};
     Irrigation::ZoneState m_state = Irrigation::ZoneState::DISABLED;
     ZoneTaskRunner m_runner;

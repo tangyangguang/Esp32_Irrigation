@@ -23,10 +23,11 @@ uint32_t g_lastSamplePulses[Irrigation::MaxFlowMeters] = {};
 uint32_t g_ratePerMinuteX1000[Irrigation::MaxFlowMeters] = {};
 uint32_t g_flowMlPerMin[Irrigation::MaxFlowMeters] = {};
 bool g_flowReady[Irrigation::MaxFlowMeters] = {};
-uint16_t g_stablePulsePerLiter[Irrigation::MaxFlowMeters] = {450, 450};
-uint16_t g_flowRateWindowSec = 5;
-uint16_t g_flowChartIntervalSec = 5;
-uint16_t g_flowChartHistoryMin = 10;
+int32_t g_kUlPerMinPerHz[Irrigation::MaxFlowMeters] = {244897, 244897};
+int32_t g_offsetMilliHz[Irrigation::MaxFlowMeters] = {0, 0};
+uint16_t g_sampleWindowSec = 5;
+uint16_t g_historyIntervalSec = 5;
+uint16_t g_historyDepthMin = 10;
 uint16_t g_flowHistoryLimit = 120;
 uint32_t g_lastHistoryMs = 0;
 uint32_t g_deltaHistory[Irrigation::MaxFlowMeters][kMaxFlowWindowSec] = {};
@@ -162,7 +163,7 @@ void sampleRoad(uint8_t index, uint32_t delta, uint32_t elapsedMs) {
         ++g_deltaHistoryFilled[index];
     }
 
-    const uint32_t targetMs = static_cast<uint32_t>(g_flowRateWindowSec) * 1000UL;
+    const uint32_t targetMs = static_cast<uint32_t>(g_sampleWindowSec) * 1000UL;
     uint32_t sumPulses = 0;
     uint32_t sumMs = 0;
     for (uint8_t n = 0; n < g_deltaHistoryFilled[index] && sumMs < targetMs; ++n) {
@@ -178,8 +179,16 @@ void sampleRoad(uint8_t index, uint32_t delta, uint32_t elapsedMs) {
     }
     g_ratePerMinuteX1000[index] = static_cast<uint32_t>((static_cast<uint64_t>(sumPulses) * 60000ULL * 1000ULL) / sumMs);
     g_flowReady[index] = sumMs >= targetMs;
-    const uint16_t stable = g_stablePulsePerLiter[index] == 0 ? 1 : g_stablePulsePerLiter[index];
-    g_flowMlPerMin[index] = static_cast<uint32_t>((static_cast<uint64_t>(sumPulses) * 60000ULL * 1000ULL) / (sumMs * stable));
+    const int64_t measuredMilliHz = (static_cast<int64_t>(sumPulses) * 1000000LL) / sumMs;
+    const int64_t correctedMilliHz = measuredMilliHz + g_offsetMilliHz[index];
+    if (correctedMilliHz <= 0 || g_kUlPerMinPerHz[index] <= 0) {
+        g_flowMlPerMin[index] = 0;
+    } else {
+        const uint64_t flowUlPerMin = (static_cast<uint64_t>(correctedMilliHz) *
+                                       static_cast<uint64_t>(g_kUlPerMinPerHz[index])) /
+                                      1000ULL;
+        g_flowMlPerMin[index] = static_cast<uint32_t>(flowUlPerMin / 1000ULL);
+    }
 }
 
 }
@@ -213,7 +222,7 @@ void handle() {
         g_lastSamplePulses[i] = pulses;
     }
     g_lastSampleMs = now;
-    if (now - g_lastHistoryMs >= static_cast<uint32_t>(g_flowChartIntervalSec) * 1000UL) {
+    if (now - g_lastHistoryMs >= static_cast<uint32_t>(g_historyIntervalSec) * 1000UL) {
         for (uint8_t i = 0; i < Irrigation::MaxFlowMeters; ++i) {
             pushHistoryPoint(i, g_flowMlPerMin[i]);
         }
@@ -226,29 +235,30 @@ void configureFlowRate(uint16_t windowSec, uint16_t chartIntervalSec, uint16_t c
     chartIntervalSec = clampChartIntervalSec(chartIntervalSec);
     chartHistoryMin = clampChartHistoryMin(chartHistoryMin);
     const uint16_t limit = computeHistoryLimit(chartIntervalSec, chartHistoryMin);
-    if (windowSec == g_flowRateWindowSec &&
-        chartIntervalSec == g_flowChartIntervalSec &&
-        chartHistoryMin == g_flowChartHistoryMin &&
+    if (windowSec == g_sampleWindowSec &&
+        chartIntervalSec == g_historyIntervalSec &&
+        chartHistoryMin == g_historyDepthMin &&
         limit == g_flowHistoryLimit) {
         return;
     }
-    g_flowRateWindowSec = windowSec;
-    g_flowChartIntervalSec = chartIntervalSec;
-    g_flowChartHistoryMin = chartHistoryMin;
+    g_sampleWindowSec = windowSec;
+    g_historyIntervalSec = chartIntervalSec;
+    g_historyDepthMin = chartHistoryMin;
     g_flowHistoryLimit = limit;
     clearAllFlowHistory();
     g_lastHistoryMs = millis();
 }
 
-void setStablePulsePerLiter(uint8_t road, uint16_t stablePulsePerLiter) {
+void configureCalibration(uint8_t flowId, int32_t kUlPerMinPerHz, int32_t offsetMilliHz) {
     uint8_t index = 0;
-    if (!roadIndex(road, &index) || stablePulsePerLiter == 0) {
+    if (!roadIndex(flowId, &index) || kUlPerMinPerHz <= 0) {
         return;
     }
-    if (g_stablePulsePerLiter[index] == stablePulsePerLiter) {
+    if (g_kUlPerMinPerHz[index] == kUlPerMinPerHz && g_offsetMilliHz[index] == offsetMilliHz) {
         return;
     }
-    g_stablePulsePerLiter[index] = stablePulsePerLiter;
+    g_kUlPerMinPerHz[index] = kUlPerMinPerHz;
+    g_offsetMilliHz[index] = offsetMilliHz;
     clearRoadFlowHistory(index);
 }
 
@@ -287,16 +297,16 @@ bool flowRateReady(uint8_t road) {
     return g_flowReady[index];
 }
 
-uint16_t flowRateWindowSec() {
-    return g_flowRateWindowSec;
+uint16_t sampleWindowSec() {
+    return g_sampleWindowSec;
 }
 
-uint16_t flowChartIntervalSec() {
-    return g_flowChartIntervalSec;
+uint16_t historyIntervalSec() {
+    return g_historyIntervalSec;
 }
 
-uint16_t flowChartHistoryMin() {
-    return g_flowChartHistoryMin;
+uint16_t historyDepthMin() {
+    return g_historyDepthMin;
 }
 
 uint16_t readFlowHistory(uint8_t road, uint16_t* out, uint16_t capacity) {

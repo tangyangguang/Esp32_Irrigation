@@ -5,43 +5,16 @@
 
 namespace {
 
-static constexpr const char* kNamespace = "irr_sys";
-static constexpr const char* kKeyBlob = "system";
-static constexpr uint32_t kBlobMagic = 0x49535953UL;
-static constexpr uint16_t kBlobVersion = 1;
+static constexpr const char* kNamespace = "irr_sys_v1";
 static constexpr const char* kGroupManual = "manual";
 static constexpr const char* kGroupSchedule = "schedule";
 static constexpr const char* kGroupSafety = "safety";
-static constexpr const char* kGroupCalibration = "calibration";
-static constexpr const char* kGroupFlowRate = "flow_rate";
 static constexpr const char* kKeyMaxDurationMin = "max_dur_min";
 static constexpr const char* kKeyGrace = "grace";
+static constexpr const char* kKeyQueuedPlanMaxDelaySec = "queue_max_s";
 static constexpr const char* kKeyManualDefaultMin = "manual_def_min";
-static constexpr const char* kKeyLeakEnabled = "leak_enabled";
 static constexpr const char* kKeyLeakWindow = "leak_win";
 static constexpr const char* kKeyLeakPulse = "leak_pulse";
-static constexpr const char* kKeyCalibrationSampleTarget = "cal_samp";
-static constexpr const char* kKeyCalibrationMaxCaptureMin = "cal_max_min";
-static constexpr const char* kKeyCalibrationDetailCaptureSec = "cal_detail_s";
-static constexpr const char* kKeyCalibrationDetailPulseLimit = "cal_detail_p";
-static constexpr const char* kKeyFlowRateWindowSec = "flow_win_s";
-static constexpr const char* kKeyFlowChartIntervalSec = "flow_chart_s";
-static constexpr const char* kKeyFlowChartHistoryMin = "flow_chart_m";
-static constexpr const char* kPresetMinuteKeys[] = {
-    "preset_min0",
-    "preset_min1",
-    "preset_min2",
-    "preset_min3",
-    "preset_min4",
-    "preset_min5",
-};
-
-struct StoredSystemConfig {
-    uint32_t magic;
-    uint16_t version;
-    uint16_t size;
-    Irrigation::SystemConfig data;
-};
 
 Irrigation::SystemConfig g_config = {};
 
@@ -49,19 +22,10 @@ Irrigation::SystemConfig defaults() {
     Irrigation::SystemConfig config = {};
     config.maxWateringDurationSec = 14400UL;
     config.scheduleGraceSec = 5;
+    config.queuedPlanMaxDelaySec = 3600;
     config.manualDefaultDurationSec = 300UL;
-    const uint32_t presets[] = {300UL, 600UL, 900UL, 1800UL, 3600UL, 7200UL};
-    memcpy(config.durationPresets, presets, sizeof(config.durationPresets));
-    config.idleLeakDetectionEnabled = true;
-    config.idleLeakWindowSec = 10;
-    config.idleLeakPulseThreshold = 3;
-    config.calibrationSampleTarget = 5;
-    config.calibrationMaxCaptureMin = 10;
-    config.calibrationDetailCaptureSec = 20;
-    config.calibrationDetailPulseLimit = 2000;
-    config.flowRateWindowSec = 5;
-    config.flowChartIntervalSec = 5;
-    config.flowChartHistoryMin = 10;
+    config.idleLeakWindowSec = 15;
+    config.idleLeakPulseThreshold = 5;
     return config;
 }
 
@@ -81,108 +45,26 @@ bool writeU32(const char* key, uint32_t value) {
     return Esp32BaseConfig::setInt(kNamespace, key, static_cast<int32_t>(value));
 }
 
-bool readBoolStored(const char* key, bool def) {
-    return Esp32BaseConfig::getBool(kNamespace, key, def);
-}
-
-bool writeBoolStored(const char* key, bool value) {
-    return Esp32BaseConfig::setBool(kNamespace, key, value);
-}
-
-StoredSystemConfig wrap(const Irrigation::SystemConfig& config) {
-    StoredSystemConfig stored = {};
-    stored.magic = kBlobMagic;
-    stored.version = kBlobVersion;
-    stored.size = sizeof(stored);
-    stored.data = config;
-    return stored;
-}
-
-bool validStored(const StoredSystemConfig& stored) {
-    return stored.magic == kBlobMagic &&
-           stored.version == kBlobVersion &&
-           stored.size == sizeof(stored) &&
-           SystemConfigStore::validate(stored.data);
-}
-
-Irrigation::SystemConfig readFieldStored() {
+Irrigation::SystemConfig readStored() {
     Irrigation::SystemConfig config = defaults();
     config.maxWateringDurationSec = minutesToSeconds(readU32(kKeyMaxDurationMin, secondsToMinutes(config.maxWateringDurationSec)));
     config.scheduleGraceSec = static_cast<uint16_t>(readU32(kKeyGrace, config.scheduleGraceSec));
+    config.queuedPlanMaxDelaySec = static_cast<uint16_t>(readU32(kKeyQueuedPlanMaxDelaySec, config.queuedPlanMaxDelaySec));
     config.manualDefaultDurationSec = minutesToSeconds(readU32(kKeyManualDefaultMin, secondsToMinutes(config.manualDefaultDurationSec)));
-    for (uint8_t i = 0; i < 6; ++i) {
-        config.durationPresets[i] = minutesToSeconds(readU32(kPresetMinuteKeys[i], secondsToMinutes(config.durationPresets[i])));
-    }
-    config.idleLeakDetectionEnabled = readBoolStored(kKeyLeakEnabled, config.idleLeakDetectionEnabled);
     config.idleLeakWindowSec = static_cast<uint16_t>(readU32(kKeyLeakWindow, config.idleLeakWindowSec));
     config.idleLeakPulseThreshold = static_cast<uint16_t>(readU32(kKeyLeakPulse, config.idleLeakPulseThreshold));
-    config.calibrationSampleTarget = static_cast<uint8_t>(readU32(kKeyCalibrationSampleTarget, config.calibrationSampleTarget));
-    config.calibrationMaxCaptureMin = static_cast<uint16_t>(readU32(kKeyCalibrationMaxCaptureMin, config.calibrationMaxCaptureMin));
-    config.calibrationDetailCaptureSec = static_cast<uint16_t>(readU32(kKeyCalibrationDetailCaptureSec, config.calibrationDetailCaptureSec));
-    config.calibrationDetailPulseLimit = static_cast<uint16_t>(readU32(kKeyCalibrationDetailPulseLimit, config.calibrationDetailPulseLimit));
-    config.flowRateWindowSec = static_cast<uint16_t>(readU32(kKeyFlowRateWindowSec, config.flowRateWindowSec));
-    config.flowChartIntervalSec = static_cast<uint16_t>(readU32(kKeyFlowChartIntervalSec, config.flowChartIntervalSec));
-    config.flowChartHistoryMin = static_cast<uint16_t>(readU32(kKeyFlowChartHistoryMin, config.flowChartHistoryMin));
     return SystemConfigStore::validate(config) ? config : defaults();
 }
 
-bool saveFieldStored(const Irrigation::SystemConfig& config) {
+bool saveStored(const Irrigation::SystemConfig& config) {
     bool ok = true;
     ok = writeU32(kKeyMaxDurationMin, secondsToMinutes(config.maxWateringDurationSec)) && ok;
     ok = writeU32(kKeyGrace, config.scheduleGraceSec) && ok;
+    ok = writeU32(kKeyQueuedPlanMaxDelaySec, config.queuedPlanMaxDelaySec) && ok;
     ok = writeU32(kKeyManualDefaultMin, secondsToMinutes(config.manualDefaultDurationSec)) && ok;
-    for (uint8_t i = 0; i < 6; ++i) {
-        ok = writeU32(kPresetMinuteKeys[i], secondsToMinutes(config.durationPresets[i])) && ok;
-    }
-    ok = writeBoolStored(kKeyLeakEnabled, config.idleLeakDetectionEnabled) && ok;
     ok = writeU32(kKeyLeakWindow, config.idleLeakWindowSec) && ok;
     ok = writeU32(kKeyLeakPulse, config.idleLeakPulseThreshold) && ok;
-    ok = writeU32(kKeyCalibrationSampleTarget, config.calibrationSampleTarget) && ok;
-    ok = writeU32(kKeyCalibrationMaxCaptureMin, config.calibrationMaxCaptureMin) && ok;
-    ok = writeU32(kKeyCalibrationDetailCaptureSec, config.calibrationDetailCaptureSec) && ok;
-    ok = writeU32(kKeyCalibrationDetailPulseLimit, config.calibrationDetailPulseLimit) && ok;
-    ok = writeU32(kKeyFlowRateWindowSec, config.flowRateWindowSec) && ok;
-    ok = writeU32(kKeyFlowChartIntervalSec, config.flowChartIntervalSec) && ok;
-    ok = writeU32(kKeyFlowChartHistoryMin, config.flowChartHistoryMin) && ok;
     return ok;
-}
-
-bool fieldStoredMatches(const Irrigation::SystemConfig& config) {
-    const Irrigation::SystemConfig stored = readFieldStored();
-    if (stored.maxWateringDurationSec != config.maxWateringDurationSec ||
-        stored.scheduleGraceSec != config.scheduleGraceSec ||
-        stored.manualDefaultDurationSec != config.manualDefaultDurationSec ||
-        stored.idleLeakDetectionEnabled != config.idleLeakDetectionEnabled ||
-        stored.idleLeakWindowSec != config.idleLeakWindowSec ||
-        stored.idleLeakPulseThreshold != config.idleLeakPulseThreshold ||
-        stored.calibrationSampleTarget != config.calibrationSampleTarget ||
-        stored.calibrationMaxCaptureMin != config.calibrationMaxCaptureMin ||
-        stored.calibrationDetailCaptureSec != config.calibrationDetailCaptureSec ||
-        stored.calibrationDetailPulseLimit != config.calibrationDetailPulseLimit ||
-        stored.flowRateWindowSec != config.flowRateWindowSec ||
-        stored.flowChartIntervalSec != config.flowChartIntervalSec ||
-        stored.flowChartHistoryMin != config.flowChartHistoryMin) {
-        return false;
-    }
-    for (uint8_t i = 0; i < 6; ++i) {
-        if (stored.durationPresets[i] != config.durationPresets[i]) {
-            return false;
-        }
-    }
-    return true;
-}
-
-Irrigation::SystemConfig readStored() {
-    StoredSystemConfig stored = {};
-    if (Esp32BaseConfig::getPod(kNamespace, kKeyBlob, stored) && validStored(stored)) {
-        if (!fieldStoredMatches(stored.data)) {
-            (void)saveFieldStored(stored.data);
-        }
-        return stored.data;
-    }
-    const Irrigation::SystemConfig config = readFieldStored();
-    (void)Esp32BaseConfig::setPod(kNamespace, kKeyBlob, wrap(config));
-    return config;
 }
 
 bool submittedInt(const char* key, uint32_t* out) {
@@ -191,18 +73,6 @@ bool submittedInt(const char* key, uint32_t* out) {
         return false;
     }
     *out = static_cast<uint32_t>(raw);
-    return true;
-}
-
-bool submittedBool(const char* key, bool* out) {
-    if (!out) {
-        return false;
-    }
-    bool raw = false;
-    if (!Esp32BaseAppConfig::submittedBool(kNamespace, key, raw)) {
-        return false;
-    }
-    *out = raw;
     return true;
 }
 
@@ -216,7 +86,7 @@ bool submittedMinutesAsSeconds(const char* key, uint32_t* out) {
 }
 
 bool validateAppConfigPage(char* error, size_t errorLen) {
-    Irrigation::SystemConfig config = {};
+    Irrigation::SystemConfig config = defaults();
     if (!submittedMinutesAsSeconds(kKeyMaxDurationMin, &config.maxWateringDurationSec) ||
         !submittedMinutesAsSeconds(kKeyManualDefaultMin, &config.manualDefaultDurationSec)) {
         strlcpy(error, "System duration values are invalid.", errorLen);
@@ -228,16 +98,11 @@ bool validateAppConfigPage(char* error, size_t errorLen) {
         return false;
     }
     config.scheduleGraceSec = static_cast<uint16_t>(value);
-    for (uint8_t i = 0; i < 6; ++i) {
-        if (!submittedMinutesAsSeconds(kPresetMinuteKeys[i], &config.durationPresets[i])) {
-            strlcpy(error, "Duration presets are invalid.", errorLen);
-            return false;
-        }
-    }
-    if (!submittedBool(kKeyLeakEnabled, &config.idleLeakDetectionEnabled)) {
-        strlcpy(error, "Leak detection switch is invalid.", errorLen);
+    if (!submittedInt(kKeyQueuedPlanMaxDelaySec, &value)) {
+        strlcpy(error, "Queued plan max delay is invalid.", errorLen);
         return false;
     }
+    config.queuedPlanMaxDelaySec = static_cast<uint16_t>(value);
     if (!submittedInt(kKeyLeakWindow, &value)) {
         strlcpy(error, "Leak window is invalid.", errorLen);
         return false;
@@ -248,43 +113,8 @@ bool validateAppConfigPage(char* error, size_t errorLen) {
         return false;
     }
     config.idleLeakPulseThreshold = static_cast<uint16_t>(value);
-    if (!submittedInt(kKeyCalibrationSampleTarget, &value)) {
-        strlcpy(error, "Calibration sample capacity is invalid.", errorLen);
-        return false;
-    }
-    config.calibrationSampleTarget = static_cast<uint8_t>(value);
-    if (!submittedInt(kKeyCalibrationMaxCaptureMin, &value)) {
-        strlcpy(error, "Calibration max capture minutes is invalid.", errorLen);
-        return false;
-    }
-    config.calibrationMaxCaptureMin = static_cast<uint16_t>(value);
-    if (!submittedInt(kKeyCalibrationDetailCaptureSec, &value)) {
-        strlcpy(error, "Calibration detail capture seconds is invalid.", errorLen);
-        return false;
-    }
-    config.calibrationDetailCaptureSec = static_cast<uint16_t>(value);
-    if (!submittedInt(kKeyCalibrationDetailPulseLimit, &value)) {
-        strlcpy(error, "Calibration detail pulse limit is invalid.", errorLen);
-        return false;
-    }
-    config.calibrationDetailPulseLimit = static_cast<uint16_t>(value);
-    if (!submittedInt(kKeyFlowRateWindowSec, &value)) {
-        strlcpy(error, "Flow rate display window is invalid.", errorLen);
-        return false;
-    }
-    config.flowRateWindowSec = static_cast<uint16_t>(value);
-    if (!submittedInt(kKeyFlowChartIntervalSec, &value)) {
-        strlcpy(error, "Flow chart interval is invalid.", errorLen);
-        return false;
-    }
-    config.flowChartIntervalSec = static_cast<uint16_t>(value);
-    if (!submittedInt(kKeyFlowChartHistoryMin, &value)) {
-        strlcpy(error, "Flow chart history is invalid.", errorLen);
-        return false;
-    }
-    config.flowChartHistoryMin = static_cast<uint16_t>(value);
     if (!SystemConfigStore::validate(config)) {
-        strlcpy(error, "Manual duration and presets must be within the max watering duration.", errorLen);
+        strlcpy(error, "System config values are outside allowed ranges.", errorLen);
         return false;
     }
     return true;
@@ -292,7 +122,7 @@ bool validateAppConfigPage(char* error, size_t errorLen) {
 
 void onAppConfigSave(const Esp32BaseAppConfig::SaveSummary& summary) {
     if (summary.savedCount > 0) {
-        (void)SystemConfigStore::set(readFieldStored());
+        (void)SystemConfigStore::set(readStored());
     }
 }
 
@@ -308,28 +138,13 @@ void registerAppConfig() {
     (void)Esp32BaseAppConfig::addGroup({kGroupManual, "手动浇水"});
     (void)Esp32BaseAppConfig::addGroup({kGroupSchedule, "计划调度"});
     (void)Esp32BaseAppConfig::addGroup({kGroupSafety, "安全保护"});
-    (void)Esp32BaseAppConfig::addGroup({kGroupCalibration, "流量校准"});
-    (void)Esp32BaseAppConfig::addGroup({kGroupFlowRate, "流速显示"});
     const Irrigation::SystemConfig def = defaults();
     (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyMaxDurationMin, "单次最长分钟", static_cast<int32_t>(secondsToMinutes(def.maxWateringDurationSec)), 1, 1440, 1, "min", "限制手动和计划单次连续出水时长。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupSchedule, kNamespace, kKeyGrace, "调度宽限秒", def.scheduleGraceSec, 1, 60, 1, "s", "计划到点后允许补跑的秒数。", false, nullptr});
     (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kKeyManualDefaultMin, "手动默认分钟", static_cast<int32_t>(secondsToMinutes(def.manualDefaultDurationSec)), 1, 1440, 1, "min", "首页手动浇水默认填入的时长。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetMinuteKeys[0], "预设 1 分钟", static_cast<int32_t>(secondsToMinutes(def.durationPresets[0])), 1, 1440, 1, "min", "手动浇水快捷时长，可在首页选择。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetMinuteKeys[1], "预设 2 分钟", static_cast<int32_t>(secondsToMinutes(def.durationPresets[1])), 1, 1440, 1, "min", "手动浇水快捷时长，可在首页选择。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetMinuteKeys[2], "预设 3 分钟", static_cast<int32_t>(secondsToMinutes(def.durationPresets[2])), 1, 1440, 1, "min", "手动浇水快捷时长，可在首页选择。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetMinuteKeys[3], "预设 4 分钟", static_cast<int32_t>(secondsToMinutes(def.durationPresets[3])), 1, 1440, 1, "min", "手动浇水快捷时长，可在首页选择。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetMinuteKeys[4], "预设 5 分钟", static_cast<int32_t>(secondsToMinutes(def.durationPresets[4])), 1, 1440, 1, "min", "手动浇水快捷时长，可在首页选择。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupManual, kNamespace, kPresetMinuteKeys[5], "预设 6 分钟", static_cast<int32_t>(secondsToMinutes(def.durationPresets[5])), 1, 1440, 1, "min", "手动浇水快捷时长，可在首页选择。", false, nullptr});
-    (void)Esp32BaseAppConfig::addBool({kGroupSafety, kNamespace, kKeyLeakEnabled, "启用漏水检测", def.idleLeakDetectionEnabled, "关闭后待机状态不会根据流量脉冲触发漏水告警。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakWindow, "漏水窗口秒", def.idleLeakWindowSec, 1, 300, 1, "s", "待机漏水检测的统计窗口。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakPulse, "漏水脉冲", def.idleLeakPulseThreshold, 1, 1000, 1, nullptr, "窗口内达到该脉冲数触发漏水告警。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationSampleTarget, "校准样本容量", def.calibrationSampleTarget, 2, 5, 1, nullptr, "RAM 中最多保留的校准样本数，只限制新增样本，不限制计算。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationMaxCaptureMin, "校准最长分钟", def.calibrationMaxCaptureMin, 1, 15, 1, "min", "单次校准出水最长允许时间，超过后样本无效并自动关阀。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationDetailCaptureSec, "明细采集秒", def.calibrationDetailCaptureSec, 5, 60, 1, "s", "保存原始脉冲时间差的最长时长，只用于启动阶段识别。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupCalibration, kNamespace, kKeyCalibrationDetailPulseLimit, "明细脉冲上限", def.calibrationDetailPulseLimit, 100, 5000, 100, nullptr, "保存原始脉冲时间差的最大条数，达到后仍继续统计总脉冲。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupFlowRate, kNamespace, kKeyFlowRateWindowSec, "流速窗口秒", def.flowRateWindowSec, 2, 30, 1, "s", "首页流速和历史最大/最小流速使用的滑动平均窗口。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupFlowRate, kNamespace, kKeyFlowChartIntervalSec, "图表间隔秒", def.flowChartIntervalSec, 1, 30, 1, "s", "首页流速图表保存点的间隔。", false, nullptr});
-    (void)Esp32BaseAppConfig::addInt({kGroupFlowRate, kNamespace, kKeyFlowChartHistoryMin, "图表历史分钟", def.flowChartHistoryMin, 1, 30, 1, "min", "每路在 RAM 中保留的近期流速图表长度。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSchedule, kNamespace, kKeyGrace, "调度宽限秒", def.scheduleGraceSec, 1, 60, 1, "s", "计划到点后允许补跑的秒数。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSchedule, kNamespace, kKeyQueuedPlanMaxDelaySec, "排队最大延迟秒", def.queuedPlanMaxDelaySec, 0, 86400, 60, "s", "水路因同 Flow 互斥排队时，超过该延迟则跳过。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakWindow, "待机漏水窗口秒", def.idleLeakWindowSec, 1, 300, 1, "s", "待机漏水检测的统计窗口。", false, nullptr});
+    (void)Esp32BaseAppConfig::addInt({kGroupSafety, kNamespace, kKeyLeakPulse, "待机漏水脉冲", def.idleLeakPulseThreshold, 1, 1000, 1, nullptr, "窗口内达到该脉冲数触发漏水告警。", false, nullptr});
 #endif
 }
 
@@ -346,60 +161,23 @@ const Irrigation::SystemConfig& current() {
 }
 
 bool validate(const Irrigation::SystemConfig& config) {
-    if (config.maxWateringDurationSec < 60UL || config.maxWateringDurationSec > 86400UL) {
-        return false;
-    }
-    if ((config.maxWateringDurationSec % 60UL) != 0 ||
-        (config.manualDefaultDurationSec % 60UL) != 0) {
-        return false;
-    }
-    if (config.scheduleGraceSec < 1 || config.scheduleGraceSec > 60) {
-        return false;
-    }
-    if (config.manualDefaultDurationSec < 1 || config.manualDefaultDurationSec > config.maxWateringDurationSec) {
-        return false;
-    }
-    for (uint8_t i = 0; i < 6; ++i) {
-        if (config.durationPresets[i] < 60UL ||
-            config.durationPresets[i] > config.maxWateringDurationSec ||
-            (config.durationPresets[i] % 60UL) != 0) {
-            return false;
-        }
-    }
-    if (config.flowChartIntervalSec == 0) {
-        return false;
-    }
-    const uint32_t flowChartPoints = (static_cast<uint32_t>(config.flowChartHistoryMin) * 60UL) / config.flowChartIntervalSec;
-    return config.idleLeakWindowSec >= 1 &&
+    return config.maxWateringDurationSec >= 60UL &&
+           config.maxWateringDurationSec <= 86400UL &&
+           (config.maxWateringDurationSec % 60UL) == 0 &&
+           config.scheduleGraceSec >= 1 &&
+           config.scheduleGraceSec <= 60 &&
+           config.queuedPlanMaxDelaySec <= 86400 &&
+           config.manualDefaultDurationSec >= 60UL &&
+           config.manualDefaultDurationSec <= config.maxWateringDurationSec &&
+           (config.manualDefaultDurationSec % 60UL) == 0 &&
+           config.idleLeakWindowSec >= 1 &&
            config.idleLeakWindowSec <= 300 &&
            config.idleLeakPulseThreshold >= 1 &&
-           config.idleLeakPulseThreshold <= 1000 &&
-           config.calibrationSampleTarget >= 2 &&
-           config.calibrationSampleTarget <= 5 &&
-           config.calibrationMaxCaptureMin >= 1 &&
-           config.calibrationMaxCaptureMin <= 15 &&
-           config.calibrationDetailCaptureSec >= 5 &&
-           config.calibrationDetailCaptureSec <= 60 &&
-           config.calibrationDetailPulseLimit >= 100 &&
-           config.calibrationDetailPulseLimit <= 5000 &&
-           config.flowRateWindowSec >= 2 &&
-           config.flowRateWindowSec <= 30 &&
-           config.flowChartIntervalSec >= 1 &&
-           config.flowChartIntervalSec <= 30 &&
-           config.flowChartHistoryMin >= 1 &&
-           config.flowChartHistoryMin <= 30 &&
-           flowChartPoints >= 1 &&
-           flowChartPoints <= 360;
+           config.idleLeakPulseThreshold <= 1000;
 }
 
 bool set(const Irrigation::SystemConfig& config) {
-    if (!validate(config)) {
-        return false;
-    }
-    if (!saveFieldStored(config)) {
-        return false;
-    }
-    if (!Esp32BaseConfig::setPod(kNamespace, kKeyBlob, wrap(config))) {
+    if (!validate(config) || !saveStored(config)) {
         return false;
     }
     g_config = config;
