@@ -1186,38 +1186,38 @@ void writeOverviewStyles() {
 ".irr-weather-cell{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:10px 11px;min-width:0}"
 ".irr-weather-value{display:block;font-size:20px;line-height:1.1;margin-bottom:6px}"
 ".irr-weather-cell span{display:block;color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-zone-rows{display:grid;gap:12px}"
-".irr-zone-row{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,.85fr);gap:12px;align-items:stretch}"
-".irr-zone-card,.irr-plan-card{border:1px solid var(--eb-line);background:var(--eb-surface);border-radius:8px;padding:12px;min-width:0}"
+".irr-zone-rows{display:grid;gap:10px}"
+".irr-zone-row{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(260px,.85fr);gap:10px;align-items:stretch}"
+".irr-zone-card,.irr-plan-card{border:1px solid var(--eb-line);background:var(--eb-surface);border-radius:8px;padding:10px;min-width:0}"
 ".irr-zone-card.running,.irr-zone-row.running .irr-zone-card{border-color:#fdba74;background:#fffaf5}"
 ".irr-zone-card.error,.irr-zone-row.error .irr-zone-card{border-color:#fca5a5;background:#fffafa}"
-".irr-zone-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:10px}"
-".irr-zone-name{font-size:18px;font-weight:750;line-height:1.15;margin-bottom:3px}"
-".irr-zone-task{color:var(--eb-muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-zone-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:10px}"
-".irr-zone-metric{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:8px 9px;min-height:58px;min-width:0}"
-".irr-zone-metric b{display:block;font-size:18px;line-height:1.05;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-zone-metric .label{display:block;color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-chart-wrap{border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff;padding:8px 9px;margin-bottom:10px}"
-".irr-chart-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:5px;color:var(--eb-muted);font-size:12px}"
-".irr-flow-chart{width:100%;height:124px;display:block;border-radius:6px;background:linear-gradient(#fff,#f8fafc)}"
-".irr-zone-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;min-height:34px}"
-".irr-zone-runtime{color:var(--eb-muted);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-plan-card h3{font-size:16px;margin:0 0 10px}"
-".irr-plan-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:10px}"
-".irr-plan-summary div{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:7px;padding:6px 7px;min-width:0}"
-".irr-plan-summary .value{display:block;font-size:15px;line-height:1.05;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-zone-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:7px}"
+".irr-zone-name{font-size:17px;font-weight:750;line-height:1.12;margin-bottom:2px}"
+".irr-zone-task{color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-zone-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-bottom:8px}"
+".irr-zone-metric{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:7px 8px;min-height:48px;min-width:0}"
+".irr-zone-metric b{display:block;font-size:16px;line-height:1.05;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-zone-metric .label{display:block;color:var(--eb-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-chart-wrap{border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff;padding:6px 8px;margin-bottom:8px}"
+".irr-chart-head{display:flex;justify-content:space-between;gap:8px;margin-bottom:2px;color:var(--eb-muted);font-size:12px}"
+".irr-flow-chart{width:100%;height:96px;display:block;border-radius:6px;background:linear-gradient(#fff,#f8fafc)}"
+".irr-zone-footer{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:30px}"
+".irr-zone-runtime{color:var(--eb-muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-plan-card h3{font-size:15px;margin:0 0 8px}"
+".irr-plan-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:5px;margin-bottom:8px}"
+".irr-plan-summary div{border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:7px;padding:5px 6px;min-width:0}"
+".irr-plan-summary .value{display:block;font-size:14px;line-height:1.05;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
 ".irr-plan-summary span{display:block;color:var(--eb-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-plan-list{display:grid;gap:7px}"
-".irr-plan-item{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--eb-line-soft);padding-top:7px;min-width:0}"
+".irr-plan-list{display:grid;gap:5px}"
+".irr-plan-item{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--eb-line-soft);padding-top:5px;min-width:0}"
 ".irr-plan-item:first-child{border-top:0;padding-top:0}"
-".irr-plan-time{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+".irr-plan-time{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
 ".irr-plan-note{display:block;color:var(--eb-muted);font-size:12px;font-style:normal;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
-".irr-plan-status{display:inline-flex;align-items:center;justify-content:center;min-height:22px;border:1px solid var(--eb-line);border-radius:7px;padding:0 7px;font-size:12px;font-weight:750;white-space:nowrap;align-self:flex-start}"
+".irr-plan-status{display:inline-flex;align-items:center;justify-content:center;min-height:21px;border:1px solid var(--eb-line);border-radius:7px;padding:0 6px;font-size:12px;font-weight:750;white-space:nowrap;align-self:flex-start}"
 ".irr-plan-status.done{border-color:#bbf7d0;background:#f0fdf4;color:#166534}"
 ".irr-plan-status.running{border-color:#fed7aa;background:#fff7ed;color:#9a3412}"
 ".irr-plan-status.pending{border-color:#bfdbfe;background:#eff6ff;color:#1d4ed8}"
-"@media(max-width:760px){.irr-overview-weather{grid-template-columns:1fr}.irr-zone-row{grid-template-columns:1fr}.irr-zone-metrics,.irr-plan-summary{grid-template-columns:1fr}.irr-zone-footer{align-items:stretch;flex-direction:column}.irr-flow-chart{height:118px}}"
+"@media(max-width:760px){.irr-overview-weather{grid-template-columns:1fr}.irr-zone-row{grid-template-columns:1fr}.irr-zone-metrics,.irr-plan-summary{grid-template-columns:1fr}.irr-zone-footer{align-items:stretch;flex-direction:column}.irr-flow-chart{height:92px}}"
 "</style>");
 }
 
@@ -1241,7 +1241,7 @@ void writeWeatherStrip() {
     WeatherSnapshotStore::Snapshot weather = {};
     Esp32BaseWeb::beginPanel("天气预报");
     if (!WeatherSnapshotStore::get(&weather)) {
-        Esp32BaseWeb::sendChunk("<p class='muted'>暂无天气数据</p>");
+        Esp32BaseWeb::sendChunk("<p class='muted'>等待天气数据推送</p>");
         Esp32BaseWeb::endPanel();
         return;
     }
@@ -1413,7 +1413,7 @@ void writeZoneOverviewRow(uint8_t zoneId, const Irrigation::ZoneStatus& status, 
     writeUInt(SystemConfigStore::current().flowChartHistoryMin);
     Esp32BaseWeb::sendChunk(" 分钟</span></div><svg class='irr-flow-chart' id='irrFlowChart");
     writeUInt(zoneId);
-    Esp32BaseWeb::sendChunk("' viewBox='0 0 360 124' preserveAspectRatio='none' role='img' aria-label='近期流速图表'></svg></div><div class='irr-zone-footer'><div class='irr-zone-runtime' data-irr-runtime='");
+    Esp32BaseWeb::sendChunk("' viewBox='0 0 640 96' role='img' aria-label='近期流速图表'></svg></div><div class='irr-zone-footer'><div class='irr-zone-runtime' data-irr-runtime='");
     writeUInt(zoneId);
     Esp32BaseWeb::sendChunk("'>");
     if (status.busy) {
@@ -2051,7 +2051,7 @@ void writeManualStartDialog() {
                             ".irrmanual{max-width:520px}.irrmanual h2{margin-bottom:10px}.irrmanual-summary{display:grid;grid-template-columns:88px minmax(0,1fr);gap:6px 12px;border:1px solid var(--eb-line-soft);background:var(--eb-soft);border-radius:8px;padding:9px 10px;margin:0 0 12px}.irrmanual-summary b{color:var(--eb-muted);font-weight:650}.irrmanual-summary span{min-width:0}.irrmanual .durationrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end;margin-bottom:10px}.irrmanual .durationrow input{width:9ch;max-width:9ch;margin:0}.irrmanual-presets{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}.irrmanual-presets .btnlink{width:100%;min-height:32px}.irrmanual-note{font-size:12px;color:var(--eb-muted);line-height:1.45;margin:8px 0 0}@media(max-width:560px){.irrmanual .durationrow{grid-template-columns:1fr}.irrmanual-presets{grid-template-columns:repeat(2,minmax(0,1fr))}}"
                             "</style><dialog id='irrManualDialog' class='panel eb-modal irrmanual'><form id='irrManualForm' class='editform' method='post' action='/api/v1/zone/start' data-default-min='");
     writeUInt(defaultMin);
-    Esp32BaseWeb::sendChunk("' onsubmit=\"return irrManualSubmit(this)&&confirm('确认启动手动浇水？')&&irrManualSend(this,once(this))\"><h2>启动手动浇水</h2>");
+    Esp32BaseWeb::sendChunk("' onsubmit=\"return irrManualSubmit(this)&&irrManualSend(this,once(this))\"><h2>启动手动浇水</h2>");
     writeOnePostHidden("source", "web_page");
     Esp32BaseWeb::sendChunk("<input type='hidden' name='zoneId' value=''><div class='irrmanual-summary'><b>水路</b><span id='irrManualZoneName'></span><b>安全确认</b><span>远程启动前请确认现场安全，阀门和管路可以正常出水。</span></div><div class='durationrow'><p class='field'><label>浇水分钟数</label><input id='irrManualDuration' name='durationMin' type='number' min='1' max='");
     writeUInt(maxMin);
@@ -2200,7 +2200,7 @@ void handleOverviewPage() {
                             "function irrOverviewInitialFast(){return !!document.querySelector('[data-irr-zone-row][data-busy=\"1\"]');}"
                             "function irrOverviewRenderState(z){var e=document.querySelector('[data-irr-state=\"'+z.zoneId+'\"]');if(!e)return;if(z.errorActive){e.innerHTML='<button type=\"button\" class=\"tag danger\" style=\"border:0;cursor:pointer\" onclick=\"irrFaultOpen(\\'irrFaultDialog'+z.zoneId+'\\')\">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</button>';return;}e.innerHTML='<span class=\"tag'+irrOverviewStateTone(z.state)+'\">'+irrOverviewEscape(irrOverviewStateLabel(z.state))+'</span>';}"
                             "function irrOverviewRenderActions(row,z,leak){var e=document.querySelector('[data-irr-actions=\"'+z.zoneId+'\"]');if(!e)return;var name=irrOverviewEscape(row.dataset.zoneName||('水路 '+z.zoneId));if(z.busy){e.innerHTML='<form method=\"post\" action=\"/api/v1/zone/stop\" onsubmit=\"return confirm(\\'确认停止该水路？\\')&&once(this)\"><input type=\"hidden\" name=\"source\" value=\"web_page\"><input type=\"hidden\" name=\"zoneId\" value=\"'+z.zoneId+'\"><input class=\"fsaction\" type=\"submit\" value=\"停止\"></form>';return;}if(z.errorActive){e.innerHTML='<form method=\"post\" action=\"/api/v1/zone/clear-error\" onsubmit=\"return confirm(\\'确认清除该水路异常？\\')&&once(this)\"><input type=\"hidden\" name=\"source\" value=\"web_page\"><input type=\"hidden\" name=\"zoneId\" value=\"'+z.zoneId+'\"><input class=\"fsaction\" type=\"submit\" value=\"清除异常\"></form>';return;}e.innerHTML=leak?'<span class=\"muted\">漏水告警中</span>':'<button class=\"btnlink compact ok\" type=\"button\" data-zone-id=\"'+z.zoneId+'\" data-zone-name=\"'+name+'\" onclick=\"irrManualOpen(this)\">启动</button>';}"
-                            "function irrFlowChartDraw(id,points,historyMin){var svg=document.getElementById('irrFlowChart'+id);if(!svg)return;points=points||[];historyMin=parseInt(historyMin||10,10)||10;var max=0;for(var i=0;i<points.length;i++)max=Math.max(max,parseInt(points[i]||0,10)||0);var yMax=Math.max(2000,Math.ceil(max/500)*500);var w=360,h=124,left=42,right=12,top=18,bottom=28,plotW=w-left-right,plotH=h-top-bottom;var html='';for(var gy=0;gy<=4;gy++){var value=Math.round((yMax*gy)/4),y=top+plotH-(plotH*gy/4);html+='<line x1=\"'+left+'\" y1=\"'+y+'\" x2=\"'+(w-right)+'\" y2=\"'+y+'\" stroke=\"#e2e8f0\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+(left-7)+'\" y=\"'+(y+4)+'\" text-anchor=\"end\" fill=\"#64748b\" font-size=\"10\">'+(value/1000).toFixed(value%1000?1:0)+'</text>';}var labels=5;for(var tx=0;tx<labels;tx++){var x=left+(plotW*tx/(labels-1)),min=Math.round(-historyMin+(historyMin*tx/(labels-1)));html+='<line x1=\"'+x+'\" y1=\"'+(top+plotH)+'\" x2=\"'+x+'\" y2=\"'+(top+plotH+4)+'\" stroke=\"#cbd5e1\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+x+'\" y=\"'+(h-9)+'\" text-anchor=\"middle\" fill=\"#64748b\" font-size=\"10\">'+(tx===labels-1?'现在':String(min))+'</text>';}html+='<line x1=\"'+left+'\" y1=\"'+top+'\" x2=\"'+left+'\" y2=\"'+(top+plotH)+'\" stroke=\"#94a3b8\" vector-effect=\"non-scaling-stroke\"/>';html+='<line x1=\"'+left+'\" y1=\"'+(top+plotH)+'\" x2=\"'+(w-right)+'\" y2=\"'+(top+plotH)+'\" stroke=\"#94a3b8\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"6\" y=\"13\" fill=\"#64748b\" font-size=\"10\">L/min</text>';if(points.length>=2&&max>0){var d='';for(var j=0;j<points.length;j++){var px=left+(plotW*j/(points.length-1));var py=top+plotH-((parseInt(points[j]||0,10)||0)*plotH/yMax);d+=(j?'L':'M')+px.toFixed(1)+' '+py.toFixed(1);}html+='<path d=\"'+d+' L'+(w-right)+' '+(top+plotH)+' L'+left+' '+(top+plotH)+' Z\" fill=\"#0f766e\" opacity=\".08\"/>';html+='<path d=\"'+d+'\" fill=\"none\" stroke=\"#0f766e\" stroke-width=\"2.2\" vector-effect=\"non-scaling-stroke\"/>';}else{html+='<line x1=\"'+left+'\" y1=\"'+(top+plotH)+'\" x2=\"'+(w-right)+'\" y2=\"'+(top+plotH)+'\" stroke=\"#cbd5e1\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+(left+plotW/2)+'\" y=\"'+(top+plotH/2)+'\" text-anchor=\"middle\" fill=\"#94a3b8\" font-size=\"12\">无流速</text>';}svg.innerHTML=html;}"
+                            "function irrFlowChartDraw(id,points,historyMin){var svg=document.getElementById('irrFlowChart'+id);if(!svg)return;points=points||[];historyMin=parseInt(historyMin||10,10)||10;var rect=svg.getBoundingClientRect?svg.getBoundingClientRect():{width:640};var w=Math.max(420,Math.round(rect.width||640)),h=96;svg.setAttribute('viewBox','0 0 '+w+' '+h);var max=0;for(var i=0;i<points.length;i++)max=Math.max(max,parseInt(points[i]||0,10)||0);var yMax=Math.max(2000,Math.ceil(max/500)*500);var left=44,right=12,top=14,bottom=22,plotW=w-left-right,plotH=h-top-bottom;var html='';for(var gy=0;gy<=4;gy++){var value=Math.round((yMax*gy)/4),y=top+plotH-(plotH*gy/4);html+='<line x1=\"'+left+'\" y1=\"'+y+'\" x2=\"'+(w-right)+'\" y2=\"'+y+'\" stroke=\"#e2e8f0\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+(left-8)+'\" y=\"'+(y+3)+'\" text-anchor=\"end\" fill=\"#64748b\" font-size=\"10\">'+(value/1000).toFixed(value%1000?1:0)+'</text>';}var labels=7;for(var tx=0;tx<labels;tx++){var x=left+(plotW*tx/(labels-1)),min=Math.round(-historyMin+(historyMin*tx/(labels-1)));html+='<line x1=\"'+x+'\" y1=\"'+(top+plotH)+'\" x2=\"'+x+'\" y2=\"'+(top+plotH+3)+'\" stroke=\"#cbd5e1\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+x+'\" y=\"'+(h-6)+'\" text-anchor=\"middle\" fill=\"#64748b\" font-size=\"10\">'+(tx===labels-1?'现在':String(min))+'</text>';}html+='<line x1=\"'+left+'\" y1=\"'+top+'\" x2=\"'+left+'\" y2=\"'+(top+plotH)+'\" stroke=\"#94a3b8\" vector-effect=\"non-scaling-stroke\"/>';html+='<line x1=\"'+left+'\" y1=\"'+(top+plotH)+'\" x2=\"'+(w-right)+'\" y2=\"'+(top+plotH)+'\" stroke=\"#94a3b8\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"6\" y=\"11\" fill=\"#64748b\" font-size=\"10\">L/min</text>';if(points.length>=2&&max>0){var d='';for(var j=0;j<points.length;j++){var px=left+(plotW*j/(points.length-1));var py=top+plotH-((parseInt(points[j]||0,10)||0)*plotH/yMax);d+=(j?'L':'M')+px.toFixed(1)+' '+py.toFixed(1);}html+='<path d=\"'+d+' L'+(w-right)+' '+(top+plotH)+' L'+left+' '+(top+plotH)+' Z\" fill=\"#0f766e\" opacity=\".07\"/>';html+='<path d=\"'+d+'\" fill=\"none\" stroke=\"#0f766e\" stroke-width=\"2\" vector-effect=\"non-scaling-stroke\"/>';}else{html+='<line x1=\"'+left+'\" y1=\"'+(top+plotH)+'\" x2=\"'+(w-right)+'\" y2=\"'+(top+plotH)+'\" stroke=\"#cbd5e1\" stroke-width=\"1.5\" vector-effect=\"non-scaling-stroke\"/>';html+='<text x=\"'+(left+plotW/2)+'\" y=\"'+(top+plotH/2+4)+'\" text-anchor=\"middle\" fill=\"#94a3b8\" font-size=\"11\">无流速</text>';}svg.innerHTML=html;}"
                             "function irrFlowChart(id,busy){if(!busy){irrFlowChartDraw(id,[],10);return;}fetch('/api/v1/flow/history?zoneId='+id,{headers:{Accept:'application/json'},credentials:'same-origin'}).then(function(r){return r.ok?r.json():null;}).then(function(j){if(!j||!j.ok)return;irrFlowChartDraw(id,j.flowHistory||[],j.historyMin||10);var label=document.querySelector('[data-irr-flow-chart-label=\"'+id+'\"]');if(label)label.textContent=String(j.historyMin||'')+' 分钟';}).catch(function(){});}"
                             "function irrOverviewApplyStatus(data){if(!data||!data.ok||!data.zones)return;var enabled=0,running=0,errors=0,structural=false;data.zones.forEach(function(z){if(!z.enabled)return;enabled++;if(z.busy)running++;if(z.errorActive)errors++;var row=document.querySelector('[data-irr-zone-row=\"'+z.zoneId+'\"]');if(!row){structural=true;return;}var busy=z.busy?'1':'0',err=z.errorActive?'1':'0';if(row.dataset.error!==err){structural=true;return;}row.dataset.state=z.state;row.dataset.busy=busy;row.dataset.error=err;row.classList.toggle('running',!!z.busy);row.classList.toggle('error',!!z.errorActive);irrOverviewRenderState(z);var e=document.querySelector('[data-irr-task=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?(z.taskLabel||'浇水中'):(z.errorActive?(z.errorCode||'水路异常'):'无运行任务');e=document.querySelector('[data-irr-remaining=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?irrOverviewDuration(z.remainingSec):'-';e=document.querySelector('[data-irr-flow=\"'+z.zoneId+'\"]');if(e)e.textContent=irrOverviewFlow(z.flowMlPerMin,z.flowRateReady,z.busy);e=document.querySelector('[data-irr-ml=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?irrOverviewLiters(z.estimatedMl):'-';e=document.querySelector('[data-irr-runtime=\"'+z.zoneId+'\"]');if(e)e.textContent=z.busy?('已运行 '+irrOverviewDuration(z.elapsedSec)+' / 目标 '+irrOverviewDuration(z.targetSec)):'当前无运行任务';irrFlowChart(z.zoneId,z.busy);irrOverviewRenderActions(row,z,data.leakAlertActive);});if(enabled!==document.querySelectorAll('[data-irr-zone-row]').length)structural=true;if(structural){location.reload();return;}irrOverviewSetMetric('irrMetricRunning',running+' / '+enabled);irrOverviewSetMetric('irrMetricErrors',String(errors));irrOverviewSetMetric('irrMetricSafety',data.leakAlertActive?'漏水告警':(errors>0?errors+' 路异常':'正常'));var stop=document.getElementById('irrStopAll');if(stop)stop.disabled=running<=0;}"
                             "var irrOverviewTimer=0;function irrOverviewSchedule(ms){if(irrOverviewTimer)clearTimeout(irrOverviewTimer);irrOverviewTimer=setTimeout(irrOverviewPoll,ms);}"

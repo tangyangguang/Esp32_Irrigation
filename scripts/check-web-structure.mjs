@@ -329,6 +329,7 @@ assert(web.includes('/api/v1/status') && web.includes('irrOverviewApplyStatus'),
 assert(web.includes('/api/v1/flow/history') && web.includes('handleFlowHistoryApi'), 'web API should expose single-zone flow chart history');
 assert(web.includes('data-irr-flow') && web.includes('irrOverviewFlow') && web.includes('流速'), 'overview should display current flow rate instead of pulse count');
 assert(web.includes('writeWeatherStrip()'), 'overview should render the weather forecast strip');
+assert(web.includes('等待天气数据推送'), 'weather empty state should explain that the device is waiting for a pushed snapshot');
 assert(web.includes('const uint32_t todayYmd = currentYmd()') &&
        web.includes('writeZoneOverviewRow(zoneId, status, todayYmd)'),
        'overview should render enabled-zone rows against one consistent today value');
@@ -336,6 +337,8 @@ assert(web.includes('writeTodayPlanCard(zoneId, ymd)'), 'overview zone rows shou
 assert(web.includes('irr-zone-row') && web.includes('irr-zone-card') && web.includes('irr-plan-card'), 'overview should use row/card layout classes');
 assert(web.includes('data-irr-runtime') && web.includes('data-irr-remaining') && web.includes('data-irr-flow') && web.includes('data-irr-ml'), 'overview card metrics should expose live-update targets');
 assert(web.includes('irrFlowChart') && web.includes('flowHistory'), 'overview should render recent per-zone flow chart data');
+assert(web.includes("svg.setAttribute('viewBox'") && web.includes('var labels=7') && !web.includes("preserveAspectRatio='none'"),
+       'overview flow chart should avoid distorted SVG text and use denser x-axis labels');
 assert(web.includes('L/min') && web.includes('无流速'), 'overview flow chart should include axes/unit labels and an idle baseline state');
 assert(web.includes('collectTodayPlanCompletions') && web.includes('RecordStore::readLatest'), 'today plan progress should use watering records');
 assert(web.includes('todayPlanResultCompleted') && web.includes('item.lastResult != Irrigation::TaskResult::NONE'),
@@ -384,7 +387,7 @@ assert(web.includes("<dialog id='irrManualDialog' class='panel eb-modal"), 'manu
 assert(web.includes('irrmanual-presets') && web.includes('irrmanual-summary'), 'manual start dialog should use dedicated layout classes for aligned controls');
 assert(web.includes('远程启动前请确认现场安全'), 'manual start dialog should include safety guidance for remote users');
 assert(web.includes("value='确认启动'"), 'manual start dialog should require an explicit final start submit');
-assert(web.includes("confirm('确认启动手动浇水？')"), 'manual start final submit should include browser confirmation');
+assert(!web.includes("confirm('确认启动手动浇水？')"), 'manual start final submit should not add a second browser confirmation after the dialog');
 assert(web.includes('irrManualPreset(this)') && web.includes('data-min='), 'manual start presets should be visible buttons that fill duration');
 assert(!web.includes('<select onchange=\"this.form.durationMin.value=this.value\">'), 'manual start presets should not use a select dropdown');
 assert(web.includes('基本信息') && web.includes('流量估算') && web.includes('异常处理'), 'zone edit form should group fields into readable sections');
@@ -422,7 +425,8 @@ for (const marker of ["method='post'", 'method=\"post\"']) {
     const snippet = web.slice(index, index + 800);
     const confirmationOptional =
       snippet.includes("action='/api/v1/calibration/stop'") ||
-      snippet.includes("action='/api/v1/calibration/sample'");
+      snippet.includes("action='/api/v1/calibration/sample'") ||
+      snippet.includes("action='/api/v1/zone/start'");
     assert(confirmationOptional || snippet.includes('confirm('), `POST form must include browser confirmation near offset ${index}`);
     assert(snippet.includes('once(this)'), `POST form must prevent duplicate submission near offset ${index}`);
     index = web.indexOf(marker, index + marker.length);
