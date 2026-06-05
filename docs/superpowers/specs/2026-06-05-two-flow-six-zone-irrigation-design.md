@@ -798,13 +798,45 @@ Zone 正常流量参数回退
 
 业务页面重做为新模型。
 
-首页：
+页面结构固定为：
+
+```text
+/irrigation
+  运行总览、Flow 状态、Zone 快捷启动/停止、当前计划队列、当前故障。
+
+/irrigation/flows
+  Flow 1/2 启用状态、输入 GPIO、当前/待应用/回退校准参数、安装提示。
+
+/irrigation/zones
+  Zone 1..6 启用状态、名称、阀门 GPIO、归属 Flow、正常流量基线和安全阈值。
+
+/irrigation/plans
+  Zone 计划列表、计划创建/编辑/删除/启用/停用、排队和最近执行结果。
+
+/irrigation/settings
+  系统级业务设置：默认手动时长、最长浇水时长、计划宽限期、排队最长等待、待机漏水窗口。
+
+/irrigation/calibration
+  Flow K+Offset 校准、采样、拟合、Zone 正常流量学习。
+
+/irrigation/records
+  浇水记录查询。
+
+/irrigation/events
+  业务事件查询。
+```
+
+`/index` 可以作为 Esp32Base 首页入口重定向到 `/irrigation`，但业务页面以 `/irrigation` 为主，不继续围绕旧首页路径设计。
+
+运行总览：
 
 ```text
 显示 Flow 1/2 当前状态和流量
 显示 enabled Zone 的运行状态
 运行中的 Zone 显示归属 Flow 的实时流量和累计水量
 只提供符合互斥规则的启动操作
+显示每个 Zone 不能启动的原因，例如 disabled、fault、leak_protected、flow_disabled、flow_busy、calibration_active
+显示计划队列中等待的任务、目标 Zone、归属 Flow、已等待时间和过期剩余时间
 ```
 
 Flow 设置页：
@@ -819,6 +851,8 @@ maxValidFreqMilliHz
 pressurizeSec
 sampleWindowSec
 校准入口
+当前参数、待应用参数、回退参数分区显示
+Flow 被运行中的 Zone 使用时，禁用保存/应用/回退按钮
 ```
 
 Zone 设置页：
@@ -833,6 +867,8 @@ Zone 1..6 启用状态
 低/高流量连续确认秒数
 低/高流量异常动作：停机 / 只记录
 无脉冲超时
+当前基线、待应用基线、回退基线分区显示
+运行中的 Zone 禁止修改配置或应用/回退基线
 ```
 
 系统设置页必须提供：
@@ -842,6 +878,8 @@ Zone 1..6 启用状态
 待机漏水检测窗口 idleLeakWindowSec
 待机漏水检测脉冲阈值 idleLeakPulseThreshold
 ```
+
+系统设置页和 Esp32Base AppConfig 必须使用同一个 `SystemConfigStore` 和同一组 `irr_sys_v1` 标量 key。可以在 `/irrigation/settings` 内渲染业务友好的设置表单，也可以链接到 Esp32Base AppConfig 页面；但不能做两套互相不同步的设置存储。
 
 计划页必须提供：
 
@@ -866,9 +904,60 @@ FlowLeakFault 清除入口
 Flow K+Offset 校准
 Zone 正常流量学习
 样本误差和拟合可信度
+采样/学习运行中显示当前 Flow、采样 Zone、脉冲数、频率、估算水量、已用时间
+采样/学习运行中禁用普通手动启动、计划启动、Flow/Zone 参数应用
 ```
 
 所有状态改变操作必须使用 POST、鉴权、二次确认。Web/API 输出继续做 HTML/JSON escape。
+
+页面交互规则：
+
+```text
+手动启动
+  页面允许用户选择 Zone 和时长。
+  如果目标 Zone 禁用、存在 ZoneFault、全局漏水保护中、目标 Flow 禁用、目标 Flow 忙、校准/学习进行中，则按钮禁用并显示原因。
+  提交后如果状态在服务端已变化，API 返回 409 和 reason；页面刷新状态并显示失败原因。
+  手动启动不进入计划队列。
+
+停止
+  单 Zone 停止只关闭该 Zone。
+  Stop All 关闭所有 Zone，并中止正在进行的校准采样或 Zone 学习。
+  Stop All 必须二次确认。
+
+Flow 配置
+  `pulsePin` 只读。
+  Flow 禁用前必须确认没有 enabled Zone 归属该 Flow；否则拒绝保存。
+  Flow 参数手工编辑只保存 pendingCalibration，不直接覆盖 activeCalibration。
+  apply/rollback 只允许目标 Flow 空闲且没有校准/学习进行中。
+
+Zone 配置
+  `valvePin` 只读。
+  `flowId` 下拉只列出 enabled Flow。
+  enabled Zone 必须归属 enabled Flow。
+  运行中的 Zone 不允许改名、禁用、改 Flow、保存基线或应用/回退基线。
+  手工编辑基线只保存 pendingBaseline，不直接覆盖 activeBaseline。
+
+计划
+  计划保存时必须指定 enabled Zone。
+  如果 Zone 禁用，允许保存 disabled 计划，不允许启用该计划。
+  如果目标 Zone 归属的 Flow 禁用，不允许启用该计划。
+  删除计划必须二次确认。
+  计划到点后如果 Flow 忙，页面显示 queued；如果超过 queuedPlanMaxDelaySec，显示 expired。
+
+校准
+  同一时间只能有一个 Flow 校准或 Zone 学习任务。
+  Flow 校准采样必须选择目标 Flow 和一个归属该 Flow 的 enabled Zone。
+  单点/多点样本必须先 stop sample，再输入实际水量并保存样本。
+  fit 只生成 pendingCalibration。
+  Zone 学习只生成 pendingBaseline。
+
+故障清除
+  ZoneFault 清除只清目标 Zone。
+  FlowLeakFault 清除清指定 Flow 的待机漏水保护。
+  清除前页面必须展示故障发生时间、故障类型和二次确认。
+```
+
+页面和 API 使用同一套业务服务校验，页面禁用按钮只是用户体验，不能代替服务端校验。
 
 API 使用干净的新路径，不保留旧字段或旧路径语义：
 
@@ -908,6 +997,38 @@ POST /api/v1/zones/baseline/learning/stop
 ```
 
 所有 ID 使用请求体或 query 中的 `flowId`、`zoneId`。不要再使用 `road`、`channel`、`line`、`candidateFlow`、`previousFlow` 这类旧模型或含义不清的字段名。
+
+API 返回约定：
+
+```text
+GET
+  只读，返回 JSON。
+
+POST
+  修改状态，必须鉴权。
+  页面表单和 API 客户端使用相同字段名。
+  成功返回 ok=true；页面表单可重定向回来源页。
+  参数错误返回 400 和稳定 reason。
+  状态冲突返回 409 和稳定 reason，例如 flow_busy、calibration_active、zone_fault、flow_disabled。
+```
+
+`/api/v1/status` 至少返回：
+
+```text
+flows[]
+  flowId, enabled, pulsePin, activeZoneId, flowMlPerMin, frequencyMilliHz,
+  belowMeteringRange, sampleInvalid, totalPulses
+
+zones[]
+  zoneId, name, enabled, valvePin, flowId, state, canStart, blockedReason,
+  running, elapsedSec, targetSec, estimatedMl, fault
+
+queue[]
+  planId, zoneId, flowId, scheduledEpoch, queuedEpoch, expiresEpoch
+
+faults
+  zoneFaults[], flowLeakFaults[], leakProtectionActive
+```
 
 ## Storage
 

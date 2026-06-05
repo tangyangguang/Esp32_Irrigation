@@ -844,6 +844,60 @@ Pages:
 /irrigation/events
 ```
 
+`/irrigation` is the business dashboard. If `/index` remains registered as the Esp32Base landing page, make it redirect to `/irrigation` or render the same dashboard. Do not keep old dashboard behavior around `/index`.
+
+`/irrigation/settings` and Esp32Base AppConfig must use the same `SystemConfigStore` and the same `irr_sys_v1` scalar keys. It is acceptable for `/irrigation/settings` to render a business-specific form or link to AppConfig, but it must not create a second settings store.
+
+Page interaction requirements:
+
+```text
+Dashboard:
+  show Flow 1/2 state, activeZoneId, frequencyMilliHz, flowMlPerMin,
+  belowMeteringRange, sampleInvalid, enabled Zones, running Zones,
+  queue entries, and current faults.
+
+Manual start:
+  disable start buttons and show blockedReason when Zone disabled, Zone fault,
+  leak protection, Flow disabled, Flow busy, or calibration/learning active.
+  Server must still revalidate and return 409 if state changed after page render.
+
+Stop:
+  per-Zone stop closes one Zone.
+  stop-all closes all Zones and aborts active calibration/learning.
+  stop-all requires JavaScript confirm.
+
+Flows:
+  pulsePin read-only.
+  show activeCalibration, pendingCalibration, rollbackCalibration.
+  save manual edits as pending only.
+  apply/rollback disabled while target Flow is busy or calibration/learning active.
+  disabling a Flow is rejected if any enabled Zone still belongs to it.
+
+Zones:
+  valvePin read-only.
+  flowId selector lists enabled Flows.
+  enabled Zone must belong to an enabled Flow.
+  running Zone cannot be renamed, disabled, reassigned, or have baseline applied/rolled back.
+  manual baseline edits save pending only.
+
+Plans:
+  show create/edit/delete/enable/disable for Zone plans.
+  disabled Zone may keep disabled plans, but a plan cannot be enabled unless its Zone and Flow are enabled.
+  queued plan status shows queuedEpoch and expiresEpoch.
+
+Calibration:
+  only one Flow calibration or Zone learning operation at a time.
+  sample start requires target Flow plus one enabled Zone that belongs to that Flow.
+  sample stop precedes entering actual measured water.
+  fit creates pendingCalibration only.
+  Zone learning creates pendingBaseline only.
+
+Faults:
+  Zone fault clear clears only one Zone.
+  Flow leak clear clears one Flow leak fault.
+  both require confirm and show occurred time/type before submit.
+```
+
 - [ ] **Step 2: Replace API payloads**
 
 Required API groups:
@@ -880,7 +934,66 @@ POST /api/v1/zones/baseline/learning/stop
 
 All changing operations use POST, auth, and JavaScript confirm on pages. Payload fields use `flowId` and `zoneId`; do not use old `road`, `candidateFlow`, `previousFlow`, or startup-compensation field names anywhere.
 
+API response contract:
+
+```text
+GET:
+  read-only JSON.
+
+POST:
+  authenticated state change.
+  ok=true on success.
+  400 with stable reason for validation errors.
+  409 with stable reason for state conflicts such as flow_busy,
+  calibration_active, zone_fault, flow_disabled, leak_protected.
+```
+
+`GET /api/v1/status` must include `canStart` and `blockedReason` for each Zone; pages use those fields to disable or enable controls, but every POST handler must repeat the same server-side validation.
+
+`GET /api/v1/status` must include:
+
+```text
+flows[].flowId
+flows[].enabled
+flows[].pulsePin
+flows[].activeZoneId
+flows[].frequencyMilliHz
+flows[].flowMlPerMin
+flows[].belowMeteringRange
+flows[].sampleInvalid
+
+zones[].zoneId
+zones[].enabled
+zones[].flowId
+zones[].state
+zones[].canStart
+zones[].blockedReason
+zones[].estimatedMl
+zones[].fault
+
+queue[].planId
+queue[].zoneId
+queue[].flowId
+queue[].queuedEpoch
+queue[].expiresEpoch
+
+faults.zoneFaults[]
+faults.flowLeakFaults[]
+faults.leakProtectionActive
+```
+
 After the route rewrite, count all registered application routes and update `ESP32BASE_WEB_MAX_ROUTES` in `platformio.ini` if the new Web/API surface exceeds the current capacity. Do not keep an undersized legacy route limit.
+
+`scripts/check-web-structure.mjs` must assert:
+
+```text
+new route names exist and old /api/v1/zone/*, /api/v1/flow/*, /api/v1/calibration/* routes do not
+all mutation handlers use the shared authenticated POST guard
+all rendered forms that change state include JavaScript confirm
+status JSON contains canStart/blockedReason and Flow metering flags
+Flow/Zone config pages render active/pending/rollback sections
+calibration page enforces one active operation and pending-only apply flow
+```
 
 - [ ] **Step 3: Add install warning text**
 
@@ -952,6 +1065,11 @@ plan config API and page
 system settings page
 zone fault clear
 flow leak clear
+dashboard canStart and blockedReason display
+manual start conflict returns 409
+Flow and Zone pages show active/pending/rollback sections
+calibration and learning controls are mutually exclusive
+all mutating forms have confirm
 install warning for shared pump
 ```
 
