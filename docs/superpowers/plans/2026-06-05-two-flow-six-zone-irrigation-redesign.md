@@ -257,11 +257,14 @@ Use:
 ```text
 FlowConfigStore namespace: irr_flow_v1
 ZoneConfigStore namespace: irr_zone_v1
+SystemConfigStore namespace: irr_sys_v1
 ```
 
 Do not read old namespaces. If schema is missing or invalid, write defaults and log a schema reset event.
 
 `FlowConfigStore` owns only `FlowMeterConfig[2]` and Flow calibration pending/rollback state. `ZoneConfigStore` owns only `ZoneConfig[6]` and Zone baseline pending/rollback state. Do not store Flow K+Offset parameters inside `ZoneConfigStore`; otherwise arbitrary `Zone -> Flow` assignment will duplicate and desynchronize calibration parameters.
+
+Because `Esp32BaseConfig::CONFIG_BLOB_MAX_LEN` is 256 bytes, never save `FlowMeterConfig[2]` or `ZoneConfig[6]` as one NVS blob. Store each Flow as key `f1`/`f2`, and each Zone as key `z1`..`z6`. Add `static_assert(sizeof(StoredFlowConfig) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN)` and the same assertion for `StoredZoneConfig`.
 
 - [ ] **Step 4: Add queue config**
 
@@ -280,7 +283,9 @@ Default `queuedPlanMaxDelaySec = 3600`.
 Default `idleLeakWindowSec = 15`.
 Default `idleLeakPulseThreshold = 5`.
 
-After adding `queuedPlanMaxDelaySec`, update `platformio.ini` `ESP32BASE_APP_CONFIG_MAX_FIELDS` if the App Config registration count exceeds the old value. The current old value is `19`, which only covers the pre-redesign field set.
+System config scalar keys under `irr_sys_v1` are the single source of truth for system settings. Do not keep a second canonical system-config blob. `SystemConfigStore` loads scalar keys into RAM, validates the assembled config, and writes defaults for missing/invalid values.
+
+After adding `queuedPlanMaxDelaySec`, update `platformio.ini` `ESP32BASE_APP_CONFIG_MAX_FIELDS` and `ESP32BASE_APP_CONFIG_MAX_GROUPS` if the App Config registration count exceeds the old values. The current old values are `19` fields and `5` groups, which only cover the pre-redesign field set.
 
 - [ ] **Step 5: Verify**
 
@@ -469,6 +474,16 @@ git commit -m "refactor: run zones by flow occupancy"
 
 - [ ] **Step 1: Queue only plan starts**
 
+Rewrite `PlanStore` storage before relying on the new queue:
+
+```text
+namespace: irr_plan_v1
+meta key: meta
+slot keys: z<zoneId>_<slotIndex>
+```
+
+Do not store `PlanDefinition[TotalPlanSlots]` as one NVS blob, because 6 zones * 6 slots will exceed the 256-byte `Esp32BaseConfig` blob limit. Each stored slot must fit inside one key and have magic/version/size validation.
+
 Manual starts never enter the queue. Plan starts create:
 
 ```cpp
@@ -490,6 +505,8 @@ Start the earliest queued task whose Flow is currently free. If times are equal,
 - [ ] **Step 3: Expire stale queued tasks**
 
 If `now - queuedEpoch > queuedPlanMaxDelaySec`, drop the task and log `queue_expired`.
+
+The queue stays RAM-only. Do not persist queued tasks. On reboot, plans are re-evaluated from the persisted plan table and schedule grace window.
 
 - [ ] **Step 4: Verify**
 
@@ -518,6 +535,7 @@ git commit -m "refactor: queue planned watering by flow"
 
 **Files:**
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/FlowCalibration.*`
+- Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/FlowConfigStore.*`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/storage/ZoneConfigStore.*`
 
 - [ ] **Step 1: Delete old startup compensation logic**
@@ -580,6 +598,8 @@ Reject apply when `a <= 0`. Warn but allow save when sample frequency span is na
 
 The fit output must be `kUlPerMinPerHz` and `offsetMilliHz`. Use fixed-point integer math for the persisted result; UI display may format decimal values from those integers.
 
+Calibration samples and raw pulse details are RAM-only. Persist only the resulting `pendingCalibration`, `activeCalibration`, and `rollbackCalibration` in `FlowConfigStore`. Do not write each sample window, pulse interval, or intermediate fit result to Flash.
+
 - [ ] **Step 5: Implement Zone learning**
 
 Zone learning opens exactly one Zone, skips `pressurizeSec`, samples stable flow, then saves pending baseline:
@@ -612,7 +632,7 @@ K=60/241 ~= 0.24896 L/min/Hz -> kUlPerMinPerHz around 248960
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/domain/FlowCalibration.* src/storage/ZoneConfigStore.*
+git add src/domain/FlowCalibration.* src/storage/FlowConfigStore.* src/storage/ZoneConfigStore.*
 git commit -m "refactor: calibrate flow meters with K offset"
 ```
 
@@ -632,6 +652,10 @@ Use new record path:
 ```text
 /irr/records_v1.bin
 ```
+
+Use `Esp32BaseFs::createFixedFile()`, `Esp32BaseFs::readBytesAt()`, and `Esp32BaseFs::writeBytesAt()` for the record file. Do not include `LittleFS.h` and do not use Arduino `File` directly.
+
+Before creating the file, ensure `/irr` exists with `Esp32BaseFs::mkdir("/irr")`. Treat an already-existing directory as success.
 
 Every watering record snapshots:
 
@@ -672,6 +696,39 @@ sampleInvalidObserved
 result
 stopSource
 ```
+
+The record must be a fixed binary struct with:
+
+```text
+magic
+version
+size
+recordId
+commitMagic
+crc32
+```
+
+Add compile-time checks:
+
+```cpp
+static_assert(std::is_standard_layout<WateringRecord>::value, "WateringRecord must stay standard-layout");
+static_assert(std::is_trivially_copyable<WateringRecord>::value, "WateringRecord must stay trivially copyable");
+static_assert(sizeof(WateringRecord) <= 256, "WateringRecord exceeded the intended per-record budget");
+static_assert(static_cast<uint32_t>(sizeof(WateringRecord)) * Capacity <= 131072UL, "record file exceeded 128 KiB budget");
+```
+
+Write order:
+
+```text
+1. write commitMagic = 0 at the target slot
+2. write the full record with crc32
+3. write commitMagic = committed value
+4. update NVS record metadata
+```
+
+On boot, scan `/irr/records_v1.bin`, ignore invalid `commitMagic` or `crc32`, and recover `head/count/nextId` even if NVS metadata is missing or corrupted. NVS record metadata is an acceleration cache, not the only source of truth.
+
+Do not write runtime flow samples, pulse counts, chart points, or in-progress volume to Flash. Only append one record when a watering task ends.
 
 Result/error taxonomy:
 
@@ -727,6 +784,8 @@ struct FlowLeakFault {
 ```
 
 Flow-level idle leak must not be stored as a fake Zone error. Clearing leak protection clears `FlowLeakFault[2]`; clearing a Zone error clears only that Zone.
+
+Store fault state under namespace `irr_fault_v1`. If the combined `StoredFaultState` exceeds 256 bytes, split it into `zone_faults` and `flow_leaks` keys rather than increasing the base config blob limit.
 
 - [ ] **Step 2: Use Esp32BaseAppEventLog only**
 
@@ -854,6 +913,7 @@ git commit -m "refactor: rebuild irrigation web for flow zone model"
 **Files:**
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/README.md`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/PROJECT_PLAN.md`
+- Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/src/domain/MaintenanceService.*`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/01_requirements_v1.md`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/02_next_implementation_plan.md`
 - Modify: `/Users/tyg/dir/claude_dir/Esp32_Irrigation/docs/03_web_validation_checklist.md`
@@ -895,7 +955,26 @@ flow leak clear
 install warning for shared pump
 ```
 
-- [ ] **Step 3: Final software verification**
+- [ ] **Step 3: Update maintenance cleanup**
+
+Factory reset / clear irrigation data must clear only irrigation-owned storage:
+
+```text
+NVS namespaces:
+  irr_flow_v1
+  irr_zone_v1
+  irr_sys_v1
+  irr_plan_v1
+  irr_fault_v1
+  irr_record_v1
+
+LittleFS files:
+  /irr/records_v1.bin
+```
+
+Do not clear Esp32Base-owned namespaces from application code. WiFi, auth, OTA, FileLog, and AppEventLog cleanup remains Esp32Base responsibility.
+
+- [ ] **Step 4: Final software verification**
 
 Run:
 
@@ -913,10 +992,10 @@ pio run success
 only intended docs/code files changed
 ```
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add README.md PROJECT_PLAN.md docs/ scripts/check-web-structure.mjs
+git add README.md PROJECT_PLAN.md src/domain/MaintenanceService.* docs/ scripts/check-web-structure.mjs
 git commit -m "docs: document two-flow six-zone irrigation model"
 ```
 

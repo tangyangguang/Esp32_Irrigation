@@ -916,11 +916,86 @@ POST /api/v1/zones/baseline/learning/stop
 ```text
 Flow 配置 namespace: irr_flow_v1
 Zone 配置 namespace: irr_zone_v1
+System 配置 namespace: irr_sys_v1
+Plan 配置 namespace: irr_plan_v1
+Fault 状态 namespace: irr_fault_v1
+Record 元数据 namespace: irr_record_v1
 记录文件: /irr/records_v1.bin
 事件仍使用 Esp32BaseAppEventLog，灌溉业务只新增事件类型和字段，不另建事件存储
 ```
 
 旧配置、旧 namespace、旧记录文件不读取、不迁移、不清理。设备部署前由用户格式化。
+
+存储介质边界：
+
+```text
+NVS / Esp32BaseConfig
+  只保存小型、低频变更、单条 <= 256 字节的配置或状态。
+  FlowConfigStore 按 Flow 单独保存，key 为 f1/f2。
+  ZoneConfigStore 按 Zone 单独保存，key 为 z1..z6。
+  SystemConfigStore 保存系统级标量字段，作为 AppConfig 和业务设置页的同一份真实配置。
+  PlanStore 按计划槽位单独保存，key 为 z<zone>_<slot>，另有 meta 保存 nextPlanId。
+  FaultStateStore 保存 ZoneFault[6] 和 FlowLeakFault[2]；如果结构超过 256 字节，必须拆成 zone/flow 分 key 保存。
+  RecordStore 只在 NVS 保存 head/count/nextId 等小元数据。
+
+LittleFS / Esp32BaseFs
+  保存定长环形浇水记录文件 /irr/records_v1.bin。
+  创建记录文件前必须确保 /irr 目录存在。
+  记录读写必须使用 Esp32BaseFs::readBytesAt() / writeBytesAt()。
+  不直接 include LittleFS.h，不直接使用 Arduino File。
+
+RAM only
+  Schedule 内存队列。
+  Flow 实时脉冲窗口、流量图表历史、累计的运行中水量。
+  Flow 校准采样过程中的原始样本和拟合中间值。
+```
+
+`Esp32BaseConfig::CONFIG_BLOB_MAX_LEN` 为 256 字节，因此不得把 `FlowMeterConfig[2]`、`ZoneConfig[6]`、全部计划槽位或记录数组作为一个大 blob 写入 NVS。凡是可能超过 256 字节的数据，要么按对象拆 key，要么放入 LittleFS 定长文件。
+
+Flash 写入频率原则：
+
+```text
+允许立即写 Flash：
+  用户保存配置、应用/回退校准参数、修改计划、清除故障。
+  一次浇水任务结束后追加一条记录。
+  计划开始/完成等需要防重复执行的低频状态。
+
+禁止周期性写 Flash：
+  每秒流量、每个脉冲、运行中累计水量、流量图表点、队列状态。
+```
+
+浇水记录文件使用固定大小环形文件：
+
+```text
+RecordStore::WateringRecord 必须是 standard-layout/trivially-copyable。
+每条记录包含 magic/version/size/recordId/commitMagic/crc32。
+编译期 static_assert 单条记录大小和总文件大小，防止字段增加后意外超出预算。
+写入顺序为：清 commitMagic -> 写整条记录和 crc -> 写 commitMagic。
+启动时扫描记录文件，忽略 commitMagic 或 crc 无效的槽位，并从有效记录恢复 head/count/nextId。
+```
+
+这种设计允许掉电发生在记录写入中间时只丢失当前未提交记录，不破坏已有记录。Record 元数据可以从文件恢复，因此 NVS 元数据损坏不应导致记录文件整体不可读。
+
+系统配置存储不做“双真实来源”。AppConfig 页面和业务设置 API 都写同一组 `irr_sys_v1` 标量 key；`SystemConfigStore` 启动时从这些 key 组装 RAM 配置并校验，缺失或非法则回默认值并记录 schema reset 事件。
+
+计划存储不使用单个 `PlanDefinition[TotalPlanSlots]` 大 blob。每个计划槽位单独保存，单个槽位结构必须小于 256 字节；`nextPlanId`、版本和计数等元数据单独保存。设备重启后可以根据计划表和宽限期重新评估；内存队列不持久化。
+
+校准样本默认只保存在 RAM。应用后的 `activeCalibration`、`pendingCalibration`、`rollbackCalibration` 按 Flow 持久化；应用后的 `activeBaseline`、`pendingBaseline`、`rollbackBaseline` 按 Zone 持久化。不要把校准采样的每秒明细或原始脉冲流持续写入 Flash。
+
+维护/格式化边界：
+
+```text
+Factory reset / clear irrigation data 必须清除：
+  irr_flow_v1
+  irr_zone_v1
+  irr_sys_v1
+  irr_plan_v1
+  irr_fault_v1
+  irr_record_v1
+  /irr/records_v1.bin
+
+不清除 Esp32Base 自有 namespace，WiFi、Web auth、OTA、FileLog、AppEventLog 仍由 Esp32Base 管理。
+```
 
 ## Implementation Boundary
 
