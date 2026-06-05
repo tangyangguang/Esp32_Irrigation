@@ -88,7 +88,7 @@ Flow1Input
 Flow2Input
 Valve1Output ... Valve6Output
 I2C SDA/SCL
-5 个本地按钮
+最多 5 个本地按钮，其中 4 个为核心操作按钮，第 5 个可选
 状态灯
 ```
 
@@ -1216,7 +1216,7 @@ ScheduleService
   面向 Zone 触发计划，不直接操作 Flow 或 Valve。
 
 LocalControlService
-  管理 5 个本地按钮，复用 ZoneService 的启停校验，不实现配置菜单。
+  管理最多 5 个本地按钮，4 个核心按钮负责选择、启停和 Stop All，第 5 个可选用于信息页切换；复用 ZoneService 的启停校验，不实现配置菜单。
 
 DisplayService
   管理 I2C 屏幕状态显示，只显示运行、队列和故障摘要。

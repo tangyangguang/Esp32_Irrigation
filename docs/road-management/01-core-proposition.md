@@ -1,5 +1,7 @@
 # Zone 自治模型：单路自治，N 倍扩展
 
+> Current status: historical background only. Current implementation must follow the 2 Flow / 6 Zone redesign in `docs/superpowers/specs/2026-06-05-two-flow-six-zone-irrigation-design.md`.
+
 > 核心命题：每个 Zone 是一个完整的自治单元，多路系统 = 单 Zone 逻辑 × N 的实例化。
 
 ## 命题

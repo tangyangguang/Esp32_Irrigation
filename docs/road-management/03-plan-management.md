@@ -1,5 +1,7 @@
 # 计划管理体系设计
 
+> Current status: historical background only. Current implementation must follow the 2 Flow / 6 Zone redesign and RAM schedule queue in `docs/superpowers/specs/2026-06-05-two-flow-six-zone-irrigation-design.md`.
+
 从零开始的计划管理完整设计。计划属于 Zone，每个 Zone 最多 6 条计划。
 
 ## 一、三大核心概念

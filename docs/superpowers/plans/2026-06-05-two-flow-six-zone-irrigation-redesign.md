@@ -42,7 +42,7 @@ Zone 学习参数 = 正常流量 + 高低阈值 + 连续确认秒数 + 无脉冲
 
 ```text
 include/Pins.h
-  定义 2 路流量计输入、6 路阀门输出、I2C、5 个按钮、状态灯和 PWM 参数。
+  定义 2 路流量计输入、6 路阀门输出、I2C、最多 5 个按钮、状态灯和 PWM 参数。
 
 src/domain/ZoneTypes.h
   定义 MaxFlowMeters、MaxZones、新 Flow/Zone 配置、待应用参数、回退参数、运行状态、结果枚举。
@@ -57,7 +57,7 @@ src/domain/ZoneManager.* / Zone.* / ZoneTaskRunner.*
   重写 Zone 状态机、Flow 占用、同 Flow 互斥、不同 Flow 并行。
 
 src/domain/LocalControl.* / DisplayService.*
-  实现 5 个本地按钮和 I2C 屏幕状态显示；本地按钮调用同一套 Zone 启停服务，不做本地配置菜单。
+  实现最多 5 个本地按钮和 I2C 屏幕状态显示；4 个核心按钮负责选择、启停和 Stop All，第 5 个可选用于信息页切换；本地按钮调用同一套 Zone 启停服务，不做本地配置菜单。
 
 src/domain/ZoneScheduler.* / PlanExecutionTracker.*
   改为按 Zone 触发，并实现同 Flow 冲突的内存排队。
@@ -854,6 +854,8 @@ flow_calibration_rolled_back
 zone_pending_baseline_saved
 zone_learning_applied
 zone_baseline_rolled_back
+zone_fault_cleared
+flow_leak_fault_cleared
 ```
 
 - [ ] **Step 3: Verify**

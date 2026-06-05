@@ -1,5 +1,7 @@
 # Zone Management 水路管理领域
 
+> Current status: historical background only. The current implementation target is the 2 Flow / 6 Zone redesign in `docs/superpowers/specs/2026-06-05-two-flow-six-zone-irrigation-design.md`. Files in this directory may still describe the old 4-road, startup-compensation, or old API model until Task 9 rewrites them. Do not use this directory as the current implementation authority.
+
 本目录存放「水路（Zone）管理」领域的设计讨论、方案确认和实现规划。每个文件对应一个子主题。
 
 > Zone = 水路。灌溉行业标准术语（Rain Bird、Hunter、Orbit 等品牌统一使用）。

@@ -1,5 +1,7 @@
 # Zone 单元设计
 
+> Current status: historical background only. This document still describes old startup-compensation and per-zone flow-parameter ideas. Current implementation must follow the 2 Flow / 6 Zone redesign in `docs/superpowers/specs/2026-06-05-two-flow-six-zone-irrigation-design.md`.
+
 单个水路（Zone）的完整设计。Zone 是灌溉系统的核心领域概念，每路独立自治。
 
 > 术语：Zone = 水路。灌溉行业标准词（Rain Bird、Hunter、Orbit 等品牌统一使用 "Zone 1/2/3..." 表示独立控制的灌溉区域）。

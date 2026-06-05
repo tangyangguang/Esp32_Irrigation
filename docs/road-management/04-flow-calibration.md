@@ -1,5 +1,7 @@
 # 流量计现场校准方案
 
+> Current status: historical background only. This document describes the old startup compensation model. Current implementation uses Flow-level fixed-point K+Offset calibration and Zone baseline learning as specified in `docs/superpowers/specs/2026-06-05-two-flow-six-zone-irrigation-design.md`.
+
 ## 目标
 
 流量计校准必须按现场环境执行。水压、管径、喷头、过滤器、阀门开启速度和管路长度都会影响启动阶段和稳定阶段的脉冲表现，不能只使用传感器标称值或其他场地实验结果。

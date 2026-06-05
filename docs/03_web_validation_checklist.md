@@ -1,104 +1,101 @@
 # Web/API 功能验证清单
 
-本清单用于烧录固件后验证 `/index` 业务首页、业务页面和 `/api/v1/*` 业务 API。验证前先确认设备已完成 WiFi/NTP 基础初始化。
+本清单用于新 2 Flow / 6 Zone 重构完成后验证业务页面和 `/api/v1/*` 业务 API。验证前先确认设备已完成 WiFi/NTP 基础初始化。
 
 ## 首页与导航
 
-- 打开 `/`：应跳转到 `/index`。
-- 打开 `/index`：应显示首页，包含设备状态、已启用水路浇水状态、手动浇水和当前告警。
-- 停留在 `/index`：待机时应低频刷新状态；有水路浇水时应提高刷新频率，但不应高频连续请求。
-- 业务导航应包含：首页、计划、水路管理、流量校准、浇水记录、事件记录。
-- 业务导航不应显示单独的手动页或调试页。
-- 底部应保留 Esp32Base 默认页脚导航：`Status`、`Logs`、`App Config`、`System`。
+- 打开 `/`：应进入 Esp32Base 或业务入口，并可到达 `/irrigation`。
+- 打开 `/irrigation`：应显示 Flow 状态、enabled Zone 操作卡、运行中任务、计划队列和当前故障。
+- 首页应显示所有 enabled Zone 的启动/停止入口，不只显示 Zone 1/2。
+- disabled Zone 不应出现在首页操作卡中，但应能在 `/irrigation/zones` 查看并重新启用。
+- 业务导航应包含：总览、Flows、Zones、Plans、Settings、Calibration、Records、Events。
+- 底部或系统导航应保留 Esp32Base 基础入口。
 
-## UI baseline
+## UI 和安全
 
-- 业务页面应由 `Esp32BaseWeb::sendHeader()` 自动加载 `/esp32base/ui.css`，不应注入整套业务自定义 CSS。
-- 页面标题、面板、提示、指标、配置行、表格、表单网格和分页应优先使用 Esp32Base UI helper 或 baseline class。
-- 业务页不应使用旧 `shell`、`grid/span-*`、`badge`、`modal`、`table-wrap`、`field-grid` 等自定义页面结构。
-- 所有改变状态的页面表单都必须使用 POST，并带浏览器二次确认和 `once()` 防重复提交。
-- 修改前可运行 `node scripts/check-web-structure.mjs`，确认结构红线仍被自动检查覆盖。
+- 业务页面输出必须做 HTML escape。
+- JSON API 输出必须做 JSON escape。
+- 所有状态改变页面表单都必须使用 POST、鉴权、浏览器二次确认和防重复提交。
+- 页面禁用按钮不能代替服务端校验；所有 POST handler 必须重新校验。
+- 跨站 `Origin` / `Referer` 不应触发副作用。
 
 ## 状态 API
 
 - `GET /api/v1/status` 返回合法 JSON。
-- JSON 当前包含 `ok`、`timeSynced`、`leakAlertActive`、`zones`。
-- `zones` 应包含第 1 到第 4 路状态。
-- 每路包含 `zoneId`、`state`、`enabled`、`busy`、`errorActive`、`errorCode`、`taskType`、`targetSec`、`elapsedSec`、`remainingSec`、`pulses`、`estimatedMl`、`flowRatePerMinuteX1000`、`flowMlPerMin`、`flowRateReady`、`planId`。
+- `flows[]` 至少包含：`flowId`、`enabled`、`pulsePin`、`activeZoneId`、`frequencyMilliHz`、`flowMlPerMin`、`belowMeteringRange`、`sampleInvalid`、`totalPulses`。
+- `zones[]` 至少包含：`zoneId`、`name`、`enabled`、`valvePin`、`flowId`、`state`、`canStart`、`blockedReason`、`running`、`elapsedSec`、`targetSec`、`estimatedMl`、`fault`。
+- `queue[]` 至少包含：`planId`、`zoneId`、`flowId`、`scheduledEpoch`、`queuedEpoch`、`expiresEpoch`。
+- `faults` 至少包含：`zoneFaults[]`、`flowLeakFaults[]`、`leakProtectionActive`。
 
 ## 手动控制
 
-- 默认第 1、2 路启用，第 3、4 路停用。
-- 首页隐藏停用水路；可启动水路在状态行中提供手动启动按钮。
-- 停用水路不出现在首页，但仍可在水路管理页查看和重新启用。
-- 页面表单提交后历史记录中的启动/停止来源应为 `web_page`。
-- 直接调用 `POST /api/v1/zone/start` 且不带 `source=web_page` 时，历史记录启动来源应为 `http_api`。
-- 外部 API 启动目标水路，停用、忙碌、异常或漏水保护中应拒绝。
-- `POST /api/v1/zone/stop` 页面触发后返回首页；直接 API 调用返回 JSON。
+- `POST /api/v1/zones/start` 可启动 enabled Zone。
+- disabled Zone、ZoneFault、Flow disabled、Flow busy、leak protection、calibration/learning active 时应拒绝，并返回稳定 reason。
+- 手动启动不进入计划队列。
+- `POST /api/v1/zones/stop` 只停止目标 Zone。
+- `POST /api/v1/zones/stop-all` 停止所有运行 Zone，并中止校准/学习。
+- 页面手动启动、单路停止和 Stop All 都必须有二次确认。
 
-## 计划配置与跳过 API
+## Flow 和 Zone 配置
 
-- 打开 `/irrigation/plans` 或单个 `/irrigation/plan?...`：应能查看和编辑计划。
-- 每个计划显示为“第 N 路 / 计划 M”。
-- 编辑页只能修改该计划槽的启用状态、时间、目标时长、循环天数、循环开始日期和循环执行日。
-- 不应出现同时/顺序模式。
-- `GET /api/v1/plans` 返回 24 个计划的原始配置字段。
-- `POST /api/v1/schedule/skip` 和 `POST /api/v1/schedule/unskip` 支持按 `planId + ymd` 设置单次跳过；`ymd` 必须是真实有效日期，`2026-99-99` 这类值应拒绝；当前页面不承诺今天/明天/后天近期计划视图。
-- 计划执行结果应在重启后保留当天已处理状态；`MISSED` 仅作为内存态观察，NTP 时间回拨到计划窗口内时应允许重新评估；恢复出厂应清空执行跟踪。
+- `/irrigation/flows` 显示 Flow 1/2、输入 GPIO、active/pending/rollback 校准参数和安装提示。
+- 禁用 Flow 时，如果仍有 enabled Zone 归属该 Flow，应拒绝保存。
+- Flow 参数手工编辑只保存 pendingCalibration，不直接覆盖 activeCalibration。
+- `/irrigation/zones` 显示 Zone 1..6、启用状态、名称、阀门 GPIO、归属 Flow、基线和安全阈值。
+- enabled Zone 必须归属 enabled Flow。
+- running Zone 不允许改名、禁用、改 Flow、保存基线或应用/回退基线。
+- Zone 基线手工编辑只保存 pendingBaseline。
 
-## 灌溉设置
+## 计划
 
-- 打开 `/irrigation/zones`：应显示 4 路固定引脚。
-- 每路可修改启用状态、名称、异常阈值和流量参数；默认手动时长是系统级配置，不是每路配置。
-- 每路应展示正在使用的当前流量参数；当前参数不可直接编辑，参数变更必须通过候选参数应用流程完成。
-- PWM 参数应展示为固定策略，不开放页面修改。
-- 修改设置后刷新和重启应保持。
-- 无效范围必须拒绝，例如水流异常窗口为 0 或 61。
+- `/irrigation/plans` 显示 Zone 1..6 的计划，每个 Zone 最多 6 条，总计 36 个计划槽。
+- disabled Zone 可以保留 disabled 计划，但不能启用计划。
+- Flow disabled 时，不允许启用该 Flow 下 Zone 的计划。
+- 同一 Flow 下计划冲突时进入队列，页面显示 queued。
+- 超过 `queuedPlanMaxDelaySec` 时任务过期，页面显示 expired，并记录业务事件。
 
-## 流量校准
+## 校准和学习
 
-- 打开 `/irrigation/calibration`：应显示校准目标样本数、单次最长采集时间、原始明细采集上限和当前样本列表。
-- 点击开始接水时，只允许一个水路进入校准采集；普通浇水任务运行中应拒绝开始校准。
-- 校准采集或等待录入实际水量期间，普通手动/计划浇水启动应拒绝；停止全部应中止校准并关阀。
-- 工作区已有某一路样本时，开始采集其他水路应拒绝并提示先清空样本。
-- 点击停止后应关闭阀门，并要求输入本次实际水量 ml。
-- 保存样本后应显示总脉冲、采集时长、稳定开始时间、启动脉冲和稳定波动。
-- 点击生成候选参数后，应显示候选的启动阶段脉冲、启动阶段水量、稳定脉冲 P/L、平均误差、最大误差和诊断建议。
-- 清空校准样本不应清空已保存的候选参数。
-- 候选参数编辑弹层应校验范围并持久保存最终参数值。
-- 从其他水路填入时，只把其他水路正在使用的当前参数填到候选编辑表单中，不直接保存候选参数，不显示或保存来源水路。
-- 点击候选参数的“设为当前”后，应把旧当前参数保存为该路上一套参数，再把候选参数写入当前参数。
-- 候选参数等于当前参数时，应用按钮应禁用或隐藏，API 应拒绝且不得覆盖上一套参数。
-- 有上一套参数时，应允许恢复；恢复后当前参数和上一套参数互换。
-- 应用候选参数和恢复上一套参数时，该水路运行中应拒绝操作。
+- `/irrigation/calibration` 分为 Flow K+Offset 校准和 Zone 正常流量学习。
+- 同一时间只能有一个 Flow 校准或 Zone 学习任务。
+- Flow 校准采样必须选择目标 Flow 和一个归属该 Flow 的 enabled Zone。
+- 单点采样生成 `offsetMilliHz = 0` 的 pendingCalibration。
+- 多点拟合生成 K+Offset 的 pendingCalibration，并显示误差和可信度。
+- Flow 参数 apply/rollback 只允许目标 Flow 空闲且没有校准/学习进行中。
+- Zone 学习只生成 pendingBaseline，不直接覆盖 activeBaseline。
+- 本地屏幕不提供校准、学习或实际水量输入。
 
-## 历史记录与事件
+## 记录与事件
 
-- 打开 `/irrigation/records`：只显示浇水业务记录，不显示系统事件。
-- 打开 `/irrigation/events`：只显示灌溉业务重要事件，不显示启动、WiFi、NTP、OTA 等基础库系统日志。
-- 漏水、流量异常、计划跳过、水路锁定、告警清除、恢复出厂等事件应展示对应水路或计划对象，并说明关键数值，例如漏水实际脉冲、阈值和检测窗口。
-- 每条历史记录对应一路一次浇水任务。
-- 记录应显示任务类型、启动来源、停止来源、结果、目标时长、实际时长和估算水量。
-- `GET /api/v1/records` 返回最近 50 条浇水记录 JSON；当前不承诺 `limit` 参数。
-- `GET /api/v1/events` 返回最近 50 条业务事件 JSON；当前不承诺 `limit` 参数。
-- 打开 `/esp32base/app-events`：应显示基础库 App Events 存储视图。
-- 打开 `/esp32base/api/app-events?offset=0&limit=20`：应返回基础库 App Events JSON。
-- 打开 `/esp32base/app-events.csv`：应下载应用事件 CSV。
-- 在 System 页危险操作区执行 App Events 清空：应通过 POST 清空应用事件。
+- `/irrigation/records` 分页显示 `/irr/records_v1.bin` 中的浇水记录。
+- 每条记录应包含 `zoneId`、`flowId`、Flow/Zone 参数快照、目标时长、实际时长、估算水量、结果和停止来源。
+- `/irrigation/events` 分页显示灌溉业务事件，不另建第二套事件存储。
+- `GET /api/v1/records` 返回浇水记录 JSON。
+- `GET /api/v1/events` 返回灌溉业务事件 JSON。
+- 基础库系统事件仍由 Esp32Base App Events 页面/API 查看。
 
-## 异常与维护
+## 本地按钮和 I2C 屏幕
 
-- 清除当前告警表单提交后返回首页，并写入 `alert_clear` 事件。
-- 业务页面不提供恢复出厂入口。
-- 恢复出厂待处理后，配置保存、手动启动、清除告警、计划保存和计划跳过应返回 `factory_reset_pending`。
-- 恢复出厂待处理时，停止本路和停止全部仍应允许。
-- 所有业务 POST 应通过基础库 `Esp32BaseWeb::checkPostAllowed()` 同源校验；跨站 `Origin`/`Referer` 不应触发副作用。
-- 业务路由注册失败时应写入 `web_route_fault` 业务事件，便于发现路由容量或注册流程异常。
+- 本地选择列表只包含 enabled Zone。
+- Button1/2 可选择上一个/下一个 enabled Zone。
+- Button3 第一次按显示启动或停止确认；5 秒内再次按同一键才执行。
+- Button4 第一次按显示 Stop All 确认；5 秒内再次按同一键才执行。
+- 切换 Zone、切换信息页或确认超时应取消 pending confirmation。
+- I2C 屏幕显示 selected enabled Zone、Flow、blockedReason、运行水量、队列数量和故障摘要。
+- I2C 屏幕不提供配置、校准、学习或数字输入。
+
+## 存储和维护
+
+- `FlowConfigStore` 按 `f1/f2` 拆 key 保存。
+- `ZoneConfigStore` 按 `z1..z6` 拆 key 保存。
+- `PlanStore` 按 `z<zone>_<slot>` 拆 key 保存，不使用一个大 blob。
+- `RecordStore` 使用 `Esp32BaseFs::readBytesAt()` / `writeBytesAt()`，不直接使用 Arduino `File` 或 include `LittleFS.h`。
+- Factory reset / clear irrigation data 只清除灌溉 namespace 和 `/irr/records_v1.bin`，不清除 Esp32Base 自有 namespace。
 
 ## 未实机验证项
 
-- 阀门实际电平、PWM 占空比和驱动温升。
-- 流量计脉冲稳定性和外部上拉。
-- 默认 10 秒无脉冲超时是否匹配真实水流启动延迟。
-- GPIO0 长按 3 秒恢复出厂是否容易误触。
-- 72 小时连续运行稳定性。
+- 6 路阀门实际电平、PWM 保持和驱动温升。
+- 2 路 Flow 输入在真实线缆、外部上拉和喷头组合下的稳定性。
+- 真实水路 `pressurizeSec` 和 `noPulseTimeoutSec` 是否匹配。
+- GPIO5 作为 Valve6 输出是否影响启动采样。
+- 增压泵缺水和 72 小时连续运行稳定性。
