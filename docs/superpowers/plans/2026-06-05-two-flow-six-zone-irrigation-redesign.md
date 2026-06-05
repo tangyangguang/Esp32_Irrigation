@@ -456,16 +456,18 @@ Do not keep the old separate `FLOW_START_TIMEOUT` state. Startup and running no-
 Local buttons use the same Zone start/stop service as Web/API:
 
 ```text
-Button1: Zone 1 quick start/stop
-Button2: Zone 2 quick start/stop
-Button3: Stop All, and abort active calibration/learning
-Button4: select next enabled Zone
-Button5: start/stop selected Zone
+Button1: select previous enabled Zone
+Button2: select next enabled Zone
+Button3: start/stop selected enabled Zone
+Button4: Stop All, and abort active calibration/learning
+Button5: optional status page switch; first firmware can omit it if only four buttons are installed
 ```
+
+Do not special-case Zone 1/2. The local selector is built from all enabled Zones. Disabled Zones are not shown on the local operation screen, cannot be selected for manual start, and can only be re-enabled from the Zone settings page.
 
 Local starts use `manualDefaultDurationSec`, never enter the schedule queue, and return the same blocked reasons as Web/API: `zone_disabled`, `zone_fault`, `leak_protected`, `flow_disabled`, `flow_busy`, `calibration_active`.
 
-The I2C display shows only operational status in this redesign: running Zone, active Flow, flow rate, estimated volume, selected Zone, blocked reason, queue count, and fault summary. Do not implement Flow calibration editing, Zone baseline editing, plan editing, or numeric input on the local display.
+The I2C display shows only operational status in this redesign: selected enabled Zone, active Flow, flow rate, estimated volume, blocked reason, queue count, and fault summary. Do not implement Flow calibration editing, Zone baseline editing, plan editing, Zone learning, calibration sample entry, or numeric input on the local display.
 
 - [ ] **Step 6: Verify**
 
@@ -481,8 +483,9 @@ Bench tests after firmware flash:
 Zone 1 and Zone 3 both assigned Flow 1: second start rejected.
 Zone 1 assigned Flow 1 and Zone 2 assigned Flow 2: both can run.
 Stop all closes all six valve outputs.
-Button1/2 quick start default enabled zones, Button4/5 can operate Zone3..6 after enabled.
-I2C display shows selected Zone and blockedReason without allowing config edits.
+Local buttons can select and start any enabled Zone, including Zone3..6 after they are enabled.
+Disabled Zones do not appear on the local operation screen and cannot be started locally.
+I2C display shows selected enabled Zone and blockedReason without allowing config edits or calibration/learning input.
 ```
 
 - [ ] **Step 7: Commit**
@@ -884,6 +887,8 @@ Dashboard:
   show Flow 1/2 state, activeZoneId, frequencyMilliHz, flowMlPerMin,
   belowMeteringRange, sampleInvalid, enabled Zones, running Zones,
   queue entries, and current faults.
+  show manual controls for every enabled Zone, not only default Zone 1/2.
+  hide disabled Zones from dashboard operation cards; keep them visible on Zone settings.
 
 Manual start:
   disable start buttons and show blockedReason when Zone disabled, Zone fault,
@@ -1106,10 +1111,11 @@ Flow and Zone pages show active/pending/rollback sections
 calibration and learning controls are mutually exclusive
 all mutating forms have confirm
 install warning for shared pump
-local Button1/2 quick controls
-local Button4/5 selected-zone controls
+local previous/next enabled-zone controls
+local selected-zone start/stop control
+local disabled zones hidden from local operation screen
 local Stop All aborts calibration/learning
-I2C status display does not expose config editing
+I2C status display does not expose config editing, calibration, or learning input
 ```
 
 - [ ] **Step 3: Update maintenance cleanup**

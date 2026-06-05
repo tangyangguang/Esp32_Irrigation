@@ -111,19 +111,28 @@ GPIO4/GPIO5 在 ESP32 DevKit 上可作为输出使用；其中 GPIO5 是 ESP32 s
 
 ## Local Interaction Model
 
-本地 5 个按钮和 I2C 屏幕只做现场快捷操作和状态查看，不承担完整配置、校准和计划编辑功能。完整配置仍通过 Web/API 完成，避免在小屏和少量按钮上做复杂菜单。
+本地按钮和 I2C 屏幕只做现场快捷操作和状态查看，不承担完整配置、校准、学习和计划编辑功能。完整配置仍通过 Web/API 完成，避免在小屏和少量按钮上做复杂菜单。
+
+本地交互的核心目标只有两个：
+
+```text
+发现异常时能快速停水。
+现场需要时能选择某一路 enabled Zone 手动浇水。
+```
 
 推荐按钮语义：
 
 ```text
-Button 1: Zone 1 快捷启动/停止
-Button 2: Zone 2 快捷启动/停止
-Button 3: Stop All；如果正在校准或学习，则中止当前采样/学习并关阀
-Button 4: 选择下一个 enabled Zone
-Button 5: 启动/停止当前选中的 Zone
+Button 1: 上一个 enabled Zone
+Button 2: 下一个 enabled Zone
+Button 3: 启动/停止当前选中的 enabled Zone
+Button 4: Stop All；如果正在校准或学习，则中止当前采样/学习并关阀
+Button 5: 信息页切换，可选；如果硬件只装 4 个按钮，第一版可以不实现
 ```
 
-Zone 1/2 有独立快捷键，是因为默认启用第 1、2 路；Zone 3..6 通过 Button 4/5 选择操作。这样 5 个按钮可以覆盖 6 路阀门，又不引入多层本地菜单。
+本地操作不为 Zone 1/2 设计特殊快捷逻辑。首页、本地屏幕和本地按钮都以 `enabled Zone` 列表为准：启用的 Zone 都可以展示和操作，禁用的 Zone 不进入本地选择列表、不在本地屏幕主操作页展示、不能启动。Zone 设置页仍可显示所有 Zone 并重新启用禁用项。
+
+如果当前选中的 Zone 被禁用，选择器自动切到下一个 enabled Zone；如果没有任何 enabled Zone，屏幕显示无启用水路，启动/停止当前 Zone 按钮无效，Stop All 仍然有效。
 
 本地按钮必须调用和 Web/API 相同的业务服务校验：
 
@@ -137,13 +146,15 @@ Stop All 立即关闭所有 Zone，并中止校准/学习。
 I2C 屏幕第一版只显示运行状态：
 
 ```text
-当前运行 Zone、归属 Flow、实时流量、累计水量
-当前选中 Zone、能否启动和 blockedReason
+当前选中的 enabled Zone、归属 Flow、能否启动和 blockedReason
+当前运行 Zone、实时流量、累计水量
 队列数量
 ZoneFault / FlowLeakFault 摘要
 ```
 
-不在第一版本地交互里实现 Flow 参数编辑、Zone 基线编辑、计划编辑或校准样本输入。这些操作需要输入数字和确认流程，放在 Web 页面更可靠。
+Button 5 的信息页切换只在运行页、Flow 页、队列页和故障页之间切换，不进入配置菜单。
+
+不在第一版本地交互里实现 Flow 参数编辑、Zone 基线编辑、计划编辑、Flow 校准、Zone 学习或校准样本输入。这些操作需要输入数字、实际水量和确认流程，放在 Web 页面更可靠。
 
 ## Configuration Model
 
@@ -870,7 +881,8 @@ Zone 正常流量参数回退
 
 ```text
 显示 Flow 1/2 当前状态和流量
-显示 enabled Zone 的运行状态
+显示所有 enabled Zone 的运行状态和手动启动/停止入口；不只显示默认启用的 Zone 1/2
+隐藏 disabled Zone 的主操作入口；Zone 设置页仍显示全部 Zone 供重新启用
 运行中的 Zone 显示归属 Flow 的实时流量和累计水量
 只提供符合互斥规则的启动操作
 显示每个 Zone 不能启动的原因，例如 disabled、fault、leak_protected、flow_disabled、flow_busy、calibration_active
