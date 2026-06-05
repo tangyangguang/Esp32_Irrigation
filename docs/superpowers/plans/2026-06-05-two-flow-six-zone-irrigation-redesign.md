@@ -21,7 +21,7 @@ Zone.flowMeterId = 1 or 2
 同一 Flow 下 Zone 互斥
 不同 Flow 下 Zone 可并行
 Flow 参数 = K + Offset + 有效频率范围 + 建压时间 + 采样窗口
-Zone 学习参数 = 正常流量 + 高低阈值 + 无脉冲超时
+Zone 学习参数 = 正常流量 + 高低阈值 + 连续确认秒数 + 无脉冲超时
 ```
 
 明确不做：
@@ -45,7 +45,7 @@ include/Pins.h
   定义 2 路流量计输入、6 路阀门输出、I2C、5 个按钮、状态灯和 PWM 参数。
 
 src/domain/ZoneTypes.h
-  定义 MaxFlowMeters、MaxZones、新 Flow/Zone 配置、候选参数、运行状态、结果枚举。
+  定义 MaxFlowMeters、MaxZones、新 Flow/Zone 配置、待应用参数、回退参数、运行状态、结果枚举。
 
 src/domain/FlowMeter.*
   重写为 Flow 1/2 脉冲计数和固定点 K+Offset 流量计算。
@@ -175,11 +175,11 @@ enum class ParameterSource : uint8_t {
     LEARNED = 4,
 };
 
-struct FlowMeterParameterSlot {
-    bool exists;
+struct FlowMeterCalibrationProfile {
     ParameterSource source;
     int32_t kUlPerMinPerHz;
     int32_t offsetMilliHz;
+    uint32_t warningFreqMilliHz;
     uint32_t minValidFreqMilliHz;
     uint32_t maxValidFreqMilliHz;
     uint16_t pressurizeSec;
@@ -187,12 +187,12 @@ struct FlowMeterParameterSlot {
     uint32_t updatedAt;
 };
 
-struct ZoneLearningSlot {
-    bool exists;
+struct ZoneFlowBaselineProfile {
     ParameterSource source;
     uint32_t learnedFlowMlPerMin;
     uint16_t lowFlowPermille;
     uint16_t highFlowPermille;
+    uint16_t flowFaultConfirmSec;
     uint16_t noPulseTimeoutSec;
     uint32_t updatedAt;
 };
@@ -201,9 +201,11 @@ struct FlowMeterConfig {
     uint8_t id;
     uint8_t pulsePin;
     bool enabled;
-    FlowMeterParameterSlot current;
-    FlowMeterParameterSlot candidate;
-    FlowMeterParameterSlot previous;
+    FlowMeterCalibrationProfile activeCalibration;
+    bool hasPendingCalibration;
+    FlowMeterCalibrationProfile pendingCalibration;
+    bool hasRollbackCalibration;
+    FlowMeterCalibrationProfile rollbackCalibration;
 };
 
 struct ZoneConfig {
@@ -212,9 +214,12 @@ struct ZoneConfig {
     uint8_t valvePin;
     uint8_t flowMeterId;
     bool enabled;
-    ZoneLearningSlot currentLearning;
-    ZoneLearningSlot candidateLearning;
-    ZoneLearningSlot previousLearning;
+    bool hasLearnedBaseline;
+    ZoneFlowBaselineProfile activeBaseline;
+    bool hasPendingBaseline;
+    ZoneFlowBaselineProfile pendingBaseline;
+    bool hasRollbackBaseline;
+    ZoneFlowBaselineProfile rollbackBaseline;
 };
 ```
 
@@ -223,13 +228,14 @@ struct ZoneConfig {
 Defaults:
 
 ```text
-Flow 1: enabled, current.exists=true, pulsePin=Flow1, k=244897, offset=0, minValidFreq=4000, maxValidFreq=0, pressurizeSec=5, sampleWindowSec=2
-Flow 2: disabled, current.exists=true, pulsePin=Flow2, same parameters
-Flow candidate.exists=false, previous.exists=false
+Flow 1: enabled, pulsePin=Flow1, activeCalibration has defaults
+Flow 2: disabled, pulsePin=Flow2, activeCalibration has defaults
+Flow hasPendingCalibration=false, hasRollbackCalibration=false
+Flow calibration defaults: k=244897, offset=0, warningFreq=4000, minValidFreq=500, maxValidFreq=0, pressurizeSec=5, sampleWindowSec=2
 Zone 1..6: flowMeterId=1
 Zone 1/2: enabled
 Zone 3..6: disabled
-Zone learning: current.exists=false, candidate.exists=false, previous.exists=false, low=700, high=1300, noPulseTimeoutSec=10
+Zone baseline: hasLearnedBaseline=false, hasPendingBaseline=false, hasRollbackBaseline=false, low=700, high=1300, flowFaultConfirmSec=15, noPulseTimeoutSec=10
 ```
 
 - [ ] **Step 3: Use new namespaces**
@@ -250,11 +256,15 @@ Add to `SystemConfig`:
 ```cpp
 uint16_t scheduleGraceSec;
 uint16_t queuedPlanMaxDelaySec;
+uint16_t idleLeakWindowSec;
+uint16_t idleLeakPulseThreshold;
 uint32_t maxWateringDurationSec;
 uint32_t manualDefaultDurationSec;
 ```
 
 Default `queuedPlanMaxDelaySec = 3600`.
+Default `idleLeakWindowSec = 15`.
+Default `idleLeakPulseThreshold = 5`.
 
 - [ ] **Step 5: Verify**
 
@@ -270,6 +280,7 @@ Expected: `check-web-structure` includes this assertion after the config rewrite
 ```js
 assert(zoneTypes.includes('kUlPerMinPerHz') &&
        zoneTypes.includes('offsetMilliHz') &&
+       zoneTypes.includes('warningFreqMilliHz') &&
        zoneTypes.includes('minValidFreqMilliHz') &&
        zoneTypes.includes('maxValidFreqMilliHz'),
        'flow config should use fixed-point K+Offset with valid frequency bounds');
@@ -301,7 +312,7 @@ Expose APIs shaped around Flow IDs:
 ```cpp
 void begin();
 void handle();
-void configureFlow(uint8_t flowId, const Irrigation::FlowMeterParameterSlot& params);
+void configureFlow(uint8_t flowId, const Irrigation::FlowMeterCalibrationProfile& params);
 uint32_t pulseCount(uint8_t flowId);
 uint32_t flowMillilitersPerMinute(uint8_t flowId);
 bool flowRateReady(uint8_t flowId);
@@ -317,6 +328,7 @@ Use this exact runtime rule:
 if (pulseDelta == 0) {
     flowUlPerMin = 0;
 } else if (freqMilliHz < params.minValidFreqMilliHz) {
+    belowMeteringRange = true;
     flowUlPerMin = 0;
 } else if (params.maxValidFreqMilliHz > 0 && freqMilliHz > params.maxValidFreqMilliHz) {
     sampleInvalid = true;
@@ -328,6 +340,8 @@ if (pulseDelta == 0) {
 }
 volumeUl += static_cast<uint64_t>(flowUlPerMin) * elapsedMs / 60000ULL;
 ```
+
+No-water protection must use raw pulse presence, not `flowUlPerMin`. If `pulseDelta > 0` but frequency is below `minValidFreqMilliHz`, mark the sample as below metering range and show unreliable volume, but do not treat it as no water.
 
 - [ ] **Step 3: Keep pulse capture for calibration**
 
@@ -487,14 +501,15 @@ startupEstimatedMl
 stablePulsePerLiter
 ```
 
-- [ ] **Step 2: Implement manual candidate save**
+- [ ] **Step 2: Implement manual pending calibration save**
 
-Manual Flow edit validates and saves candidate:
+Manual Flow edit validates and saves pending calibration:
 
 ```text
 kUlPerMinPerHz 1..2000000
 offsetMilliHz -50000..50000
 minValidFreqMilliHz 0..60000
+warningFreqMilliHz 0..60000
 maxValidFreqMilliHz 0 or 1000..200000
 pressurizeSec bounded by max watering duration
 sampleWindowSec >= 1
@@ -534,13 +549,14 @@ Reject apply when `a <= 0`. Warn but allow save when sample frequency span is na
 
 - [ ] **Step 5: Implement Zone learning**
 
-Zone learning opens exactly one Zone, skips `pressurizeSec`, samples stable flow, then saves candidate:
+Zone learning opens exactly one Zone, skips `pressurizeSec`, samples stable flow, then saves pending baseline:
 
 ```text
 learnedFlowMlPerMin = average stable flow
 lowFlowPermille = 700
 highFlowPermille = 1300
-noPulseTimeoutSec = existing current or default 10
+flowFaultConfirmSec = existing active baseline or default 15
+noPulseTimeoutSec = existing active baseline or default 10
 ```
 
 - [ ] **Step 6: Verify**
@@ -587,6 +603,7 @@ zoneId
 flowMeterId
 kUlPerMinPerHz
 offsetMilliHz
+warningFreqMilliHz
 minValidFreqMilliHz
 maxValidFreqMilliHz
 pressurizeSec
@@ -594,6 +611,7 @@ sampleWindowSec
 learnedFlowMlPerMin
 lowFlowPermille
 highFlowPermille
+flowFaultConfirmSec
 noPulseTimeoutSec
 targetSec
 actualSec
@@ -624,12 +642,12 @@ flow_no_pulse_stop
 flow_low_stop
 flow_high_stop
 idle_leak_detected
-flow_candidate_saved
+flow_pending_calibration_saved
 flow_params_applied
-flow_params_restored
-zone_learning_candidate_saved
+flow_calibration_rolled_back
+zone_pending_baseline_saved
 zone_learning_applied
-zone_learning_restored
+zone_baseline_rolled_back
 ```
 
 - [ ] **Step 3: Verify**
@@ -674,9 +692,9 @@ GET  /api/v1/status
 POST /api/v1/zone/start
 POST /api/v1/zone/stop
 POST /api/v1/zones/stop-all
-POST /api/v1/flow/save-candidate
-POST /api/v1/flow/apply-candidate
-POST /api/v1/flow/restore-previous
+POST /api/v1/flow/save-pending-calibration
+POST /api/v1/flow/apply-pending-calibration
+POST /api/v1/flow/rollback-calibration
 POST /api/v1/calibration/flow/start
 POST /api/v1/calibration/flow/stop
 POST /api/v1/calibration/flow/save-sample
@@ -684,9 +702,9 @@ POST /api/v1/calibration/flow/clear-samples
 POST /api/v1/calibration/flow/fit
 POST /api/v1/zone-learning/start
 POST /api/v1/zone-learning/stop
-POST /api/v1/zone-learning/save-candidate
-POST /api/v1/zone-learning/apply-candidate
-POST /api/v1/zone-learning/restore-previous
+POST /api/v1/zone-learning/save-pending-baseline
+POST /api/v1/zone-learning/apply-pending-baseline
+POST /api/v1/zone-learning/rollback-baseline
 ```
 
 All changing operations use POST, auth, and JavaScript confirm on pages.
@@ -748,6 +766,7 @@ queue order and expiry
 K+Offset manual/single/multi-point
 Zone learning
 no-pulse stop
+below metering range does not trigger no-water stop
 idle leak detection
 install warning for shared pump
 ```
