@@ -9,6 +9,7 @@
 #include "domain/FlowMeter.h"
 #include "domain/MaintenanceService.h"
 #include "domain/Zone.h"
+#include "domain/ZoneManager.h"
 #include "storage/PlanStore.h"
 #include "storage/ScheduleSkipStore.h"
 
@@ -137,10 +138,11 @@ void ZoneScheduler::tick(Zone& zone,
             continue;
         }
         const uint32_t graceEnd = dueEpoch + systemConfig.scheduleGraceSec;
+        const uint32_t queueEnd = dueEpoch + systemConfig.queuedPlanMaxDelaySec;
         if (trustedEpoch < dueEpoch) {
             continue;
         }
-        if (trustedEpoch > graceEnd) {
+        if (trustedEpoch > graceEnd && trustedEpoch > queueEnd) {
             Irrigation::PlanObservationStatus previous = Irrigation::PlanObservationStatus::NOT_EVALUATED;
             if (!m_tracker.status(plan.planId, ymd, minuteOfDay, &previous) ||
                 previous != Irrigation::PlanObservationStatus::MISSED) {
@@ -185,25 +187,23 @@ bool ZoneScheduler::observePlan(Zone& zone,
         status = Irrigation::PlanObservationStatus::SKIPPED_RESET;
     } else if (FlowCalibration::active()) {
         status = Irrigation::PlanObservationStatus::SKIPPED_BUSY;
-    } else if (zone.isBusy()) {
+    } else if (!ZoneManager::canStartZoneNow(plan.zoneId)) {
         status = Irrigation::PlanObservationStatus::SKIPPED_BUSY;
     } else {
-        started = zone.start(Irrigation::TaskType::PLAN,
-                             Irrigation::StartSource::SCHEDULER,
-                             plan.planId,
-                             plan.slotIndex,
-                             plan.name,
-                             plan.durationSec,
-                             systemConfig.maxWateringDurationSec,
-                             5,
-                             FlowMeter::pulseCount(plan.zoneId),
-                             trustedEpoch,
-                             nowMs);
+        started = ZoneManager::startPlan(plan.zoneId,
+                                         plan.planId,
+                                         plan.slotIndex,
+                                         plan.name,
+                                         plan.durationSec,
+                                         trustedEpoch,
+                                         nowMs);
         status = started ? Irrigation::PlanObservationStatus::STARTED : Irrigation::PlanObservationStatus::REJECTED;
     }
 
-    (void)markObserved(plan, ymd, minuteOfDay, status);
-    appendObservation(plan, status, dueEpoch);
+    if (status != Irrigation::PlanObservationStatus::SKIPPED_BUSY) {
+        (void)markObserved(plan, ymd, minuteOfDay, status);
+        appendObservation(plan, status, dueEpoch);
+    }
     return started;
 }
 

@@ -18,6 +18,8 @@ const zoneConfigStoreHeader = read('src/storage/ZoneConfigStore.h');
 const flowConfigStore = read('src/storage/FlowConfigStore.cpp');
 const flowConfigStoreHeader = read('src/storage/FlowConfigStore.h');
 const systemConfigStore = read('src/storage/SystemConfigStore.cpp');
+const zoneManager = read('src/domain/ZoneManager.cpp');
+const zoneScheduler = read('src/domain/ZoneScheduler.cpp');
 
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
@@ -139,5 +141,13 @@ for (const legacy of [
 assert(systemConfigStore.includes('queuedPlanMaxDelaySec'), 'system config should include queued plan max delay');
 assert(systemConfigStore.includes('idleLeakWindowSec'), 'system config should include idle leak window');
 assert(systemConfigStore.includes('idleLeakPulseThreshold'), 'system config should include idle leak pulse threshold');
+
+assert(zoneManager.includes('bool flowBusy(uint8_t flowId)'), 'ZoneManager should own Flow-level busy checks');
+assert(zoneManager.includes('zone.config().flowId == flowId'), 'Flow busy checks should use ZoneConfig.flowId');
+assert(zoneManager.includes('bool startPlan('), 'ZoneManager should expose a unified plan start entrypoint');
+assert(zoneManager.includes('!flowBusy(config.flowId)'), 'Zone starts should reject same-Flow concurrency');
+assert(zoneScheduler.includes('queuedPlanMaxDelaySec'), 'scheduler should honor queuedPlanMaxDelaySec');
+assert(zoneScheduler.includes('ZoneManager::startPlan'), 'scheduler should start plans through ZoneManager');
+assert(!zoneScheduler.includes('zone.start('), 'scheduler must not bypass Flow mutual exclusion');
 
 console.log('check-web-structure passed');

@@ -59,6 +59,32 @@ bool anyBusy() {
     return false;
 }
 
+bool flowBusy(uint8_t flowId) {
+    if (flowId < 1 || flowId > Irrigation::MaxFlowMeters) {
+        return false;
+    }
+    for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
+        const Zone& zone = g_zones[indexFor(zoneId)];
+        if (zone.isBusy() && zone.config().flowId == flowId) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool canStart(uint8_t zoneId) {
+    if (!Irrigation::validZoneId(zoneId) || ZoneErrorStore::leakAlertActive() || FlowCalibration::active()) {
+        return false;
+    }
+    const Zone& zone = g_zones[indexFor(zoneId)];
+    const Irrigation::ZoneConfig& config = zone.config();
+    if (!config.enabled || zone.isBusy() || zone.isError()) {
+        return false;
+    }
+    const Irrigation::FlowMeterConfig& flow = FlowConfigStore::get(config.flowId);
+    return flow.enabled && !flowBusy(config.flowId);
+}
+
 void checkIdleLeaks(uint32_t nowMs) {
     if (anyBusy() || FlowCalibration::active()) {
         for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
@@ -120,7 +146,7 @@ bool reloadZone(uint8_t zoneId) {
 }
 
 bool startManual(uint8_t zoneId, uint32_t durationSec, Irrigation::StartSource source) {
-    if (!Irrigation::validZoneId(zoneId) || ZoneErrorStore::leakAlertActive() || FlowCalibration::active()) {
+    if (!canStart(zoneId)) {
         return false;
     }
     const Irrigation::SystemConfig& system = SystemConfigStore::current();
@@ -135,6 +161,30 @@ bool startManual(uint8_t zoneId, uint32_t durationSec, Irrigation::StartSource s
                                            pulseCount(zoneId),
                                            epochNow(),
                                            millis());
+}
+
+bool startPlan(uint8_t zoneId,
+               uint32_t planId,
+               uint8_t planSlot,
+               const char* planName,
+               uint32_t durationSec,
+               uint32_t trustedEpoch,
+               uint32_t nowMs) {
+    if (!canStart(zoneId)) {
+        return false;
+    }
+    const Irrigation::SystemConfig& system = SystemConfigStore::current();
+    return g_zones[indexFor(zoneId)].start(Irrigation::TaskType::PLAN,
+                                           Irrigation::StartSource::SCHEDULER,
+                                           planId,
+                                           planSlot,
+                                           planName,
+                                           durationSec,
+                                           system.maxWateringDurationSec,
+                                           5,
+                                           pulseCount(zoneId),
+                                           trustedEpoch,
+                                           nowMs);
 }
 
 bool stopZone(uint8_t zoneId, Irrigation::StopSource source, Irrigation::TaskResult result) {
@@ -187,6 +237,14 @@ bool isBusy() {
 
 bool isZoneBusy(uint8_t zoneId) {
     return Irrigation::validZoneId(zoneId) && g_zones[indexFor(zoneId)].isBusy();
+}
+
+bool isFlowBusy(uint8_t flowId) {
+    return flowBusy(flowId);
+}
+
+bool canStartZoneNow(uint8_t zoneId) {
+    return canStart(zoneId);
 }
 
 bool leakAlertActive() {
