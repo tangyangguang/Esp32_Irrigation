@@ -175,6 +175,11 @@ enum class ParameterSource : uint8_t {
     LEARNED = 4,
 };
 
+enum class FlowFaultAction : uint8_t {
+    RECORD_ONLY = 1,
+    STOP_ZONE = 2,
+};
+
 struct FlowMeterCalibrationProfile {
     ParameterSource source;
     int32_t kUlPerMinPerHz;
@@ -193,6 +198,8 @@ struct ZoneFlowBaselineProfile {
     uint16_t lowFlowPermille;
     uint16_t highFlowPermille;
     uint16_t flowFaultConfirmSec;
+    FlowFaultAction lowFlowAction;
+    FlowFaultAction highFlowAction;
     uint16_t noPulseTimeoutSec;
     uint32_t updatedAt;
 };
@@ -235,7 +242,7 @@ Flow calibration defaults: k=244897, offset=0, warningFreq=4000, minValidFreq=50
 Zone 1..6: flowMeterId=1
 Zone 1/2: enabled
 Zone 3..6: disabled
-Zone baseline: hasLearnedBaseline=false, hasPendingBaseline=false, hasRollbackBaseline=false, low=700, high=1300, flowFaultConfirmSec=15, noPulseTimeoutSec=10
+Zone baseline: hasLearnedBaseline=false, hasPendingBaseline=false, hasRollbackBaseline=false, low=100, high=3000, flowFaultConfirmSec=15, lowFlowAction=STOP_ZONE, highFlowAction=STOP_ZONE, noPulseTimeoutSec=10
 ```
 
 - [ ] **Step 3: Use new namespaces**
@@ -553,9 +560,11 @@ Zone learning opens exactly one Zone, skips `pressurizeSec`, samples stable flow
 
 ```text
 learnedFlowMlPerMin = average stable flow
-lowFlowPermille = 700
-highFlowPermille = 1300
+lowFlowPermille = 100
+highFlowPermille = 3000
 flowFaultConfirmSec = existing active baseline or default 15
+lowFlowAction = existing active baseline or default STOP_ZONE
+highFlowAction = existing active baseline or default STOP_ZONE
 noPulseTimeoutSec = existing active baseline or default 10
 ```
 
@@ -612,6 +621,8 @@ learnedFlowMlPerMin
 lowFlowPermille
 highFlowPermille
 flowFaultConfirmSec
+lowFlowAction
+highFlowAction
 noPulseTimeoutSec
 targetSec
 actualSec
@@ -639,8 +650,8 @@ schedule_queue_started
 schedule_queue_full
 schedule_queue_expired
 flow_no_pulse_stop
-flow_low_stop
-flow_high_stop
+flow_low_fault
+flow_high_fault
 idle_leak_detected
 flow_pending_calibration_saved
 flow_params_applied
@@ -767,6 +778,8 @@ K+Offset manual/single/multi-point
 Zone learning
 no-pulse stop
 below metering range does not trigger no-water stop
+low/high flow default action stops zone
+low/high flow can be configured record-only
 idle leak detection
 install warning for shared pump
 ```

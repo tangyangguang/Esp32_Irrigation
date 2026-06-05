@@ -106,6 +106,11 @@ enum class ParameterSource : uint8_t {
     MULTI_POINT = 3,
     LEARNED = 4,
 };
+
+enum class FlowFaultAction : uint8_t {
+    RECORD_ONLY = 1,
+    STOP_ZONE = 2,
+};
 ```
 
 Flow 配置：
@@ -160,6 +165,8 @@ struct ZoneFlowBaselineProfile {
     uint16_t lowFlowPermille;
     uint16_t highFlowPermille;
     uint16_t flowFaultConfirmSec;
+    FlowFaultAction lowFlowAction;
+    FlowFaultAction highFlowAction;
     uint16_t noPulseTimeoutSec;
     uint32_t updatedAt;
 };
@@ -207,7 +214,7 @@ Zone 1..6 -> Flow 1
 Zone 1/2 enabled
 Zone 3..6 disabled
 Zone 学习默认 hasLearnedBaseline=false, hasPendingBaseline=false, hasRollbackBaseline=false
-Zone 学习默认 lowFlowPermille=700, highFlowPermille=1300, flowFaultConfirmSec=15, noPulseTimeoutSec=10
+Zone 学习默认 lowFlowPermille=100, highFlowPermille=3000, flowFaultConfirmSec=15, lowFlowAction=STOP_ZONE, highFlowAction=STOP_ZONE, noPulseTimeoutSec=10
 ```
 
 如果用户启用 Flow 2，可任意把 Zone 归属到 Flow 1 或 Flow 2。
@@ -583,12 +590,14 @@ Zone 学习流程：
 2. 跳过归属 Flow 的 pressurizeSec。
 3. 在稳定窗口内采集平均流量。
 4. 保存 learnedFlowMlPerMin。
-5. 默认 lowFlowPermille = 700。
-6. 默认 highFlowPermille = 1300。
+5. 默认 lowFlowPermille = 100。
+6. 默认 highFlowPermille = 3000。
 7. 默认 flowFaultConfirmSec = 15。
+8. 默认 lowFlowAction = STOP_ZONE。
+9. 默认 highFlowAction = STOP_ZONE。
 ```
 
-Zone 学习必须在页面提供用户操作入口。用户行为是：选择 Zone，点击开始学习，系统自动打开该 Zone；等待稳定采样后停止；页面显示采集到的平均流量并保存为待应用基线。用户也可以手工编辑 `learnedFlowMlPerMin`、`lowFlowPermille`、`highFlowPermille`、`flowFaultConfirmSec`、`noPulseTimeoutSec`，手工编辑同样先保存为待应用基线。
+Zone 学习必须在页面提供用户操作入口。用户行为是：选择 Zone，点击开始学习，系统自动打开该 Zone；等待稳定采样后停止；页面显示采集到的平均流量并保存为待应用基线。用户也可以手工编辑 `learnedFlowMlPerMin`、`lowFlowPermille`、`highFlowPermille`、`flowFaultConfirmSec`、`lowFlowAction`、`highFlowAction`、`noPulseTimeoutSec`，手工编辑同样先保存为待应用基线。
 
 异常判断：
 
@@ -598,14 +607,16 @@ Zone 学习必须在页面提供用户操作入口。用户行为是：选择 Zo
 
 低流量：
   当前流量连续 flowFaultConfirmSec 秒 < learnedFlowMlPerMin * lowFlowPermille / 1000。
+  lowFlowAction=STOP_ZONE 时关闭该 Zone；lowFlowAction=RECORD_ONLY 时只记录事件和记录标记。
 
 高流量：
   当前流量连续 flowFaultConfirmSec 秒 > learnedFlowMlPerMin * highFlowPermille / 1000。
+  highFlowAction=STOP_ZONE 时关闭该 Zone；highFlowAction=RECORD_ONLY 时只记录事件和记录标记。
 ```
 
 如果某个 Zone 尚未学习正常流量，系统仍可用无脉冲保护和总流量记录，但不启用高低流量比例判断。
 
-`flowFaultConfirmSec` 是 Zone 级可配置项，默认 15 秒。该值用于过滤喷头瞬时波动、气泡和压力短时变化；不建议低于 5 秒。
+`flowFaultConfirmSec` 是 Zone 级可配置项，默认 15 秒。该值用于过滤喷头瞬时波动、气泡和压力短时变化；不建议低于 5 秒。低流量默认阈值为正常流量的 10%，目的是适应水塔低水位时仍能慢速浇水；高流量默认阈值为正常流量的 300%，目的是只在明显脱管、爆管或喷头大量脱落时触发。低/高流量默认动作都是 `STOP_ZONE`，但可改成 `RECORD_ONLY`。
 
 ## Idle Leak Detection
 
@@ -652,6 +663,8 @@ learnedFlowMlPerMinSnapshot
 lowFlowPermilleSnapshot
 highFlowPermilleSnapshot
 flowFaultConfirmSecSnapshot
+lowFlowActionSnapshot
+highFlowActionSnapshot
 startedAt
 endedAt
 targetSec
@@ -685,8 +698,8 @@ Zone 启动被同 Flow 互斥拒绝
 计划队列满
 计划队列任务过期
 无流量停止
-低流量停止
-高流量停止
+低流量异常触发，并记录 action=STOP_ZONE 或 RECORD_ONLY
+高流量异常触发，并记录 action=STOP_ZONE 或 RECORD_ONLY
 待机漏水
 Flow K+Offset 参数应用
 Flow K+Offset 待应用参数保存
@@ -733,6 +746,7 @@ Zone 1..6 启用状态
 学习流量
 高低流量阈值
 低/高流量连续确认秒数
+低/高流量异常动作：停机 / 只记录
 无脉冲超时
 ```
 
@@ -816,7 +830,8 @@ K+Offset 多点拟合计算正确
 无脉冲窗口不因正 Offset 产生虚假流量
 有脉冲但低于计量下限时不触发无水停机
 Zone 学习能保存正常流量
-无脉冲、低流量、高流量能停止对应 Zone
+无脉冲能停止对应 Zone
+低流量、高流量按动作配置停止或只记录
 待机 Flow 脉冲触发漏水保护
 ```
 
