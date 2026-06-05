@@ -385,6 +385,99 @@ abs(offsetMilliHz) 不应大于典型工作频率的 50%，否则提示参数可
 
 用户应优先采集明显不同的流量点，例如少喷头、中等喷头、多喷头。流量点过于集中时，可以保存结果，但页面必须显示该结果只是局部拟合。
 
+## Calibration Redesign Scope
+
+本轮重构必须同步重写全部校准功能。校准不能继续沿用旧的 Zone 级启动补偿模型：
+
+```text
+startupPulseLimit
+startupEstimatedMl
+stablePulsePerLiter
+```
+
+这些字段、相关候选参数、上一套参数、页面文案、API 参数和计算逻辑都删除。新校准体系拆成两类对象：Flow 参数校准和 Zone 流量学习。
+
+Flow 参数必须支持三种修改来源：
+
+```text
+manual       用户手工修改并保存候选参数
+singlePoint  单点采样生成 Offset=0 的候选参数
+multiPoint   多点采样拟合 K+Offset 的候选参数
+```
+
+Flow 参数页面必须允许手工修改：
+
+```text
+kUlPerMinPerHz
+offsetMilliHz
+pressurizeSec
+sampleWindowSec
+```
+
+手工修改必须走候选参数流程，不直接覆盖当前参数。应用候选时保存上一套 Flow 参数，便于回退。Flow 参数候选和上一套参数按 Flow 独立保存：
+
+```text
+Flow 1 current / candidate / previous
+Flow 2 current / candidate / previous
+```
+
+Zone 学习参数也必须支持自动学习和手工修改：
+
+```text
+learnedFlowMlPerMin
+lowFlowPermille
+highFlowPermille
+noPulseTimeoutSec
+```
+
+这些参数属于 Zone，不属于 Flow。Zone 学习候选和上一套参数按 Zone 独立保存：
+
+```text
+Zone 1 current / candidate / previous
+...
+Zone 6 current / candidate / previous
+```
+
+自动学习只生成候选值；手工编辑也只保存候选值。只有用户明确应用候选后，当前运行参数才改变。应用候选时必须要求目标 Flow 或 Zone 当前空闲。
+
+校准页面建议分区：
+
+```text
+Flow 校准
+  Flow 1/2 当前参数、候选参数、上一套参数
+  手工编辑 K/Offset/建压时间/采样窗口
+  单点采样
+  多点采样
+  拟合误差和可信度
+
+Zone 学习
+  Zone 1..6 当前学习参数、候选参数、上一套参数
+  手工编辑正常流量/高低阈值/无脉冲超时
+  自动学习
+```
+
+校准 API 也按新对象重写，不保留旧路径语义：
+
+```text
+Flow candidate save/apply/restore
+Flow calibration sample start/stop/save/clear/fit
+Zone learning start/stop/save candidate/apply/restore
+```
+
+可以继续使用 `/api/v1/calibration/*` 前缀，但请求字段和语义必须是新模型。不提供旧 `startupPulseLimit`、`startupEstimatedMl`、`stablePulsePerLiter` 的兼容入口。
+
+校准采集期间的安全规则：
+
+```text
+Flow 校准采集期间，不允许普通手动/计划浇水启动。
+Zone 学习期间，不允许普通手动/计划浇水启动。
+停止全部必须中止当前校准或学习并关阀。
+待机漏水检测不参与校准采集判断。
+校准采样只允许同时打开一个 Zone。
+```
+
+Flow 单点或多点采样必须选择一个实际出水的 Zone 作为采样执行水路；样本归属 Flow，而不是归属 Zone。只有所选 Zone 归属目标 Flow 时，才能用于该 Flow 校准。
+
 ## Zone Flow Learning
 
 Flow 校准解决“流量计如何把脉冲换算成流量”。Zone 学习解决“这一路水路正常应该是多少流量”。
