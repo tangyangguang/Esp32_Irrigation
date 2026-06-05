@@ -58,6 +58,10 @@ const Irrigation::TaskRuntime& ZoneTaskRunner::runtime() const {
     return m_runtime;
 }
 
+Irrigation::TaskRuntime& ZoneTaskRunner::mutableRuntime() {
+    return m_runtime;
+}
+
 const Irrigation::FinishedTask& ZoneTaskRunner::finished() const {
     return m_finished;
 }

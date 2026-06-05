@@ -225,9 +225,11 @@ struct TaskRuntime {
     uint32_t maxFlowFirstAtSec;
     uint32_t minFlowMlPerMin;
     uint32_t minFlowFirstAtSec;
+    uint32_t flowFaultStartedMs;
+    uint8_t flowFaultKind;
     bool firstPulseSeen;
     bool flowStatsValid;
-    uint8_t reserved[2];
+    uint8_t reserved[1];
 };
 
 struct FinishedTask {

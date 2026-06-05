@@ -20,6 +20,7 @@ const flowConfigStoreHeader = read('src/storage/FlowConfigStore.h');
 const systemConfigStore = read('src/storage/SystemConfigStore.cpp');
 const zoneManager = read('src/domain/ZoneManager.cpp');
 const zoneScheduler = read('src/domain/ZoneScheduler.cpp');
+const zoneRuntime = read('src/domain/Zone.cpp');
 const localControl = read('src/domain/LocalControl.cpp');
 const safetyManager = read('src/domain/SafetyManager.cpp');
 const flowCalibration = read('src/domain/FlowCalibration.cpp');
@@ -154,6 +155,10 @@ assert(zoneManager.includes('!flowBusy(config.flowId)'), 'Zone starts should rej
 assert(zoneScheduler.includes('queuedPlanMaxDelaySec'), 'scheduler should honor queuedPlanMaxDelaySec');
 assert(zoneScheduler.includes('ZoneManager::startPlan'), 'scheduler should start plans through ZoneManager');
 assert(!zoneScheduler.includes('zone.start('), 'scheduler must not bypass Flow mutual exclusion');
+assert(zoneRuntime.includes('learnedFlowMlPerMin > 0'), 'zone runtime should evaluate learned flow baselines');
+assert(zoneRuntime.includes('flowFaultConfirmSec'), 'zone runtime should require continuous flow fault confirmation');
+assert(zoneRuntime.includes('FLOW_LOW_STOPPED'), 'zone runtime should stop on confirmed low flow when configured');
+assert(zoneRuntime.includes('FLOW_HIGH_STOPPED'), 'zone runtime should stop on confirmed high flow when configured');
 
 assert(localControl.includes('kConfirmWindowMs = 5000'), 'local control should use a five-second same-button confirmation window');
 assert(localControl.includes('IrrigationPins::ButtonPrevZone'), 'local control should use the previous-zone button');

@@ -20,6 +20,7 @@ public:
     bool active() const;
     const Irrigation::ActiveTask& task() const;
     const Irrigation::TaskRuntime& runtime() const;
+    Irrigation::TaskRuntime& mutableRuntime();
     const Irrigation::FinishedTask& finished() const;
     void markPulse(uint32_t pulseCount, uint32_t nowMs);
     void markRunningStarted(uint32_t nowMs);

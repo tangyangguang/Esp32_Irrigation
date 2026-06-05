@@ -89,6 +89,40 @@ void Zone::tick(uint32_t pulseCount, uint32_t flowMlPerMin, bool flowRateReady, 
             return;
         }
         m_runner.updateFlowStats(flowMlPerMin, flowRateReady, nowMs);
+        if (flowRateReady && task.configSnapshot.baseline.learnedFlowMlPerMin > 0) {
+            const Irrigation::ZoneFlowBaselineProfile& baseline = task.configSnapshot.baseline;
+            const uint32_t lowLimit = (static_cast<uint64_t>(baseline.learnedFlowMlPerMin) * baseline.lowFlowPermille) / 1000ULL;
+            const uint32_t highLimit = (static_cast<uint64_t>(baseline.learnedFlowMlPerMin) * baseline.highFlowPermille) / 1000ULL;
+            uint8_t faultKind = 0;
+            Irrigation::TaskResult faultResult = Irrigation::TaskResult::NONE;
+            Irrigation::FlowFaultAction faultAction = Irrigation::FlowFaultAction::RECORD_ONLY;
+            if (flowMlPerMin < lowLimit) {
+                faultKind = 1;
+                faultResult = Irrigation::TaskResult::FLOW_LOW_STOPPED;
+                faultAction = baseline.lowFlowAction;
+            } else if (highLimit > 0 && flowMlPerMin > highLimit) {
+                faultKind = 2;
+                faultResult = Irrigation::TaskResult::FLOW_HIGH_STOPPED;
+                faultAction = baseline.highFlowAction;
+            }
+            Irrigation::TaskRuntime& mutableRuntime = m_runner.mutableRuntime();
+            if (faultKind == 0 || faultAction != Irrigation::FlowFaultAction::STOP_ZONE) {
+                mutableRuntime.flowFaultKind = 0;
+                mutableRuntime.flowFaultStartedMs = 0;
+            } else if (mutableRuntime.flowFaultKind != faultKind) {
+                mutableRuntime.flowFaultKind = faultKind;
+                mutableRuntime.flowFaultStartedMs = nowMs;
+            } else if (mutableRuntime.flowFaultStartedMs != 0 &&
+                       nowMs - mutableRuntime.flowFaultStartedMs >= static_cast<uint32_t>(baseline.flowFaultConfirmSec) * 1000UL) {
+                finish(faultResult,
+                       Irrigation::StopSource::FLOW_MONITOR,
+                       Irrigation::StopScope::ZONE,
+                       pulseCount,
+                       epoch,
+                       nowMs);
+                return;
+            }
+        }
         const uint32_t noPulseMs = nowMs - runtime.lastPulseMs;
         if (noPulseMs >= static_cast<uint32_t>(task.configSnapshot.baseline.noPulseTimeoutSec) * 1000UL) {
             finish(Irrigation::TaskResult::FLOW_NO_PULSE_TIMEOUT,
