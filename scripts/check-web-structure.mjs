@@ -25,6 +25,7 @@ const localControl = read('src/domain/LocalControl.cpp');
 const safetyManager = read('src/domain/SafetyManager.cpp');
 const flowCalibration = read('src/domain/FlowCalibration.cpp');
 const displayService = read('src/domain/DisplayService.cpp');
+const irrigationWeb = read('src/web/IrrigationWeb.cpp');
 
 assert(pins.includes('MaxFlowMeters = 2'), 'hardware model should expose two flow meters');
 assert(pins.includes('MaxZones = 6'), 'hardware model should expose six zones');
@@ -184,5 +185,20 @@ assert(displayService.includes('ZoneManager::blockedReason'), 'display service s
 assert(displayService.includes('fitLine'), 'display service should constrain LCD1602 line length');
 assert(!displayService.includes('FlowConfigStore::set'), 'display service must not edit flow calibration');
 assert(!displayService.includes('ZoneConfigStore::set'), 'display service must not edit zone config');
+
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/zones"'), 'web should expose a Zone config page');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/flows"'), 'web should expose a Flow config page');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/calibration"'), 'web should expose a calibration page');
+assert(irrigationWeb.includes('Esp32BaseWeb::addRoute("/irrigation/settings"'), 'web should expose a system settings page');
+assert(irrigationWeb.includes('for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId)'), 'web pages should scan all configured zones');
+assert(irrigationWeb.includes('if (!config.enabled)') && irrigationWeb.includes('continue;'), 'home page should hide disabled zones');
+assert(irrigationWeb.includes('enabledPresent'), 'web forms should be able to submit unchecked enabled boxes');
+assert(irrigationWeb.includes('flowHasEnabledZones(flowId)'), 'web should reject disabling a Flow while enabled Zones still use it');
+assert(irrigationWeb.includes('ZoneManager::isZoneBusy(zoneId)'), 'web should reject editing a running Zone');
+assert(irrigationWeb.includes('FlowConfigStore::savePendingCalibration'), 'web should save manual K+Offset edits as pending calibration');
+assert(irrigationWeb.includes('FlowConfigStore::applyPendingCalibration'), 'web should expose pending calibration apply');
+assert(irrigationWeb.includes('FlowConfigStore::restoreRollbackCalibration'), 'web should expose calibration rollback restore');
+assert(irrigationWeb.includes('queuedPlanMaxDelaySec'), 'web settings should expose queued plan max delay');
+assert(!irrigationWeb.includes('kLocalButtonZoneMax'), 'web must not inherit local Zone 1/2 cap');
 
 console.log('check-web-structure passed');
