@@ -107,7 +107,7 @@ Valve5Output = GPIO4
 Valve6Output = GPIO5
 ```
 
-GPIO4/GPIO5 在 ESP32 DevKit 上可作为输出使用；实际 PCB 设计时不要让外部阀门驱动在上电启动阶段强拉这些脚。如果后续板级验证发现启动受影响，再整体换 pin map。
+GPIO4/GPIO5 在 ESP32 DevKit 上可作为输出使用；其中 GPIO5 是 ESP32 strapping pin，上电复位阶段会参与启动配置采样。阀门驱动必须保证 GPIO5 在复位采样期间不被外部强拉到错误电平；建议由 MOSFET/驱动输入的高阻状态和合适下拉保证默认关阀。如果后续板级验证发现启动受影响，再整体换 pin map。
 
 ## Configuration Model
 
@@ -731,6 +731,10 @@ faultConfirmedAtSec
 noPulseTimeoutSecSnapshot
 pulsesBeforeFault
 estimatedMlBeforeFault
+lowFlowObserved
+highFlowObserved
+belowMeteringRangeObserved
+sampleInvalidObserved
 result
 stopSource
 ```
@@ -839,6 +843,23 @@ Zone 1..6 启用状态
 待机漏水检测脉冲阈值 idleLeakPulseThreshold
 ```
 
+计划页必须提供：
+
+```text
+Zone 1..6 的计划列表
+计划启用/停用
+开始时间、目标时长、星期/日期规则
+计划触发后的排队状态和最近执行结果
+```
+
+故障页或首页故障区必须提供：
+
+```text
+ZoneFault 清除入口
+FlowLeakFault 清除入口
+清除前二次确认
+```
+
 校准页：
 
 ```text
@@ -855,6 +876,7 @@ API 使用干净的新路径，不保留旧字段或旧路径语义：
 GET  /api/v1/status
 GET  /api/v1/flows
 GET  /api/v1/zones
+GET  /api/v1/plans
 GET  /api/v1/flows/history?flowId=1
 
 POST /api/v1/zones/start
@@ -863,6 +885,11 @@ POST /api/v1/zones/stop-all
 
 POST /api/v1/flows/config
 POST /api/v1/zones/config
+POST /api/v1/plans/config
+POST /api/v1/plans/delete
+
+POST /api/v1/faults/zone/clear
+POST /api/v1/faults/leak/clear
 
 POST /api/v1/flows/calibration/pending
 POST /api/v1/flows/calibration/apply
@@ -903,7 +930,7 @@ Zone 配置 namespace: irr_zone_v1
 
 ```text
 FlowMeterService
-  管理 Flow 1/2 脉冲、K+Offset、实时流量、累计水量。
+  管理 Flow 1/2 脉冲、K+Offset、实时流量、累计水量、低于计量下限和样本无效状态。
 
 ValveService
   管理 6 路阀门 PWM、吸合/保持、安全关阀。

@@ -105,7 +105,7 @@ static constexpr uint8_t MaxZones = 6;
 static constexpr uint8_t DefaultZoneEnabledMask = 0x03;
 ```
 
-GPIO4/GPIO5 are the recommended Valve5/Valve6 outputs for the first clean board model. Do not add a runtime fallback or compatibility pin map. If later board validation shows boot interaction or wiring changes, update this single pin map directly.
+GPIO4/GPIO5 are the recommended Valve5/Valve6 outputs for the first clean board model. GPIO5 is an ESP32 strapping pin, so the valve driver input must not force an invalid boot level during reset sampling. Do not add a runtime fallback or compatibility pin map. If later board validation shows boot interaction or wiring changes, update this single pin map directly.
 
 - [ ] **Step 2: Replace domain limits**
 
@@ -332,7 +332,9 @@ void configureFlow(uint8_t flowId, const Irrigation::FlowMeterCalibrationProfile
 uint32_t pulseCount(uint8_t flowId);
 uint32_t flowMillilitersPerMinute(uint8_t flowId);
 bool flowRateReady(uint8_t flowId);
+bool belowMeteringRange(uint8_t flowId);
 bool sampleInvalid(uint8_t flowId);
+uint32_t frequencyMilliHz(uint8_t flowId);
 uint32_t consumeVolumeMicroliters(uint8_t flowId);
 ```
 
@@ -358,6 +360,15 @@ volumeUl += static_cast<uint64_t>(flowUlPerMin) * elapsedMs / 60000ULL;
 ```
 
 No-water protection must use raw pulse presence, not `flowUlPerMin`. If `pulseDelta > 0` but frequency is below `minValidFreqMilliHz`, mark the sample as below metering range and show unreliable volume, but do not treat it as no water.
+
+Expose `belowMeteringRange(flowId)` and `frequencyMilliHz(flowId)` so Zone runtime, records, and Web status can distinguish:
+
+```text
+no raw pulses
+raw pulses below metering range
+valid low-frequency metered flow
+invalid high-frequency sample
+```
 
 - [ ] **Step 3: Keep pulse capture for calibration**
 
@@ -767,6 +778,8 @@ Pages:
 /irrigation
 /irrigation/flows
 /irrigation/zones
+/irrigation/plans
+/irrigation/settings
 /irrigation/calibration
 /irrigation/records
 /irrigation/events
@@ -780,12 +793,17 @@ Required API groups:
 GET  /api/v1/status
 GET  /api/v1/flows
 GET  /api/v1/zones
+GET  /api/v1/plans
 GET  /api/v1/flows/history?flowId=1
 POST /api/v1/zones/start
 POST /api/v1/zones/stop
 POST /api/v1/zones/stop-all
 POST /api/v1/flows/config
 POST /api/v1/zones/config
+POST /api/v1/plans/config
+POST /api/v1/plans/delete
+POST /api/v1/faults/zone/clear
+POST /api/v1/faults/leak/clear
 POST /api/v1/flows/calibration/pending
 POST /api/v1/flows/calibration/apply
 POST /api/v1/flows/calibration/rollback
@@ -802,6 +820,8 @@ POST /api/v1/zones/baseline/learning/stop
 ```
 
 All changing operations use POST, auth, and JavaScript confirm on pages. Payload fields use `flowId` and `zoneId`; do not use old `road`, `candidateFlow`, `previousFlow`, or startup-compensation field names anywhere.
+
+After the route rewrite, count all registered application routes and update `ESP32BASE_WEB_MAX_ROUTES` in `platformio.ini` if the new Web/API surface exceeds the current capacity. Do not keep an undersized legacy route limit.
 
 - [ ] **Step 3: Add install warning text**
 
@@ -868,6 +888,10 @@ below metering range does not trigger no-water stop
 low/high flow default action stops zone
 low/high flow can be configured record-only
 idle leak detection
+plan config API and page
+system settings page
+zone fault clear
+flow leak clear
 install warning for shared pump
 ```
 
