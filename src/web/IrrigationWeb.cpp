@@ -529,152 +529,251 @@ void writePlanEditForm(uint8_t zoneId, const Irrigation::PlanDefinition& plan, u
     }
 }
 
+void writeFlowEditPanel(uint8_t flowId, const Irrigation::FlowMeterConfig& flow) {
+    const Irrigation::FlowMeterCalibrationProfile& active = flow.activeCalibration;
+    Esp32BaseWeb::beginPanel("编辑 Flow");
+    Esp32BaseWeb::sendChunk("<h3>Flow ");
+    writeUInt(flowId);
+    Esp32BaseWeb::sendChunk("</h3><div class='tablewrap'><table class='kv'><tbody><tr><th>脉冲 GPIO</th><td>");
+    writeUInt(flow.pulsePin);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>状态</th><td>");
+    Esp32BaseWeb::sendChunk(flow.enabled ? "enabled" : "disabled");
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>Active</th><td>K=");
+    writeInt(active.kUlPerMinPerHz);
+    Esp32BaseWeb::sendChunk(" ul/min/Hz, offset=");
+    writeInt(active.offsetMilliHz);
+    Esp32BaseWeb::sendChunk(" milliHz</td></tr><tr><th>Pending</th><td>");
+    if (flow.hasPendingCalibration) {
+        Esp32BaseWeb::sendChunk("K=");
+        writeInt(flow.pendingCalibration.kUlPerMinPerHz);
+        Esp32BaseWeb::sendChunk(" ul/min/Hz, offset=");
+        writeInt(flow.pendingCalibration.offsetMilliHz);
+        Esp32BaseWeb::sendChunk(" milliHz");
+    } else {
+        Esp32BaseWeb::sendChunk("-");
+    }
+    Esp32BaseWeb::sendChunk("</td></tr></tbody></table></div>");
+    beginPostForm("/api/v1/flows/config", "确认保存 Flow 配置？", "/irrigation/flows", true);
+    writeHiddenUInt("flowId", flowId);
+    Esp32BaseWeb::sendChunk("<input type='hidden' name='enabledPresent' value='1'><div class='fieldgrid'>");
+    writeCheckboxField("启用", "enabled", flow.enabled);
+    writeNumberField("K", "kUlPerMinPerHz", active.kUlPerMinPerHz, "med");
+    writeNumberField("Offset(mHz)", "offsetMilliHz", active.offsetMilliHz, "med");
+    writeNumberField("低频提示(mHz)", "warningFreqMilliHz", static_cast<int32_t>(active.warningFreqMilliHz), "med");
+    writeNumberField("有效下限(mHz)", "minValidFreqMilliHz", static_cast<int32_t>(active.minValidFreqMilliHz), "med");
+    writeNumberField("有效上限(mHz)", "maxValidFreqMilliHz", static_cast<int32_t>(active.maxValidFreqMilliHz), "med");
+    writeNumberField("稳压秒", "pressurizeSec", active.pressurizeSec, "short");
+    writeNumberField("采样秒", "sampleWindowSec", active.sampleWindowSec, "short");
+    Esp32BaseWeb::sendChunk("</div><div class='actions'>");
+    writeSubmit("保存为 pending");
+    Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/flows'>取消</a></div></form><div class='actions'>");
+    beginPostForm("/api/v1/calibration/pending/apply", "确认应用 pending 校准？", "/irrigation/flows");
+    writeHiddenUInt("flowId", flowId);
+    writeSubmit("应用 pending", "secondary");
+    Esp32BaseWeb::sendChunk("</form>");
+    beginPostForm("/api/v1/calibration/rollback/restore", "确认回滚上一套校准？", "/irrigation/flows");
+    writeHiddenUInt("flowId", flowId);
+    writeSubmit("回滚", "secondary");
+    Esp32BaseWeb::sendChunk("</form></div>");
+    Esp32BaseWeb::endPanel();
+}
+
+void writeZoneEditPanel(uint8_t zoneId, const Irrigation::ZoneConfig& zone, const Irrigation::ZoneStatus& status) {
+    Esp32BaseWeb::beginPanel("编辑水路");
+    Esp32BaseWeb::sendChunk("<h3>");
+    Esp32BaseWeb::writeHtmlEscaped(zone.name);
+    Esp32BaseWeb::sendChunk("</h3><div class='tablewrap'><table class='kv'><tbody><tr><th>阀门 GPIO</th><td>");
+    writeUInt(zone.valvePin);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>Flow</th><td>Flow ");
+    writeUInt(zone.flowId);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>状态</th><td>");
+    Esp32BaseWeb::writeHtmlEscaped(Irrigation::zoneStateName(status.state));
+    Esp32BaseWeb::sendChunk("</td></tr></tbody></table></div>");
+    beginPostForm("/api/v1/zones/config", "确认保存 Zone 配置？", "/irrigation/zones", true);
+    writeHiddenUInt("zoneId", zoneId);
+    Esp32BaseWeb::sendChunk("<input type='hidden' name='enabledPresent' value='1'><div class='fieldgrid'>");
+    writeTextField("名称", "name", zone.name, "med");
+    writeCheckboxField("启用", "enabled", zone.enabled);
+    writeFlowSelectField(zone.flowId);
+    Esp32BaseWeb::sendChunk("</div><div class='actions'>");
+    writeSubmit("保存基础配置");
+    Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/zones'>取消</a></div></form>");
+    beginPostForm("/api/v1/zones/baseline/pending/save", "确认保存 Zone 基线为 pending？", "/irrigation/zones", true);
+    writeHiddenUInt("zoneId", zoneId);
+    Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
+    writeNumberField("正常流量(ml/min)", "learnedFlowMlPerMin", static_cast<int32_t>(zone.activeBaseline.learnedFlowMlPerMin), "med");
+    writeNumberField("低阈值(permille)", "lowFlowPermille", zone.activeBaseline.lowFlowPermille, "med");
+    writeNumberField("高阈值(permille)", "highFlowPermille", zone.activeBaseline.highFlowPermille, "med");
+    writeNumberField("异常确认秒", "flowFaultConfirmSec", zone.activeBaseline.flowFaultConfirmSec, "med");
+    writeNumberField("无脉冲超时秒", "noPulseTimeoutSec", zone.activeBaseline.noPulseTimeoutSec, "med");
+    Esp32BaseWeb::sendChunk("</div><div class='actions'>");
+    writeSubmit("保存基线 pending", "secondary");
+    Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/zones'>取消</a></div></form><div class='actions'>");
+    beginPostForm("/api/v1/zones/baseline/pending/apply", "确认应用 pending 基线？", "/irrigation/zones");
+    writeHiddenUInt("zoneId", zoneId);
+    writeSubmit("应用 pending", "secondary");
+    Esp32BaseWeb::sendChunk("</form>");
+    beginPostForm("/api/v1/zones/baseline/rollback/restore", "确认回滚上一套基线？", "/irrigation/zones");
+    writeHiddenUInt("zoneId", zoneId);
+    writeSubmit("回滚", "secondary");
+    Esp32BaseWeb::sendChunk("</form></div>");
+    Esp32BaseWeb::endPanel();
+}
+
 void handleFlowsPage() {
     Esp32BaseWeb::sendHeader("Flows");
     Esp32BaseWeb::sendPageTitle("Flows", "流量计配置与 K+Offset 校准参数");
+    uint8_t selectedFlowId = 0;
+    const bool editingFlow = readFlowId(&selectedFlowId);
+    if (editingFlow) {
+        writeFlowEditPanel(selectedFlowId, FlowConfigStore::get(selectedFlowId));
+    }
+    Esp32BaseWeb::beginPanel("Flow 列表");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>Flow</th><th>GPIO</th><th>状态</th><th>Active</th><th>Pending</th><th>操作</th></tr></thead><tbody>");
     for (uint8_t flowId = 1; flowId <= Irrigation::MaxFlowMeters; ++flowId) {
         const Irrigation::FlowMeterConfig& flow = FlowConfigStore::get(flowId);
         const Irrigation::FlowMeterCalibrationProfile& active = flow.activeCalibration;
-        Esp32BaseWeb::beginPanel("Flow 配置");
-        Esp32BaseWeb::sendChunk("<h3>Flow ");
+        Esp32BaseWeb::sendChunk("<tr><td>Flow ");
         writeUInt(flowId);
-        Esp32BaseWeb::sendChunk("</h3><div class='tablewrap'><table class='kv'><tbody><tr><th>脉冲 GPIO</th><td>");
+        Esp32BaseWeb::sendChunk("</td><td>");
         writeUInt(flow.pulsePin);
-        Esp32BaseWeb::sendChunk("</td></tr><tr><th>状态</th><td>");
+        Esp32BaseWeb::sendChunk("</td><td>");
         Esp32BaseWeb::sendChunk(flow.enabled ? "enabled" : "disabled");
-        Esp32BaseWeb::sendChunk("</td></tr><tr><th>Active</th><td>K=");
+        Esp32BaseWeb::sendChunk("</td><td>K=");
         writeInt(active.kUlPerMinPerHz);
-        Esp32BaseWeb::sendChunk(" ul/min/Hz, offset=");
+        Esp32BaseWeb::sendChunk(", offset=");
         writeInt(active.offsetMilliHz);
-        Esp32BaseWeb::sendChunk(" milliHz</td></tr><tr><th>Pending</th><td>");
+        Esp32BaseWeb::sendChunk("</td><td>");
         if (flow.hasPendingCalibration) {
             Esp32BaseWeb::sendChunk("K=");
             writeInt(flow.pendingCalibration.kUlPerMinPerHz);
-            Esp32BaseWeb::sendChunk(" ul/min/Hz, offset=");
+            Esp32BaseWeb::sendChunk(", offset=");
             writeInt(flow.pendingCalibration.offsetMilliHz);
-            Esp32BaseWeb::sendChunk(" milliHz");
         } else {
             Esp32BaseWeb::sendChunk("-");
         }
-        Esp32BaseWeb::sendChunk("</td></tr></tbody></table></div>");
-        beginPostForm("/api/v1/flows/config", "确认保存 Flow 配置？", "/irrigation/flows", true);
-        writeHiddenUInt("flowId", flowId);
-        Esp32BaseWeb::sendChunk("<input type='hidden' name='enabledPresent' value='1'><div class='fieldgrid'>");
-        writeCheckboxField("启用", "enabled", flow.enabled);
-        writeNumberField("K", "kUlPerMinPerHz", active.kUlPerMinPerHz, "med");
-        writeNumberField("Offset(mHz)", "offsetMilliHz", active.offsetMilliHz, "med");
-        writeNumberField("低频提示(mHz)", "warningFreqMilliHz", static_cast<int32_t>(active.warningFreqMilliHz), "med");
-        writeNumberField("有效下限(mHz)", "minValidFreqMilliHz", static_cast<int32_t>(active.minValidFreqMilliHz), "med");
-        writeNumberField("有效上限(mHz)", "maxValidFreqMilliHz", static_cast<int32_t>(active.maxValidFreqMilliHz), "med");
-        writeNumberField("稳压秒", "pressurizeSec", active.pressurizeSec, "short");
-        writeNumberField("采样秒", "sampleWindowSec", active.sampleWindowSec, "short");
-        Esp32BaseWeb::sendChunk("</div><div class='actions'>");
-        writeSubmit("保存为 pending");
-        Esp32BaseWeb::sendChunk("</div></form><div class='actions'>");
-        beginPostForm("/api/v1/calibration/pending/apply", "确认应用 pending 校准？", "/irrigation/flows");
-        writeHiddenUInt("flowId", flowId);
-        writeSubmit("应用 pending", "secondary");
-        Esp32BaseWeb::sendChunk("</form>");
-        beginPostForm("/api/v1/calibration/rollback/restore", "确认回滚上一套校准？", "/irrigation/flows");
-        writeHiddenUInt("flowId", flowId);
-        writeSubmit("回滚", "secondary");
-        Esp32BaseWeb::sendChunk("</form></div>");
-        Esp32BaseWeb::endPanel();
+        Esp32BaseWeb::sendChunk("</td><td><a class='btnlink compact' href='/irrigation/flows?flowId=");
+        writeUInt(flowId);
+        Esp32BaseWeb::sendChunk("'>编辑</a></td></tr>");
     }
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
 
 void handleZonesPage() {
     Esp32BaseWeb::sendHeader("Zones");
     Esp32BaseWeb::sendPageTitle("Zones", "6 路水路配置");
+    uint8_t selectedZoneId = 0;
+    const bool editingZone = readZoneId(&selectedZoneId);
+    if (editingZone) {
+        writeZoneEditPanel(selectedZoneId, ZoneConfigStore::get(selectedZoneId), ZoneManager::status(selectedZoneId));
+    }
+    Esp32BaseWeb::beginPanel("Zone 列表");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>Zone</th><th>阀门</th><th>Flow</th><th>启用</th><th>状态</th><th>基线</th><th>操作</th></tr></thead><tbody>");
     for (uint8_t zoneId = 1; zoneId <= Irrigation::MaxZones; ++zoneId) {
         const Irrigation::ZoneConfig& zone = ZoneConfigStore::get(zoneId);
         const Irrigation::ZoneStatus status = ZoneManager::status(zoneId);
-        Esp32BaseWeb::beginPanel("Zone 配置");
-        Esp32BaseWeb::sendChunk("<h3>");
+        Esp32BaseWeb::sendChunk("<tr><td>");
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
-        Esp32BaseWeb::sendChunk("</h3><div class='tablewrap'><table class='kv'><tbody><tr><th>阀门 GPIO</th><td>");
+        Esp32BaseWeb::sendChunk("</td><td>");
         writeUInt(zone.valvePin);
-        Esp32BaseWeb::sendChunk("</td></tr><tr><th>Flow</th><td>Flow ");
+        Esp32BaseWeb::sendChunk("</td><td>Flow ");
         writeUInt(zone.flowId);
-        Esp32BaseWeb::sendChunk("</td></tr><tr><th>状态</th><td>");
+        Esp32BaseWeb::sendChunk("</td><td>");
+        Esp32BaseWeb::sendChunk(zone.enabled ? "yes" : "no");
+        Esp32BaseWeb::sendChunk("</td><td>");
         Esp32BaseWeb::writeHtmlEscaped(Irrigation::zoneStateName(status.state));
-        Esp32BaseWeb::sendChunk("</td></tr></tbody></table></div>");
-        beginPostForm("/api/v1/zones/config", "确认保存 Zone 配置？", "/irrigation/zones", true);
-        writeHiddenUInt("zoneId", zoneId);
-        Esp32BaseWeb::sendChunk("<input type='hidden' name='enabledPresent' value='1'><div class='fieldgrid'>");
-        writeTextField("名称", "name", zone.name, "med");
-        writeCheckboxField("启用", "enabled", zone.enabled);
-        writeFlowSelectField(zone.flowId);
-        Esp32BaseWeb::sendChunk("</div><div class='actions'>");
-        writeSubmit("保存基础配置");
-        Esp32BaseWeb::sendChunk("</div></form>");
-        beginPostForm("/api/v1/zones/baseline/pending/save", "确认保存 Zone 基线为 pending？", "/irrigation/zones", true);
-        writeHiddenUInt("zoneId", zoneId);
-        Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
-        writeNumberField("正常流量(ml/min)", "learnedFlowMlPerMin", static_cast<int32_t>(zone.activeBaseline.learnedFlowMlPerMin), "med");
-        writeNumberField("低阈值(permille)", "lowFlowPermille", zone.activeBaseline.lowFlowPermille, "med");
-        writeNumberField("高阈值(permille)", "highFlowPermille", zone.activeBaseline.highFlowPermille, "med");
-        writeNumberField("异常确认秒", "flowFaultConfirmSec", zone.activeBaseline.flowFaultConfirmSec, "med");
-        writeNumberField("无脉冲超时秒", "noPulseTimeoutSec", zone.activeBaseline.noPulseTimeoutSec, "med");
-        Esp32BaseWeb::sendChunk("</div><div class='actions'>");
-        writeSubmit("保存基线 pending", "secondary");
-        Esp32BaseWeb::sendChunk("</div></form><div class='actions'>");
-        beginPostForm("/api/v1/zones/baseline/pending/apply", "确认应用 pending 基线？", "/irrigation/zones");
-        writeHiddenUInt("zoneId", zoneId);
-        writeSubmit("应用 pending", "secondary");
-        Esp32BaseWeb::sendChunk("</form>");
-        beginPostForm("/api/v1/zones/baseline/rollback/restore", "确认回滚上一套基线？", "/irrigation/zones");
-        writeHiddenUInt("zoneId", zoneId);
-        writeSubmit("回滚", "secondary");
-        Esp32BaseWeb::sendChunk("</form></div>");
-        Esp32BaseWeb::endPanel();
+        Esp32BaseWeb::sendChunk("</td><td>");
+        writeUInt(zone.activeBaseline.learnedFlowMlPerMin);
+        Esp32BaseWeb::sendChunk(" ml/min</td><td><a class='btnlink compact' href='/irrigation/zones?zoneId=");
+        writeUInt(zoneId);
+        Esp32BaseWeb::sendChunk("'>编辑</a></td></tr>");
     }
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
 
 void handleCalibrationPage() {
+    char action[12];
+    const bool hasAction = getParamText("action", action, sizeof(action));
     Esp32BaseWeb::sendHeader("Calibration");
     Esp32BaseWeb::sendPageTitle("Calibration", "Flow K+Offset 校准");
-    Esp32BaseWeb::beginPanel("采样");
-    beginPostForm("/api/v1/calibration/start", "确认开始校准采样？", "/irrigation/calibration", true);
-    Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
-    writeNumberField("Zone", "zoneId", 1, "short");
-    Esp32BaseWeb::sendChunk("</div><div class='actions'>");
-    writeSubmit("开始采样");
-    Esp32BaseWeb::sendChunk("</div></form><div class='actions'>");
-    beginPostForm("/api/v1/calibration/stop", "确认停止采样？", "/irrigation/calibration");
-    writeSubmit("停止采样", "secondary");
-    Esp32BaseWeb::sendChunk("</form></div>");
-    beginPostForm("/api/v1/calibration/sample", "确认提交实际接水量？", "/irrigation/calibration", true);
-    Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
-    writeNumberField("实际水量(ml)", "actualMl", 1000, "med");
-    Esp32BaseWeb::sendChunk("</div><div class='actions'>");
-    writeSubmit("提交样本");
-    Esp32BaseWeb::sendChunk("</div></form><div class='actions'>");
-    beginPostForm("/api/v1/calibration/pending/save", "确认保存推荐值为 pending？", "/irrigation/calibration");
-    writeSubmit("保存推荐 pending", "secondary");
-    Esp32BaseWeb::sendChunk("</form></div>");
+    if (hasAction && strcmp(action, "start") == 0) {
+        Esp32BaseWeb::beginPanel("开始采样");
+        beginPostForm("/api/v1/calibration/start", "确认开始校准采样？", "/irrigation/calibration", true);
+        Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
+        writeNumberField("Zone", "zoneId", 1, "short");
+        Esp32BaseWeb::sendChunk("</div><div class='actions'>");
+        writeSubmit("开始采样");
+        Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/calibration'>取消</a></div></form>");
+        Esp32BaseWeb::endPanel();
+    } else if (hasAction && strcmp(action, "sample") == 0) {
+        Esp32BaseWeb::beginPanel("提交样本");
+        beginPostForm("/api/v1/calibration/sample", "确认提交实际接水量？", "/irrigation/calibration", true);
+        Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
+        writeNumberField("实际水量(ml)", "actualMl", 1000, "med");
+        Esp32BaseWeb::sendChunk("</div><div class='actions'>");
+        writeSubmit("提交样本");
+        Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/calibration'>取消</a></div></form>");
+        Esp32BaseWeb::endPanel();
+    } else if (hasAction && strcmp(action, "stop") == 0) {
+        Esp32BaseWeb::beginPanel("停止采样");
+        beginPostForm("/api/v1/calibration/stop", "确认停止采样？", "/irrigation/calibration");
+        Esp32BaseWeb::sendChunk("<div class='actions'>");
+        writeSubmit("停止采样", "secondary");
+        Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/calibration'>取消</a></div></form>");
+        Esp32BaseWeb::endPanel();
+    } else if (hasAction && strcmp(action, "save") == 0) {
+        Esp32BaseWeb::beginPanel("保存推荐值");
+        beginPostForm("/api/v1/calibration/pending/save", "确认保存推荐值为 pending？", "/irrigation/calibration");
+        Esp32BaseWeb::sendChunk("<div class='actions'>");
+        writeSubmit("保存推荐 pending", "secondary");
+        Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/calibration'>取消</a></div></form>");
+        Esp32BaseWeb::endPanel();
+    }
+    Esp32BaseWeb::beginPanel("校准操作");
+    Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink' href='/irrigation/calibration?action=start'>开始采样</a><a class='btnlink secondary' href='/irrigation/calibration?action=sample'>提交样本</a><a class='btnlink secondary' href='/irrigation/calibration?action=stop'>停止采样</a><a class='btnlink secondary' href='/irrigation/calibration?action=save'>保存推荐 pending</a></div>");
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
 
 void handleSettingsPage() {
     const Irrigation::SystemConfig& config = SystemConfigStore::current();
+    char editValue[8];
+    const bool editing = getParamText("edit", editValue, sizeof(editValue)) && strcmp(editValue, "1") == 0;
     Esp32BaseWeb::sendHeader("Settings");
     Esp32BaseWeb::sendPageTitle("Settings", "灌溉系统参数");
+    if (editing) {
+        Esp32BaseWeb::beginPanel("编辑系统配置");
+        beginPostForm("/api/v1/config", "确认保存系统配置？", "/irrigation/settings", true);
+        Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
+        writeNumberField("最长浇水秒", "maxWateringDurationSec", static_cast<int32_t>(config.maxWateringDurationSec), "med");
+        writeNumberField("手动默认秒", "manualDefaultDurationSec", static_cast<int32_t>(config.manualDefaultDurationSec), "med");
+        writeNumberField("计划宽限秒", "scheduleGraceSec", config.scheduleGraceSec, "med");
+        writeNumberField("排队最大秒", "queuedPlanMaxDelaySec", config.queuedPlanMaxDelaySec, "med");
+        writeNumberField("待机漏水窗口秒", "idleLeakWindowSec", config.idleLeakWindowSec, "med");
+        writeNumberField("待机漏水脉冲", "idleLeakPulseThreshold", config.idleLeakPulseThreshold, "med");
+        Esp32BaseWeb::sendChunk("</div><div class='actions'>");
+        writeSubmit("保存");
+        Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/settings'>取消</a></div></form>");
+        Esp32BaseWeb::endPanel();
+    }
     Esp32BaseWeb::beginPanel("系统配置");
-    beginPostForm("/api/v1/config", "确认保存系统配置？", "/irrigation/settings", true);
-    Esp32BaseWeb::sendChunk("<div class='fieldgrid'>");
-    writeNumberField("最长浇水秒", "maxWateringDurationSec", static_cast<int32_t>(config.maxWateringDurationSec), "med");
-    writeNumberField("手动默认秒", "manualDefaultDurationSec", static_cast<int32_t>(config.manualDefaultDurationSec), "med");
-    writeNumberField("计划宽限秒", "scheduleGraceSec", config.scheduleGraceSec, "med");
-    writeNumberField("排队最大秒", "queuedPlanMaxDelaySec", config.queuedPlanMaxDelaySec, "med");
-    writeNumberField("待机漏水窗口秒", "idleLeakWindowSec", config.idleLeakWindowSec, "med");
-    writeNumberField("待机漏水脉冲", "idleLeakPulseThreshold", config.idleLeakPulseThreshold, "med");
-    Esp32BaseWeb::sendChunk("</div><div class='actions'>");
-    writeSubmit("保存");
-    Esp32BaseWeb::sendChunk("</div></form>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='kv'><tbody><tr><th>最长浇水秒</th><td>");
+    writeUInt(config.maxWateringDurationSec);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>手动默认秒</th><td>");
+    writeUInt(config.manualDefaultDurationSec);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>计划宽限秒</th><td>");
+    writeUInt(config.scheduleGraceSec);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>排队最大秒</th><td>");
+    writeUInt(config.queuedPlanMaxDelaySec);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>待机漏水窗口秒</th><td>");
+    writeUInt(config.idleLeakWindowSec);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><th>待机漏水脉冲</th><td>");
+    writeUInt(config.idleLeakPulseThreshold);
+    Esp32BaseWeb::sendChunk("</td></tr></tbody></table></div><div class='actions'><a class='btnlink' href='/irrigation/settings?edit=1'>编辑</a></div>");
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
