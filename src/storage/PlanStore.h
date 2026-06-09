@@ -12,6 +12,7 @@ void begin();
 bool clear();
 bool create(uint8_t zoneId, Irrigation::PlanDefinition* out);
 bool create(uint8_t zoneId, const Irrigation::PlanDefinition& draft, Irrigation::PlanDefinition* out);
+bool createAt(uint8_t zoneId, uint8_t slotIndex, const Irrigation::PlanDefinition& draft, Irrigation::PlanDefinition* out);
 bool remove(uint32_t planId);
 bool set(uint32_t planId, const Irrigation::PlanDefinition& plan);
 bool getById(uint32_t planId, Irrigation::PlanDefinition* out);

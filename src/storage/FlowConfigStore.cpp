@@ -275,11 +275,17 @@ uint32_t estimateMilliliters(const Irrigation::FlowMeterCalibrationProfile& raw,
     if (correctedMilliHz <= 0) {
         return 0;
     }
-    const uint64_t flowUlPerMin = (static_cast<uint64_t>(correctedMilliHz) *
-                                   static_cast<uint64_t>(profile.kUlPerMinPerHz)) /
-                                  1000ULL;
+    const uint64_t corrected = static_cast<uint64_t>(correctedMilliHz);
+    const uint64_t k = static_cast<uint64_t>(profile.kUlPerMinPerHz);
+    const uint64_t flowUlPerMin = corrected > UINT64_MAX / k
+        ? UINT64_MAX
+        : (corrected * k) / 1000ULL;
+    if (durationMs != 0 && flowUlPerMin > UINT64_MAX / durationMs) {
+        return UINT32_MAX;
+    }
     const uint64_t totalUl = (flowUlPerMin * durationMs) / 60000ULL;
-    return static_cast<uint32_t>(totalUl / 1000ULL);
+    const uint64_t totalMl = totalUl / 1000ULL;
+    return totalMl > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(totalMl);
 }
 
 bool schemaResetDetected() {

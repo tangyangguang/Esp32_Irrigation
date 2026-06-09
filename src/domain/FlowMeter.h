@@ -18,7 +18,7 @@ void handle();
 void configureFlowRate(uint16_t windowSec, uint16_t chartIntervalSec, uint16_t chartHistoryMin);
 void configureCalibration(uint8_t flowId, int32_t kUlPerMinPerHz, int32_t offsetMilliHz);
 uint32_t pulseCount(uint8_t flowId);
-uint32_t pulseRatePerMinuteX1000(uint8_t flowId);
+uint64_t pulseRatePerMinuteX1000(uint8_t flowId);
 uint32_t flowMillilitersPerMinute(uint8_t flowId);
 bool flowRateReady(uint8_t flowId);
 uint16_t sampleWindowSec();

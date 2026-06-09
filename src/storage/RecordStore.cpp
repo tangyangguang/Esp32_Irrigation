@@ -9,6 +9,7 @@
 namespace {
 
 static constexpr const char* kPath = "/irr/records_v1.bin";
+static constexpr const char* kDir = "/irr";
 static constexpr const char* kNamespace = "irr_rec_v1";
 static constexpr const char* kKeyInitialized = "init";
 static constexpr const char* kKeyMeta = "meta";
@@ -91,6 +92,9 @@ bool loadMeta() {
 }
 
 bool createEmptyStore() {
+    if (!Esp32BaseFs::mkdir(kDir) && !Esp32BaseFs::exists(kDir)) {
+        return false;
+    }
     return Esp32BaseFs::createFixedFile(kPath, fileSizeBytes(), 0);
 }
 

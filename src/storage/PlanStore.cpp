@@ -244,62 +244,67 @@ bool create(uint8_t zoneId, const Irrigation::PlanDefinition& draft, Irrigation:
         return false;
     }
     for (uint8_t slot = 0; slot < Irrigation::MaxPlansPerZone; ++slot) {
-        uint8_t index = 0;
-        (void)flatIndex(zoneId, slot, &index);
-        if (g_plans[index].exists) {
-            continue;
+        if (!getBySlot(zoneId, slot).exists) {
+            return createAt(zoneId, slot, draft, out);
         }
-        Irrigation::PlanDefinition plan = defaultPlan(zoneId, slot);
-        const Irrigation::PlanDefinition oldPlan = g_plans[index];
-        const uint32_t oldNextPlanId = g_nextPlanId;
-        plan.exists = true;
-        plan.planId = nextAvailablePlanId();
-        snprintf(plan.name, sizeof(plan.name), "计划 %u", static_cast<unsigned>(slot + 1));
-        if (draft.exists && draft.name[0] != '\0') {
-            strlcpy(plan.name, draft.name, sizeof(plan.name));
-        }
-        if (draft.exists) {
-            plan.enabled = draft.enabled;
-            if (draft.timeHour <= 23 && draft.timeMinute <= 59) {
-                plan.timeHour = draft.timeHour;
-                plan.timeMinute = draft.timeMinute;
-            }
-            if (draft.durationSec > 0) {
-                plan.durationSec = draft.durationSec;
-            }
-            if (draft.cycleDays > 0) {
-                plan.cycleDays = draft.cycleDays;
-            }
-            if (draft.cycleMask > 0) {
-                plan.cycleMask = draft.cycleMask;
-            }
-            if (validYmd(draft.cycleStartYmd)) {
-                plan.cycleStartYmd = draft.cycleStartYmd;
-            }
-        }
-        if (!validYmd(plan.cycleStartYmd) && !currentYmdValue(&plan.cycleStartYmd)) {
-            return false;
-        }
-        plan.createdAt = currentEpoch();
-        if (!validate(plan)) {
-            return false;
-        }
-        g_plans[index] = plan;
-        g_nextPlanId = plan.planId + 1UL;
-        if (g_nextPlanId == 0) {
-            g_nextPlanId = 1;
-        }
-        if (!savePlanSlot(zoneId, slot, plan) || !saveNextPlanId()) {
-            g_plans[index] = oldPlan;
-            g_nextPlanId = oldNextPlanId;
-            return false;
-        }
-        if (out) {
-            *out = plan;
-        }
-        return true;
     }
     return false;
+}
+
+bool createAt(uint8_t zoneId, uint8_t slotIndex, const Irrigation::PlanDefinition& draft, Irrigation::PlanDefinition* out) {
+    uint8_t index = 0;
+    if (!flatIndex(zoneId, slotIndex, &index) || g_plans[index].exists) {
+        return false;
+    }
+    Irrigation::PlanDefinition plan = defaultPlan(zoneId, slotIndex);
+    const Irrigation::PlanDefinition oldPlan = g_plans[index];
+    const uint32_t oldNextPlanId = g_nextPlanId;
+    plan.exists = true;
+    plan.planId = nextAvailablePlanId();
+    snprintf(plan.name, sizeof(plan.name), "计划 %u", static_cast<unsigned>(slotIndex + 1));
+    if (draft.exists && draft.name[0] != '\0') {
+        strlcpy(plan.name, draft.name, sizeof(plan.name));
+    }
+    if (draft.exists) {
+        plan.enabled = draft.enabled;
+        if (draft.timeHour <= 23 && draft.timeMinute <= 59) {
+            plan.timeHour = draft.timeHour;
+            plan.timeMinute = draft.timeMinute;
+        }
+        if (draft.durationSec > 0) {
+            plan.durationSec = draft.durationSec;
+        }
+        if (draft.cycleDays > 0) {
+            plan.cycleDays = draft.cycleDays;
+        }
+        if (draft.cycleMask > 0) {
+            plan.cycleMask = draft.cycleMask;
+        }
+        if (validYmd(draft.cycleStartYmd)) {
+            plan.cycleStartYmd = draft.cycleStartYmd;
+        }
+    }
+    if (!validYmd(plan.cycleStartYmd) && !currentYmdValue(&plan.cycleStartYmd)) {
+        return false;
+    }
+    plan.createdAt = currentEpoch();
+    if (!validate(plan)) {
+        return false;
+    }
+    g_plans[index] = plan;
+    g_nextPlanId = plan.planId + 1UL;
+    if (g_nextPlanId == 0) {
+        g_nextPlanId = 1;
+    }
+    if (!savePlanSlot(zoneId, slotIndex, plan) || !saveNextPlanId()) {
+        g_plans[index] = oldPlan;
+        g_nextPlanId = oldNextPlanId;
+        return false;
+    }
+    if (out) {
+        *out = plan;
+    }
+    return true;
 }
 
 bool remove(uint32_t planId) {

@@ -50,7 +50,7 @@ uint32_t flowMillilitersPerMinute(uint8_t zoneId) {
     return FlowMeter::flowMillilitersPerMinute(flowIdForZone(zoneId));
 }
 
-uint32_t pulseRatePerMinuteX1000(uint8_t zoneId) {
+uint64_t pulseRatePerMinuteX1000(uint8_t zoneId) {
     return FlowMeter::pulseRatePerMinuteX1000(flowIdForZone(zoneId));
 }
 

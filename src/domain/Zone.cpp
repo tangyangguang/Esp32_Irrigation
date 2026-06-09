@@ -303,7 +303,7 @@ void Zone::resetLeakWindow(uint32_t pulseCount, uint32_t nowMs) {
     m_leakWindowStartedMs = nowMs;
 }
 
-Irrigation::ZoneStatus Zone::status(uint32_t pulseCount, uint32_t flowRatePerMinuteX1000, uint32_t flowMlPerMin, bool flowRateReady, uint32_t nowMs) const {
+Irrigation::ZoneStatus Zone::status(uint32_t pulseCount, uint64_t flowRatePerMinuteX1000, uint32_t flowMlPerMin, bool flowRateReady, uint32_t nowMs) const {
     Irrigation::ZoneStatus status = {};
     status.zoneId = m_config.zoneId;
     status.state = m_state;

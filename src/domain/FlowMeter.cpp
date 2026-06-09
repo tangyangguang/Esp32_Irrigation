@@ -20,7 +20,7 @@ volatile uint32_t g_pulses[Irrigation::MaxFlowMeters] = {};
 portMUX_TYPE g_pulseMux = portMUX_INITIALIZER_UNLOCKED;
 uint32_t g_lastSampleMs = 0;
 uint32_t g_lastSamplePulses[Irrigation::MaxFlowMeters] = {};
-uint32_t g_ratePerMinuteX1000[Irrigation::MaxFlowMeters] = {};
+uint64_t g_ratePerMinuteX1000[Irrigation::MaxFlowMeters] = {};
 uint32_t g_flowMlPerMin[Irrigation::MaxFlowMeters] = {};
 bool g_flowReady[Irrigation::MaxFlowMeters] = {};
 int32_t g_kUlPerMinPerHz[Irrigation::MaxFlowMeters] = {244897, 244897};
@@ -119,6 +119,21 @@ uint16_t computeHistoryLimit(uint16_t intervalSec, uint16_t historyMin) {
     return static_cast<uint16_t>(points);
 }
 
+uint32_t saturatingMlPerMin(uint64_t flowUlPerMin) {
+    const uint64_t flowMlPerMin = flowUlPerMin / 1000ULL;
+    return flowMlPerMin > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(flowMlPerMin);
+}
+
+uint64_t computeFlowUlPerMin(uint64_t correctedMilliHz, uint32_t kUlPerMinPerHz) {
+    if (kUlPerMinPerHz == 0) {
+        return 0;
+    }
+    if (correctedMilliHz > UINT64_MAX / static_cast<uint64_t>(kUlPerMinPerHz)) {
+        return UINT64_MAX;
+    }
+    return (correctedMilliHz * static_cast<uint64_t>(kUlPerMinPerHz)) / 1000ULL;
+}
+
 void clearFlowHistory(uint8_t index) {
     if (index >= Irrigation::MaxFlowMeters) {
         return;
@@ -177,17 +192,16 @@ void sampleFlow(uint8_t index, uint32_t delta, uint32_t elapsedMs) {
         g_flowReady[index] = false;
         return;
     }
-    g_ratePerMinuteX1000[index] = static_cast<uint32_t>((static_cast<uint64_t>(sumPulses) * 60000ULL * 1000ULL) / sumMs);
+    g_ratePerMinuteX1000[index] = (static_cast<uint64_t>(sumPulses) * 60000ULL * 1000ULL) / sumMs;
     g_flowReady[index] = sumMs >= targetMs;
     const int64_t measuredMilliHz = (static_cast<int64_t>(sumPulses) * 1000000LL) / sumMs;
     const int64_t correctedMilliHz = measuredMilliHz + g_offsetMilliHz[index];
     if (correctedMilliHz <= 0 || g_kUlPerMinPerHz[index] <= 0) {
         g_flowMlPerMin[index] = 0;
     } else {
-        const uint64_t flowUlPerMin = (static_cast<uint64_t>(correctedMilliHz) *
-                                       static_cast<uint64_t>(g_kUlPerMinPerHz[index])) /
-                                      1000ULL;
-        g_flowMlPerMin[index] = static_cast<uint32_t>(flowUlPerMin / 1000ULL);
+        const uint64_t flowUlPerMin = computeFlowUlPerMin(static_cast<uint64_t>(correctedMilliHz),
+                                                          static_cast<uint32_t>(g_kUlPerMinPerHz[index]));
+        g_flowMlPerMin[index] = saturatingMlPerMin(flowUlPerMin);
     }
 }
 
@@ -273,7 +287,7 @@ uint32_t pulseCount(uint8_t flowId) {
     return count;
 }
 
-uint32_t pulseRatePerMinuteX1000(uint8_t flowId) {
+uint64_t pulseRatePerMinuteX1000(uint8_t flowId) {
     uint8_t index = 0;
     if (!flowIndex(flowId, &index)) {
         return 0;

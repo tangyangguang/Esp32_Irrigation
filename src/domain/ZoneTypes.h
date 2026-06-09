@@ -255,7 +255,7 @@ struct ZoneStatus {
     uint32_t remainingSec;
     uint32_t pulses;
     uint32_t estimatedMilliliters;
-    uint32_t flowRatePerMinuteX1000;
+    uint64_t flowRatePerMinuteX1000;
     uint32_t flowMlPerMin;
     bool flowRateReady;
     TaskType taskType;
