@@ -10,6 +10,53 @@ function assert(condition, message) {
   }
 }
 
+function functionBody(source, name) {
+  const signature = `void ${name}()`;
+  const start = source.indexOf(signature);
+  assert(start >= 0, `missing function ${name}`);
+  const braceStart = source.indexOf('{', start);
+  assert(braceStart >= 0, `missing function body for ${name}`);
+  let depth = 0;
+  for (let i = braceStart; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === '{') {
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(braceStart + 1, i);
+      }
+    }
+  }
+  throw new Error(`unterminated function body for ${name}`);
+}
+
+function assertEditBranchReturns(source, functionName, conditionNeedle) {
+  const body = functionBody(source, functionName);
+  const conditionIndex = body.indexOf(conditionNeedle);
+  assert(conditionIndex >= 0, `${functionName} should have edit branch ${conditionNeedle}`);
+  const branchStart = body.indexOf('{', conditionIndex);
+  assert(branchStart >= 0, `${functionName} edit branch should have a block`);
+  let depth = 0;
+  for (let i = branchStart; i < body.length; i += 1) {
+    const ch = body[i];
+    if (ch === '{') {
+      depth += 1;
+    } else if (ch === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        const branch = body.slice(branchStart + 1, i);
+        assert(
+          branch.includes('Esp32BaseWeb::sendFooter();') && branch.includes('return;'),
+          `${functionName} edit/action branch must send footer and return before list rendering`,
+        );
+        return;
+      }
+    }
+  }
+  throw new Error(`${functionName} edit branch is unterminated`);
+}
+
 const pins = read('include/Pins.h');
 const zoneTypes = read('src/domain/ZoneTypes.h');
 const valveController = read('src/domain/ValveController.cpp');
@@ -235,6 +282,13 @@ assert(irrigationWeb.includes('ZoneConfigStore::restoreRollbackBaseline'), 'web 
 assert(irrigationWeb.includes('ZoneManager::isFlowBusy(flowId)'), 'web should reject Flow calibration apply while that Flow is running');
 assert(irrigationWeb.includes('queuedPlanMaxDelaySec'), 'web settings should expose queued plan max delay');
 assert(!irrigationWeb.includes('kLocalButtonZoneMax'), 'web must not inherit local Zone 1/2 cap');
+assertEditBranchReturns(irrigationWeb, 'handleFlowsPage', 'if (editingFlow)');
+assertEditBranchReturns(irrigationWeb, 'handleZonesPage', 'if (editingZone)');
+assertEditBranchReturns(irrigationWeb, 'handlePlansPage', 'if (editingSlot)');
+assertEditBranchReturns(irrigationWeb, 'handleSettingsPage', 'if (editing)');
+assertEditBranchReturns(irrigationWeb, 'handleCalibrationPage', 'strcmp(action, "start") == 0');
+assert(!functionBody(irrigationWeb, 'handleFlowsPage').includes('beginPostForm('), 'Flow list page must not render row forms');
+assert(!functionBody(irrigationWeb, 'handleZonesPage').includes('beginPostForm('), 'Zone list page must not render row forms');
 assert(platformio.includes('ESP32BASE_WEB_MAX_ROUTES=64'), 'route capacity should cover the expanded irrigation API surface');
 
 console.log('check-web-structure passed');

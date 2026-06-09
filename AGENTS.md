@@ -14,6 +14,7 @@
 - 业务 namespace 不使用 `eb_` 前缀，避免和 `Esp32Base` 内部 NVS namespace 冲突。
 - 所有 restart 走 `Esp32BaseSystem::restart(reason)`；所有 deep sleep 走 `Esp32BaseSleep`；不要直接调用底层重启或 deep sleep API。
 - Web/API 输出必须做 HTML/JSON escape；危险操作使用 POST、鉴权、二次确认；Web 页面中所有改变状态的表单操作都必须有 JavaScript `confirm`。
+- Web 列表页和编辑页必须明确分离：列表页只展示摘要、状态和“编辑/新建/操作”入口，不直接铺开多条记录的表单；编辑页只处理当前一个对象，渲染完编辑/确认内容后必须 `sendFooter()` 并 `return`，不能继续输出列表或总览。多字段配置使用独立编辑页和 `formpanel/editform/fieldgrid`，不要在列表中为每条记录生成一个表单。
 - 业务记录、二进制定长日志、分页读取和环形覆盖写入必须优先使用 `Esp32BaseFs::readBytesAt()` / `Esp32BaseFs::writeBytesAt()`，不要绕过基础库直接 include `LittleFS.h` 或使用 Arduino `File`。
 - 同一路径需要同时处理 GET/POST 时，必须使用 `Esp32BaseWeb::currentMethod()`、`Esp32BaseWeb::isMethod()` 或 `Esp32BaseWeb::currentMethodName()` 判断当前请求方法，不要绕过基础库直接访问底层 `WebServer`。
 - CSV/JSONL/二进制等导出必须使用 `Esp32BaseWeb::beginResponse()`、`beginCsv()`、`sendChunk()`、`sendBytes()`、`writeCsvEscaped()`、`endResponse()`，不要绕过基础库直接访问底层 `WebServer`。
