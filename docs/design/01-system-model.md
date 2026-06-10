@@ -187,42 +187,38 @@ cycleAnchorDate：周期第 1 天对应的真实日期
 实时流速：用于显示当前水流，并判断低流量/高流量
 ```
 
-### 流量计稳定态参数
+### 流量计换算参数
 
-流量计全局保存一套稳定态参数：
-
-```text
-stablePulsesPerLiter
-```
-
-也就是稳定状态下每 1L 水对应多少个流量计脉冲。该参数属于唯一流量计，不属于某个 Zone。
-
-### Zone 启动段参数
-
-每个 Zone 可以保存自己的启动段估算：
+流量计全局保存一套 K-factor 参数：
 
 ```text
-startupWindowSec
-startupEstimatedMl
-startupPulseCount
+pulsesPerLiter
 ```
 
-启动段从第一个有效脉冲开始计算，不从开阀时刻开始计算。首脉冲之前的少量水量不单独建模，允许归入启动段误差。
+也就是每 1L 水对应多少个流量计脉冲。该参数属于唯一流量计，不属于某个 Zone，也不按水路分别保存。
+
+### 启动稳定窗口
+
+启动后水压、管路空气和自吸泵建立压力会造成短时间流速波动。系统只保存一个全局稳定等待时间：
+
+```text
+flowStabilizeSec
+```
+
+它从第一个有效脉冲开始计时，只用于屏蔽低流量/高流量判断，不参与水量计算。启动稳定窗口内产生的脉冲仍然计入总水量。
 
 ### 校准
 
-校准支持多条完整接水样本。用户从开阀开始接水，停止后输入总水量。系统可以用该 Zone 的启动段估算扣除启动阶段影响：
+校准支持多条完整接水样本。用户从开阀开始接水，停止后输入总水量。系统用全程脉冲和全程水量计算流量计 K-factor：
 
 ```text
-stablePulseCount = totalPulseCount - startupPulseCount
-stableActualMl = totalActualMl - startupEstimatedMl
-stablePulsesPerLiter = stablePulseCount * 1000 / stableActualMl
+pulsesPerLiter = totalPulseCount * 1000 / actualMl
 ```
 
 多条样本使用加权合并：
 
 ```text
-stablePulsesPerLiter = sum(stablePulseCount) * 1000 / sum(stableActualMl)
+pulsesPerLiter = sum(totalPulseCount) * 1000 / sum(actualMl)
 ```
 
 系统必须显示各样本计算结果和偏差；样本波动过大时提示不建议应用。用户确认应用后才替换当前流量计参数。
@@ -232,10 +228,10 @@ stablePulsesPerLiter = sum(stablePulseCount) * 1000 / sum(stableActualMl)
 每次 Zone 运行的估算总水量按分段计算：
 
 ```text
-estimatedVolumeMl = startupVolumeMl + stablePulseCount * 1000 / stablePulsesPerLiter
+estimatedVolumeMl = pulseCount * 1000 / pulsesPerLiter
 ```
 
-如果本次运行完整经过启动阶段，`startupVolumeMl = startupEstimatedMl`。如果本次运行在启动阶段内停止，则按实际启动阶段时长比例估算。水量只用于观察、记录和异常分析，不作为停止条件。
+水量使用本次运行全程脉冲计算，包括启动稳定窗口内的脉冲。水量只用于观察、记录和异常分析，不作为停止条件。
 
 ### 实时流速
 
@@ -251,10 +247,10 @@ flowUpdateIntervalMs = 1000
 也就是每 1 秒更新一次流速，使用最近 5 秒的脉冲数计算：
 
 ```text
-flowMlPerMin = windowPulseCount * 60000 / (stablePulsesPerLiter * windowMs)
+flowMlPerMin = windowPulseCount * 60000 / (pulsesPerLiter * windowMs)
 ```
 
-启动后先等待首个有效脉冲。首脉冲出现后进入 `startupWindowSec` 启动阶段；启动阶段内可以显示参考流速和累计水量，但不参与低流量/高流量判断。启动阶段结束后才进入稳定流量监测。
+启动后先等待首个有效脉冲。首脉冲出现后进入 `flowStabilizeSec` 稳定等待；稳定等待期间累计水量照常计算，但不参与低流量/高流量判断。稳定等待结束后才进入稳定流量监测。
 
 ### Zone 正常流量
 
@@ -325,8 +321,6 @@ startedAt
 endedAt
 plannedDurationSec
 actualDurationSec
-startupEstimatedMl
-stablePulseCount
 estimatedVolumeMl
 avgFlowMlPerMin
 minFlowMlPerMin

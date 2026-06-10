@@ -66,10 +66,6 @@ zoneId：1..6
 enabled：是否启用
 name：显示名称
 defaultManualDurationSec：手动浇水默认时长
-startupWindowSec：启动阶段窗口，从第一个有效脉冲开始计时
-startupEstimatedMl：启动阶段估算水量
-startupPulseCount：启动阶段样本脉冲数
-startupMeasuredAt：启动阶段测定时间
 normalFlowMlPerMin：正常流量
 lowFlowPercent：低流量阈值百分比
 highFlowPercent：高流量阈值百分比
@@ -84,18 +80,12 @@ Zone 1 enabled = true
 Zone 2..6 enabled = false
 name = 水路1..水路6
 defaultManualDurationSec = 300
-startupWindowSec = 10
-startupEstimatedMl = 0
-startupPulseCount = 0
-startupMeasuredAt = none
 normalFlowMlPerMin = 0
 lowFlowPercent = 60
 highFlowPercent = 160
 flowFaultConfirmSec = 10
 normalFlowMeasuredAt = none
 ```
-
-`startupEstimatedMl = 0` 表示该 Zone 尚未测定启动阶段水量。此时累计水量仍可计算，但只包含稳定阶段估算水量；页面应提示启动段未测定，短时运行的总水量误差会更明显。
 
 `normalFlowMlPerMin = 0` 表示尚未测定正常流量。没有正常流量时：
 
@@ -143,23 +133,23 @@ zoneDurationsSec 全部 0
 
 ## 流量计和阀门参数
 
-流量计必配。水量和流速统一使用稳定态校准参数，启动阶段差异按 Zone 单独估算。
+流量计必配。水量和流速统一使用全局 K-factor 换算参数。启动过程只影响异常判断的稳定等待时间，不单独做水量补偿。
 
 ```text
-stablePulsesPerLiter
-  稳定状态下每升水对应的流量计脉冲数，由多样本校准得到
+pulsesPerLiter
+  每升水对应的流量计脉冲数，由多样本校准得到
 
 calibratedAt
-  流量计稳定态校准时间
+  流量计校准时间
 
 calibrationSampleCount
   当前参数采用的校准样本数量
 
-calibrationTotalStablePulseCount
-  当前参数采用的稳定阶段总脉冲数
+calibrationTotalPulseCount
+  当前参数采用的总脉冲数
 
-calibrationTotalStableActualMl
-  当前参数采用的稳定阶段实际总水量
+calibrationTotalActualMl
+  当前参数采用的实际总水量
 
 flowSampleWindowSec
   实时流速滑动窗口，默认 5 秒
@@ -172,6 +162,9 @@ firstPulseTimeoutSec
 
 runningNoPulseTimeoutSec
   稳定运行中连续无有效脉冲的确认时间，默认 15 秒
+
+flowStabilizeSec
+  第一个有效脉冲后的流速稳定等待时间，默认 10 秒
 
 idleLeakConfirmSec
   待机异常流量确认时间，默认 30 秒
@@ -189,22 +182,23 @@ valvePwmFrequencyHz
 默认值：
 
 ```text
-stablePulsesPerLiter = 0
+pulsesPerLiter = 0
 calibratedAt = none
 calibrationSampleCount = 0
-calibrationTotalStablePulseCount = 0
-calibrationTotalStableActualMl = 0
+calibrationTotalPulseCount = 0
+calibrationTotalActualMl = 0
 flowSampleWindowSec = 5
 flowUpdateIntervalMs = 1000
 firstPulseTimeoutSec = 15
 runningNoPulseTimeoutSec = 15
+flowStabilizeSec = 10
 idleLeakConfirmSec = 30
 valvePullInMs = 3000
 valveHoldDutyPercent = 60
 valvePwmFrequencyHz = 20000
 ```
 
-`stablePulsesPerLiter = 0` 表示流量计尚未完成稳定态校准。未校准时：
+`pulsesPerLiter = 0` 表示流量计尚未完成校准。未校准时：
 
 ```text
 系统可以检测有无脉冲
@@ -212,7 +206,7 @@ valvePwmFrequencyHz = 20000
 不能给出可信流量
 自动计划应拒绝开启，提示必须完成流量计校准
 普通手动浇水应拒绝启动
-校准、启动段测定、正常流量测定等维护入口可运行
+流量计校准、正常流量测定等维护入口可运行
 ```
 
 ## 故障策略
@@ -292,8 +286,6 @@ endedAt
 plannedDurationSec
 actualDurationSec
 pulseCount
-startupEstimatedMl
-stablePulseCount
 estimatedVolumeMl
 avgFlowMlPerMin
 minFlowMlPerMin
