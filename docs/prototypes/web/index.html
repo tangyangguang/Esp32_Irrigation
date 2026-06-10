@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ESP32 灌溉控制器 Web 原型</title>
+  <title>智能灌溉控制器界面原型</title>
   <style>
     :root {
       --bg: #f5f7f6;
@@ -414,6 +414,121 @@
       transition: width .2s ease;
     }
 
+    .insight-grid {
+      display: grid;
+      grid-template-columns: 1.35fr .65fr;
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .chart-wrap {
+      position: relative;
+      min-height: 286px;
+      background:
+        linear-gradient(180deg, rgba(34, 104, 168, .08), rgba(22, 131, 95, .04)),
+        radial-gradient(circle at 80% 10%, rgba(66, 153, 225, .18), transparent 30%),
+        #f8fbfc;
+      border: 1px solid #cfdcdd;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .chart-canvas {
+      width: 100%;
+      height: 236px;
+      display: block;
+    }
+
+    .chart-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 12px;
+      border-top: 1px solid rgba(130, 154, 158, .32);
+      color: var(--muted);
+      font-size: 12px;
+      background: rgba(255,255,255,.72);
+    }
+
+    .legend {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .legend-line {
+      width: 20px;
+      height: 3px;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    .legend-line.low {
+      background: #d79a28;
+    }
+
+    .legend-line.high {
+      background: #b52727;
+    }
+
+    .weather-card {
+      background:
+        linear-gradient(160deg, #153c4b 0%, #1d6a72 55%, #2f8b68 100%);
+      color: #ecfbfb;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,.16);
+      overflow: hidden;
+      min-height: 286px;
+      box-shadow: var(--shadow);
+    }
+
+    .weather-main {
+      padding: 18px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .weather-temp {
+      font-size: 42px;
+      font-weight: 760;
+      line-height: 1;
+    }
+
+    .weather-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border-top: 1px solid rgba(255,255,255,.16);
+    }
+
+    .weather-cell {
+      padding: 12px;
+      border-right: 1px solid rgba(255,255,255,.16);
+    }
+
+    .weather-cell:last-child {
+      border-right: 0;
+    }
+
+    .weather-label {
+      color: rgba(236,251,251,.72);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .weather-value {
+      font-weight: 700;
+      font-size: 15px;
+    }
+
     .callout {
       border: 1px solid var(--line);
       border-left-width: 4px;
@@ -552,6 +667,7 @@
       .metric-row,
       .grid.cols-2,
       .grid.cols-3,
+      .insight-grid,
       .split,
       .form-grid,
       .schedule-grid,
@@ -600,14 +716,14 @@
       <div class="brand">
         <div class="brand-mark">IR</div>
         <div>
-          <div class="brand-title">灌溉控制器</div>
-          <div class="brand-subtitle">Web 原型</div>
+          <div class="brand-title">智能灌溉控制器</div>
+          <div class="brand-subtitle">界面原型</div>
         </div>
       </div>
       <nav class="nav" aria-label="主导航">
         <button class="active" data-page="overview"><span class="nav-icon">⌂</span><span>总览</span></button>
         <button data-page="run"><span class="nav-icon">▶</span><span>手动</span></button>
-        <button data-page="zones"><span class="nav-icon">▦</span><span>Zone</span></button>
+        <button data-page="zones"><span class="nav-icon">▦</span><span>水路</span></button>
         <button data-page="plans"><span class="nav-icon">◷</span><span>计划</span></button>
         <button data-page="flow"><span class="nav-icon">≈</span><span>流量</span></button>
         <button data-page="settings"><span class="nav-icon">⚙</span><span>设置</span></button>
@@ -620,11 +736,11 @@
       <header class="topbar">
         <div>
           <h1 id="pageTitle">总览</h1>
-          <div class="panel-subtitle">静态原型，仅用于确认页面结构和操作流</div>
+          <div class="panel-subtitle">界面原型，仅用于确认页面结构和操作感受</div>
         </div>
         <div class="topbar-meta">
           <span class="badge good">在线</span>
-          <span class="badge blue">NTP 有效</span>
+          <span class="badge blue">时间已同步</span>
           <span>2026-06-11 09:42</span>
         </div>
       </header>
@@ -635,23 +751,75 @@
             <div class="metric-row">
               <div class="metric">
                 <div class="metric-label">当前状态</div>
-                <div class="metric-value" id="overviewState">Idle</div>
-                <div class="metric-note">没有 Zone 正在运行</div>
+                <div class="metric-value" id="overviewState">空闲</div>
+                <div class="metric-note">没有水路正在运行</div>
               </div>
               <div class="metric">
                 <div class="metric-label">自动浇水</div>
-                <div class="metric-value">enabled</div>
+                <div class="metric-value">已开启</div>
                 <div class="metric-note">下一次 18:30，晨晚浇水</div>
               </div>
               <div class="metric">
                 <div class="metric-label">今日水量</div>
-                <div class="metric-value">18.6 L</div>
+                <div class="metric-value">18.6 升</div>
                 <div class="metric-note">3 次完成，42 分钟</div>
               </div>
               <div class="metric">
                 <div class="metric-label">故障摘要</div>
                 <div class="metric-value">1</div>
-                <div class="metric-note">Zone 4 高流量锁定</div>
+                <div class="metric-note">第 4 路高流量锁定</div>
+              </div>
+            </div>
+
+            <div class="insight-grid">
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">流速趋势</h2>
+                    <p class="panel-subtitle">最近 12 分钟水流变化，辅助判断堵塞、漏水和水压波动</p>
+                  </div>
+                  <span class="badge blue" id="flowQualityBadge">波动正常</span>
+                </div>
+                <div class="panel-body">
+                  <div class="chart-wrap">
+                    <canvas class="chart-canvas" id="overviewFlowChart" width="900" height="330"></canvas>
+                    <div class="chart-meta">
+                      <div class="legend">
+                        <span class="legend-item"><span class="legend-line"></span>实时流速</span>
+                        <span class="legend-item"><span class="legend-line low"></span>低流量提醒线</span>
+                        <span class="legend-item"><span class="legend-line high"></span>高流量停机线</span>
+                      </div>
+                      <span>单位：毫升/分钟</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="weather-card">
+                <div class="weather-main">
+                  <div>
+                    <div class="weather-label">本地天气预报</div>
+                    <div class="weather-temp">28°C</div>
+                    <div>多云，傍晚微风</div>
+                  </div>
+                  <div class="callout" style="background: rgba(255,255,255,.12); color: #ecfbfb; border-color: rgba(255,255,255,.24);">
+                    天气只作为参考信息展示，不会自动改变浇水计划。
+                  </div>
+                </div>
+                <div class="weather-row">
+                  <div class="weather-cell">
+                    <div class="weather-label">降雨概率</div>
+                    <div class="weather-value">20%</div>
+                  </div>
+                  <div class="weather-cell">
+                    <div class="weather-label">湿度</div>
+                    <div class="weather-value">61%</div>
+                  </div>
+                  <div class="weather-cell">
+                    <div class="weather-label">风力</div>
+                    <div class="weather-value">2 级</div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -660,7 +828,7 @@
                 <div class="panel-header">
                   <div>
                     <h2 class="panel-title">当前运行</h2>
-                    <p class="panel-subtitle">一次只允许一个 Zone 运行</p>
+                    <p class="panel-subtitle">一次只允许一路水路运行</p>
                   </div>
                   <span class="badge good" id="runStateBadge">空闲</span>
                 </div>
@@ -668,7 +836,7 @@
                   <div class="progress"><span id="overviewProgress"></span></div>
                   <div class="metric-row">
                     <div class="metric">
-                      <div class="metric-label">Zone</div>
+                      <div class="metric-label">水路</div>
                       <div class="metric-value" id="overviewZone">-</div>
                       <div class="metric-note">来源：-</div>
                     </div>
@@ -679,13 +847,13 @@
                     </div>
                     <div class="metric">
                       <div class="metric-label">累计水量</div>
-                      <div class="metric-value" id="overviewVolume">0 ml</div>
+                      <div class="metric-value" id="overviewVolume">0 毫升</div>
                       <div class="metric-note">估算值</div>
                     </div>
                     <div class="metric">
                       <div class="metric-label">实时流速</div>
                       <div class="metric-value" id="overviewFlow">0</div>
-                      <div class="metric-note">ml/min</div>
+                      <div class="metric-note">毫升/分钟</div>
                     </div>
                   </div>
                   <div class="toolbar">
@@ -704,11 +872,11 @@
                 </div>
                 <div class="panel-body stack">
                   <div class="callout danger">
-                    Zone 4 已锁定：high_flow_stop，最后流速 2,980 ml/min。普通手动和计划会跳过该 Zone。
+                    第 4 路已锁定：高流量停机，最后流速 2,980 毫升/分钟。手动浇水和自动计划会跳过这一路。
                   </div>
                   <div class="toolbar">
-                    <button class="btn warn" data-confirm="清除 Zone 4 锁定？该操作不会删除记录和事件。">清除 Zone 4 锁定</button>
-                    <button class="btn" data-goto="zones">Zone 管理</button>
+                    <button class="btn warn" data-confirm="清除第 4 路锁定？该操作不会删除浇水记录和事件。">清除第 4 路锁定</button>
+                    <button class="btn" data-goto="zones">水路管理</button>
                     <button class="btn" data-goto="flow">流量校准</button>
                     <button class="btn" data-goto="records">查看记录</button>
                   </div>
@@ -724,12 +892,12 @@
                 <div class="panel-body">
                   <table>
                     <thead>
-                      <tr><th>时间</th><th>Zone</th><th>来源</th><th>时长</th><th>水量</th><th>结果</th></tr>
+                      <tr><th>时间</th><th>水路</th><th>来源</th><th>时长</th><th>水量</th><th>结果</th></tr>
                     </thead>
                     <tbody>
-                      <tr><td>07:00</td><td>前院滴灌</td><td>计划 1</td><td>12 分</td><td>5.8 L</td><td><span class="badge good">完成</span></td></tr>
-                      <tr><td>07:14</td><td>菜床</td><td>计划 1</td><td>15 分</td><td>7.2 L</td><td><span class="badge good">完成</span></td></tr>
-                      <tr><td>08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>5.6 L</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>07:00</td><td>前院滴灌</td><td>计划 1</td><td>12 分</td><td>5.8 升</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>07:14</td><td>菜床</td><td>计划 1</td><td>15 分</td><td>7.2 升</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>5.6 升</td><td><span class="badge good">完成</span></td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -741,12 +909,12 @@
                 </div>
                 <div class="panel-body stack">
                   <div class="toolbar">
-                    <button class="btn primary" data-confirm="开启自动浇水？系统将按启用计划触发。">开启</button>
+                    <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启</button>
                     <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭</button>
                     <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
                   </div>
                   <div class="callout">
-                    自动总控只影响计划触发和队列，不影响手动浇水。系统时间无效时不能设置 disabled_until。
+                    自动总控只影响计划触发和排队，不影响手动浇水。设备时间未同步时不能设置“暂停到指定时间”。
                   </div>
                 </div>
               </div>
@@ -760,29 +928,29 @@
               <div class="panel-header">
                 <div>
                   <h2 class="panel-title">手动浇水</h2>
-                  <p class="panel-subtitle">只显示已启用 Zone，时长单位为分钟</p>
+                  <p class="panel-subtitle">只显示已启用的水路，时长单位为分钟</p>
                 </div>
               </div>
               <div class="panel-body stack">
                 <div class="form-grid">
                   <div class="field">
-                    <label for="manualZone">选择 Zone</label>
+                    <label for="manualZone">选择水路</label>
                     <select id="manualZone">
-                      <option value="1" data-default="10">Zone 1 前院滴灌，正常流量已测定</option>
-                      <option value="2" data-default="15">Zone 2 菜床，正常流量已测定</option>
-                      <option value="3" data-default="20">Zone 3 果树，正常流量未设置</option>
+                      <option value="1" data-default="10">第 1 路 前院滴灌，标准流速已测定</option>
+                      <option value="2" data-default="15">第 2 路 菜床，标准流速已测定</option>
+                      <option value="3" data-default="20">第 3 路 果树，标准流速未设置</option>
                     </select>
-                    <div class="hint">禁用 Zone 不出现在这里；锁定 Zone 会置灰并提示原因。</div>
+                    <div class="hint">未启用的水路不会出现在这里；被锁定的水路会置灰并提示原因。</div>
                   </div>
                   <div class="field">
-                    <label for="durationMin">durationMin</label>
+                    <label for="durationMin">浇水时长</label>
                     <input id="durationMin" type="number" min="1" max="360" value="10">
                     <div class="hint">范围 1..360 分钟。普通手动浇水要求流量计已校准。</div>
                   </div>
                 </div>
-                <div class="callout good">流量计已校准：450 pulses/L。低液位输入启用，当前水位正常。</div>
+                <div class="callout good">流量计已校准：每升 450 个脉冲。低液位保护已启用，当前水位正常。</div>
                 <div class="toolbar">
-                  <button class="btn primary" id="startRun">启动当前 Zone</button>
+                  <button class="btn primary" id="startRun">开始浇水</button>
                   <button class="btn danger" id="stopRun" disabled>停止当前运行</button>
                 </div>
               </div>
@@ -794,17 +962,28 @@
                   <h2 class="panel-title">运行进度</h2>
                   <p class="panel-subtitle">水量只用于观察和异常判断，不作为停止条件</p>
                 </div>
-                <span class="badge" id="manualState">Idle</span>
+                <span class="badge" id="manualState">空闲</span>
               </div>
               <div class="panel-body stack">
                 <div class="progress"><span id="manualProgress"></span></div>
                 <div class="metric-row">
                   <div class="metric"><div class="metric-label">已运行</div><div class="metric-value" id="manualElapsed">0</div><div class="metric-note">分钟</div></div>
-                  <div class="metric"><div class="metric-label">目标</div><div class="metric-value" id="manualTarget">0</div><div class="metric-note">分钟</div></div>
-                  <div class="metric"><div class="metric-label">累计水量</div><div class="metric-value" id="manualVolume">0</div><div class="metric-note">ml</div></div>
-                  <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value" id="manualFlow">0</div><div class="metric-note">ml/min</div></div>
+                  <div class="metric"><div class="metric-label">计划时长</div><div class="metric-value" id="manualTarget">0</div><div class="metric-note">分钟</div></div>
+                  <div class="metric"><div class="metric-label">累计水量</div><div class="metric-value" id="manualVolume">0</div><div class="metric-note">毫升</div></div>
+                  <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value" id="manualFlow">0</div><div class="metric-note">毫升/分钟</div></div>
                 </div>
-                <div class="callout">停止当前运行会关闭泵和当前 Zone；如果来源是自动计划，会取消剩余 Zone 并清空等待队列。</div>
+                <div class="chart-wrap">
+                  <canvas class="chart-canvas" id="manualFlowChart" width="720" height="260"></canvas>
+                  <div class="chart-meta">
+                    <div class="legend">
+                      <span class="legend-item"><span class="legend-line"></span>当前水路流速</span>
+                      <span class="legend-item"><span class="legend-line low"></span>偏低提醒</span>
+                      <span class="legend-item"><span class="legend-line high"></span>偏高停机</span>
+                    </div>
+                    <span>最近 12 分钟</span>
+                  </div>
+                </div>
+                <div class="callout">停止当前运行会关闭泵和当前水路；如果来源是自动计划，会取消剩余水路并清空等待队列。</div>
               </div>
             </div>
           </div>
@@ -815,22 +994,22 @@
             <div class="panel">
               <div class="panel-header">
                 <div>
-                  <h2 class="panel-title">Zone 列表</h2>
-                  <p class="panel-subtitle">列表页只展示摘要；编辑页一次只编辑一个 Zone</p>
+                  <h2 class="panel-title">水路列表</h2>
+                  <p class="panel-subtitle">列表页只展示摘要；编辑页一次只编辑一路水路</p>
                 </div>
               </div>
               <div class="panel-body">
                 <table>
                   <thead>
-                    <tr><th>Zone</th><th>名称</th><th>启用</th><th>锁定</th><th>默认时长</th><th>正常流量</th><th>阈值</th><th>操作</th></tr>
+                    <tr><th>水路</th><th>名称</th><th>状态</th><th>锁定</th><th>默认时长</th><th>标准流速</th><th>告警阈值</th><th>操作</th></tr>
                   </thead>
                   <tbody>
-                    <tr><td>1</td><td>前院滴灌</td><td><span class="badge good">enabled</span></td><td><span class="badge good">无</span></td><td>10 分</td><td>520 ml/min</td><td>60% / 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
-                    <tr><td>2</td><td>菜床</td><td><span class="badge good">enabled</span></td><td><span class="badge good">无</span></td><td>15 分</td><td>480 ml/min</td><td>60% / 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
-                    <tr><td>3</td><td>果树</td><td><span class="badge good">enabled</span></td><td><span class="badge good">无</span></td><td>20 分</td><td><span class="badge warn">未设置</span></td><td>未启用</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
-                    <tr><td>4</td><td>草坪</td><td><span class="badge good">enabled</span></td><td><span class="badge danger">high_flow</span></td><td>8 分</td><td>900 ml/min</td><td>60% / 160%</td><td><button class="btn warn" data-confirm="清除 Zone 4 锁定？">清锁</button></td></tr>
-                    <tr><td>5</td><td>预留 5</td><td><span class="badge">disabled</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
-                    <tr><td>6</td><td>预留 6</td><td><span class="badge">disabled</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>第 1 路</td><td>前院滴灌</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>10 分</td><td>520 毫升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>第 2 路</td><td>菜床</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>15 分</td><td>480 毫升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>第 3 路</td><td>果树</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>20 分</td><td><span class="badge warn">未设置</span></td><td>暂不判断偏低/偏高</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>第 4 路</td><td>草坪</td><td><span class="badge good">已启用</span></td><td><span class="badge danger">高流量锁定</span></td><td>8 分</td><td>900 毫升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn warn" data-confirm="清除第 4 路锁定？">清锁</button></td></tr>
+                    <tr><td>第 5 路</td><td>预留 5</td><td><span class="badge">未启用</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>第 6 路</td><td>预留 6</td><td><span class="badge">未启用</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -842,25 +1021,25 @@
           <div class="panel">
             <div class="panel-header">
               <div>
-                <h2 class="panel-title">编辑 Zone 1</h2>
-                <p class="panel-subtitle">normalFlowMlPerMin 在流量页测定或手工输入</p>
+                <h2 class="panel-title">编辑第 1 路</h2>
+                <p class="panel-subtitle">标准流速可在“流量”页测定或手工输入</p>
               </div>
               <button class="btn" data-goto="zones">返回列表</button>
             </div>
             <div class="panel-body stack">
               <div class="form-grid">
-                <div class="field"><label>enabled</label><select><option>enabled</option><option>disabled</option></select></div>
-                <div class="field"><label>name</label><input value="前院滴灌"></div>
-                <div class="field"><label>defaultManualDurationMin</label><input type="number" min="1" max="360" value="10"></div>
-                <div class="field"><label>normalFlowMlPerMin</label><input value="520 ml/min，2026-06-10 17:20 测定" disabled></div>
-                <div class="field"><label>lowFlowPercent</label><input type="number" value="60"></div>
-                <div class="field"><label>highFlowPercent</label><input type="number" value="160"></div>
-                <div class="field"><label>flowFaultConfirmSec</label><input type="number" value="10"></div>
+                <div class="field"><label>是否启用</label><select><option>已启用</option><option>未启用</option></select></div>
+                <div class="field"><label>水路名称</label><input value="前院滴灌"></div>
+                <div class="field"><label>默认手动时长</label><input type="number" min="1" max="360" value="10"></div>
+                <div class="field"><label>标准流速</label><input value="520 毫升/分钟，2026-06-10 17:20 测定" disabled></div>
+                <div class="field"><label>低流量提醒线</label><input type="number" value="60"></div>
+                <div class="field"><label>高流量停机线</label><input type="number" value="160"></div>
+                <div class="field"><label>异常确认时间</label><input type="number" value="10"></div>
                 <div class="field"><label>锁定状态</label><input value="未锁定" disabled></div>
               </div>
-              <div class="callout">禁用 Zone 后不会出现在手动选择列表，计划执行时会跳过；历史记录不会被删除。</div>
+              <div class="callout">未启用的水路不会出现在手动选择列表，计划执行时会跳过；历史记录不会被删除。</div>
               <div class="toolbar">
-                <button class="btn primary" data-confirm="保存 Zone 1 配置？">保存</button>
+                <button class="btn primary" data-confirm="保存第 1 路配置？">保存</button>
                 <button class="btn" data-goto="flow">去测定正常流量</button>
               </div>
             </div>
@@ -878,12 +1057,12 @@
               </div>
               <div class="panel-body">
                 <table>
-                  <thead><tr><th>计划</th><th>启用</th><th>开始时间</th><th>周期</th><th>Zone 摘要</th><th>下一次</th><th>操作</th></tr></thead>
+                  <thead><tr><th>计划</th><th>状态</th><th>开始时间</th><th>周期</th><th>浇水水路</th><th>下一次</th><th>操作</th></tr></thead>
                   <tbody>
-                    <tr><td>1 晨晚浇水</td><td><span class="badge good">enabled</span></td><td>07:00, 18:30</td><td>每天</td><td>Z1 10 分，Z2 15 分，Z3 20 分</td><td>今天 18:30</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
-                    <tr><td>2 周末补水</td><td><span class="badge">disabled</span></td><td>09:00</td><td>每周六</td><td>Z4 8 分</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
-                    <tr><td>3 空计划</td><td><span class="badge">disabled</span></td><td>-</td><td>每天</td><td>无运行 Zone</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
-                    <tr><td>4 空计划</td><td><span class="badge">disabled</span></td><td>-</td><td>每天</td><td>无运行 Zone</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                    <tr><td>1 晨晚浇水</td><td><span class="badge good">已启用</span></td><td>07:00, 18:30</td><td>每天</td><td>第 1 路 10 分，第 2 路 15 分，第 3 路 20 分</td><td>今天 18:30</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                    <tr><td>2 周末补水</td><td><span class="badge">未启用</span></td><td>09:00</td><td>每周六</td><td>第 4 路 8 分</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                    <tr><td>3 空计划</td><td><span class="badge">未启用</span></td><td>-</td><td>每天</td><td>无浇水水路</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                    <tr><td>4 空计划</td><td><span class="badge">未启用</span></td><td>-</td><td>每天</td><td>无浇水水路</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
                   </tbody>
                 </table>
               </div>
@@ -896,14 +1075,14 @@
             <div class="panel-header">
               <div>
                 <h2 class="panel-title">编辑计划组 1</h2>
-                <p class="panel-subtitle">底层统一保存 cycleLengthDays / activeDayMask / cycleAnchorDate</p>
+                <p class="panel-subtitle">页面用“每天 / 每周 / 自定义周期”表达，设备内部会保存对应周期规则</p>
               </div>
               <button class="btn" data-goto="plans">返回列表</button>
             </div>
             <div class="panel-body stack">
               <div class="form-grid">
-                <div class="field"><label>enabled</label><select><option>enabled</option><option>disabled</option></select></div>
-                <div class="field"><label>name</label><input value="晨晚浇水"></div>
+                <div class="field"><label>是否启用</label><select><option>已启用</option><option>未启用</option></select></div>
+                <div class="field"><label>计划名称</label><input value="晨晚浇水"></div>
               </div>
               <div class="field">
                 <label>周期表达</label>
@@ -921,14 +1100,14 @@
                 <div class="field"><label>开始时间 4</label><input type="time"></div>
               </div>
               <div class="zone-duration-grid">
-                <div class="field"><label>Z1 前院</label><input type="number" min="0" max="360" value="10"></div>
-                <div class="field"><label>Z2 菜床</label><input type="number" min="0" max="360" value="15"></div>
-                <div class="field"><label>Z3 果树</label><input type="number" min="0" max="360" value="20"></div>
-                <div class="field"><label>Z4 草坪</label><input type="number" min="0" max="360" value="0"></div>
-                <div class="field"><label>Z5 未启用</label><input type="number" min="0" max="360" value="0"></div>
-                <div class="field"><label>Z6 未启用</label><input type="number" min="0" max="360" value="0"></div>
+                <div class="field"><label>第 1 路 前院</label><input type="number" min="0" max="360" value="10"></div>
+                <div class="field"><label>第 2 路 菜床</label><input type="number" min="0" max="360" value="15"></div>
+                <div class="field"><label>第 3 路 果树</label><input type="number" min="0" max="360" value="20"></div>
+                <div class="field"><label>第 4 路 草坪</label><input type="number" min="0" max="360" value="0"></div>
+                <div class="field"><label>第 5 路 未启用</label><input type="number" min="0" max="360" value="0"></div>
+                <div class="field"><label>第 6 路 未启用</label><input type="number" min="0" max="360" value="0"></div>
               </div>
-              <div class="callout">0 表示跳过，1..360 表示运行分钟数。计划到点后按 Zone 编号串行执行，不支持并发。</div>
+              <div class="callout">0 表示跳过，1..360 表示运行分钟数。计划到点后按水路编号依次执行，不支持同时打开多路。</div>
               <div class="toolbar">
                 <button class="btn primary" data-confirm="保存计划组 1？将每天 07:00 和 18:30 串行运行 Z1、Z2、Z3。">保存计划</button>
               </div>
@@ -943,19 +1122,19 @@
                 <div class="panel-header">
                   <div>
                     <h2 class="panel-title">流量计校准</h2>
-                    <p class="panel-subtitle">全局 K-factor，决定水量和实时流速可信度</p>
+                    <p class="panel-subtitle">流量计校准系数，决定水量和实时流速是否可信</p>
                   </div>
                   <span class="badge good">已校准</span>
                 </div>
                 <div class="panel-body stack">
                   <div class="metric-row">
-                    <div class="metric"><div class="metric-label">pulsesPerLiter</div><div class="metric-value">450</div><div class="metric-note">pulses/L</div></div>
+                    <div class="metric"><div class="metric-label">每升脉冲数</div><div class="metric-value">450</div><div class="metric-note">脉冲/升</div></div>
                     <div class="metric"><div class="metric-label">校准时间</div><div class="metric-value">06-10</div><div class="metric-note">3 个样本</div></div>
-                    <div class="metric"><div class="metric-label">总脉冲</div><div class="metric-value">6750</div><div class="metric-note">pulse</div></div>
-                    <div class="metric"><div class="metric-label">实际水量</div><div class="metric-value">15 L</div><div class="metric-note">合计</div></div>
+                    <div class="metric"><div class="metric-label">累计脉冲</div><div class="metric-value">6750</div><div class="metric-note">次</div></div>
+                    <div class="metric"><div class="metric-label">实际水量</div><div class="metric-value">15 升</div><div class="metric-note">合计</div></div>
                   </div>
                   <div class="toolbar">
-                    <select aria-label="校准 Zone"><option>Zone 1 前院滴灌</option><option>Zone 2 菜床</option><option>Zone 3 果树</option></select>
+                    <select aria-label="校准水路"><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option><option>第 3 路 果树</option></select>
                     <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始校准</button>
                     <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止校准</button>
                   </div>
@@ -966,24 +1145,24 @@
               <div class="panel">
                 <div class="panel-header">
                   <div>
-                    <h2 class="panel-title">Zone 正常流量</h2>
-                    <p class="panel-subtitle">用于低流量/高流量判断，不改变流量计 K-factor</p>
+                    <h2 class="panel-title">水路标准流速</h2>
+                    <p class="panel-subtitle">用于判断偏低或偏高，不改变流量计校准系数</p>
                   </div>
                 </div>
                 <div class="panel-body stack">
                   <table>
-                    <thead><tr><th>Zone</th><th>正常流量</th><th>状态</th><th>操作</th></tr></thead>
+                    <thead><tr><th>水路</th><th>标准流速</th><th>状态</th><th>操作</th></tr></thead>
                     <tbody>
-                      <tr><td>Z1 前院</td><td>520 ml/min</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定 Zone 1 正常流量？">测定</button></td></tr>
-                      <tr><td>Z2 菜床</td><td>480 ml/min</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定 Zone 2 正常流量？">测定</button></td></tr>
-                      <tr><td>Z3 果树</td><td>0</td><td><span class="badge warn">未设置</span></td><td><button class="btn primary" data-confirm="测定 Zone 3 正常流量？">测定</button></td></tr>
+                      <tr><td>第 1 路 前院</td><td>520 毫升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 1 路标准流速？">测定</button></td></tr>
+                      <tr><td>第 2 路 菜床</td><td>480 毫升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 2 路标准流速？">测定</button></td></tr>
+                      <tr><td>第 3 路 果树</td><td>0</td><td><span class="badge warn">未设置</span></td><td><button class="btn primary" data-confirm="测定第 3 路标准流速？">测定</button></td></tr>
                     </tbody>
                   </table>
                   <div class="form-grid">
-                    <div class="field"><label>手工输入 Zone</label><select><option>Zone 3 果树</option></select></div>
-                    <div class="field"><label>normalFlowMlPerMin</label><input type="number" value="650"></div>
+                    <div class="field"><label>手工输入水路</label><select><option>第 3 路 果树</option></select></div>
+                    <div class="field"><label>标准流速</label><input type="number" value="650"></div>
                   </div>
-                  <button class="btn" data-confirm="手工保存 Zone 3 normalFlowMlPerMin = 650？">保存手工输入</button>
+                  <button class="btn" data-confirm="手工保存第 3 路标准流速为 650 毫升/分钟？">保存手工输入</button>
                 </div>
               </div>
             </div>
@@ -994,15 +1173,15 @@
               </div>
               <div class="panel-body">
                 <table>
-                  <thead><tr><th>样本</th><th>Zone</th><th>运行时长</th><th>脉冲</th><th>实际水量</th><th>K-factor</th><th>偏差</th><th>状态</th></tr></thead>
+                  <thead><tr><th>样本</th><th>水路</th><th>运行时长</th><th>脉冲</th><th>实际水量</th><th>每升脉冲数</th><th>偏差</th><th>状态</th></tr></thead>
                   <tbody>
-                    <tr><td>1</td><td>Z1</td><td>92 秒</td><td>2245</td><td>5000 ml</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
-                    <tr><td>2</td><td>Z1</td><td>95 秒</td><td>2260</td><td>5000 ml</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
-                    <tr><td>3</td><td>Z2</td><td>98 秒</td><td>2245</td><td>5000 ml</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>1</td><td>第 1 路</td><td>92 秒</td><td>2245</td><td>5000 毫升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>2</td><td>第 1 路</td><td>95 秒</td><td>2260</td><td>5000 毫升</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>3</td><td>第 2 路</td><td>98 秒</td><td>2245</td><td>5000 毫升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
                   </tbody>
                 </table>
                 <div class="toolbar" style="margin-top: 14px;">
-                  <button class="btn primary" data-confirm="应用合并后的 pulsesPerLiter = 450？">确认保存 K-factor</button>
+                  <button class="btn primary" data-confirm="应用合并后的每升脉冲数 450？">确认保存校准结果</button>
                   <button class="btn">丢弃样本</button>
                 </div>
               </div>
@@ -1016,11 +1195,11 @@
               <div class="panel-header"><h2 class="panel-title">自动和外设</h2></div>
               <div class="panel-body stack">
                 <div class="form-grid">
-                  <div class="field"><label>pumpStartEnabled</label><select><option>false</option><option>true</option></select></div>
-                  <div class="field"><label>lowLevelEnabled</label><select><option>true</option><option>false</option></select></div>
-                  <div class="field"><label>queuedPlanMaxDelayMin</label><input type="number" value="60"></div>
+                  <div class="field"><label>自吸泵启动输出</label><select><option>关闭</option><option>启用</option></select></div>
+                  <div class="field"><label>低液位保护输入</label><select><option>启用</option><option>关闭</option></select></div>
+                  <div class="field"><label>计划排队最长等待</label><input type="number" value="60"></div>
                 </div>
-                <div class="callout">queuedPlanMaxDelayMin = 0 表示冲突时不排队，直接跳过。</div>
+                <div class="callout">计划排队最长等待设为 0，表示遇到冲突时不排队，直接跳过。</div>
               </div>
             </div>
 
@@ -1028,13 +1207,13 @@
               <div class="panel-header"><h2 class="panel-title">故障策略</h2></div>
               <div class="panel-body stack">
                 <div class="form-grid">
-                  <div class="field"><label>noWaterLockZone</label><select><option>true</option><option>false</option></select></div>
-                  <div class="field"><label>highFlowAction</label><select><option>stop</option><option>warn</option></select></div>
-                  <div class="field"><label>highFlowLockZone</label><select><option>true</option><option>false</option></select></div>
-                  <div class="field"><label>lowFlowAction</label><select><option>warn</option><option>stop</option></select></div>
-                  <div class="field"><label>lowFlowLockZone</label><select><option>false</option><option>true</option></select></div>
+                  <div class="field"><label>无水后锁定当前水路</label><select><option>是</option><option>否</option></select></div>
+                  <div class="field"><label>高流量处理</label><select><option>停机</option><option>只提醒</option></select></div>
+                  <div class="field"><label>高流量后锁定当前水路</label><select><option>是</option><option>否</option></select></div>
+                  <div class="field"><label>低流量处理</label><select><option>只提醒</option><option>停机</option></select></div>
+                  <div class="field"><label>低流量后锁定当前水路</label><select><option>否</option><option>是</option></select></div>
                 </div>
-                <div class="callout warn">固定规则：无水一定停机；低液位一定停机但不锁 Zone；待机漏水和流量计异常一定全局锁定。</div>
+                <div class="callout warn">固定规则：无水一定停机；低液位一定停机但不锁定水路；待机漏水和流量计异常一定全局锁定。</div>
               </div>
             </div>
 
@@ -1042,13 +1221,13 @@
               <div class="panel-header"><h2 class="panel-title">流量检测参数</h2></div>
               <div class="panel-body">
                 <div class="form-grid">
-                  <div class="field"><label>flowSampleWindowSec</label><input value="5"></div>
-                  <div class="field"><label>flowUpdateIntervalMs</label><input value="1000"></div>
-                  <div class="field"><label>firstPulseTimeoutSec</label><input value="15"></div>
-                  <div class="field"><label>runningNoPulseTimeoutSec</label><input value="15"></div>
-                  <div class="field"><label>flowStabilizeSec</label><input value="10"></div>
-                  <div class="field"><label>maintenanceMaxDurationSec</label><input value="600"></div>
-                  <div class="field"><label>idleLeakConfirmSec</label><input value="30"></div>
+                  <div class="field"><label>流速采样窗口</label><input value="5"></div>
+                  <div class="field"><label>流速刷新间隔</label><input value="1000"></div>
+                  <div class="field"><label>等待首次出水超时</label><input value="15"></div>
+                  <div class="field"><label>运行中无水确认时间</label><input value="15"></div>
+                  <div class="field"><label>启动稳定等待</label><input value="10"></div>
+                  <div class="field"><label>维护运行最长时间</label><input value="600"></div>
+                  <div class="field"><label>待机漏水确认时间</label><input value="30"></div>
                 </div>
               </div>
             </div>
@@ -1057,11 +1236,11 @@
               <div class="panel-header"><h2 class="panel-title">阀门保持参数</h2></div>
               <div class="panel-body stack">
                 <div class="form-grid">
-                  <div class="field"><label>valvePullInMs</label><input value="3000"></div>
-                  <div class="field"><label>valveHoldDutyPercent</label><input value="60"></div>
-                  <div class="field"><label>valvePwmFrequencyHz</label><input value="20000"></div>
+                  <div class="field"><label>阀门全功率吸合时间</label><input value="3000"></div>
+                  <div class="field"><label>阀门保持功率比例</label><input value="60"></div>
+                  <div class="field"><label>阀门保持频率</label><input value="20000"></div>
                 </div>
-                <div class="callout danger">valveHoldDutyPercent = 100 表示禁用保持 PWM。修改阀门参数需要实机验证。</div>
+                <div class="callout danger">阀门保持功率比例设为 100，表示不降低保持功率。修改阀门参数需要实机验证。</div>
                 <button class="btn primary" data-confirm="保存系统设置？阀门参数将在下一次运行生效。">保存设置</button>
               </div>
             </div>
@@ -1073,24 +1252,24 @@
             <div class="panel-header">
               <div>
                 <h2 class="panel-title">浇水记录</h2>
-                <p class="panel-subtitle">长期业务记录，CSV 导出不改变状态</p>
+                <p class="panel-subtitle">长期浇水历史，导出表格不会改变设备状态</p>
               </div>
               <div class="toolbar">
-                <button class="btn">导出当前筛选 CSV</button>
-                <button class="btn">导出全部 CSV</button>
+                <button class="btn">导出当前筛选</button>
+                <button class="btn">导出全部记录</button>
               </div>
             </div>
             <div class="panel-body stack">
               <div class="form-grid">
                 <div class="field"><label>时间范围</label><select><option>今天</option><option>最近 7 天</option><option>全部</option></select></div>
-                <div class="field"><label>Zone</label><select><option>全部</option><option>Zone 1</option><option>Zone 2</option></select></div>
+                <div class="field"><label>水路</label><select><option>全部</option><option>第 1 路</option><option>第 2 路</option></select></div>
               </div>
               <table>
-                <thead><tr><th>ID</th><th>开始时间</th><th>Zone</th><th>来源</th><th>目标</th><th>实际</th><th>水量</th><th>平均流量</th><th>停止原因</th><th>详情</th></tr></thead>
+                <thead><tr><th>编号</th><th>开始时间</th><th>水路</th><th>来源</th><th>计划时长</th><th>实际时长</th><th>水量</th><th>平均流速</th><th>结果</th><th>详情</th></tr></thead>
                 <tbody>
-                  <tr><td>105</td><td>今天 08:22</td><td>果树</td><td>manual</td><td>15 分</td><td>15:00</td><td>5.6 L</td><td>373 ml/min</td><td>completed</td><td><button class="btn" data-confirm="记录详情：pulseCount=2520, warningFlags=none。">查看</button></td></tr>
-                  <tr><td>104</td><td>今天 07:14</td><td>菜床</td><td>schedule</td><td>15 分</td><td>15:00</td><td>7.2 L</td><td>480 ml/min</td><td>completed</td><td><button class="btn" data-confirm="记录详情：planGroupId=1, startTime=07:00。">查看</button></td></tr>
-                  <tr><td>103</td><td>今天 07:00</td><td>前院滴灌</td><td>schedule</td><td>12 分</td><td>12:00</td><td>5.8 L</td><td>483 ml/min</td><td>completed</td><td><button class="btn" data-confirm="记录详情：lowFlowWarningWritten=false, highFlowWarningWritten=false。">查看</button></td></tr>
+                  <tr><td>105</td><td>今天 08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>15:00</td><td>5.6 升</td><td>373 毫升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：累计脉冲 2520 次，没有流量告警。">查看</button></td></tr>
+                  <tr><td>104</td><td>今天 07:14</td><td>菜床</td><td>自动计划</td><td>15 分</td><td>15:00</td><td>7.2 升</td><td>480 毫升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：来自计划 1，开始时间 07:00。">查看</button></td></tr>
+                  <tr><td>103</td><td>今天 07:00</td><td>前院滴灌</td><td>自动计划</td><td>12 分</td><td>12:00</td><td>5.8 升</td><td>483 毫升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：没有低流量或高流量提醒。">查看</button></td></tr>
                 </tbody>
               </table>
             </div>
@@ -1107,18 +1286,18 @@
             </div>
             <div class="panel-body stack">
               <div class="form-grid">
-                <div class="field"><label>类型</label><select><option>全部</option><option>fault</option><option>warning</option><option>state</option><option>maintenance</option></select></div>
-                <div class="field"><label>对象</label><select><option>全部</option><option>zone:4</option><option>flow</option><option>auto</option></select></div>
+                <div class="field"><label>类型</label><select><option>全部</option><option>故障</option><option>提醒</option><option>状态变化</option><option>维护操作</option></select></div>
+                <div class="field"><label>对象</label><select><option>全部</option><option>第 4 路</option><option>流量计</option><option>自动浇水</option></select></div>
               </div>
               <table>
-                <thead><tr><th>时间</th><th>类型</th><th>对象</th><th>reason</th><th>摘要</th><th>value</th></tr></thead>
+                <thead><tr><th>时间</th><th>类型</th><th>对象</th><th>原因</th><th>摘要</th><th>数值</th></tr></thead>
                 <tbody>
-                  <tr><td>今天 08:51</td><td><span class="badge danger">fault</span></td><td>zone:4</td><td>high_flow_stop</td><td>高流量停机并锁定 Zone</td><td>2980 ml/min</td></tr>
-                  <tr><td>今天 08:15</td><td><span class="badge blue">state</span></td><td>auto</td><td>auto_mode_changed</td><td>自动浇水开启</td><td>enabled</td></tr>
-                  <tr><td>昨天 17:02</td><td><span class="badge">maintenance</span></td><td>flow</td><td>calibration_applied</td><td>应用 3 个样本的 K-factor</td><td>450</td></tr>
+                  <tr><td>今天 08:51</td><td><span class="badge danger">故障</span></td><td>第 4 路</td><td>高流量停机</td><td>高流量停机并锁定水路</td><td>2980 毫升/分钟</td></tr>
+                  <tr><td>今天 08:15</td><td><span class="badge blue">状态</span></td><td>自动浇水</td><td>模式改变</td><td>自动浇水已开启</td><td>已开启</td></tr>
+                  <tr><td>昨天 17:02</td><td><span class="badge">维护</span></td><td>流量计</td><td>校准已保存</td><td>应用 3 个样本的校准结果</td><td>450</td></tr>
                 </tbody>
               </table>
-              <div class="callout">正常计划开始和完成不重复写事件；同一次 Zone 运行中同类 warning 最多写一次。</div>
+              <div class="callout">正常计划开始和完成不重复写事件；同一次水路运行中，同类提醒最多记录一次。</div>
             </div>
           </div>
         </section>
@@ -1131,7 +1310,7 @@
       <div class="modal-body">
         <h2>确认操作</h2>
         <p id="confirmText"></p>
-        <div class="callout warn">原型提示：正式实现中该操作必须 POST、鉴权、同源检查，并携带 confirm=true。</div>
+        <div class="callout warn">原型提示：正式设备会先验证身份、检查来源，并要求二次确认后才执行。</div>
       </div>
       <div class="modal-actions">
         <button class="btn" id="cancelConfirm">取消</button>
@@ -1144,8 +1323,8 @@
     const titles = {
       overview: "总览",
       run: "手动浇水",
-      zones: "Zone 管理",
-      zoneEdit: "Zone 编辑",
+      zones: "水路管理",
+      zoneEdit: "水路编辑",
       plans: "计划管理",
       planEdit: "计划编辑",
       flow: "流量",
@@ -1161,7 +1340,8 @@
       elapsedMin: 0,
       volumeMl: 0,
       flow: 0,
-      timer: null
+      timer: null,
+      flowHistory: [510, 525, 498, 532, 520, 488, 506, 540, 556, 530, 518, 522, 536, 548, 526, 512, 504, 520, 535, 528, 516, 510, 524, 538]
     };
 
     function gotoPage(page) {
@@ -1213,24 +1393,24 @@
       const zoneLabel = select.selectedOptions[0].textContent.split("，")[0];
       const duration = Number(document.getElementById("durationMin").value);
       if (!Number.isFinite(duration) || duration < 1 || duration > 360) {
-        openConfirm("durationMin 超出 1..360 分钟，操作未执行。");
+        openConfirm("浇水时长必须在 1 到 360 分钟之间，操作未执行。");
         return;
       }
-      openConfirm(`启动 ${zoneLabel}，运行 ${duration} 分钟？`, () => startMockRun(zoneLabel, duration));
+      openConfirm(`开始 ${zoneLabel}，运行 ${duration} 分钟？`, () => startMockRun(zoneLabel, duration));
     });
 
     document.getElementById("stopRun").addEventListener("click", () => {
-      openConfirm("停止当前运行？会关闭泵和当前 Zone，并写入 user_stop 记录。", stopMockRun);
+      openConfirm("停止当前运行？会关闭泵和当前水路，并记录为“用户停止”。", stopMockRun);
     });
 
     document.getElementById("overviewStop").addEventListener("click", () => {
-      openConfirm("停止当前运行？如果当前来源是自动计划，会取消剩余 Zone 并清空等待队列。", stopMockRun);
+      openConfirm("停止当前运行？如果当前来源是自动计划，会取消剩余水路并清空等待队列。", stopMockRun);
     });
 
     function startMockRun(zone, duration) {
       if (state.timer) clearInterval(state.timer);
       state.running = true;
-      state.zone = zone.replace("Zone ", "Z");
+      state.zone = zone;
       state.targetMin = duration;
       state.elapsedMin = 0;
       state.volumeMl = 0;
@@ -1241,6 +1421,8 @@
         state.elapsedMin = Math.min(state.targetMin, state.elapsedMin + 1);
         state.flow = 470 + Math.round(Math.random() * 90);
         state.volumeMl += state.flow;
+        state.flowHistory.push(state.flow);
+        if (state.flowHistory.length > 32) state.flowHistory.shift();
         if (state.elapsedMin >= state.targetMin) stopMockRun();
         updateRunUi();
       }, 1000);
@@ -1259,7 +1441,7 @@
 
     function updateRunUi() {
       const percent = state.targetMin ? Math.min(100, Math.round(state.elapsedMin * 100 / state.targetMin)) : 0;
-      document.getElementById("manualState").textContent = state.running ? "Running" : "Idle";
+      document.getElementById("manualState").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("manualState").className = `badge ${state.running ? "good" : ""}`;
       document.getElementById("manualProgress").style.width = `${percent}%`;
       document.getElementById("manualElapsed").textContent = state.elapsedMin;
@@ -1267,15 +1449,116 @@
       document.getElementById("manualVolume").textContent = state.volumeMl;
       document.getElementById("manualFlow").textContent = state.running ? state.flow : 0;
 
-      document.getElementById("overviewState").textContent = state.running ? "Running" : "Idle";
+      document.getElementById("overviewState").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("runStateBadge").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("runStateBadge").className = `badge ${state.running ? "good" : "good"}`;
       document.getElementById("overviewProgress").style.width = `${percent}%`;
       document.getElementById("overviewZone").textContent = state.running ? state.zone : "-";
       document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
-      document.getElementById("overviewVolume").textContent = `${state.volumeMl} ml`;
+      document.getElementById("overviewVolume").textContent = `${state.volumeMl} 毫升`;
       document.getElementById("overviewFlow").textContent = state.running ? state.flow : 0;
+      drawFlowChart("overviewFlowChart", state.flowHistory);
+      drawFlowChart("manualFlowChart", state.flowHistory);
     }
+
+    function drawFlowChart(canvasId, values) {
+      const canvas = document.getElementById(canvasId);
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const width = canvas.width;
+      const height = canvas.height;
+      const pad = { left: 54, right: 20, top: 24, bottom: 34 };
+      const chartWidth = width - pad.left - pad.right;
+      const chartHeight = height - pad.top - pad.bottom;
+      const minY = 250;
+      const maxY = 1700;
+      const lowLine = 312;
+      const highLine = 832;
+
+      ctx.clearRect(0, 0, width, height);
+      const bg = ctx.createLinearGradient(0, 0, 0, height);
+      bg.addColorStop(0, "rgba(32, 116, 166, .12)");
+      bg.addColorStop(1, "rgba(22, 131, 95, .03)");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, width, height);
+
+      ctx.strokeStyle = "rgba(72, 98, 110, .15)";
+      ctx.lineWidth = 1;
+      ctx.fillStyle = "#60706a";
+      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.top + chartHeight * i / 4;
+        const label = Math.round(maxY - (maxY - minY) * i / 4);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(width - pad.right, y);
+        ctx.stroke();
+        ctx.fillText(String(label), 10, y + 4);
+      }
+
+      function yFor(v) {
+        const clamped = Math.max(minY, Math.min(maxY, v));
+        return pad.top + (maxY - clamped) * chartHeight / (maxY - minY);
+      }
+
+      function drawThreshold(value, color) {
+        const y = yFor(value);
+        ctx.strokeStyle = color;
+        ctx.setLineDash([8, 6]);
+        ctx.beginPath();
+        ctx.moveTo(pad.left, y);
+        ctx.lineTo(width - pad.right, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      drawThreshold(lowLine, "rgba(215, 154, 40, .8)");
+      drawThreshold(highLine, "rgba(181, 39, 39, .7)");
+
+      const points = values.map((value, index) => ({
+        x: pad.left + chartWidth * index / Math.max(1, values.length - 1),
+        y: yFor(value)
+      }));
+
+      const fill = ctx.createLinearGradient(0, pad.top, 0, height - pad.bottom);
+      fill.addColorStop(0, "rgba(22, 131, 95, .28)");
+      fill.addColorStop(1, "rgba(22, 131, 95, 0)");
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.lineTo(width - pad.right, height - pad.bottom);
+      ctx.lineTo(pad.left, height - pad.bottom);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+
+      ctx.strokeStyle = "#16835f";
+      ctx.lineWidth = 3;
+      ctx.shadowColor = "rgba(22, 131, 95, .35)";
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      points.forEach((point, index) => {
+        if (index === 0) ctx.moveTo(point.x, point.y);
+        else ctx.lineTo(point.x, point.y);
+      });
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      const last = points[points.length - 1];
+      if (last) {
+        ctx.fillStyle = "#ffffff";
+        ctx.strokeStyle = "#16835f";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(last.x, last.y, 6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+    }
+
+    updateRunUi();
   </script>
 </body>
 </html>
