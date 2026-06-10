@@ -1,0 +1,1281 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ESP32 灌溉控制器 Web 原型</title>
+  <style>
+    :root {
+      --bg: #f5f7f6;
+      --surface: #ffffff;
+      --surface-2: #eef3f1;
+      --line: #d8e0dc;
+      --text: #1f2a26;
+      --muted: #60706a;
+      --accent: #16835f;
+      --accent-2: #0f684a;
+      --warn: #a76500;
+      --danger: #b52727;
+      --blue: #2268a8;
+      --shadow: 0 8px 24px rgba(24, 45, 36, .08);
+      --radius: 8px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      background: #14241e;
+      color: #e9f1ed;
+      padding: 18px 14px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .brand {
+      display: grid;
+      grid-template-columns: 38px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 8px 8px 18px;
+      border-bottom: 1px solid rgba(255,255,255,.12);
+      margin-bottom: 12px;
+    }
+
+    .brand-mark {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, #2aa978, #7dbb62);
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      color: #082018;
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .brand-subtitle {
+      margin-top: 3px;
+      font-size: 12px;
+      color: #a9bbb3;
+    }
+
+    .nav {
+      display: grid;
+      gap: 4px;
+    }
+
+    .nav button {
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: #dce7e2;
+      text-align: left;
+      padding: 10px 10px;
+      border-radius: 7px;
+      cursor: pointer;
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 8px;
+      align-items: center;
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      background: rgba(255,255,255,.1);
+      color: #fff;
+    }
+
+    .nav-icon {
+      width: 22px;
+      color: #91c5ad;
+      text-align: center;
+    }
+
+    .shell {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    .topbar {
+      height: 64px;
+      background: rgba(255,255,255,.9);
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      backdrop-filter: blur(10px);
+    }
+
+    .topbar h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .topbar-meta {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    main {
+      padding: 24px;
+      max-width: 1380px;
+      width: 100%;
+    }
+
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .panel-header {
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fbfcfb;
+    }
+
+    .panel-title {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .panel-subtitle {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .panel-body {
+      padding: 16px;
+    }
+
+    .metric-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 92px;
+    }
+
+    .metric-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 10px;
+    }
+
+    .metric-value {
+      font-size: 24px;
+      font-weight: 750;
+      line-height: 1.1;
+    }
+
+    .metric-note {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 24px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: #fff;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .badge.good {
+      color: #0f684a;
+      border-color: #b9dcca;
+      background: #edf8f2;
+    }
+
+    .badge.warn {
+      color: var(--warn);
+      border-color: #e6c783;
+      background: #fff6df;
+    }
+
+    .badge.danger {
+      color: var(--danger);
+      border-color: #e6b1b1;
+      background: #fff0ef;
+    }
+
+    .badge.blue {
+      color: var(--blue);
+      border-color: #b9d1ea;
+      background: #eef6ff;
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .btn {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #fff;
+      color: var(--text);
+      padding: 9px 12px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 38px;
+    }
+
+    .btn:hover {
+      border-color: #aebcb6;
+      background: #f9fbfa;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn.primary:hover {
+      background: var(--accent-2);
+    }
+
+    .btn.danger {
+      background: #fff4f3;
+      border-color: #e2aaa7;
+      color: var(--danger);
+    }
+
+    .btn.warn {
+      background: #fff7e7;
+      border-color: #e3bf73;
+      color: var(--warn);
+    }
+
+    .btn[disabled] {
+      opacity: .52;
+      cursor: not-allowed;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+    }
+
+    label {
+      color: #33433d;
+      font-size: 13px;
+      font-weight: 650;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    input, select {
+      width: 100%;
+      border: 1px solid #c9d4cf;
+      background: #fff;
+      border-radius: 7px;
+      padding: 9px 10px;
+      min-height: 38px;
+      color: var(--text);
+    }
+
+    input:focus, select:focus {
+      outline: 2px solid rgba(22, 131, 95, .18);
+      border-color: var(--accent);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+      padding: 11px 10px;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      font-weight: 650;
+      background: #fbfcfb;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .progress {
+      width: 100%;
+      height: 10px;
+      background: #dfe8e4;
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .progress > span {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: linear-gradient(90deg, var(--accent), #58ad7b);
+      transition: width .2s ease;
+    }
+
+    .callout {
+      border: 1px solid var(--line);
+      border-left-width: 4px;
+      border-radius: 7px;
+      padding: 12px 13px;
+      background: #fff;
+      color: #33433d;
+      line-height: 1.45;
+      font-size: 13px;
+    }
+
+    .callout.warn {
+      border-left-color: var(--warn);
+      background: #fffaf0;
+    }
+
+    .callout.danger {
+      border-left-color: var(--danger);
+      background: #fff5f5;
+    }
+
+    .callout.good {
+      border-left-color: var(--accent);
+      background: #f1faf5;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 16px;
+      align-items: start;
+    }
+
+    .schedule-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .zone-duration-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .segmented {
+      display: inline-grid;
+      grid-template-columns: repeat(3, 1fr);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      overflow: hidden;
+      background: #fff;
+    }
+
+    .segmented button {
+      border: 0;
+      border-right: 1px solid var(--line);
+      padding: 8px 10px;
+      background: #fff;
+      cursor: pointer;
+    }
+
+    .segmented button:last-child {
+      border-right: 0;
+    }
+
+    .segmented button.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .drawer {
+      position: fixed;
+      inset: 0;
+      background: rgba(12, 24, 18, .38);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      z-index: 20;
+    }
+
+    .drawer.show {
+      display: flex;
+    }
+
+    .modal {
+      width: min(520px, 100%);
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 18px 50px rgba(0,0,0,.22);
+      border: 1px solid var(--line);
+      overflow: hidden;
+    }
+
+    .modal-body {
+      padding: 18px;
+    }
+
+    .modal-body h2 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+
+    .modal-actions {
+      border-top: 1px solid var(--line);
+      padding: 12px 18px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      background: #fbfcfb;
+    }
+
+    .mobile-menu {
+      display: none;
+    }
+
+    @media (max-width: 980px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+      }
+
+      .nav {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .nav button {
+        justify-content: center;
+      }
+
+      .metric-row,
+      .grid.cols-2,
+      .grid.cols-3,
+      .split,
+      .form-grid,
+      .schedule-grid,
+      .zone-duration-grid {
+        grid-template-columns: 1fr;
+      }
+
+      main {
+        padding: 16px;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .topbar {
+        height: auto;
+        min-height: 62px;
+        padding: 12px 16px;
+        align-items: flex-start;
+        gap: 8px;
+        flex-direction: column;
+      }
+
+      .nav {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .toolbar {
+        align-items: stretch;
+      }
+
+      .btn {
+        justify-content: center;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">IR</div>
+        <div>
+          <div class="brand-title">灌溉控制器</div>
+          <div class="brand-subtitle">Web 原型</div>
+        </div>
+      </div>
+      <nav class="nav" aria-label="主导航">
+        <button class="active" data-page="overview"><span class="nav-icon">⌂</span><span>总览</span></button>
+        <button data-page="run"><span class="nav-icon">▶</span><span>手动</span></button>
+        <button data-page="zones"><span class="nav-icon">▦</span><span>Zone</span></button>
+        <button data-page="plans"><span class="nav-icon">◷</span><span>计划</span></button>
+        <button data-page="flow"><span class="nav-icon">≈</span><span>流量</span></button>
+        <button data-page="settings"><span class="nav-icon">⚙</span><span>设置</span></button>
+        <button data-page="records"><span class="nav-icon">≡</span><span>记录</span></button>
+        <button data-page="events"><span class="nav-icon">!</span><span>事件</span></button>
+      </nav>
+    </aside>
+
+    <div class="shell">
+      <header class="topbar">
+        <div>
+          <h1 id="pageTitle">总览</h1>
+          <div class="panel-subtitle">静态原型，仅用于确认页面结构和操作流</div>
+        </div>
+        <div class="topbar-meta">
+          <span class="badge good">在线</span>
+          <span class="badge blue">NTP 有效</span>
+          <span>2026-06-11 09:42</span>
+        </div>
+      </header>
+
+      <main>
+        <section id="overview" class="page active">
+          <div class="grid">
+            <div class="metric-row">
+              <div class="metric">
+                <div class="metric-label">当前状态</div>
+                <div class="metric-value" id="overviewState">Idle</div>
+                <div class="metric-note">没有 Zone 正在运行</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">自动浇水</div>
+                <div class="metric-value">enabled</div>
+                <div class="metric-note">下一次 18:30，晨晚浇水</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">今日水量</div>
+                <div class="metric-value">18.6 L</div>
+                <div class="metric-note">3 次完成，42 分钟</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">故障摘要</div>
+                <div class="metric-value">1</div>
+                <div class="metric-note">Zone 4 高流量锁定</div>
+              </div>
+            </div>
+
+            <div class="split">
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">当前运行</h2>
+                    <p class="panel-subtitle">一次只允许一个 Zone 运行</p>
+                  </div>
+                  <span class="badge good" id="runStateBadge">空闲</span>
+                </div>
+                <div class="panel-body stack">
+                  <div class="progress"><span id="overviewProgress"></span></div>
+                  <div class="metric-row">
+                    <div class="metric">
+                      <div class="metric-label">Zone</div>
+                      <div class="metric-value" id="overviewZone">-</div>
+                      <div class="metric-note">来源：-</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">进度</div>
+                      <div class="metric-value" id="overviewElapsed">0 / 0</div>
+                      <div class="metric-note">分钟</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">累计水量</div>
+                      <div class="metric-value" id="overviewVolume">0 ml</div>
+                      <div class="metric-note">估算值</div>
+                    </div>
+                    <div class="metric">
+                      <div class="metric-label">实时流速</div>
+                      <div class="metric-value" id="overviewFlow">0</div>
+                      <div class="metric-note">ml/min</div>
+                    </div>
+                  </div>
+                  <div class="toolbar">
+                    <button class="btn primary" data-goto="run">手动浇水</button>
+                    <button class="btn danger" id="overviewStop" disabled>停止当前运行</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">锁定和快速入口</h2>
+                    <p class="panel-subtitle">清除锁定必须二次确认</p>
+                  </div>
+                </div>
+                <div class="panel-body stack">
+                  <div class="callout danger">
+                    Zone 4 已锁定：high_flow_stop，最后流速 2,980 ml/min。普通手动和计划会跳过该 Zone。
+                  </div>
+                  <div class="toolbar">
+                    <button class="btn warn" data-confirm="清除 Zone 4 锁定？该操作不会删除记录和事件。">清除 Zone 4 锁定</button>
+                    <button class="btn" data-goto="zones">Zone 管理</button>
+                    <button class="btn" data-goto="flow">流量校准</button>
+                    <button class="btn" data-goto="records">查看记录</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid cols-2">
+              <div class="panel">
+                <div class="panel-header">
+                  <h2 class="panel-title">今日/最近浇水</h2>
+                </div>
+                <div class="panel-body">
+                  <table>
+                    <thead>
+                      <tr><th>时间</th><th>Zone</th><th>来源</th><th>时长</th><th>水量</th><th>结果</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>07:00</td><td>前院滴灌</td><td>计划 1</td><td>12 分</td><td>5.8 L</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>07:14</td><td>菜床</td><td>计划 1</td><td>15 分</td><td>7.2 L</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>5.6 L</td><td><span class="badge good">完成</span></td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <h2 class="panel-title">自动总控</h2>
+                </div>
+                <div class="panel-body stack">
+                  <div class="toolbar">
+                    <button class="btn primary" data-confirm="开启自动浇水？系统将按启用计划触发。">开启</button>
+                    <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭</button>
+                    <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
+                  </div>
+                  <div class="callout">
+                    自动总控只影响计划触发和队列，不影响手动浇水。系统时间无效时不能设置 disabled_until。
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="run" class="page">
+          <div class="split">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">手动浇水</h2>
+                  <p class="panel-subtitle">只显示已启用 Zone，时长单位为分钟</p>
+                </div>
+              </div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field">
+                    <label for="manualZone">选择 Zone</label>
+                    <select id="manualZone">
+                      <option value="1" data-default="10">Zone 1 前院滴灌，正常流量已测定</option>
+                      <option value="2" data-default="15">Zone 2 菜床，正常流量已测定</option>
+                      <option value="3" data-default="20">Zone 3 果树，正常流量未设置</option>
+                    </select>
+                    <div class="hint">禁用 Zone 不出现在这里；锁定 Zone 会置灰并提示原因。</div>
+                  </div>
+                  <div class="field">
+                    <label for="durationMin">durationMin</label>
+                    <input id="durationMin" type="number" min="1" max="360" value="10">
+                    <div class="hint">范围 1..360 分钟。普通手动浇水要求流量计已校准。</div>
+                  </div>
+                </div>
+                <div class="callout good">流量计已校准：450 pulses/L。低液位输入启用，当前水位正常。</div>
+                <div class="toolbar">
+                  <button class="btn primary" id="startRun">启动当前 Zone</button>
+                  <button class="btn danger" id="stopRun" disabled>停止当前运行</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">运行进度</h2>
+                  <p class="panel-subtitle">水量只用于观察和异常判断，不作为停止条件</p>
+                </div>
+                <span class="badge" id="manualState">Idle</span>
+              </div>
+              <div class="panel-body stack">
+                <div class="progress"><span id="manualProgress"></span></div>
+                <div class="metric-row">
+                  <div class="metric"><div class="metric-label">已运行</div><div class="metric-value" id="manualElapsed">0</div><div class="metric-note">分钟</div></div>
+                  <div class="metric"><div class="metric-label">目标</div><div class="metric-value" id="manualTarget">0</div><div class="metric-note">分钟</div></div>
+                  <div class="metric"><div class="metric-label">累计水量</div><div class="metric-value" id="manualVolume">0</div><div class="metric-note">ml</div></div>
+                  <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value" id="manualFlow">0</div><div class="metric-note">ml/min</div></div>
+                </div>
+                <div class="callout">停止当前运行会关闭泵和当前 Zone；如果来源是自动计划，会取消剩余 Zone 并清空等待队列。</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="zones" class="page">
+          <div class="grid">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">Zone 列表</h2>
+                  <p class="panel-subtitle">列表页只展示摘要；编辑页一次只编辑一个 Zone</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead>
+                    <tr><th>Zone</th><th>名称</th><th>启用</th><th>锁定</th><th>默认时长</th><th>正常流量</th><th>阈值</th><th>操作</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>1</td><td>前院滴灌</td><td><span class="badge good">enabled</span></td><td><span class="badge good">无</span></td><td>10 分</td><td>520 ml/min</td><td>60% / 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>2</td><td>菜床</td><td><span class="badge good">enabled</span></td><td><span class="badge good">无</span></td><td>15 分</td><td>480 ml/min</td><td>60% / 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>3</td><td>果树</td><td><span class="badge good">enabled</span></td><td><span class="badge good">无</span></td><td>20 分</td><td><span class="badge warn">未设置</span></td><td>未启用</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>4</td><td>草坪</td><td><span class="badge good">enabled</span></td><td><span class="badge danger">high_flow</span></td><td>8 分</td><td>900 ml/min</td><td>60% / 160%</td><td><button class="btn warn" data-confirm="清除 Zone 4 锁定？">清锁</button></td></tr>
+                    <tr><td>5</td><td>预留 5</td><td><span class="badge">disabled</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>6</td><td>预留 6</td><td><span class="badge">disabled</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="zoneEdit" class="page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">编辑 Zone 1</h2>
+                <p class="panel-subtitle">normalFlowMlPerMin 在流量页测定或手工输入</p>
+              </div>
+              <button class="btn" data-goto="zones">返回列表</button>
+            </div>
+            <div class="panel-body stack">
+              <div class="form-grid">
+                <div class="field"><label>enabled</label><select><option>enabled</option><option>disabled</option></select></div>
+                <div class="field"><label>name</label><input value="前院滴灌"></div>
+                <div class="field"><label>defaultManualDurationMin</label><input type="number" min="1" max="360" value="10"></div>
+                <div class="field"><label>normalFlowMlPerMin</label><input value="520 ml/min，2026-06-10 17:20 测定" disabled></div>
+                <div class="field"><label>lowFlowPercent</label><input type="number" value="60"></div>
+                <div class="field"><label>highFlowPercent</label><input type="number" value="160"></div>
+                <div class="field"><label>flowFaultConfirmSec</label><input type="number" value="10"></div>
+                <div class="field"><label>锁定状态</label><input value="未锁定" disabled></div>
+              </div>
+              <div class="callout">禁用 Zone 后不会出现在手动选择列表，计划执行时会跳过；历史记录不会被删除。</div>
+              <div class="toolbar">
+                <button class="btn primary" data-confirm="保存 Zone 1 配置？">保存</button>
+                <button class="btn" data-goto="flow">去测定正常流量</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="plans" class="page">
+          <div class="grid">
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">计划组列表</h2>
+                  <p class="panel-subtitle">最多 4 个计划组，每组最多 4 个开始时间</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>计划</th><th>启用</th><th>开始时间</th><th>周期</th><th>Zone 摘要</th><th>下一次</th><th>操作</th></tr></thead>
+                  <tbody>
+                    <tr><td>1 晨晚浇水</td><td><span class="badge good">enabled</span></td><td>07:00, 18:30</td><td>每天</td><td>Z1 10 分，Z2 15 分，Z3 20 分</td><td>今天 18:30</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                    <tr><td>2 周末补水</td><td><span class="badge">disabled</span></td><td>09:00</td><td>每周六</td><td>Z4 8 分</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                    <tr><td>3 空计划</td><td><span class="badge">disabled</span></td><td>-</td><td>每天</td><td>无运行 Zone</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                    <tr><td>4 空计划</td><td><span class="badge">disabled</span></td><td>-</td><td>每天</td><td>无运行 Zone</td><td>-</td><td><button class="btn" data-goto="planEdit">编辑</button></td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="planEdit" class="page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">编辑计划组 1</h2>
+                <p class="panel-subtitle">底层统一保存 cycleLengthDays / activeDayMask / cycleAnchorDate</p>
+              </div>
+              <button class="btn" data-goto="plans">返回列表</button>
+            </div>
+            <div class="panel-body stack">
+              <div class="form-grid">
+                <div class="field"><label>enabled</label><select><option>enabled</option><option>disabled</option></select></div>
+                <div class="field"><label>name</label><input value="晨晚浇水"></div>
+              </div>
+              <div class="field">
+                <label>周期表达</label>
+                <div class="segmented" role="group">
+                  <button class="active">每天</button>
+                  <button>每周</button>
+                  <button>自定义周期</button>
+                </div>
+                <div class="hint">每天会保存为 cycleLengthDays=1，activeDayMask=第 1 天。</div>
+              </div>
+              <div class="schedule-grid">
+                <div class="field"><label>开始时间 1</label><input type="time" value="07:00"></div>
+                <div class="field"><label>开始时间 2</label><input type="time" value="18:30"></div>
+                <div class="field"><label>开始时间 3</label><input type="time"></div>
+                <div class="field"><label>开始时间 4</label><input type="time"></div>
+              </div>
+              <div class="zone-duration-grid">
+                <div class="field"><label>Z1 前院</label><input type="number" min="0" max="360" value="10"></div>
+                <div class="field"><label>Z2 菜床</label><input type="number" min="0" max="360" value="15"></div>
+                <div class="field"><label>Z3 果树</label><input type="number" min="0" max="360" value="20"></div>
+                <div class="field"><label>Z4 草坪</label><input type="number" min="0" max="360" value="0"></div>
+                <div class="field"><label>Z5 未启用</label><input type="number" min="0" max="360" value="0"></div>
+                <div class="field"><label>Z6 未启用</label><input type="number" min="0" max="360" value="0"></div>
+              </div>
+              <div class="callout">0 表示跳过，1..360 表示运行分钟数。计划到点后按 Zone 编号串行执行，不支持并发。</div>
+              <div class="toolbar">
+                <button class="btn primary" data-confirm="保存计划组 1？将每天 07:00 和 18:30 串行运行 Z1、Z2、Z3。">保存计划</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="flow" class="page">
+          <div class="grid">
+            <div class="grid cols-2">
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">流量计校准</h2>
+                    <p class="panel-subtitle">全局 K-factor，决定水量和实时流速可信度</p>
+                  </div>
+                  <span class="badge good">已校准</span>
+                </div>
+                <div class="panel-body stack">
+                  <div class="metric-row">
+                    <div class="metric"><div class="metric-label">pulsesPerLiter</div><div class="metric-value">450</div><div class="metric-note">pulses/L</div></div>
+                    <div class="metric"><div class="metric-label">校准时间</div><div class="metric-value">06-10</div><div class="metric-note">3 个样本</div></div>
+                    <div class="metric"><div class="metric-label">总脉冲</div><div class="metric-value">6750</div><div class="metric-note">pulse</div></div>
+                    <div class="metric"><div class="metric-label">实际水量</div><div class="metric-value">15 L</div><div class="metric-note">合计</div></div>
+                  </div>
+                  <div class="toolbar">
+                    <select aria-label="校准 Zone"><option>Zone 1 前院滴灌</option><option>Zone 2 菜床</option><option>Zone 3 果树</option></select>
+                    <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始校准</button>
+                    <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止校准</button>
+                  </div>
+                  <div class="callout warn">维护运行最长 600 秒。样本偏差明显时不建议保存。</div>
+                </div>
+              </div>
+
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">Zone 正常流量</h2>
+                    <p class="panel-subtitle">用于低流量/高流量判断，不改变流量计 K-factor</p>
+                  </div>
+                </div>
+                <div class="panel-body stack">
+                  <table>
+                    <thead><tr><th>Zone</th><th>正常流量</th><th>状态</th><th>操作</th></tr></thead>
+                    <tbody>
+                      <tr><td>Z1 前院</td><td>520 ml/min</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定 Zone 1 正常流量？">测定</button></td></tr>
+                      <tr><td>Z2 菜床</td><td>480 ml/min</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定 Zone 2 正常流量？">测定</button></td></tr>
+                      <tr><td>Z3 果树</td><td>0</td><td><span class="badge warn">未设置</span></td><td><button class="btn primary" data-confirm="测定 Zone 3 正常流量？">测定</button></td></tr>
+                    </tbody>
+                  </table>
+                  <div class="form-grid">
+                    <div class="field"><label>手工输入 Zone</label><select><option>Zone 3 果树</option></select></div>
+                    <div class="field"><label>normalFlowMlPerMin</label><input type="number" value="650"></div>
+                  </div>
+                  <button class="btn" data-confirm="手工保存 Zone 3 normalFlowMlPerMin = 650？">保存手工输入</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2 class="panel-title">校准样本</h2>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead><tr><th>样本</th><th>Zone</th><th>运行时长</th><th>脉冲</th><th>实际水量</th><th>K-factor</th><th>偏差</th><th>状态</th></tr></thead>
+                  <tbody>
+                    <tr><td>1</td><td>Z1</td><td>92 秒</td><td>2245</td><td>5000 ml</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>2</td><td>Z1</td><td>95 秒</td><td>2260</td><td>5000 ml</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>3</td><td>Z2</td><td>98 秒</td><td>2245</td><td>5000 ml</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                  </tbody>
+                </table>
+                <div class="toolbar" style="margin-top: 14px;">
+                  <button class="btn primary" data-confirm="应用合并后的 pulsesPerLiter = 450？">确认保存 K-factor</button>
+                  <button class="btn">丢弃样本</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="settings" class="page">
+          <div class="grid cols-2">
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">自动和外设</h2></div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field"><label>pumpStartEnabled</label><select><option>false</option><option>true</option></select></div>
+                  <div class="field"><label>lowLevelEnabled</label><select><option>true</option><option>false</option></select></div>
+                  <div class="field"><label>queuedPlanMaxDelayMin</label><input type="number" value="60"></div>
+                </div>
+                <div class="callout">queuedPlanMaxDelayMin = 0 表示冲突时不排队，直接跳过。</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">故障策略</h2></div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field"><label>noWaterLockZone</label><select><option>true</option><option>false</option></select></div>
+                  <div class="field"><label>highFlowAction</label><select><option>stop</option><option>warn</option></select></div>
+                  <div class="field"><label>highFlowLockZone</label><select><option>true</option><option>false</option></select></div>
+                  <div class="field"><label>lowFlowAction</label><select><option>warn</option><option>stop</option></select></div>
+                  <div class="field"><label>lowFlowLockZone</label><select><option>false</option><option>true</option></select></div>
+                </div>
+                <div class="callout warn">固定规则：无水一定停机；低液位一定停机但不锁 Zone；待机漏水和流量计异常一定全局锁定。</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">流量检测参数</h2></div>
+              <div class="panel-body">
+                <div class="form-grid">
+                  <div class="field"><label>flowSampleWindowSec</label><input value="5"></div>
+                  <div class="field"><label>flowUpdateIntervalMs</label><input value="1000"></div>
+                  <div class="field"><label>firstPulseTimeoutSec</label><input value="15"></div>
+                  <div class="field"><label>runningNoPulseTimeoutSec</label><input value="15"></div>
+                  <div class="field"><label>flowStabilizeSec</label><input value="10"></div>
+                  <div class="field"><label>maintenanceMaxDurationSec</label><input value="600"></div>
+                  <div class="field"><label>idleLeakConfirmSec</label><input value="30"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">阀门保持参数</h2></div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field"><label>valvePullInMs</label><input value="3000"></div>
+                  <div class="field"><label>valveHoldDutyPercent</label><input value="60"></div>
+                  <div class="field"><label>valvePwmFrequencyHz</label><input value="20000"></div>
+                </div>
+                <div class="callout danger">valveHoldDutyPercent = 100 表示禁用保持 PWM。修改阀门参数需要实机验证。</div>
+                <button class="btn primary" data-confirm="保存系统设置？阀门参数将在下一次运行生效。">保存设置</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="records" class="page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">浇水记录</h2>
+                <p class="panel-subtitle">长期业务记录，CSV 导出不改变状态</p>
+              </div>
+              <div class="toolbar">
+                <button class="btn">导出当前筛选 CSV</button>
+                <button class="btn">导出全部 CSV</button>
+              </div>
+            </div>
+            <div class="panel-body stack">
+              <div class="form-grid">
+                <div class="field"><label>时间范围</label><select><option>今天</option><option>最近 7 天</option><option>全部</option></select></div>
+                <div class="field"><label>Zone</label><select><option>全部</option><option>Zone 1</option><option>Zone 2</option></select></div>
+              </div>
+              <table>
+                <thead><tr><th>ID</th><th>开始时间</th><th>Zone</th><th>来源</th><th>目标</th><th>实际</th><th>水量</th><th>平均流量</th><th>停止原因</th><th>详情</th></tr></thead>
+                <tbody>
+                  <tr><td>105</td><td>今天 08:22</td><td>果树</td><td>manual</td><td>15 分</td><td>15:00</td><td>5.6 L</td><td>373 ml/min</td><td>completed</td><td><button class="btn" data-confirm="记录详情：pulseCount=2520, warningFlags=none。">查看</button></td></tr>
+                  <tr><td>104</td><td>今天 07:14</td><td>菜床</td><td>schedule</td><td>15 分</td><td>15:00</td><td>7.2 L</td><td>480 ml/min</td><td>completed</td><td><button class="btn" data-confirm="记录详情：planGroupId=1, startTime=07:00。">查看</button></td></tr>
+                  <tr><td>103</td><td>今天 07:00</td><td>前院滴灌</td><td>schedule</td><td>12 分</td><td>12:00</td><td>5.8 L</td><td>483 ml/min</td><td>completed</td><td><button class="btn" data-confirm="记录详情：lowFlowWarningWritten=false, highFlowWarningWritten=false。">查看</button></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section id="events" class="page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">业务事件</h2>
+                <p class="panel-subtitle">只记录故障、警告和重要状态变化</p>
+              </div>
+            </div>
+            <div class="panel-body stack">
+              <div class="form-grid">
+                <div class="field"><label>类型</label><select><option>全部</option><option>fault</option><option>warning</option><option>state</option><option>maintenance</option></select></div>
+                <div class="field"><label>对象</label><select><option>全部</option><option>zone:4</option><option>flow</option><option>auto</option></select></div>
+              </div>
+              <table>
+                <thead><tr><th>时间</th><th>类型</th><th>对象</th><th>reason</th><th>摘要</th><th>value</th></tr></thead>
+                <tbody>
+                  <tr><td>今天 08:51</td><td><span class="badge danger">fault</span></td><td>zone:4</td><td>high_flow_stop</td><td>高流量停机并锁定 Zone</td><td>2980 ml/min</td></tr>
+                  <tr><td>今天 08:15</td><td><span class="badge blue">state</span></td><td>auto</td><td>auto_mode_changed</td><td>自动浇水开启</td><td>enabled</td></tr>
+                  <tr><td>昨天 17:02</td><td><span class="badge">maintenance</span></td><td>flow</td><td>calibration_applied</td><td>应用 3 个样本的 K-factor</td><td>450</td></tr>
+                </tbody>
+              </table>
+              <div class="callout">正常计划开始和完成不重复写事件；同一次 Zone 运行中同类 warning 最多写一次。</div>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="drawer" id="drawer" role="dialog" aria-modal="true">
+    <div class="modal">
+      <div class="modal-body">
+        <h2>确认操作</h2>
+        <p id="confirmText"></p>
+        <div class="callout warn">原型提示：正式实现中该操作必须 POST、鉴权、同源检查，并携带 confirm=true。</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="cancelConfirm">取消</button>
+        <button class="btn primary" id="acceptConfirm">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const titles = {
+      overview: "总览",
+      run: "手动浇水",
+      zones: "Zone 管理",
+      zoneEdit: "Zone 编辑",
+      plans: "计划管理",
+      planEdit: "计划编辑",
+      flow: "流量",
+      settings: "设置",
+      records: "记录",
+      events: "事件"
+    };
+
+    const state = {
+      running: false,
+      zone: "-",
+      targetMin: 0,
+      elapsedMin: 0,
+      volumeMl: 0,
+      flow: 0,
+      timer: null
+    };
+
+    function gotoPage(page) {
+      document.querySelectorAll(".page").forEach(el => el.classList.toggle("active", el.id === page));
+      document.querySelectorAll(".nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.page === page));
+      document.getElementById("pageTitle").textContent = titles[page] || "原型";
+    }
+
+    document.querySelectorAll("[data-page]").forEach(btn => {
+      btn.addEventListener("click", () => gotoPage(btn.dataset.page));
+    });
+
+    document.querySelectorAll("[data-goto]").forEach(btn => {
+      btn.addEventListener("click", () => gotoPage(btn.dataset.goto));
+    });
+
+    const drawer = document.getElementById("drawer");
+    const confirmText = document.getElementById("confirmText");
+    let afterConfirm = null;
+
+    function openConfirm(text, callback) {
+      confirmText.textContent = text;
+      afterConfirm = callback || null;
+      drawer.classList.add("show");
+    }
+
+    document.querySelectorAll("[data-confirm]").forEach(btn => {
+      btn.addEventListener("click", () => openConfirm(btn.dataset.confirm));
+    });
+
+    document.getElementById("cancelConfirm").addEventListener("click", () => {
+      drawer.classList.remove("show");
+      afterConfirm = null;
+    });
+
+    document.getElementById("acceptConfirm").addEventListener("click", () => {
+      drawer.classList.remove("show");
+      if (afterConfirm) afterConfirm();
+      afterConfirm = null;
+    });
+
+    document.getElementById("manualZone").addEventListener("change", event => {
+      const selected = event.target.selectedOptions[0];
+      document.getElementById("durationMin").value = selected.dataset.default;
+    });
+
+    document.getElementById("startRun").addEventListener("click", () => {
+      const select = document.getElementById("manualZone");
+      const zoneLabel = select.selectedOptions[0].textContent.split("，")[0];
+      const duration = Number(document.getElementById("durationMin").value);
+      if (!Number.isFinite(duration) || duration < 1 || duration > 360) {
+        openConfirm("durationMin 超出 1..360 分钟，操作未执行。");
+        return;
+      }
+      openConfirm(`启动 ${zoneLabel}，运行 ${duration} 分钟？`, () => startMockRun(zoneLabel, duration));
+    });
+
+    document.getElementById("stopRun").addEventListener("click", () => {
+      openConfirm("停止当前运行？会关闭泵和当前 Zone，并写入 user_stop 记录。", stopMockRun);
+    });
+
+    document.getElementById("overviewStop").addEventListener("click", () => {
+      openConfirm("停止当前运行？如果当前来源是自动计划，会取消剩余 Zone 并清空等待队列。", stopMockRun);
+    });
+
+    function startMockRun(zone, duration) {
+      if (state.timer) clearInterval(state.timer);
+      state.running = true;
+      state.zone = zone.replace("Zone ", "Z");
+      state.targetMin = duration;
+      state.elapsedMin = 0;
+      state.volumeMl = 0;
+      state.flow = 520;
+      document.getElementById("stopRun").disabled = false;
+      document.getElementById("overviewStop").disabled = false;
+      state.timer = setInterval(() => {
+        state.elapsedMin = Math.min(state.targetMin, state.elapsedMin + 1);
+        state.flow = 470 + Math.round(Math.random() * 90);
+        state.volumeMl += state.flow;
+        if (state.elapsedMin >= state.targetMin) stopMockRun();
+        updateRunUi();
+      }, 1000);
+      updateRunUi();
+      gotoPage("run");
+    }
+
+    function stopMockRun() {
+      state.running = false;
+      if (state.timer) clearInterval(state.timer);
+      state.timer = null;
+      document.getElementById("stopRun").disabled = true;
+      document.getElementById("overviewStop").disabled = true;
+      updateRunUi();
+    }
+
+    function updateRunUi() {
+      const percent = state.targetMin ? Math.min(100, Math.round(state.elapsedMin * 100 / state.targetMin)) : 0;
+      document.getElementById("manualState").textContent = state.running ? "Running" : "Idle";
+      document.getElementById("manualState").className = `badge ${state.running ? "good" : ""}`;
+      document.getElementById("manualProgress").style.width = `${percent}%`;
+      document.getElementById("manualElapsed").textContent = state.elapsedMin;
+      document.getElementById("manualTarget").textContent = state.targetMin;
+      document.getElementById("manualVolume").textContent = state.volumeMl;
+      document.getElementById("manualFlow").textContent = state.running ? state.flow : 0;
+
+      document.getElementById("overviewState").textContent = state.running ? "Running" : "Idle";
+      document.getElementById("runStateBadge").textContent = state.running ? "运行中" : "空闲";
+      document.getElementById("runStateBadge").className = `badge ${state.running ? "good" : "good"}`;
+      document.getElementById("overviewProgress").style.width = `${percent}%`;
+      document.getElementById("overviewZone").textContent = state.running ? state.zone : "-";
+      document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
+      document.getElementById("overviewVolume").textContent = `${state.volumeMl} ml`;
+      document.getElementById("overviewFlow").textContent = state.running ? state.flow : 0;
+    }
+  </script>
+</body>
+</html>
