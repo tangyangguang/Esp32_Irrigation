@@ -178,40 +178,64 @@ cycleAnchorDate：周期第 1 天对应的真实日期
 
 页面可以提供“每天”“每周”“自定义周期”等快捷表达，但底层只保存这一套周期规则。
 
-## 流量计校准和流速计算
+## 流量计校准、累计水量和实时流速
 
-流量计是必配核心传感器，软件必须支持校准、累计水量和实时流速计算。
+流量计是必配核心传感器。系统从同一个脉冲输入派生两类结果：
+
+```text
+累计水量：用于记录本次浇了多少水
+实时流速：用于显示当前水流，并判断低流量/高流量
+```
+
+### 流量计稳定态参数
+
+流量计全局保存一套稳定态参数：
+
+```text
+stablePulsesPerLiter
+```
+
+也就是稳定状态下每 1L 水对应多少个流量计脉冲。该参数属于唯一流量计，不属于某个 Zone。
+
+### Zone 启动段参数
+
+每个 Zone 可以保存自己的启动段估算：
+
+```text
+startupWindowSec
+startupEstimatedMl
+startupPulseCount
+```
+
+启动段从第一个有效脉冲开始计算，不从开阀时刻开始计算。首脉冲之前的少量水量不单独建模，允许归入启动段误差。
 
 ### 校准
 
-校准流程：
+校准支持多条完整接水样本。用户从开阀开始接水，停止后输入总水量。系统可以用该 Zone 的启动段估算扣除启动阶段影响：
 
 ```text
-1. 用户选择校准模式。
-2. 系统打开指定 Zone 放水。
-3. 系统计数校准期间的流量计脉冲。
-4. 用户用量杯或已知容器测量实际出水量。
-5. 用户输入实际水量。
-6. 系统计算并保存流量计换算参数。
+stablePulseCount = totalPulseCount - startupPulseCount
+stableActualMl = totalActualMl - startupEstimatedMl
+stablePulsesPerLiter = stablePulseCount * 1000 / stableActualMl
 ```
 
-校准参数用于把脉冲数换算成估算水量。第一版至少支持单点校准：
+多条样本使用加权合并：
 
 ```text
-每脉冲水量 = 实际水量 / 脉冲数
+stablePulsesPerLiter = sum(stablePulseCount) * 1000 / sum(stableActualMl)
 ```
 
-后续如目标流量计在不同流速下误差明显，再设计多点校准。
+系统必须显示各样本计算结果和偏差；样本波动过大时提示不建议应用。用户确认应用后才替换当前流量计参数。
 
 ### 累计水量
 
-每次 Zone 运行期间，系统累计脉冲并换算估算水量：
+每次 Zone 运行的估算总水量按分段计算：
 
 ```text
-estimatedVolumeMl = pulseCount * mlPerPulse
+estimatedVolumeMl = startupVolumeMl + stablePulseCount * 1000 / stablePulsesPerLiter
 ```
 
-水量只用于观察、记录和异常分析，不作为停止条件。
+如果本次运行完整经过启动阶段，`startupVolumeMl = startupEstimatedMl`。如果本次运行在启动阶段内停止，则按实际启动阶段时长比例估算。水量只用于观察、记录和异常分析，不作为停止条件。
 
 ### 实时流速
 
@@ -227,14 +251,14 @@ flowUpdateIntervalMs = 1000
 也就是每 1 秒更新一次流速，使用最近 5 秒的脉冲数计算：
 
 ```text
-flowMlPerMin = windowPulseCount * mlPerPulse * 60 / windowSeconds
+flowMlPerMin = windowPulseCount * 60000 / (stablePulsesPerLiter * windowMs)
 ```
 
-这样可以减少低流量、小脉冲数和短时水压波动带来的抖动。
+启动后先等待首个有效脉冲。首脉冲出现后进入 `startupWindowSec` 启动阶段；启动阶段内可以显示参考流速和累计水量，但不参与低流量/高流量判断。启动阶段结束后才进入稳定流量监测。
 
-### Zone 流量基线
+### Zone 正常流量
 
-不同 Zone 的喷头数量、管长和压力损失不同，正常流量不能只用全局固定值。每个启用 Zone 应保存自己的正常流量基线：
+不同 Zone 的喷头数量、管长和压力损失不同，正常流量不能只用全局固定值。每个启用 Zone 应保存自己的正常流量：
 
 ```text
 normalFlowMlPerMin
@@ -243,11 +267,13 @@ highFlowPercent
 flowFaultConfirmSec
 ```
 
-异常判断基于该 Zone 的基线：
+该值只在用户明确执行“测定正常流量”或手工输入并确认保存后更新；系统运行中不会自动修改正常流量。
+
+异常判断基于该 Zone 的正常流量：
 
 ```text
-低流量：低于 normalFlowMlPerMin * lowFlowPercent
-高流量：高于 normalFlowMlPerMin * highFlowPercent
+低流量：低于 normalFlowMlPerMin * lowFlowPercent / 100
+高流量：高于 normalFlowMlPerMin * highFlowPercent / 100
 ```
 
 低流量、高流量必须持续超过确认时间才成立，避免瞬时波动误报。
@@ -294,11 +320,13 @@ flowFaultConfirmSec
 ```text
 zoneId
 source：手动 / 自动计划
-planId
+planGroupId
 startedAt
 endedAt
 plannedDurationSec
 actualDurationSec
+startupEstimatedMl
+stablePulseCount
 estimatedVolumeMl
 avgFlowMlPerMin
 minFlowMlPerMin

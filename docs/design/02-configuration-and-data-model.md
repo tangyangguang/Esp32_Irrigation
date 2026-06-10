@@ -2,7 +2,7 @@
 
 ## 目标
 
-本文件定义新系统第一版需要持久化的数据。原则：
+本文件定义新系统需要持久化的数据。原则：
 
 ```text
 配置少而清楚
@@ -13,7 +13,7 @@
 
 ## 配置分类
 
-第一版只保留 5 类用户配置：
+系统只保留 5 类用户配置：
 
 ```text
 系统配置
@@ -66,10 +66,15 @@ zoneId：1..6
 enabled：是否启用
 name：显示名称
 defaultManualDurationSec：手动浇水默认时长
-normalFlowMlPerMin：正常流量基线
+startupWindowSec：启动阶段窗口，从第一个有效脉冲开始计时
+startupEstimatedMl：启动阶段估算水量
+startupPulseCount：启动阶段样本脉冲数
+startupMeasuredAt：启动阶段测定时间
+normalFlowMlPerMin：正常流量
 lowFlowPercent：低流量阈值百分比
 highFlowPercent：高流量阈值百分比
 flowFaultConfirmSec：流量异常确认时间
+normalFlowMeasuredAt：正常流量测定时间
 ```
 
 默认值：
@@ -79,19 +84,26 @@ Zone 1 enabled = true
 Zone 2..6 enabled = false
 name = 水路1..水路6
 defaultManualDurationSec = 300
+startupWindowSec = 10
+startupEstimatedMl = 0
+startupPulseCount = 0
+startupMeasuredAt = none
 normalFlowMlPerMin = 0
 lowFlowPercent = 60
 highFlowPercent = 160
 flowFaultConfirmSec = 10
+normalFlowMeasuredAt = none
 ```
 
-`normalFlowMlPerMin = 0` 表示尚未建立基线。没有基线时：
+`startupEstimatedMl = 0` 表示该 Zone 尚未测定启动阶段水量。此时累计水量仍可计算，但只包含稳定阶段估算水量；页面应提示启动段未测定，短时运行的总水量误差会更明显。
+
+`normalFlowMlPerMin = 0` 表示尚未测定正常流量。没有正常流量时：
 
 ```text
 无水检测仍然工作
 累计水量仍然工作
-低流量/高流量基线检测不启用
-页面提示该 Zone 尚未学习/设置正常流量
+低流量/高流量正常流量检测不启用
+页面提示该 Zone 尚未测定/设置正常流量
 ```
 
 ## 计划组配置
@@ -131,11 +143,23 @@ zoneDurationsSec 全部 0
 
 ## 流量计和阀门参数
 
-流量计必配。第一版至少支持单点校准。
+流量计必配。水量和流速统一使用稳定态校准参数，启动阶段差异按 Zone 单独估算。
 
 ```text
-mlPerPulse
-  每个脉冲对应的毫升数，由校准得到
+stablePulsesPerLiter
+  稳定状态下每升水对应的流量计脉冲数，由多样本校准得到
+
+calibratedAt
+  流量计稳定态校准时间
+
+calibrationSampleCount
+  当前参数采用的校准样本数量
+
+calibrationTotalStablePulseCount
+  当前参数采用的稳定阶段总脉冲数
+
+calibrationTotalStableActualMl
+  当前参数采用的稳定阶段实际总水量
 
 flowSampleWindowSec
   实时流速滑动窗口，默认 5 秒
@@ -143,8 +167,11 @@ flowSampleWindowSec
 flowUpdateIntervalMs
   实时流速更新间隔，默认 1000 ms
 
-noWaterConfirmSec
-  启动后无有效流量确认时间，默认 15 秒
+firstPulseTimeoutSec
+  开阀/开泵后等待第一个有效脉冲的超时时间，默认 15 秒
+
+runningNoPulseTimeoutSec
+  稳定运行中连续无有效脉冲的确认时间，默认 15 秒
 
 idleLeakConfirmSec
   待机异常流量确认时间，默认 30 秒
@@ -162,24 +189,30 @@ valvePwmFrequencyHz
 默认值：
 
 ```text
-mlPerPulse = 0
+stablePulsesPerLiter = 0
+calibratedAt = none
+calibrationSampleCount = 0
+calibrationTotalStablePulseCount = 0
+calibrationTotalStableActualMl = 0
 flowSampleWindowSec = 5
 flowUpdateIntervalMs = 1000
-noWaterConfirmSec = 15
+firstPulseTimeoutSec = 15
+runningNoPulseTimeoutSec = 15
 idleLeakConfirmSec = 30
 valvePullInMs = 3000
 valveHoldDutyPercent = 60
 valvePwmFrequencyHz = 20000
 ```
 
-`mlPerPulse = 0` 表示流量计尚未校准。未校准时：
+`stablePulsesPerLiter = 0` 表示流量计尚未完成稳定态校准。未校准时：
 
 ```text
 系统可以检测有无脉冲
 不能给出可信水量
 不能给出可信流量
 自动计划应拒绝开启，提示必须完成流量计校准
-手动测试可允许，但页面必须明确标注未校准
+普通手动浇水应拒绝启动
+校准、启动段测定、正常流量测定等维护入口可运行
 ```
 
 ## 故障策略
@@ -230,7 +263,7 @@ lowFlowLockZone
 等待队列
 ```
 
-第一版不支持暂停/继续，也不支持重启后恢复未完成计划。因此运行状态不需要保存“剩余进度”。
+系统不支持运行中暂停/继续，也不支持重启后恢复未完成计划。因此运行状态不需要保存“剩余进度”。
 
 ## 故障锁定状态
 
@@ -259,6 +292,8 @@ endedAt
 plannedDurationSec
 actualDurationSec
 pulseCount
+startupEstimatedMl
+stablePulseCount
 estimatedVolumeMl
 avgFlowMlPerMin
 minFlowMlPerMin

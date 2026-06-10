@@ -2,7 +2,7 @@
 
 ## 目标
 
-本文件定义第一版运行时行为：
+本文件定义运行时行为：
 
 ```text
 一次只运行一个 Zone
@@ -25,7 +25,7 @@
 
 无论来自 Web、API、本地按键还是计划调度，都必须经过同一套业务校验。
 
-流量计校准放水是维护入口，不属于普通浇水入口。校准流程可以在 `mlPerPulse = 0` 时运行，但必须有单独页面/接口、明确提示和用户确认。
+流量计校准、启动段测定和正常流量测定是维护入口，不属于普通浇水入口。这些流程可以在 `stablePulsesPerLiter = 0` 或 Zone 参数未完成时运行，但必须有单独页面/接口、明确提示和用户确认。
 
 ## 运行状态
 
@@ -34,7 +34,8 @@
 ```text
 Idle
 Starting
-WaitingForFlow
+WaitingForFirstPulse
+StartupWindow
 Running
 Stopping
 FaultStopping
@@ -49,11 +50,14 @@ Idle：
 Starting：
   已通过启动校验，正在打开阀门和可选泵。
 
-WaitingForFlow：
-  已打开输出，正在等待流量计确认出水。
+WaitingForFirstPulse：
+  已打开输出，正在等待流量计第一个有效脉冲。
+
+StartupWindow：
+  已收到第一个有效脉冲，正在经过该 Zone 的启动阶段窗口。
 
 Running：
-  已确认有效流量，按时间运行并持续监测。
+  已进入稳定运行阶段，按时间运行并持续监测。
 
 Stopping：
   用户停止或正常到时，正在关闭输出并写记录。
@@ -71,7 +75,7 @@ FaultStopping：
 目标 Zone 存在且 enabled
 目标 Zone 未被锁定
 没有全局故障锁定
-正常手动/自动浇水要求流量计已校准
+正常手动/自动浇水要求流量计稳定态参数已校准
 如果 lowLevelEnabled，则低液位输入正常
 如果来源是自动计划，则 autoMode 当前允许自动浇水
 ```
@@ -154,13 +158,17 @@ queued_plan_expired
 2. 打开目标 Zone 电磁阀，进入吸合阶段。
 3. 延迟 0.5~1 秒。
 4. 如果 pumpStartEnabled，打开 PUMP_START_OUT。
-5. 进入 WaitingForFlow。
-6. 在 noWaterConfirmSec 内等待有效流量。
-7. 有效流量确认后进入 Running。
-8. 超时无有效流量，进入 FaultStopping，故障为 no_water。
+5. 进入 WaitingForFirstPulse。
+6. 在 firstPulseTimeoutSec 内等待第一个有效脉冲。
+7. 收到第一个有效脉冲后，记录 firstPulseAt，进入 StartupWindow。
+8. StartupWindow 持续到 firstPulseAt + startupWindowSec。
+9. 启动阶段结束后进入 Running。
+10. 超时无有效脉冲，进入 FaultStopping，故障为 no_water。
 ```
 
 默认采用先开阀再开泵。这样避免泵先对封闭管路建立压力。
+
+第一个有效脉冲之前的时间属于等待出水，不计入启动阶段窗口。这样可以把管路空气、低压水塔迟滞、自吸泵建立压力等不稳定因素和稳定态流速判断隔离开。
 
 ## Running 监测
 
@@ -168,7 +176,7 @@ Running 状态持续执行：
 
 ```text
 累计运行时间
-累计脉冲和估算水量
+累计脉冲、稳定阶段脉冲和估算水量
 按滑动窗口更新实时流量
 检查运行时长是否到达
 检查用户停止请求
@@ -200,23 +208,25 @@ stopReason = user_stop
 无水：
 
 ```text
-WaitingForFlow 超过 noWaterConfirmSec 没有有效流量
+WaitingForFirstPulse 超过 firstPulseTimeoutSec 没有第一个有效脉冲
 必须停机
 ```
 
 运行中无流量：
 
 ```text
-Running 中连续无有效流量超过 noWaterConfirmSec
+Running 中连续无有效脉冲超过 runningNoPulseTimeoutSec
 按 no_water 处理
 必须停机
 ```
+
+StartupWindow 阶段不做低流量/高流量判断。低流量和高流量只在 Running 稳定阶段判断。
 
 低流量：
 
 ```text
 Zone 有 normalFlowMlPerMin 时启用
-flowMlPerMin 持续低于 normalFlowMlPerMin * lowFlowPercent
+flowMlPerMin 持续低于 normalFlowMlPerMin * lowFlowPercent / 100
 持续超过 flowFaultConfirmSec 后成立
 按 lowFlowAction 处理
 ```
@@ -225,7 +235,7 @@ flowMlPerMin 持续低于 normalFlowMlPerMin * lowFlowPercent
 
 ```text
 Zone 有 normalFlowMlPerMin 时启用
-flowMlPerMin 持续高于 normalFlowMlPerMin * highFlowPercent
+flowMlPerMin 持续高于 normalFlowMlPerMin * highFlowPercent / 100
 持续超过 flowFaultConfirmSec 后成立
 按 highFlowAction 处理
 ```
