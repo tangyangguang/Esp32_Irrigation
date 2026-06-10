@@ -775,10 +775,10 @@
               <div class="panel">
                 <div class="panel-header">
                   <div>
-                    <h2 class="panel-title">流速趋势</h2>
-                    <p class="panel-subtitle">最近 12 分钟水流变化，辅助判断堵塞、漏水和水压波动</p>
+                    <h2 class="panel-title">最近流速趋势</h2>
+                    <p class="panel-subtitle">展示最近一次运行的水流变化；运行中会实时更新</p>
                   </div>
-                  <span class="badge blue" id="flowQualityBadge">波动正常</span>
+                  <span class="badge blue" id="flowQualityBadge">最近一次正常</span>
                 </div>
                 <div class="panel-body">
                   <div class="chart-wrap">
@@ -803,7 +803,7 @@
                     <div>多云，傍晚微风</div>
                   </div>
                   <div class="callout" style="background: rgba(255,255,255,.12); color: #ecfbfb; border-color: rgba(255,255,255,.24);">
-                    天气只作为参考信息展示，不会自动改变浇水计划。
+                    仅供参考，不参与自动控制；浇水仍按你设置的计划执行。
                   </div>
                 </div>
                 <div class="weather-row">
@@ -1040,7 +1040,7 @@
               <div class="callout">未启用的水路不会出现在手动选择列表，计划执行时会跳过；历史记录不会被删除。</div>
               <div class="toolbar">
                 <button class="btn primary" data-confirm="保存第 1 路配置？">保存</button>
-                <button class="btn" data-goto="flow">去测定正常流量</button>
+                <button class="btn" data-goto="flow">去测定标准流速</button>
               </div>
             </div>
           </div>
@@ -1091,7 +1091,7 @@
                   <button>每周</button>
                   <button>自定义周期</button>
                 </div>
-                <div class="hint">每天会保存为 cycleLengthDays=1，activeDayMask=第 1 天。</div>
+                <div class="hint">选择“每天”后，设备会按每天执行保存，不需要用户理解内部周期字段。</div>
               </div>
               <div class="schedule-grid">
                 <div class="field"><label>开始时间 1</label><input type="time" value="07:00"></div>
@@ -1109,7 +1109,7 @@
               </div>
               <div class="callout">0 表示跳过，1..360 表示运行分钟数。计划到点后按水路编号依次执行，不支持同时打开多路。</div>
               <div class="toolbar">
-                <button class="btn primary" data-confirm="保存计划组 1？将每天 07:00 和 18:30 串行运行 Z1、Z2、Z3。">保存计划</button>
+                <button class="btn primary" data-confirm="保存计划组 1？将每天 07:00 和 18:30 依次运行第 1 路、第 2 路、第 3 路。">保存计划</button>
               </div>
             </div>
           </div>
@@ -1457,6 +1457,8 @@
       document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
       document.getElementById("overviewVolume").textContent = `${state.volumeMl} 毫升`;
       document.getElementById("overviewFlow").textContent = state.running ? state.flow : 0;
+      document.getElementById("flowQualityBadge").textContent = state.running ? "正在监测" : "最近一次正常";
+      document.getElementById("flowQualityBadge").className = `badge ${state.running ? "good" : "blue"}`;
       drawFlowChart("overviewFlowChart", state.flowHistory);
       drawFlowChart("manualFlowChart", state.flowHistory);
     }
@@ -1470,8 +1472,8 @@
       const pad = { left: 54, right: 20, top: 24, bottom: 34 };
       const chartWidth = width - pad.left - pad.right;
       const chartHeight = height - pad.top - pad.bottom;
-      const minY = 250;
-      const maxY = 1700;
+      const minY = 0;
+      const maxY = 1000;
       const lowLine = 312;
       const highLine = 832;
 
