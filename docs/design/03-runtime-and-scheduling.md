@@ -88,10 +88,25 @@ FaultStopping：
 
 ```text
 zoneId
-durationSec
+durationMin
 ```
 
-如果用户没有指定时长，使用 Zone 的 `defaultManualDurationSec`。
+如果用户没有指定时长，使用 Zone 的 `defaultManualDurationMin`。
+
+手动浇水的用户输入单位固定为分钟。系统内部可以换算成秒或毫秒做状态机计时，但 Web/API/配置不让用户填写秒。
+
+手动浇水时长范围：
+
+```text
+durationMin = 1..360
+```
+
+计划中的 Zone 运行时长范围：
+
+```text
+zoneDurationMin = 0 表示跳过
+zoneDurationMin = 1..360 表示运行分钟数
+```
 
 手动启动不进入自动计划队列。系统忙时直接拒绝，提示当前正在运行。
 
@@ -123,7 +138,7 @@ zoneSteps[]
 
 ```text
 Zone enabled
-zoneDurationSec > 0
+zoneDurationMin > 0
 ```
 
 ## 自动计划排队

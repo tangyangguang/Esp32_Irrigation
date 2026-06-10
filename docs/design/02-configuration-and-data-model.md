@@ -65,7 +65,7 @@ queuedPlanMaxDelayMin = 60
 zoneId：1..6
 enabled：是否启用
 name：显示名称
-defaultManualDurationSec：手动浇水默认时长
+defaultManualDurationMin：手动浇水默认时长，单位分钟，1..360
 normalFlowMlPerMin：正常流量
 lowFlowPercent：低流量阈值百分比
 highFlowPercent：高流量阈值百分比
@@ -79,7 +79,7 @@ normalFlowMeasuredAt：正常流量测定时间
 Zone 1 enabled = true
 Zone 2..6 enabled = false
 name = 水路1..水路6
-defaultManualDurationSec = 300
+defaultManualDurationMin = 5
 normalFlowMlPerMin = 0
 lowFlowPercent = 60
 highFlowPercent = 160
@@ -108,7 +108,7 @@ startTimes[4]：一天中的开始时间，单位分钟，0..1439；未使用项
 cycleLengthDays：周期长度，1..31
 cycleAnchorDate：周期第 1 天对应的日期
 activeDayMask：周期内哪些天浇水
-zoneDurationsSec[6]：Zone 1..6 每次运行时长，0 表示跳过
+zoneDurationsMin[6]：Zone 1..6 每次运行时长，单位分钟，0 表示跳过，1..360 表示运行分钟数
 ```
 
 执行规则：
@@ -128,7 +128,7 @@ Zone 运行时长为 0：执行时跳过
 startTimes 全部 disabled
 cycleLengthDays = 1
 activeDayMask = 第 1 天启用
-zoneDurationsSec 全部 0
+zoneDurationsMin 全部 0
 ```
 
 ## 流量计和阀门参数
@@ -249,7 +249,7 @@ lowFlowLockZone
 当前来源：手动 / 自动计划
 当前计划组和开始时间
 当前 Zone 开始时间
-当前 Zone 计划运行时长
+当前 Zone 计划运行时长，配置单位分钟
 当前 Zone 已运行时间
 当前累计脉冲
 当前估算水量
@@ -283,7 +283,7 @@ source：manual / schedule
 planGroupId：自动计划来源时有效
 startedAt
 endedAt
-plannedDurationSec
+plannedDurationMin
 actualDurationSec
 pulseCount
 estimatedVolumeMl

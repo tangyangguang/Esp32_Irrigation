@@ -250,7 +250,7 @@ GET  /api/events
 ```text
 GET 不改变状态
 POST 统一走鉴权和同源检查
-启动接口只接受一个 Zone 和一个时长
+启动接口只接受一个 Zone 和一个 durationMin
 停止接口只停止当前运行，不存在 Stop All
 自动计划状态只支持 enabled / disabled / disabled_until
 外部系统可以通过原子 API 做天气联动，但控制器核心不内置天气逻辑
