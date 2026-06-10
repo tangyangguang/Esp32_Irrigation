@@ -45,6 +45,8 @@ valveHoldDutyPercent = 60
 valvePwmFrequencyHz = 20000
 ```
 
+`valveHoldDutyPercent = 100` 表示禁用保持阶段降功率 PWM，阀门全程全功率输出。
+
 这些参数不按 Zone 单独配置，避免过度设计。实际目标阀门确定后必须测试：
 
 ```text

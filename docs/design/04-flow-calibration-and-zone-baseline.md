@@ -84,6 +84,14 @@ pulsesPerLiter = totalPulseCount * 1000 / actualMl
 11. 用户确认后保存全局 pulsesPerLiter。
 ```
 
+校准必须有最大运行时间保护：
+
+```text
+maintenanceMaxDurationSec = 600
+```
+
+如果达到最大时间仍未停止，系统自动关闭泵和阀，本次校准失败，不保存样本。
+
 多样本合并使用总量加权：
 
 ```text
@@ -96,6 +104,7 @@ pulsesPerLiter = sum(totalPulseCount) * 1000 / sum(actualMl)
 每条样本 totalPulseCount > 0
 每条样本 actualMl > 0
 校准时长不能太短
+校准时长不能超过 maintenanceMaxDurationSec
 推荐总水量至少 5L
 多条样本之间偏差过大时，不建议保存
 ```
@@ -230,6 +239,10 @@ Running 稳定阶段中，如果 `flowMlPerMin` 持续高于 `highThreshold` 超
 ### 待机漏水
 
 待机漏水不依赖正常流量参数。系统 Idle 时如果持续检测到流量超过 `idleLeakConfirmSec`，触发全局锁定。
+
+### 流量计异常
+
+流量计异常只用于输入电气或计数异常，例如脉冲频率超过合理硬上限、输入抖动风暴、计数器状态异常。启动后无脉冲或运行中无脉冲按 `no_water` 处理，不按流量计异常处理。
 
 ## 用户界面要求
 

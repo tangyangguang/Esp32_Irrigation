@@ -166,6 +166,9 @@ runningNoPulseTimeoutSec
 flowStabilizeSec
   第一个有效脉冲后的流速稳定等待时间，默认 10 秒
 
+maintenanceMaxDurationSec
+  单次维护放水最长运行时间，默认 600 秒
+
 idleLeakConfirmSec
   待机异常流量确认时间，默认 30 秒
 
@@ -192,11 +195,14 @@ flowUpdateIntervalMs = 1000
 firstPulseTimeoutSec = 15
 runningNoPulseTimeoutSec = 15
 flowStabilizeSec = 10
+maintenanceMaxDurationSec = 600
 idleLeakConfirmSec = 30
 valvePullInMs = 3000
 valveHoldDutyPercent = 60
 valvePwmFrequencyHz = 20000
 ```
+
+`valveHoldDutyPercent = 100` 表示不进入降功率保持，吸合后仍保持全功率输出。用于目标阀门实测不适合 PWM 保持的场景。
 
 `pulsesPerLiter = 0` 表示流量计尚未完成校准。未校准时：
 
@@ -238,6 +244,8 @@ lowFlowLockZone
 待机漏水一定全局锁定
 流量计异常一定全局锁定
 ```
+
+流量计异常只表示输入电气或计数异常，例如脉冲频率超过合理硬上限、输入抖动风暴、计数器状态异常。启动后没有脉冲或运行中无脉冲按 `no_water` 处理，不按 `flow_meter_fault` 处理。
 
 ## 运行状态
 
