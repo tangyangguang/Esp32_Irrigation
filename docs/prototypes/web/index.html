@@ -1339,13 +1339,13 @@
               </div>
               <div class="metric">
                 <div class="metric-label">自动浇水</div>
-                <div class="metric-value">天气暂停中</div>
-                <div class="metric-note">明天 08:00 更新天气</div>
+                <div class="metric-value">已开启</div>
+                <div class="metric-note">天气只影响单次计划</div>
               </div>
               <div class="metric">
                 <div class="metric-label">下一次计划</div>
-                <div class="metric-value">跳过</div>
-                <div class="metric-note">今晚 18:30 因天气暂停</div>
+                <div class="metric-value">预计跳过</div>
+                <div class="metric-note">今晚 18:30 因预计降雨</div>
               </div>
               <div class="metric">
                 <div class="metric-label">今日水量</div>
@@ -1376,7 +1376,7 @@
                         <div class="run-zone" id="overviewZone">未运行</div>
                         <div class="run-note" id="overviewSource">没有正在浇水的水路</div>
                         <div class="run-meta-line">
-                          <span id="overviewNextAction">下一次：今晚 18:30 跳过</span>
+                          <span id="overviewNextAction">下一次：今晚 18:30 预计跳过</span>
                           <span>单路最长 360 分钟</span>
                         </div>
                       </div>
@@ -1436,10 +1436,10 @@
                   <div class="next-list">
                     <div class="next-item">
                       <div>
-                        <div class="next-title">今晚 18:30 会跳过</div>
-                        <div class="next-copy">晨晚浇水计划受天气暂停影响，本次不会执行，也不会补跑。</div>
+                        <div class="next-title">今晚 18:30 预计跳过</div>
+                        <div class="next-copy">晨晚浇水计划因未来 24 小时预计降雨，本次不会执行，也不会补跑。</div>
                       </div>
-                      <span class="badge warn">天气暂停</span>
+                      <span class="badge warn">天气跳过</span>
                     </div>
                     <div class="next-item">
                       <div>
@@ -1466,7 +1466,7 @@
                           <div class="weather-detail">概率阈值 70%，雨量阈值 5 毫米</div>
                         </div>
                         <div class="weather-impact-item">
-                          <div class="weather-label">复核方式</div>
+                          <div class="weather-label">判断方式</div>
                           <div class="weather-value">计划前 60 分钟</div>
                           <div class="weather-detail">天气更新：今天 08:00</div>
                         </div>
@@ -1491,11 +1491,8 @@
                     </div>
                   </div>
                   <div class="weather-action-bar">
-                    <button class="btn" data-confirm="允许今晚 18:30 的自动计划执行？只覆盖本次天气判断，之后仍会在计划前按天气判断。">允许今晚计划执行</button>
-                    <div class="weather-action-row">
-                      <button class="btn" data-confirm="把自动计划暂停到后天 08:00？期间到点计划会跳过，不补跑。">暂停到后天 08:00</button>
-                      <button class="btn warn" data-confirm="关闭天气自动暂停计划？之后设备不会因为天气预报自动暂停计划。">关闭天气自动暂停</button>
-                    </div>
+                    <button class="btn" data-confirm="让今晚 18:30 的自动计划照常执行？只覆盖本次天气跳过判断，后续计划仍会按天气判断。">本次照常执行</button>
+                    <button class="btn" data-goto="settings">设置天气判断</button>
                   </div>
                 </div>
 
@@ -1507,11 +1504,10 @@
                     <div class="toolbar">
                       <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启自动浇水</button>
                       <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭自动浇水</button>
-                      <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
-                      <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行，但之后仍会按天气设置判断。">取消本次天气暂停</button>
+                      <button class="btn warn" data-confirm="人工暂停自动浇水到明天 08:00？暂停期间到点计划会跳过，不补跑。">人工暂停到明天 08:00</button>
                     </div>
                     <div class="callout">
-                      这里只控制自动计划。手动浇水仍可使用；暂停期间到点计划会跳过，不补跑。
+                      这里只控制自动浇水总控。天气跳过只影响单次计划；手动浇水仍可使用。
                     </div>
                   </div>
                 </div>
@@ -2004,12 +2000,12 @@
         <section id="settings" class="page">
           <div class="grid cols-2">
             <div class="panel">
-              <div class="panel-header"><h2 class="panel-title">天气自动暂停计划</h2></div>
+              <div class="panel-header"><h2 class="panel-title">天气自动跳过计划</h2></div>
               <div class="panel-body stack">
                 <div class="form-grid">
                   <div class="field">
-                    <label>按天气自动暂停计划</label>
-                    <div class="choice-group" role="radiogroup" aria-label="自动天气暂停">
+                    <label>按天气自动跳过计划</label>
+                    <div class="choice-group" role="radiogroup" aria-label="天气自动跳过计划">
                       <button class="choice active">启用</button>
                       <button class="choice">不启用</button>
                     </div>
@@ -2022,7 +2018,7 @@
                   <div class="field"><label>降雨概率阈值（%）</label><input value="70"><div class="hint">与预计降雨量阈值同时达到时，才跳过本次自动计划。</div></div>
                   <div class="field"><label>预计降雨量阈值（毫米）</label><input value="5"><div class="hint">未来判断范围内累计预计降雨达到该值，并且降雨概率也达到阈值时，才跳过本次自动计划。</div></div>
                 </div>
-                <div class="callout warn">天气自动暂停只判断降雨：降雨概率和预计降雨量同时达到阈值时，本次自动计划跳过，不补跑；它不会改变每路浇水时长，也不会按天气自动增减水量。</div>
+                <div class="callout warn">天气自动跳过只判断降雨：降雨概率和预计降雨量同时达到阈值时，本次自动计划跳过，不补跑；它不会改变每路浇水时长，也不会按天气自动增减水量。</div>
               </div>
             </div>
 
@@ -2512,7 +2508,7 @@
       document.getElementById("overviewProgress").style.width = `${percent}%`;
       document.getElementById("overviewZone").textContent = state.running && active ? active.name : "未运行";
       document.getElementById("overviewSource").textContent = state.running ? `来源：${state.source}` : "没有正在浇水的水路";
-      document.getElementById("overviewNextAction").textContent = state.running ? `本次任务：${state.targetMin} 分钟` : "下一次：今晚 18:30 跳过";
+      document.getElementById("overviewNextAction").textContent = state.running ? `本次任务：${state.targetMin} 分钟` : "下一次：今晚 18:30 预计跳过";
       document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
 	      document.getElementById("overviewVolume").textContent = `${formatLiters(state.volumeMl)} 升`;
 	      document.getElementById("overviewFlow").textContent = state.running ? formatLiters(state.flow) : "0.000";
