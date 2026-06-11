@@ -756,8 +756,8 @@
               </div>
               <div class="metric">
                 <div class="metric-label">自动浇水</div>
-                <div class="metric-value">已开启</div>
-                <div class="metric-note">下一次 18:30，晨晚浇水</div>
+                <div class="metric-value">天气暂停中</div>
+                <div class="metric-note">预计明天 08:00 自动恢复</div>
               </div>
               <div class="metric">
                 <div class="metric-label">今日水量</div>
@@ -800,24 +800,35 @@
                   <div>
                     <div class="weather-label">本地天气预报</div>
                     <div class="weather-temp">28°C</div>
-                    <div>多云，傍晚微风</div>
+                    <div>今晚有雨，建议暂停自动浇水</div>
                   </div>
                   <div class="callout" style="background: rgba(255,255,255,.12); color: #ecfbfb; border-color: rgba(255,255,255,.24);">
-                    仅供参考，不参与自动控制；浇水仍按你设置的计划执行。
+                    天气暂停已启用：今晚 18:30 的自动计划会跳过，明天 08:00 后恢复。手动浇水不受影响。
                   </div>
                 </div>
                 <div class="weather-row">
                   <div class="weather-cell">
                     <div class="weather-label">降雨概率</div>
-                    <div class="weather-value">20%</div>
+                    <div class="weather-value">72%</div>
                   </div>
                   <div class="weather-cell">
-                    <div class="weather-label">湿度</div>
-                    <div class="weather-value">61%</div>
+                    <div class="weather-label">预计降雨</div>
+                    <div class="weather-value">8 mm</div>
                   </div>
                   <div class="weather-cell">
-                    <div class="weather-label">风力</div>
-                    <div class="weather-value">2 级</div>
+                    <div class="weather-label">恢复时间</div>
+                    <div class="weather-value">明天 08:00</div>
+                  </div>
+                </div>
+                <div class="weather-row">
+                  <div class="weather-cell">
+                    <button class="btn" data-confirm="忽略本次天气暂停？今晚 18:30 的自动计划将照常执行。">忽略本次</button>
+                  </div>
+                  <div class="weather-cell">
+                    <button class="btn" data-confirm="把天气暂停延长到后天 08:00？期间自动计划会跳过，不补跑。">延长暂停</button>
+                  </div>
+                  <div class="weather-cell">
+                    <button class="btn warn" data-confirm="关闭天气暂停？之后天气不会自动暂停计划。">关闭天气暂停</button>
                   </div>
                 </div>
               </div>
@@ -912,9 +923,10 @@
                     <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启</button>
                     <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭</button>
                     <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
+                    <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行。">清除天气暂停</button>
                   </div>
                   <div class="callout">
-                    自动总控只影响计划触发和排队，不影响手动浇水。设备时间未同步时不能设置“暂停到指定时间”。
+                    自动总控和天气暂停只影响自动计划触发，不影响手动浇水。暂停期间到点计划会跳过，不补跑。
                   </div>
                 </div>
               </div>
@@ -1198,6 +1210,21 @@
 
         <section id="settings" class="page">
           <div class="grid cols-2">
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">天气暂停</h2></div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field"><label>自动天气暂停</label><select><option>启用</option><option>关闭</option></select><div class="hint">只影响自动计划。触发后到点计划跳过，不补跑；手动浇水仍可使用。</div></div>
+                  <div class="field"><label>暂停恢复时间</label><input value="08:00"><div class="hint">单位：当天时间。天气暂停结束后，自动浇水恢复为已开启。</div></div>
+                  <div class="field"><label>降雨概率阈值</label><input value="60"><div class="hint">单位：%。预报降雨概率达到或超过该值时，可触发天气暂停。</div></div>
+                  <div class="field"><label>预计降雨量阈值</label><input value="5"><div class="hint">单位：毫米。预计降雨量达到或超过该值时，可触发天气暂停。</div></div>
+                  <div class="field"><label>强风暂停阈值</label><input value="10"><div class="hint">单位：米/秒。风太大时喷洒容易飘散，可暂停自动计划。</div></div>
+                  <div class="field"><label>低温暂停阈值</label><input value="3"><div class="hint">单位：摄氏度。低于该温度时暂停自动计划，避免低温浇水风险。</div></div>
+                </div>
+                <div class="callout warn">天气暂停是自动计划的保护条件，不会改变每路浇水时长，也不会按天气自动增减水量。</div>
+              </div>
+            </div>
+
             <div class="panel">
               <div class="panel-header"><h2 class="panel-title">自动和外设</h2></div>
               <div class="panel-body stack">
