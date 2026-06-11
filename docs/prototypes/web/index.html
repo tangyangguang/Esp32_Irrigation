@@ -1468,7 +1468,7 @@
                         <div class="weather-impact-item">
                           <div class="weather-label">复核方式</div>
                           <div class="weather-value">计划前 60 分钟</div>
-                          <div class="weather-detail">每天 08:00 更新天气状态</div>
+                          <div class="weather-detail">天气更新：今天 08:00</div>
                         </div>
                       </div>
                     </div>
@@ -2016,9 +2016,9 @@
                     <div class="hint">启用后，自动计划开始前会检查天气；达到降雨阈值时跳过本次计划。只影响自动计划，手动浇水仍可使用。</div>
                   </div>
                   <div class="field"><label>计划前天气判断（分钟）</label><input value="60"><div class="hint">自动计划开始前提前多久更新天气并判断是否跳过。</div></div>
-                  <div class="field"><label>每天更新天气时间（HH:MM）</label><input value="08:00"><div class="hint">用于刷新首页天气状态，不代表到这个时间一定恢复浇水。</div></div>
+                  <div class="field"><label>每天更新天气时间（HH:MM）</label><input value="08:00"><div class="hint">即使当天没有浇水计划，也会在这个时间更新天气；打开总览时如果数据较旧，也会尝试刷新。</div></div>
                   <div class="field"><label>预报判断范围（小时）</label><input value="24"><div class="hint">判断未来 24 小时内的累计预计降雨。优先使用逐小时预报累计；如果天气服务只提供按天预报，则使用今天/明天摘要近似。</div></div>
-                  <div class="field"><label>天气数据有效期（小时）</label><input value="6"><div class="hint">超过该时间还没有新天气时，显示“天气不可用”，但不会因为未知天气跳过计划。</div></div>
+                  <div class="field"><label>计划判断数据有效期（小时）</label><input value="6"><div class="hint">只限制自动计划判断。超过该时间还没有新天气时，首页仍可显示上次天气并标记“已过期”，但不会因为旧天气跳过计划。</div></div>
                   <div class="field"><label>降雨概率阈值（%）</label><input value="70"><div class="hint">与预计降雨量阈值同时达到时，才跳过本次自动计划。</div></div>
                   <div class="field"><label>预计降雨量阈值（毫米）</label><input value="5"><div class="hint">未来判断范围内累计预计降雨达到该值，并且降雨概率也达到阈值时，才跳过本次自动计划。</div></div>
                 </div>
