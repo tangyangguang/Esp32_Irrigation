@@ -526,6 +526,23 @@
       line-height: 1.45;
     }
 
+    .run-meta-line {
+      margin-top: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .run-meta-line span {
+      border: 1px solid #d6e1dd;
+      border-radius: 999px;
+      background: #fff;
+      color: #4d5d57;
+      padding: 4px 8px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
     .run-kpis {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1264,6 +1281,10 @@
                         <div class="run-title">当前运行</div>
                         <div class="run-zone" id="overviewZone">未运行</div>
                         <div class="run-note" id="overviewSource">没有正在浇水的水路</div>
+                        <div class="run-meta-line">
+                          <span id="overviewNextAction">下一次：今晚 18:30 跳过</span>
+                          <span>单路最长 360 分钟</span>
+                        </div>
                       </div>
                       <div class="run-progress-block">
                         <div class="run-title">运行进度</div>
@@ -2228,6 +2249,7 @@
       document.getElementById("overviewProgress").style.width = `${percent}%`;
       document.getElementById("overviewZone").textContent = state.running && active ? active.name : "未运行";
       document.getElementById("overviewSource").textContent = state.running ? `来源：${state.source}` : "没有正在浇水的水路";
+      document.getElementById("overviewNextAction").textContent = state.running ? `本次任务：${state.targetMin} 分钟` : "下一次：今晚 18:30 跳过";
       document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
 	      document.getElementById("overviewVolume").textContent = `${formatLiters(state.volumeMl)} 升`;
 	      document.getElementById("overviewFlow").textContent = state.running ? formatLiters(state.flow) : "0.000";
