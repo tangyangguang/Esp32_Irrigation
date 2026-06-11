@@ -6,7 +6,7 @@ bool IrrigationApp::begin() {
     bool ok = true;
     ok = _config.begin() && ok;
     ok = _hardware.begin(_config) && ok;
-    ok = _flow.begin() && ok;
+    ok = _flow.begin(_hardware.flowInputPin()) && ok;
     ok = _records.begin() && ok;
     ok = _events.begin() && ok;
     ok = _runtime.begin(_config, _hardware, _flow, _records, _events) && ok;
