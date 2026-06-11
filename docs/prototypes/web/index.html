@@ -362,6 +362,14 @@
       grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
+    .choice-group.seven {
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+
+    .choice-group.wrap {
+      grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+    }
+
     .choice {
       border: 1px solid transparent;
       border-radius: 6px;
@@ -431,6 +439,48 @@
 
     tr:last-child td {
       border-bottom: 0;
+    }
+
+    .mode-panel {
+      display: none;
+    }
+
+    .mode-panel.active {
+      display: grid;
+    }
+
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .detail-item {
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 10px;
+      background: #fbfcfb;
+    }
+
+    .detail-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 4px;
+    }
+
+    .detail-value {
+      color: var(--text);
+      font-weight: 700;
+      line-height: 1.45;
+    }
+
+    .detail-section {
+      border-top: 1px solid var(--line);
+      margin-top: 14px;
+      padding-top: 12px;
+      color: #4d5d57;
+      line-height: 1.65;
     }
 
     .progress {
@@ -1101,6 +1151,10 @@
       overflow: hidden;
     }
 
+    .modal.wide {
+      width: min(760px, 100%);
+    }
+
     .modal-body {
       padding: 18px;
     }
@@ -1597,7 +1651,7 @@
                 <div class="field"><label>标准流速（升/分钟）</label><input value="0.520，2026-06-10 17:20 测定" disabled><div class="hint">用于判断这一路是否偏低或偏高，不影响浇水停止条件。</div></div>
                 <div class="field"><label>低流量提醒线（%）</label><input type="number" value="60"><div class="hint">低于标准流速的这个比例时提醒，默认不停止。</div></div>
                 <div class="field"><label>高流量停机线（%）</label><input type="number" value="160"><div class="hint">高于标准流速的这个比例时停机并按策略锁定。</div></div>
-                <div class="field"><label>异常确认时间（秒）</label><input type="number" value="10"><div class="hint">流量持续异常达到该时间后才触发提醒或停机。</div></div>
+                <div class="field"><label>低/高流量持续确认时间（秒）</label><input type="number" value="10"><div class="hint">只用于这一路的低流量提醒和高流量停机判断；异常流速连续超过该时间才成立，避免瞬时波动误报。无水停机使用系统设置里的“首个脉冲等待时间”和“运行中断流时间”。</div></div>
                 <div class="field"><label>锁定状态</label><input value="未锁定" disabled></div>
               </div>
               <div class="callout">未启用的水路不会出现在手动选择列表，计划执行时会跳过；历史记录不会被删除。</div>
@@ -1655,28 +1709,55 @@
               </div>
               <div class="field">
                 <label>周期规则</label>
-                <div class="segmented" role="group">
-                  <button class="active">每天</button>
-                  <button>每周</button>
-                  <button>自定义周期</button>
+                <div class="segmented" role="group" aria-label="周期规则">
+                  <button class="active" data-plan-mode="daily">每天</button>
+                  <button data-plan-mode="weekly">每周</button>
+                  <button data-plan-mode="custom">自定义周期</button>
                 </div>
                 <div class="hint">给用户看的是易懂规则；设备保存时仍转换为周期长度、周期起始日和周期内启用日。</div>
               </div>
-              <div class="form-grid">
+              <div class="form-grid mode-panel active" id="planModeDaily">
                 <div class="field">
-                  <label>每周运行日</label>
-                  <div class="choice-group three" role="radiogroup" aria-label="每周运行日">
-                    <button class="choice active">每天</button>
-                    <button class="choice">周一、周三、周五</button>
-                    <button class="choice">周六</button>
-                  </div>
-                  <div class="hint">选择“每天”时等价于一周 7 天全选。</div>
+                  <label>每天运行</label>
+                  <input value="每天都会按下面的开始时间运行" disabled>
+                  <div class="hint">保存到设备后等价于周期长度 1 天，周期内第 1 天运行。</div>
                 </div>
-                <div class="field"><label>周期起始日</label><input type="date" value="2026-06-08"><div class="hint">用于计算自定义周期从哪一天开始。</div></div>
-                <div class="field"><label>自定义周期长度（天）</label><input type="number" min="1" max="31" value="7"><div class="hint">仅在选择“自定义周期”时需要修改，范围 1..31 天。</div></div>
-                <div class="field"><label>周期内运行日</label><input value="第 1、3、5 天"><div class="hint">例如 7 天周期内第 1、3、5 天运行，其余日期跳过。</div></div>
+                <div class="field"><label>周期起始日</label><input type="date" value="2026-06-08"><div class="hint">每天模式下仅作为内部周期锚点，用户通常不需要关心。</div></div>
               </div>
-              <div class="callout good">当前表达：每天运行。保存到设备后等价于周期长度 1 天、周期起始日 2026-06-08、周期内第 1 天运行。</div>
+              <div class="form-grid mode-panel" id="planModeWeekly">
+                <div class="field" style="grid-column: 1 / -1;">
+                  <label>每周运行日</label>
+                  <div class="choice-group seven multi-choice" role="group" aria-label="每周运行日">
+                    <button class="choice active">周一</button>
+                    <button class="choice">周二</button>
+                    <button class="choice active">周三</button>
+                    <button class="choice">周四</button>
+                    <button class="choice active">周五</button>
+                    <button class="choice">周六</button>
+                    <button class="choice">周日</button>
+                  </div>
+                  <div class="hint">可同时选择多个星期几。保存后等价于 7 天周期，按所选星期运行。</div>
+                </div>
+                <div class="field"><label>本周周期起始日</label><input type="date" value="2026-06-08"><div class="hint">用于把周一到周日转换为设备内部的周期内第几天。</div></div>
+              </div>
+              <div class="form-grid mode-panel" id="planModeCustom">
+                <div class="field"><label>周期起始日</label><input type="date" value="2026-06-08"><div class="hint">从这一天开始计算第 1 天。</div></div>
+                <div class="field"><label>周期长度（天）</label><input type="number" min="1" max="31" value="7"><div class="hint">范围 1..31 天。周期结束后自动从第 1 天重新开始。</div></div>
+                <div class="field" style="grid-column: 1 / -1;">
+                  <label>周期内运行日</label>
+                  <div class="choice-group wrap multi-choice" role="group" aria-label="周期内运行日">
+                    <button class="choice active">第 1 天</button>
+                    <button class="choice">第 2 天</button>
+                    <button class="choice active">第 3 天</button>
+                    <button class="choice">第 4 天</button>
+                    <button class="choice active">第 5 天</button>
+                    <button class="choice">第 6 天</button>
+                    <button class="choice">第 7 天</button>
+                  </div>
+                  <div class="hint">例如 7 天周期内选择第 1、3、5 天运行，其余日期到点跳过。</div>
+                </div>
+              </div>
+              <div class="callout good" id="planRuleSummary">当前表达：每天运行。保存到设备后等价于周期长度 1 天、周期起始日 2026-06-08、周期内第 1 天运行。</div>
               <div class="schedule-grid">
                 <div class="field"><label>开始时间 1</label><input type="time" value="07:00"></div>
                 <div class="field"><label>开始时间 2</label><input type="time" value="18:30"></div>
@@ -2039,11 +2120,11 @@
                 <div class="field"><label>水路</label><select><option>全部</option><option>第 1 路</option><option>第 2 路</option></select></div>
               </div>
               <table>
-                <thead><tr><th>编号</th><th>开始时间</th><th>水路</th><th>来源</th><th>计划时长</th><th>实际时长</th><th>水量</th><th>平均流速</th><th>结果</th><th>详情</th></tr></thead>
+                <thead><tr><th>开始时间</th><th>水路</th><th>来源</th><th>设定时长</th><th>实际时长</th><th>用水量</th><th>平均流速</th><th>最高 / 最低流速</th><th>结果</th><th>操作</th></tr></thead>
                 <tbody>
-                  <tr><td>105</td><td>今天 08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>15:00</td><td>5.600 升</td><td>0.373 升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：累计脉冲 2520 次，没有流量告警。">查看</button></td></tr>
-                  <tr><td>104</td><td>今天 07:14</td><td>菜床</td><td>自动计划</td><td>15 分</td><td>15:00</td><td>7.200 升</td><td>0.480 升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：来自计划 1，开始时间 07:00。">查看</button></td></tr>
-                  <tr><td>103</td><td>今天 07:00</td><td>前院滴灌</td><td>自动计划</td><td>12 分</td><td>12:00</td><td>5.800 升</td><td>0.483 升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：没有低流量或高流量提醒。">查看</button></td></tr>
+                  <tr><td>06-11 08:22:14</td><td>第 3 路 果树</td><td>手动顺序浇水</td><td>15 分钟</td><td>15 分 00 秒</td><td>5.600 升</td><td>0.373 升/分钟</td><td>0.421 / 0.338 升/分钟</td><td><span class="badge good">正常完成</span></td><td><button class="btn" data-detail="record-105">查看详情</button></td></tr>
+                  <tr><td>06-11 07:14:02</td><td>第 2 路 菜床</td><td>自动计划：晨晚浇水</td><td>15 分钟</td><td>15 分 00 秒</td><td>7.200 升</td><td>0.480 升/分钟</td><td>0.512 / 0.452 升/分钟</td><td><span class="badge good">正常完成</span></td><td><button class="btn" data-detail="record-104">查看详情</button></td></tr>
+                  <tr><td>06-11 07:00:00</td><td>第 1 路 前院滴灌</td><td>自动计划：晨晚浇水</td><td>12 分钟</td><td>12 分 00 秒</td><td>5.800 升</td><td>0.483 升/分钟</td><td>0.536 / 0.462 升/分钟</td><td><span class="badge good">正常完成</span></td><td><button class="btn" data-detail="record-103">查看详情</button></td></tr>
                 </tbody>
               </table>
             </div>
@@ -2064,11 +2145,11 @@
                 <div class="field"><label>对象</label><select><option>全部</option><option>第 4 路</option><option>流量计</option><option>自动浇水</option></select></div>
               </div>
               <table>
-                <thead><tr><th>时间</th><th>类型</th><th>对象</th><th>原因</th><th>摘要</th><th>数值</th></tr></thead>
+                <thead><tr><th>时间</th><th>类型</th><th>对象</th><th>事件</th><th>处理结果</th><th>关键数值</th><th>操作</th></tr></thead>
                 <tbody>
-                  <tr><td>今天 08:51</td><td><span class="badge danger">故障</span></td><td>第 4 路</td><td>高流量停机</td><td>高流量停机并锁定水路</td><td>2.980 升/分钟</td></tr>
-                  <tr><td>今天 08:15</td><td><span class="badge blue">状态</span></td><td>自动浇水</td><td>模式改变</td><td>自动浇水已开启</td><td>已开启</td></tr>
-                  <tr><td>昨天 17:02</td><td><span class="badge">维护</span></td><td>流量计</td><td>校准已保存</td><td>应用 3 个样本的校准结果</td><td>450</td></tr>
+                  <tr><td>06-11 08:51:36</td><td><span class="badge danger">故障</span></td><td>第 4 路 草坪</td><td>高流量停机</td><td>已关闭水路并锁定第 4 路</td><td>2.980 升/分钟</td><td><button class="btn" data-detail="event-high-flow">查看详情</button></td></tr>
+                  <tr><td>06-11 08:15:04</td><td><span class="badge blue">状态</span></td><td>自动浇水</td><td>自动总控已开启</td><td>后续计划会正常执行</td><td>已开启</td><td><button class="btn" data-detail="event-auto-on">查看详情</button></td></tr>
+                  <tr><td>06-10 17:02:18</td><td><span class="badge">维护</span></td><td>流量计</td><td>校准参数已保存</td><td>当前使用新的每升脉冲数</td><td>450 脉冲/升</td><td><button class="btn" data-detail="event-calibration">查看详情</button></td></tr>
                 </tbody>
               </table>
               <div class="callout">正常计划开始和完成不重复写事件；同一次水路运行中，同类提醒最多记录一次。</div>
@@ -2080,11 +2161,11 @@
   </div>
 
   <div class="drawer" id="drawer" role="dialog" aria-modal="true">
-    <div class="modal">
+    <div class="modal" id="modalBox">
       <div class="modal-body">
-        <h2>确认操作</h2>
-        <p id="confirmText"></p>
-        <div class="callout warn">原型提示：正式设备会先验证身份、检查来源，并要求二次确认后才执行。</div>
+        <h2 id="modalTitle">确认操作</h2>
+        <div id="modalContent"><p id="confirmText"></p></div>
+        <div class="callout warn" id="confirmNote">原型提示：正式设备会先验证身份、检查来源，并要求二次确认后才执行。</div>
       </div>
       <div class="modal-actions">
         <button class="btn" id="cancelConfirm">取消</button>
@@ -2138,18 +2219,160 @@
 	      group.addEventListener("click", event => {
 	        const button = event.target.closest("button");
 	        if (!button || !group.contains(button)) return;
-	        group.querySelectorAll("button").forEach(item => item.classList.remove("active"));
-	        button.classList.add("active");
+	        if (group.classList.contains("multi-choice")) {
+	          button.classList.toggle("active");
+	          if (!group.querySelector(".choice.active")) button.classList.add("active");
+	        } else {
+	          group.querySelectorAll("button").forEach(item => item.classList.remove("active"));
+	          button.classList.add("active");
+	        }
+	        if (button.dataset.planMode) updatePlanMode(button.dataset.planMode);
 	      });
 	    });
 
+    function updatePlanMode(mode) {
+      const labels = {
+        daily: "当前表达：每天运行。保存到设备后等价于周期长度 1 天、周期起始日 2026-06-08、周期内第 1 天运行。",
+        weekly: "当前表达：每周一、周三、周五运行。保存到设备后等价于 7 天周期，周期内第 1、3、5 天运行。",
+        custom: "当前表达：每 7 天为一个周期，第 1、3、5 天运行。保存到设备后使用 cycleLengthDays、activeDayMask 和 cycleAnchorDate。"
+      };
+      document.getElementById("planModeDaily").classList.toggle("active", mode === "daily");
+      document.getElementById("planModeWeekly").classList.toggle("active", mode === "weekly");
+      document.getElementById("planModeCustom").classList.toggle("active", mode === "custom");
+      document.getElementById("planRuleSummary").textContent = labels[mode] || labels.daily;
+    }
+
 	    const drawer = document.getElementById("drawer");
-    const confirmText = document.getElementById("confirmText");
+    const modalBox = document.getElementById("modalBox");
+    const modalTitle = document.getElementById("modalTitle");
+    const modalContent = document.getElementById("modalContent");
+    const confirmNote = document.getElementById("confirmNote");
+    const cancelConfirm = document.getElementById("cancelConfirm");
+    const acceptConfirm = document.getElementById("acceptConfirm");
     let afterConfirm = null;
 
     function openConfirm(text, callback) {
-      confirmText.textContent = text;
+      modalBox.classList.remove("wide");
+      modalTitle.textContent = "确认操作";
+      modalContent.innerHTML = `<p>${text}</p>`;
+      confirmNote.style.display = "";
+      cancelConfirm.textContent = "取消";
+      acceptConfirm.hidden = false;
       afterConfirm = callback || null;
+      drawer.classList.add("show");
+    }
+
+    const detailViews = {
+      "record-105": {
+        title: "浇水记录详情",
+        summary: "第 3 路 果树，手动顺序浇水，正常完成。",
+        items: [
+          ["开始时间", "06-11 08:22:14"],
+          ["结束时间", "06-11 08:37:14"],
+          ["设定 / 实际时长", "15 分钟 / 15 分 00 秒"],
+          ["用水量", "5.600 升"],
+          ["平均流速", "0.373 升/分钟"],
+          ["最高 / 最低流速", "0.421 / 0.338 升/分钟"],
+          ["标准流速", "未设置，未进行低/高流量判断"],
+          ["累计脉冲", "2520 次"]
+        ],
+        note: "本次记录没有低流量、高流量、无水或低液位事件。它是手动顺序任务中的最后一路。"
+      },
+      "record-104": {
+        title: "浇水记录详情",
+        summary: "第 2 路 菜床，来自计划组“晨晚浇水”，正常完成。",
+        items: [
+          ["开始时间", "06-11 07:14:02"],
+          ["结束时间", "06-11 07:29:02"],
+          ["设定 / 实际时长", "15 分钟 / 15 分 00 秒"],
+          ["用水量", "7.200 升"],
+          ["平均流速", "0.480 升/分钟"],
+          ["最高 / 最低流速", "0.512 / 0.452 升/分钟"],
+          ["标准流速", "0.480 升/分钟"],
+          ["计划信息", "计划组 1，开始时间 07:00，顺序第 2 路"]
+        ],
+        note: "流速一直处于正常范围内。正常计划开始和完成不会额外写入事件日志。"
+      },
+      "record-103": {
+        title: "浇水记录详情",
+        summary: "第 1 路 前院滴灌，来自计划组“晨晚浇水”，正常完成。",
+        items: [
+          ["开始时间", "06-11 07:00:00"],
+          ["结束时间", "06-11 07:12:00"],
+          ["设定 / 实际时长", "12 分钟 / 12 分 00 秒"],
+          ["用水量", "5.800 升"],
+          ["平均流速", "0.483 升/分钟"],
+          ["最高 / 最低流速", "0.536 / 0.462 升/分钟"],
+          ["标准流速", "0.520 升/分钟"],
+          ["正常范围", "0.312 - 0.832 升/分钟"]
+        ],
+        note: "启动稳定时间结束后才开始低/高流量判断；本次没有触发提醒。"
+      },
+      "event-high-flow": {
+        title: "事件详情",
+        summary: "第 4 路草坪触发高流量停机，设备已关闭当前水路并锁定第 4 路。",
+        items: [
+          ["发生时间", "06-11 08:51:36"],
+          ["事件类型", "故障"],
+          ["触发对象", "第 4 路 草坪"],
+          ["触发原因", "实时流速连续高于高流量停机线"],
+          ["触发流速", "2.980 升/分钟"],
+          ["标准流速", "0.900 升/分钟"],
+          ["高流量停机线", "1.440 升/分钟"],
+          ["设备动作", "停机并锁定第 4 路"]
+        ],
+        note: "建议检查水管脱落、喷头破裂或阀后管路漏水。确认处理完成后，可在水路管理中清除锁定。"
+      },
+      "event-auto-on": {
+        title: "事件详情",
+        summary: "自动浇水总控被开启，后续到点计划会正常执行。",
+        items: [
+          ["发生时间", "06-11 08:15:04"],
+          ["事件类型", "状态变化"],
+          ["对象", "自动浇水"],
+          ["变更前", "关闭"],
+          ["变更后", "开启"],
+          ["影响范围", "只影响自动计划，不影响手动浇水"]
+        ],
+        note: "此类事件用于追踪重要状态变化；正常计划开始和完成不会重复记录。"
+      },
+      "event-calibration": {
+        title: "事件详情",
+        summary: "流量计校准参数已保存，当前设备使用新的每升脉冲数。",
+        items: [
+          ["发生时间", "06-10 17:02:18"],
+          ["事件类型", "维护操作"],
+          ["对象", "流量计"],
+          ["新参数", "450 脉冲/升"],
+          ["样本数量", "3 个"],
+          ["最大偏差", "2.8%"],
+          ["生效范围", "后续所有水路的水量估算和流速计算"]
+        ],
+        note: "历史浇水记录不会因为新的校准参数而重新计算。"
+      }
+    };
+
+    function openDetail(key) {
+      const detail = detailViews[key];
+      if (!detail) return;
+      modalBox.classList.add("wide");
+      modalTitle.textContent = detail.title;
+      modalContent.innerHTML = `
+        <p>${detail.summary}</p>
+        <div class="detail-grid">
+          ${detail.items.map(([label, value]) => `
+            <div class="detail-item">
+              <div class="detail-label">${label}</div>
+              <div class="detail-value">${value}</div>
+            </div>
+          `).join("")}
+        </div>
+        <div class="detail-section">${detail.note}</div>
+      `;
+      confirmNote.style.display = "none";
+      cancelConfirm.textContent = "关闭";
+      acceptConfirm.hidden = true;
+      afterConfirm = null;
       drawer.classList.add("show");
     }
 
@@ -2157,12 +2380,16 @@
       btn.addEventListener("click", () => openConfirm(btn.dataset.confirm));
     });
 
-    document.getElementById("cancelConfirm").addEventListener("click", () => {
+    document.querySelectorAll("[data-detail]").forEach(btn => {
+      btn.addEventListener("click", () => openDetail(btn.dataset.detail));
+    });
+
+    cancelConfirm.addEventListener("click", () => {
       drawer.classList.remove("show");
       afterConfirm = null;
     });
 
-    document.getElementById("acceptConfirm").addEventListener("click", () => {
+    acceptConfirm.addEventListener("click", () => {
       drawer.classList.remove("show");
       if (afterConfirm) afterConfirm();
       afterConfirm = null;
