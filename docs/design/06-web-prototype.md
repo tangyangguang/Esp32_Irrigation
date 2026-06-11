@@ -12,6 +12,7 @@
 Zone 管理
 计划管理
 流量计校准和 Zone 正常流量
+天气自动暂停计划
 系统设置
 浇水记录
 业务事件
@@ -43,9 +44,12 @@ Stop All
 暂停/恢复
 多个 Zone 同时运行
 按水量浇水
-天气联动内置控制
+按天气自动调节水量或运行时长
+天气触发后补跑错过计划
 第一阶段本地按键/屏幕操作
 ```
+
+天气能力仅限“天气自动暂停计划”：天气达到阈值时，把自动总控置为 `disabled_until`，到复核时间重新判断是否恢复。它只影响自动计划，不影响手动浇水，不改变每路运行时长。
 
 需要补齐或在后续实现前明确的缺口：
 
@@ -654,6 +658,39 @@ normalFlowMeasuredAt
 
 设置页按分组呈现，不把所有高级参数铺成一屏。
 
+### 天气自动暂停计划
+
+字段：
+
+```text
+weatherAutoPauseEnabled
+weatherForecastWindowHours
+weatherReviewTimeLocal
+rainProbabilityThresholdPercent
+rainAmountThresholdMm
+windPauseThresholdMps
+lowTemperatureThresholdC
+```
+
+提示：
+
+```text
+天气自动暂停只影响自动计划；手动浇水仍可使用。
+触发后到点计划跳过，不补跑。
+weatherReviewTimeLocal 是每天重新获取天气并判断是否恢复的时间，不是某个浇水计划开始时间。
+复核时如果天气仍达到阈值，继续设置 disabled_until 到下一次复核。
+天气策略不会改变每个 Zone 的运行分钟数，也不会按天气增减水量。
+```
+
+操作：
+
+```text
+允许本次计划执行：只覆盖当前这一次天气暂停判断，后续仍按天气自动复核。
+暂停到指定复核时间：手工延长 disabled_until。
+关闭天气自动暂停：关闭 weatherAutoPauseEnabled，不再由天气自动暂停计划。
+取消本次天气暂停：清除当前 weather reason 的 disabled_until，但不关闭天气自动暂停设置。
+```
+
 ### 自动和外设
 
 字段：
@@ -766,7 +803,6 @@ Zone
 列表列：
 
 ```text
-记录 ID
 开始时间
 Zone
 来源
@@ -775,6 +811,8 @@ Zone
 实际运行时长
 估算水量
 平均流量
+最高流量
+最低流量
 停止原因
 详情
 ```
@@ -815,6 +853,8 @@ actualDurationSec
 pulseCount
 estimatedVolumeMl
 averageFlowMlPerMin
+maxFlowMlPerMin
+minFlowMlPerMin
 lastFlowMlPerMin
 stopReason
 faultCode

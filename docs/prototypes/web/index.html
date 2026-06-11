@@ -349,13 +349,17 @@
     }
 
     .choice-group {
-      display: grid;
+      display: inline-grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 6px;
-      padding: 4px;
-      border: 1px solid #c9d4cf;
-      border-radius: 8px;
-      background: #f7faf8;
+      justify-self: start;
+      width: max-content;
+      max-width: 100%;
+      gap: 2px;
+      padding: 2px;
+      border: 1px solid #d5e0dc;
+      border-radius: 999px;
+      background: #fff;
+      box-shadow: inset 0 1px 2px rgba(27, 54, 44, .04);
     }
 
     .choice-group.three {
@@ -364,31 +368,38 @@
 
     .choice-group.seven {
       grid-template-columns: repeat(7, minmax(0, 1fr));
+      width: 100%;
+      border-radius: 8px;
     }
 
     .choice-group.wrap {
       grid-template-columns: repeat(auto-fit, minmax(68px, 1fr));
+      width: 100%;
+      border-radius: 8px;
     }
 
     .choice {
       border: 1px solid transparent;
-      border-radius: 6px;
+      border-radius: 999px;
       background: transparent;
-      min-height: 34px;
-      padding: 7px 10px;
+      min-height: 30px;
+      padding: 5px 12px;
       display: flex;
       align-items: center;
       justify-content: center;
       color: #41514b;
       cursor: pointer;
+      font-size: 13px;
+      line-height: 1.2;
+      white-space: nowrap;
     }
 
     .choice.active {
-      border-color: #9fceb8;
-      background: #eaf7f1;
-      color: var(--accent-2);
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
       font-weight: 700;
-      box-shadow: 0 1px 4px rgba(22, 131, 95, .12);
+      box-shadow: 0 2px 6px rgba(22, 131, 95, .18);
     }
 
     label {
@@ -1104,27 +1115,31 @@
     .segmented {
       display: inline-grid;
       grid-template-columns: repeat(3, 1fr);
-      border: 1px solid var(--line);
-      border-radius: 7px;
-      overflow: hidden;
+      gap: 2px;
+      border: 1px solid #d5e0dc;
+      border-radius: 999px;
+      padding: 2px;
       background: #fff;
+      box-shadow: inset 0 1px 2px rgba(27, 54, 44, .04);
     }
 
     .segmented button {
-      border: 0;
-      border-right: 1px solid var(--line);
-      padding: 8px 10px;
-      background: #fff;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: transparent;
       cursor: pointer;
-    }
-
-    .segmented button:last-child {
-      border-right: 0;
+      color: #41514b;
+      font-size: 13px;
+      white-space: nowrap;
     }
 
     .segmented button.active {
       background: var(--accent);
+      border-color: var(--accent);
       color: #fff;
+      font-weight: 700;
+      box-shadow: 0 2px 6px rgba(22, 131, 95, .18);
     }
 
     .drawer {
@@ -1300,7 +1315,7 @@
               <div class="metric">
                 <div class="metric-label">自动浇水</div>
                 <div class="metric-value">天气暂停中</div>
-                <div class="metric-note">预计明天 08:00 自动恢复</div>
+                <div class="metric-note">明天 08:00 复核天气</div>
               </div>
               <div class="metric">
                 <div class="metric-label">下一次计划</div>
@@ -1398,10 +1413,10 @@
                     </div>
                     <div class="next-item">
                       <div>
-                        <div class="next-title">明天 08:00 自动恢复</div>
-                        <div class="next-copy">恢复后按已启用计划继续执行；若预报仍达阈值，会再次说明跳过原因。</div>
+                        <div class="next-title">明天 08:00 复核天气</div>
+                        <div class="next-copy">若预报已低于阈值，自动计划恢复；若仍达到阈值，会继续暂停并说明原因。</div>
                       </div>
-                      <span class="badge blue">待确认</span>
+                      <span class="badge blue">自动复核</span>
                     </div>
                   </div>
                 </div>
@@ -1421,9 +1436,9 @@
                           <div class="weather-detail">阈值为 60%</div>
                         </div>
                         <div class="weather-impact-item">
-                          <div class="weather-label">自动恢复</div>
+                          <div class="weather-label">下次复核</div>
                           <div class="weather-value">明天 08:00</div>
-                          <div class="weather-detail">不会补跑已跳过计划</div>
+                          <div class="weather-detail">安全则恢复，否则继续暂停</div>
                         </div>
                       </div>
                     </div>
@@ -1446,10 +1461,10 @@
                     </div>
                   </div>
                   <div class="weather-action-bar">
-                    <button class="btn" data-confirm="让今晚 18:30 的自动计划照常执行？只影响本次天气暂停。">本次计划照常执行</button>
+                    <button class="btn" data-confirm="允许今晚 18:30 的自动计划执行？只覆盖本次天气暂停判断，之后仍会按天气自动复核。">允许今晚计划执行</button>
                     <div class="weather-action-row">
-                      <button class="btn" data-confirm="把自动计划暂停延长到后天 08:00？期间到点计划会跳过，不补跑。">延长暂停</button>
-                      <button class="btn warn" data-confirm="关闭自动天气暂停？之后设备不会因为天气预报自动暂停计划。">关闭自动暂停</button>
+                      <button class="btn" data-confirm="把自动计划暂停到后天 08:00？期间到点计划会跳过，不补跑。">暂停到后天 08:00</button>
+                      <button class="btn warn" data-confirm="关闭天气自动暂停计划？之后设备不会因为天气预报自动暂停计划。">关闭天气自动暂停</button>
                     </div>
                   </div>
                 </div>
@@ -1463,7 +1478,7 @@
                       <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启自动浇水</button>
                       <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭自动浇水</button>
                       <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
-                      <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行。">取消天气暂停</button>
+                      <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行，但之后仍会按天气设置自动复核。">取消本次天气暂停</button>
                     </div>
                     <div class="callout">
                       这里只控制自动计划。手动浇水仍可使用；暂停期间到点计划会跳过，不补跑。
@@ -1959,20 +1974,21 @@
         <section id="settings" class="page">
           <div class="grid cols-2">
             <div class="panel">
-              <div class="panel-header"><h2 class="panel-title">天气暂停</h2></div>
+              <div class="panel-header"><h2 class="panel-title">天气自动暂停计划</h2></div>
               <div class="panel-body stack">
                 <div class="form-grid">
                   <div class="field">
-                    <label>自动天气暂停</label>
+                    <label>按天气自动暂停计划</label>
                     <div class="choice-group" role="radiogroup" aria-label="自动天气暂停">
                       <button class="choice active">启用</button>
-                      <button class="choice">关闭</button>
+                      <button class="choice">不启用</button>
                     </div>
-                    <div class="hint">只影响自动计划。触发后到点计划跳过，不补跑；手动浇水仍可使用。</div>
+                    <div class="hint">启用后，设备会根据天气预报自动把“自动浇水”暂停到下次复核时间。只影响自动计划，手动浇水仍可使用。</div>
                   </div>
-                  <div class="field"><label>暂停恢复时间（HH:MM）</label><input value="08:00"><div class="hint">天气暂停结束后，自动浇水恢复为已开启。</div></div>
-                  <div class="field"><label>降雨概率阈值（%）</label><input value="60"><div class="hint">未来 48 小时预报达到或超过该概率时，可触发天气暂停。</div></div>
-                  <div class="field"><label>预计降雨量阈值（毫米）</label><input value="5"><div class="hint">未来 48 小时预计雨量达到或超过该值时，可触发天气暂停。</div></div>
+                  <div class="field"><label>每天复核时间（HH:MM）</label><input value="08:00"><div class="hint">到这个时间重新获取天气并判断是否恢复。若预报仍达到阈值，会继续暂停到下一次复核。</div></div>
+                  <div class="field"><label>预报判断范围（小时）</label><input value="48"><div class="hint">系统查看未来多少小时内的降雨、风和低温风险。</div></div>
+                  <div class="field"><label>降雨概率阈值（%）</label><input value="60"><div class="hint">预报判断范围内达到或超过该概率时，可触发天气暂停。</div></div>
+                  <div class="field"><label>预计降雨量阈值（毫米）</label><input value="5"><div class="hint">预报判断范围内累计雨量达到或超过该值时，可触发天气暂停。</div></div>
                 </div>
                 <details class="inline-advanced">
                   <summary>
@@ -1986,7 +2002,7 @@
                     </div>
                   </div>
                 </details>
-                <div class="callout warn">天气暂停是自动计划的保护条件，不会改变每路浇水时长，也不会按天气自动增减水量。</div>
+                <div class="callout warn">天气自动暂停本质上是把自动总控设为“暂停到某个时间”。暂停期间到点计划直接跳过，不补跑；它不会改变每路浇水时长，也不会按天气自动增减水量。</div>
               </div>
             </div>
 
