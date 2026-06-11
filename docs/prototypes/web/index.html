@@ -540,27 +540,52 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #f7faf8;
-      padding: 14px;
+      padding: 12px;
       display: grid;
-      grid-template-columns: minmax(170px, 1fr) minmax(260px, 1.4fr) minmax(150px, .72fr);
+      grid-template-columns: minmax(138px, .7fr) minmax(360px, 1.75fr) minmax(124px, .46fr);
       align-items: center;
-      gap: 12px;
-      min-height: 118px;
+      gap: 14px;
+      min-height: 110px;
     }
 
     .run-primary .toolbar {
       display: grid;
-      gap: 8px;
+      gap: 7px;
       align-items: stretch;
+      justify-self: end;
+      width: 124px;
     }
 
     .run-primary .btn {
       width: 100%;
+      min-height: 38px;
+      padding: 7px 9px;
+      font-size: 13px;
     }
 
     .run-progress-block {
       display: grid;
-      gap: 10px;
+      gap: 8px;
+    }
+
+    .run-time-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .run-time-main {
+      font-size: 20px;
+      font-weight: 760;
+      line-height: 1.15;
+    }
+
+    .run-time-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: right;
     }
 
     .run-stat-line {
@@ -576,7 +601,7 @@
     }
 
     .run-zone {
-      font-size: 26px;
+      font-size: 22px;
       font-weight: 760;
       line-height: 1.12;
     }
@@ -588,10 +613,10 @@
     }
 
     .run-meta-line {
-      margin-top: 10px;
+      margin-top: 8px;
       display: flex;
       flex-wrap: wrap;
-      gap: 6px;
+      gap: 5px;
     }
 
     .run-meta-line span {
@@ -599,7 +624,7 @@
       border-radius: 999px;
       background: #fff;
       color: #4d5d57;
-      padding: 4px 8px;
+      padding: 3px 7px;
       font-size: 12px;
       white-space: nowrap;
     }
@@ -1356,9 +1381,14 @@
                         </div>
                       </div>
                       <div class="run-progress-block">
-                        <div class="run-title">运行进度</div>
+                        <div class="run-time-row">
+                          <div>
+                            <div class="run-title">运行时间</div>
+                            <div class="run-time-main"><span id="overviewElapsed">0 / 0</span> 分钟</div>
+                          </div>
+                          <div class="run-time-note" id="overviewTimeNote">已运行 / 计划</div>
+                        </div>
                         <div class="progress"><span id="overviewProgress"></span></div>
-                        <div class="run-note"><span id="overviewElapsed">0 / 0</span> 分钟</div>
                         <div class="run-stat-line">
                           <div class="mini-stat">
                             <div class="mini-label">累计水量</div>
@@ -1428,17 +1458,17 @@
                     <div>
                       <div class="weather-label">天气对计划的影响</div>
                       <div class="weather-temp">28°C</div>
-                      <div>今晚计划会跳过，因为未来 48 小时预计降雨 8 毫米。</div>
+                      <div>今晚计划会跳过，因为未来 24 小时预计降雨 8 毫米。</div>
                       <div class="weather-impact">
                         <div class="weather-impact-item">
                           <div class="weather-label">触发原因</div>
                           <div class="weather-value">降雨概率 72%</div>
-                          <div class="weather-detail">阈值为 60%</div>
+                          <div class="weather-detail">概率阈值 70%，雨量阈值 5 毫米</div>
                         </div>
                         <div class="weather-impact-item">
-                          <div class="weather-label">下次复核</div>
-                          <div class="weather-value">明天 08:00</div>
-                          <div class="weather-detail">安全则恢复，否则继续暂停</div>
+                          <div class="weather-label">复核方式</div>
+                          <div class="weather-value">计划前 60 分钟</div>
+                          <div class="weather-detail">每天 08:00 也会复核</div>
                         </div>
                       </div>
                     </div>
@@ -1461,7 +1491,7 @@
                     </div>
                   </div>
                   <div class="weather-action-bar">
-                    <button class="btn" data-confirm="允许今晚 18:30 的自动计划执行？只覆盖本次天气暂停判断，之后仍会按天气自动复核。">允许今晚计划执行</button>
+                    <button class="btn" data-confirm="允许今晚 18:30 的自动计划执行？只覆盖本次天气暂停判断，之后仍会在计划前按天气复核。">允许今晚计划执行</button>
                     <div class="weather-action-row">
                       <button class="btn" data-confirm="把自动计划暂停到后天 08:00？期间到点计划会跳过，不补跑。">暂停到后天 08:00</button>
                       <button class="btn warn" data-confirm="关闭天气自动暂停计划？之后设备不会因为天气预报自动暂停计划。">关闭天气自动暂停</button>
@@ -1985,9 +2015,11 @@
                     </div>
                     <div class="hint">启用后，设备会根据天气预报自动把“自动浇水”暂停到下次复核时间。只影响自动计划，手动浇水仍可使用。</div>
                   </div>
-                  <div class="field"><label>每天复核时间（HH:MM）</label><input value="08:00"><div class="hint">到这个时间重新获取天气并判断是否恢复。若预报仍达到阈值，会继续暂停到下一次复核。</div></div>
-                  <div class="field"><label>预报判断范围（小时）</label><input value="48"><div class="hint">系统查看未来多少小时内的降雨、风和低温风险。</div></div>
-                  <div class="field"><label>降雨概率阈值（%）</label><input value="60"><div class="hint">预报判断范围内达到或超过该概率时，可触发天气暂停。</div></div>
+                  <div class="field"><label>计划前复核时间（分钟）</label><input value="60"><div class="hint">自动计划开始前提前多久重新检查天气。达到阈值时跳过本次计划。</div></div>
+                  <div class="field"><label>每天兜底复核时间（HH:MM）</label><input value="08:00"><div class="hint">没有计划触发时，也在每天这个时间更新天气状态。</div></div>
+                  <div class="field"><label>预报判断范围（小时）</label><input value="24"><div class="hint">系统查看未来多少小时内的降雨、风和低温风险。</div></div>
+                  <div class="field"><label>天气缓存有效期（小时）</label><input value="6"><div class="hint">超过该时间还没有新天气时，只提示天气不可用，不因为未知天气跳过计划。</div></div>
+                  <div class="field"><label>降雨概率阈值（%）</label><input value="70"><div class="hint">预报判断范围内达到该概率，且预计雨量达到 2 毫米时，可触发天气暂停。</div></div>
                   <div class="field"><label>预计降雨量阈值（毫米）</label><input value="5"><div class="hint">预报判断范围内累计雨量达到或超过该值时，可触发天气暂停。</div></div>
                 </div>
                 <details class="inline-advanced">
@@ -1997,12 +2029,12 @@
                   </summary>
                   <div class="inline-body">
                     <div class="form-grid">
-                      <div class="field"><label>强风暂停阈值（米/秒）</label><input value="10"><div class="hint">风太大时喷洒容易飘散，可暂停自动计划。</div></div>
-                      <div class="field"><label>低温暂停阈值（°C）</label><input value="3"><div class="hint">低于该温度时暂停自动计划，避免低温浇水风险。</div></div>
+                      <div class="field"><label>强风暂停阈值（米/秒）</label><input placeholder="留空不启用"><div class="hint">风太大时喷洒容易飘散；需要启用时建议从 10 米/秒开始。</div></div>
+                      <div class="field"><label>低温暂停阈值（°C）</label><input placeholder="留空不启用"><div class="hint">低温风险地区可启用；需要启用时建议从 3°C 开始。</div></div>
                     </div>
                   </div>
                 </details>
-                <div class="callout warn">天气自动暂停本质上是把自动总控设为“暂停到某个时间”。暂停期间到点计划直接跳过，不补跑；它不会改变每路浇水时长，也不会按天气自动增减水量。</div>
+                <div class="callout warn">天气自动暂停是自动计划开始前的一道检查。达到阈值时，本次计划跳过，不补跑；它不会改变每路浇水时长，也不会按天气自动增减水量。</div>
               </div>
             </div>
 
