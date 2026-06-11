@@ -1,6 +1,14 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
 
+#include "irrigation/IrrigationApp.h"
+
+namespace {
+
+irrigation::IrrigationApp g_irrigationApp;
+
+}  // namespace
+
 void setup() {
     Serial.begin(115200);
 
@@ -12,9 +20,11 @@ void setup() {
 #endif
 
     Esp32Base::begin();
+    g_irrigationApp.begin();
 }
 
 void loop() {
+    g_irrigationApp.handle();
     Esp32Base::handle();
     delay(10);
 }
