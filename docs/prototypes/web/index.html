@@ -456,6 +456,120 @@
       align-items: stretch;
     }
 
+    .home-focus-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.38fr) minmax(320px, .62fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .home-focus-grid > .panel {
+      height: 100%;
+    }
+
+    .side-stack {
+      display: grid;
+      gap: 16px;
+    }
+
+    .run-compact {
+      display: grid;
+      grid-template-columns: minmax(220px, .78fr) minmax(0, 1.22fr);
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .run-primary {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f7faf8;
+      padding: 14px;
+      display: grid;
+      align-content: start;
+      gap: 12px;
+      min-height: 232px;
+    }
+
+    .run-title {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .run-zone {
+      font-size: 26px;
+      font-weight: 760;
+      line-height: 1.12;
+    }
+
+    .run-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .run-kpis {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .mini-stat {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      min-height: 72px;
+    }
+
+    .mini-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .mini-value {
+      font-size: 19px;
+      font-weight: 760;
+      line-height: 1.15;
+    }
+
+    .mini-note {
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .next-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .next-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .next-title {
+      font-weight: 750;
+      font-size: 14px;
+      margin-bottom: 5px;
+    }
+
+    .next-copy {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
     .chart-wrap {
       position: relative;
       min-height: 286px;
@@ -623,6 +737,52 @@
       color: rgba(236,251,251,.72);
       font-size: 12px;
       line-height: 1.4;
+    }
+
+    .weather-impact {
+      margin-top: 10px;
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .weather-impact-item {
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 8px;
+      padding: 10px;
+      background: rgba(255,255,255,.08);
+    }
+
+    .health-list {
+      display: grid;
+      gap: 10px;
+    }
+
+    .health-list.overview-health {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .health-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 11px 12px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: start;
+    }
+
+    .health-title {
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .health-copy {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
     }
 
     .callout {
@@ -878,8 +1038,12 @@
       .grid.cols-2,
       .grid.cols-3,
       .insight-grid,
+      .home-focus-grid,
+      .run-compact,
+      .next-list,
       .status-strip,
       .flow-summary,
+      .health-list.overview-health,
       .stepper,
       .split,
       .form-grid,
@@ -989,180 +1153,221 @@
               <button class="btn warn" data-confirm="清除第 4 路锁定？该操作不会删除浇水记录和事件。" style="margin-left: 12px;">清除锁定</button>
             </div>
 
-	            <div class="insight-grid">
-	              <div class="panel">
-	                <div class="panel-header">
-	                  <div>
-	                    <h2 class="panel-title">实时运行与流速</h2>
-	                    <p class="panel-subtitle">当前水路、运行进度和流速判断放在同一区域查看</p>
-	                  </div>
-	                  <span class="badge good" id="runStateBadge">空闲</span>
-	                </div>
-	                <div class="panel-body stack">
-	                  <div class="progress"><span id="overviewProgress"></span></div>
-	                  <div class="metric-row">
-	                    <div class="metric">
-	                      <div class="metric-label">正在运行的水路</div>
-	                      <div class="metric-value" id="overviewZone">-</div>
-	                      <div class="metric-note" id="overviewSource">来源：-</div>
-	                    </div>
-	                    <div class="metric">
-	                      <div class="metric-label">运行进度</div>
-	                      <div class="metric-value" id="overviewElapsed">0 / 0</div>
-	                      <div class="metric-note">分钟</div>
-	                    </div>
-	                    <div class="metric">
-	                      <div class="metric-label">累计水量</div>
-	                      <div class="metric-value" id="overviewVolume">0.000 升</div>
-	                      <div class="metric-note">估算值</div>
-	                    </div>
-	                    <div class="metric">
-	                      <div class="metric-label">实时流速</div>
-	                      <div class="metric-value" id="overviewFlow">0</div>
-	                      <div class="metric-note">升/分钟；标准 0.520</div>
-	                    </div>
-	                  </div>
-	                  <div class="chart-wrap">
-	                    <canvas class="chart-canvas" id="overviewFlowChart" width="900" height="330"></canvas>
-	                    <div class="chart-meta">
-	                      <div class="legend">
-	                        <span class="legend-item"><span class="legend-line"></span>实时流速</span>
-	                        <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
-	                        <span class="legend-item"><span class="legend-line low"></span>低流量提醒线</span>
-	                        <span class="legend-item"><span class="legend-line high"></span>高流量停机线</span>
-	                      </div>
-	                    </div>
-	                    <div class="flow-summary">
-	                      <div class="flow-summary-item">
-	                        <div class="flow-summary-label">判断范围</div>
-	                        <div class="flow-summary-value">0.312 - 0.832 升/分钟</div>
-	                      </div>
-	                      <div class="flow-summary-item">
-	                        <div class="flow-summary-label">流量状态</div>
-	                        <div class="flow-summary-value">最近一次正常</div>
-	                      </div>
-	                      <div class="flow-summary-item">
-	                        <div class="flow-summary-label">水源状态</div>
-	                        <div class="flow-summary-value">液位正常</div>
-	                      </div>
-	                      <div class="flow-summary-item">
-	                        <div class="flow-summary-label">泵输出</div>
-	                        <div class="flow-summary-value">已启用，当前待机</div>
-	                      </div>
-	                    </div>
-	                  </div>
-	                  <div class="toolbar">
-	                    <button class="btn primary" data-goto="run">去手动浇水</button>
-	                    <button class="btn danger" id="overviewStop" disabled>停止当前运行</button>
-	                  </div>
-	                </div>
-	              </div>
-
-              <div class="weather-card">
-                <div class="weather-main">
+            <div class="home-focus-grid">
+              <div class="panel">
+                <div class="panel-header">
                   <div>
-                    <div class="weather-label">本地天气预报</div>
-                    <div class="weather-temp">28°C</div>
-                    <div>未来 48 小时有明显降雨，建议暂停自动计划</div>
+                    <h2 class="panel-title">实时运行与流速</h2>
+                    <p class="panel-subtitle">先看当前有没有在浇水，再看流速是否在正常范围内</p>
                   </div>
-                  <div class="callout" style="background: rgba(255,255,255,.12); color: #ecfbfb; border-color: rgba(255,255,255,.24);">
-                    天气暂停已启用：今晚 18:30 的自动计划会跳过，明天 08:00 后恢复。手动浇水不受影响，计划不会补跑。
-                  </div>
-                </div>
-                <div class="weather-row">
-                  <div class="weather-cell">
-                    <div class="weather-label">今天</div>
-                    <div class="weather-value">降雨 72%</div>
-                    <div class="weather-detail">预计 8 毫米</div>
-                  </div>
-                  <div class="weather-cell">
-                    <div class="weather-label">明天</div>
-                    <div class="weather-value">降雨 25%</div>
-                    <div class="weather-detail">预计 1 毫米</div>
-                  </div>
-                  <div class="weather-cell">
-                    <div class="weather-label">后天</div>
-                    <div class="weather-value">降雨 10%</div>
-                    <div class="weather-detail">预计 0 毫米</div>
-                  </div>
-                </div>
-                <div class="weather-row weather-actions">
-                  <div class="weather-cell">
-                    <button class="btn" data-confirm="本次天气暂停不生效？今晚 18:30 的自动计划将照常执行。">本次照常浇水</button>
-                  </div>
-                  <div class="weather-cell">
-                    <button class="btn" data-confirm="把自动计划暂停延长到后天 08:00？期间到点计划会跳过，不补跑。">自动计划暂停到后天 08:00</button>
-                  </div>
-                  <div class="weather-cell">
-                    <button class="btn warn" data-confirm="关闭自动天气暂停？之后设备不会因为天气预报自动暂停计划。">关闭自动天气暂停</button>
-                  </div>
-                </div>
-              </div>
-	            </div>
-
-	            <div class="panel">
-	              <div class="panel-header">
-	                <div>
-	                  <h2 class="panel-title">设备状态</h2>
-	                  <p class="panel-subtitle">只显示当前设备已启用或必配的硬件状态</p>
-	                </div>
-	              </div>
-	              <div class="panel-body">
-	                <div class="status-strip">
-	                  <div class="status-item">
-	                    <strong>流量计正常</strong>
-	                    <span>已检测到稳定脉冲，当前校准值为每升 450 个脉冲。</span>
-	                  </div>
-	                  <div class="status-item">
-	                    <strong>水源液位正常</strong>
-	                    <span>低液位保护已启用，当前没有低液位停机风险。</span>
-	                  </div>
-	                  <div class="status-item">
-	                    <strong>自吸泵待机</strong>
-	                    <span>自吸泵启动输出已启用，当前没有运行请求。</span>
-	                  </div>
-	                  <div class="status-item">
-	                    <strong>阀门输出正常</strong>
-	                    <span>当前没有水路正在运行，所有阀门处于关闭状态。</span>
-	                  </div>
-	                </div>
-	              </div>
-	            </div>
-
-            <div class="grid cols-2">
-              <div class="panel">
-                <div class="panel-header">
-                  <h2 class="panel-title">今日/最近浇水</h2>
-                </div>
-                <div class="panel-body">
-                  <table>
-                    <thead>
-                      <tr><th>时间</th><th>水路</th><th>来源</th><th>时长</th><th>水量</th><th>结果</th></tr>
-                    </thead>
-                    <tbody>
-                      <tr><td>07:00</td><td>前院滴灌</td><td>计划 1</td><td>12 分</td><td>5.800 升</td><td><span class="badge good">完成</span></td></tr>
-                      <tr><td>07:14</td><td>菜床</td><td>计划 1</td><td>15 分</td><td>7.200 升</td><td><span class="badge good">完成</span></td></tr>
-                      <tr><td>08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>5.600 升</td><td><span class="badge good">完成</span></td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <div class="panel">
-                <div class="panel-header">
-                  <h2 class="panel-title">自动总控</h2>
+                  <span class="badge good" id="runStateBadge">空闲</span>
                 </div>
                 <div class="panel-body stack">
-                  <div class="toolbar">
-                    <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启自动浇水</button>
-                    <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭自动浇水</button>
-                    <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">自动浇水暂停到明天 08:00</button>
-                    <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行。">取消当前天气暂停</button>
+                  <div class="run-compact">
+                    <div class="run-primary">
+                      <div>
+                        <div class="run-title">当前水路</div>
+                        <div class="run-zone" id="overviewZone">-</div>
+                        <div class="run-note" id="overviewSource">来源：-</div>
+                      </div>
+                      <div>
+                        <div class="run-title">运行进度</div>
+                        <div class="progress"><span id="overviewProgress"></span></div>
+                        <div class="run-note"><span id="overviewElapsed">0 / 0</span> 分钟</div>
+                      </div>
+                      <div class="run-kpis">
+                        <div class="mini-stat">
+                          <div class="mini-label">累计水量</div>
+                          <div class="mini-value" id="overviewVolume">0.000 升</div>
+                          <div class="mini-note">按流量计估算</div>
+                        </div>
+                        <div class="mini-stat">
+                          <div class="mini-label">实时流速</div>
+                          <div class="mini-value" id="overviewFlow">0.000</div>
+                          <div class="mini-note">升/分钟</div>
+                        </div>
+                      </div>
+                      <div class="toolbar">
+                        <button class="btn primary" data-goto="run">开始手动浇水</button>
+                        <button class="btn danger" id="overviewStop" disabled>停止当前运行</button>
+                      </div>
+                    </div>
+                    <div class="chart-wrap">
+                      <canvas class="chart-canvas" id="overviewFlowChart" width="900" height="330"></canvas>
+                      <div class="chart-meta">
+                        <div class="legend">
+                          <span class="legend-item"><span class="legend-line"></span>实时流速</span>
+                          <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
+                          <span class="legend-item"><span class="legend-line low"></span>低流量提醒线</span>
+                          <span class="legend-item"><span class="legend-line high"></span>高流量停机线</span>
+                        </div>
+                      </div>
+                      <div class="flow-summary">
+                        <div class="flow-summary-item">
+                          <div class="flow-summary-label">标准流速</div>
+                          <div class="flow-summary-value">0.520 升/分钟</div>
+                        </div>
+                        <div class="flow-summary-item">
+                          <div class="flow-summary-label">正常范围</div>
+                          <div class="flow-summary-value">0.312 - 0.832 升/分钟</div>
+                        </div>
+                        <div class="flow-summary-item">
+                          <div class="flow-summary-label">当前判断</div>
+                          <div class="flow-summary-value">最近一次正常</div>
+                        </div>
+                        <div class="flow-summary-item">
+                          <div class="flow-summary-label">采样窗口</div>
+                          <div class="flow-summary-value">最近 12 分钟</div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div class="callout">
-                    自动总控和天气暂停只影响自动计划触发，不影响手动浇水。暂停期间到点计划会跳过，不补跑。
+                  <div class="next-list">
+                    <div class="next-item">
+                      <div>
+                        <div class="next-title">今晚 18:30 会跳过</div>
+                        <div class="next-copy">晨晚浇水计划受天气暂停影响，本次不会执行，也不会补跑。</div>
+                      </div>
+                      <span class="badge warn">天气暂停</span>
+                    </div>
+                    <div class="next-item">
+                      <div>
+                        <div class="next-title">明天 08:00 自动恢复</div>
+                        <div class="next-copy">恢复后按已启用计划继续执行；若预报仍达阈值，会再次说明跳过原因。</div>
+                      </div>
+                      <span class="badge blue">待确认</span>
+                    </div>
                   </div>
                 </div>
+              </div>
+
+              <div class="side-stack">
+                <div class="weather-card">
+                  <div class="weather-main">
+                    <div>
+                      <div class="weather-label">天气对计划的影响</div>
+                      <div class="weather-temp">28°C</div>
+                      <div>今晚计划会跳过，因为未来 48 小时预计降雨 8 毫米。</div>
+                      <div class="weather-impact">
+                        <div class="weather-impact-item">
+                          <div class="weather-label">触发原因</div>
+                          <div class="weather-value">降雨概率 72%</div>
+                          <div class="weather-detail">阈值为 60%</div>
+                        </div>
+                        <div class="weather-impact-item">
+                          <div class="weather-label">自动恢复</div>
+                          <div class="weather-value">明天 08:00</div>
+                          <div class="weather-detail">不会补跑已跳过计划</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="weather-row">
+                    <div class="weather-cell">
+                      <div class="weather-label">今天</div>
+                      <div class="weather-value">降雨 72%</div>
+                      <div class="weather-detail">预计 8 毫米 · 24-29°C</div>
+                    </div>
+                    <div class="weather-cell">
+                      <div class="weather-label">明天</div>
+                      <div class="weather-value">降雨 25%</div>
+                      <div class="weather-detail">预计 1 毫米 · 23-30°C</div>
+                    </div>
+                    <div class="weather-cell">
+                      <div class="weather-label">后天</div>
+                      <div class="weather-value">降雨 10%</div>
+                      <div class="weather-detail">预计 0 毫米 · 24-31°C</div>
+                    </div>
+                  </div>
+                  <div class="weather-row weather-actions">
+                    <div class="weather-cell">
+                      <button class="btn" data-confirm="让今晚 18:30 的自动计划照常执行？只影响本次天气暂停。">本次计划照常执行</button>
+                    </div>
+                    <div class="weather-cell">
+                      <button class="btn" data-confirm="把自动计划暂停延长到后天 08:00？期间到点计划会跳过，不补跑。">延长天气暂停</button>
+                    </div>
+                    <div class="weather-cell">
+                      <button class="btn warn" data-confirm="关闭自动天气暂停？之后设备不会因为天气预报自动暂停计划。">关闭天气自动暂停</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="panel">
+                  <div class="panel-header">
+                    <h2 class="panel-title">自动总控</h2>
+                  </div>
+                  <div class="panel-body stack">
+                    <div class="toolbar">
+                      <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启自动浇水</button>
+                      <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭自动浇水</button>
+                      <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
+                      <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行。">取消天气暂停</button>
+                    </div>
+                    <div class="callout">
+                      这里只控制自动计划。手动浇水仍可使用；暂停期间到点计划会跳过，不补跑。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">水源与外设</h2>
+                  <p class="panel-subtitle">只显示已启用的外设和必配检测项</p>
+                </div>
+                <span class="badge good">可运行</span>
+              </div>
+              <div class="panel-body">
+                <div class="health-list overview-health">
+                  <div class="health-item">
+                    <div>
+                      <div class="health-title">水位正常</div>
+                      <div class="health-copy">低液位保护已启用，当前没有低液位停机风险。</div>
+                    </div>
+                    <span class="badge good">正常</span>
+                  </div>
+                  <div class="health-item">
+                    <div>
+                      <div class="health-title">自吸泵待机</div>
+                      <div class="health-copy">自吸泵启动输出已启用；有水路运行时自动启动，停机后关闭。</div>
+                    </div>
+                    <span class="badge blue">待机</span>
+                  </div>
+                  <div class="health-item">
+                    <div>
+                      <div class="health-title">流量计正常</div>
+                      <div class="health-copy">当前校准值为每升 450 个脉冲，最近一次运行计数稳定。</div>
+                    </div>
+                    <span class="badge good">正常</span>
+                  </div>
+                  <div class="health-item">
+                    <div>
+                      <div class="health-title">阀门输出关闭</div>
+                      <div class="health-copy">没有水路正在运行，所有阀门保持关闭。</div>
+                    </div>
+                    <span class="badge good">安全</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <h2 class="panel-title">今日/最近浇水</h2>
+              </div>
+              <div class="panel-body">
+                <table>
+                  <thead>
+                    <tr><th>时间</th><th>水路</th><th>来源</th><th>时长</th><th>水量</th><th>结果</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr><td>07:00</td><td>前院滴灌</td><td>计划 1</td><td>12 分</td><td>5.800 升</td><td><span class="badge good">完成</span></td></tr>
+                    <tr><td>07:14</td><td>菜床</td><td>计划 1</td><td>15 分</td><td>7.200 升</td><td><span class="badge good">完成</span></td></tr>
+                    <tr><td>08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>5.600 升</td><td><span class="badge good">完成</span></td></tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
