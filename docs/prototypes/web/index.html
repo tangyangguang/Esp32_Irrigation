@@ -838,7 +838,7 @@
                     <div class="metric">
                       <div class="metric-label">水路</div>
                       <div class="metric-value" id="overviewZone">-</div>
-                      <div class="metric-note">来源：-</div>
+                      <div class="metric-note" id="overviewSource">来源：-</div>
                     </div>
                     <div class="metric">
                       <div class="metric-label">进度</div>
@@ -928,29 +928,24 @@
               <div class="panel-header">
                 <div>
                   <h2 class="panel-title">手动浇水</h2>
-                  <p class="panel-subtitle">只显示已启用的水路，时长单位为分钟</p>
+                  <p class="panel-subtitle">像自动计划一样，按水路顺序依次浇水；0 分钟表示跳过</p>
                 </div>
               </div>
               <div class="panel-body stack">
-                <div class="form-grid">
-                  <div class="field">
-                    <label for="manualZone">选择水路</label>
-                    <select id="manualZone">
-                      <option value="1" data-default="10">第 1 路 前院滴灌，标准流速已测定</option>
-                      <option value="2" data-default="15">第 2 路 菜床，标准流速已测定</option>
-                      <option value="3" data-default="20">第 3 路 果树，标准流速未设置</option>
-                    </select>
-                    <div class="hint">未启用的水路不会出现在这里；被锁定的水路会置灰并提示原因。</div>
-                  </div>
-                  <div class="field">
-                    <label for="durationMin">浇水时长</label>
-                    <input id="durationMin" type="number" min="1" max="360" value="10">
-                    <div class="hint">范围 1..360 分钟。普通手动浇水要求流量计已校准。</div>
-                  </div>
-                </div>
+                <table>
+                  <thead>
+                    <tr><th>顺序</th><th>水路</th><th>状态</th><th>本次浇水时长</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr data-manual-step="0"><td>1</td><td>第 1 路 前院滴灌</td><td><span class="badge good">标准流速已测定</span></td><td><input class="manual-duration" data-name="第 1 路 前院滴灌" type="number" min="0" max="360" value="10"></td></tr>
+                    <tr data-manual-step="1"><td>2</td><td>第 2 路 菜床</td><td><span class="badge good">标准流速已测定</span></td><td><input class="manual-duration" data-name="第 2 路 菜床" type="number" min="0" max="360" value="15"></td></tr>
+                    <tr data-manual-step="2"><td>3</td><td>第 3 路 果树</td><td><span class="badge warn">标准流速未设置</span></td><td><input class="manual-duration" data-name="第 3 路 果树" type="number" min="0" max="360" value="0"></td></tr>
+                  </tbody>
+                </table>
+                <div class="hint">手动顺序浇水只显示已启用且未锁定的水路；每一路范围 0..360 分钟，0 表示本次跳过。运行时仍然一次只打开一路。</div>
                 <div class="callout good">流量计已校准：每升 450 个脉冲。低液位保护已启用，当前水位正常。</div>
                 <div class="toolbar">
-                  <button class="btn primary" id="startRun">开始浇水</button>
+                  <button class="btn primary" id="startRun">开始顺序浇水</button>
                   <button class="btn danger" id="stopRun" disabled>停止当前运行</button>
                 </div>
               </div>
@@ -968,10 +963,11 @@
                 <div class="progress"><span id="manualProgress"></span></div>
                 <div class="metric-row">
                   <div class="metric"><div class="metric-label">已运行</div><div class="metric-value" id="manualElapsed">0</div><div class="metric-note">分钟</div></div>
-                  <div class="metric"><div class="metric-label">计划时长</div><div class="metric-value" id="manualTarget">0</div><div class="metric-note">分钟</div></div>
+                  <div class="metric"><div class="metric-label">总时长</div><div class="metric-value" id="manualTarget">0</div><div class="metric-note">分钟</div></div>
                   <div class="metric"><div class="metric-label">累计水量</div><div class="metric-value" id="manualVolume">0</div><div class="metric-note">毫升</div></div>
                   <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value" id="manualFlow">0</div><div class="metric-note">毫升/分钟</div></div>
                 </div>
+                <div class="callout" id="manualStepText">当前没有手动浇水任务。开始后这里会显示正在运行的水路和剩余队列。</div>
                 <div class="chart-wrap">
                   <canvas class="chart-canvas" id="manualFlowChart" width="720" height="260"></canvas>
                   <div class="chart-meta">
@@ -1122,7 +1118,7 @@
                 <div class="panel-header">
                   <div>
                     <h2 class="panel-title">流量计校准</h2>
-                    <p class="panel-subtitle">流量计校准系数，决定水量和实时流速是否可信</p>
+                    <p class="panel-subtitle">校准的是唯一流量计，不是某一路水路；选择水路只是为了打开阀门放水</p>
                   </div>
                   <span class="badge good">已校准</span>
                 </div>
@@ -1133,12 +1129,23 @@
                     <div class="metric"><div class="metric-label">累计脉冲</div><div class="metric-value">6750</div><div class="metric-note">次</div></div>
                     <div class="metric"><div class="metric-label">实际水量</div><div class="metric-value">15 升</div><div class="metric-note">合计</div></div>
                   </div>
+                  <div class="form-grid">
+                    <div class="field">
+                      <label>校准放水通道</label>
+                      <select aria-label="校准放水通道"><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option><option>第 3 路 果树</option></select>
+                      <div class="hint">请选择一条出水稳定、方便接水的水路。校准结果会用于全部水路。</div>
+                    </div>
+                    <div class="field">
+                      <label>实际接水量</label>
+                      <input type="number" value="5000">
+                      <div class="hint">单位：毫升。建议单次不少于 2000 毫升，多次样本合并更稳。</div>
+                    </div>
+                  </div>
                   <div class="toolbar">
-                    <select aria-label="校准水路"><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option><option>第 3 路 果树</option></select>
                     <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始校准</button>
                     <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止校准</button>
                   </div>
-                  <div class="callout warn">维护运行最长 600 秒。样本偏差明显时不建议保存。</div>
+                  <div class="callout warn">流程：准备量桶 → 开始校准 → 接水 → 停止校准 → 输入实际接水量 → 加入样本 → 确认保存。维护运行最长 600 秒，超时会自动关闭。</div>
                 </div>
               </div>
 
@@ -1146,7 +1153,7 @@
                 <div class="panel-header">
                   <div>
                     <h2 class="panel-title">水路标准流速</h2>
-                    <p class="panel-subtitle">用于判断偏低或偏高，不改变流量计校准系数</p>
+                    <p class="panel-subtitle">每一路单独测定，用于判断偏低或偏高；不会改变流量计校准结果</p>
                   </div>
                 </div>
                 <div class="panel-body stack">
@@ -1197,7 +1204,7 @@
                 <div class="form-grid">
                   <div class="field"><label>自吸泵启动输出</label><select><option>关闭</option><option>启用</option></select></div>
                   <div class="field"><label>低液位保护输入</label><select><option>启用</option><option>关闭</option></select></div>
-                  <div class="field"><label>计划排队最长等待</label><input type="number" value="60"></div>
+                  <div class="field"><label>计划排队最长等待</label><input type="number" value="60"><div class="hint">单位：分钟。自动计划撞上当前运行时，最多等待多久。</div></div>
                 </div>
                 <div class="callout">计划排队最长等待设为 0，表示遇到冲突时不排队，直接跳过。</div>
               </div>
@@ -1221,13 +1228,13 @@
               <div class="panel-header"><h2 class="panel-title">流量检测参数</h2></div>
               <div class="panel-body">
                 <div class="form-grid">
-                  <div class="field"><label>流速采样窗口</label><input value="5"></div>
-                  <div class="field"><label>流速刷新间隔</label><input value="1000"></div>
-                  <div class="field"><label>等待首次出水超时</label><input value="15"></div>
-                  <div class="field"><label>运行中无水确认时间</label><input value="15"></div>
-                  <div class="field"><label>启动稳定等待</label><input value="10"></div>
-                  <div class="field"><label>维护运行最长时间</label><input value="600"></div>
-                  <div class="field"><label>待机漏水确认时间</label><input value="30"></div>
+                  <div class="field"><label>流速采样窗口</label><input value="5"><div class="hint">单位：秒。用最近这段时间的脉冲计算实时流速。</div></div>
+                  <div class="field"><label>流速刷新间隔</label><input value="1000"><div class="hint">单位：毫秒。页面和运行监测多久刷新一次流速。</div></div>
+                  <div class="field"><label>等待首次出水超时</label><input value="15"><div class="hint">单位：秒。开阀后多久还没有脉冲就判断无水。</div></div>
+                  <div class="field"><label>运行中无水确认时间</label><input value="15"><div class="hint">单位：秒。稳定运行后连续多久无脉冲就停机。</div></div>
+                  <div class="field"><label>启动稳定等待</label><input value="10"><div class="hint">单位：秒。首次出水后先等待水流稳定，期间不判断偏低/偏高。</div></div>
+                  <div class="field"><label>维护运行最长时间</label><input value="600"><div class="hint">单位：秒。校准和测定标准流速时的最长放水时间。</div></div>
+                  <div class="field"><label>待机漏水确认时间</label><input value="30"><div class="hint">单位：秒。空闲时连续检测到流量多久后锁定设备。</div></div>
                 </div>
               </div>
             </div>
@@ -1236,9 +1243,9 @@
               <div class="panel-header"><h2 class="panel-title">阀门保持参数</h2></div>
               <div class="panel-body stack">
                 <div class="form-grid">
-                  <div class="field"><label>阀门全功率吸合时间</label><input value="3000"></div>
-                  <div class="field"><label>阀门保持功率比例</label><input value="60"></div>
-                  <div class="field"><label>阀门保持频率</label><input value="20000"></div>
+                  <div class="field"><label>阀门全功率吸合时间</label><input value="3000"><div class="hint">单位：毫秒。阀门刚打开时保持全功率的时间。</div></div>
+                  <div class="field"><label>阀门保持功率比例</label><input value="60"><div class="hint">单位：%。吸合后用较低功率保持打开；100% 表示不降功率。</div></div>
+                  <div class="field"><label>阀门保持频率</label><input value="20000"><div class="hint">单位：赫兹。保持阶段 PWM 频率，需要结合阀门实测。</div></div>
                 </div>
                 <div class="callout danger">阀门保持功率比例设为 100，表示不降低保持功率。修改阀门参数需要实机验证。</div>
                 <button class="btn primary" data-confirm="保存系统设置？阀门参数将在下一次运行生效。">保存设置</button>
@@ -1341,6 +1348,8 @@
       volumeMl: 0,
       flow: 0,
       timer: null,
+      source: "-",
+      sequence: [],
       flowHistory: [510, 525, 498, 532, 520, 488, 506, 540, 556, 530, 518, 522, 536, 548, 526, 512, 504, 520, 535, 528, 516, 510, 524, 538]
     };
 
@@ -1383,20 +1392,24 @@
       afterConfirm = null;
     });
 
-    document.getElementById("manualZone").addEventListener("change", event => {
-      const selected = event.target.selectedOptions[0];
-      document.getElementById("durationMin").value = selected.dataset.default;
-    });
-
     document.getElementById("startRun").addEventListener("click", () => {
-      const select = document.getElementById("manualZone");
-      const zoneLabel = select.selectedOptions[0].textContent.split("，")[0];
-      const duration = Number(document.getElementById("durationMin").value);
-      if (!Number.isFinite(duration) || duration < 1 || duration > 360) {
-        openConfirm("浇水时长必须在 1 到 360 分钟之间，操作未执行。");
+      const inputs = Array.from(document.querySelectorAll(".manual-duration"));
+      const sequence = [];
+      for (const input of inputs) {
+        const duration = Number(input.value);
+        if (!Number.isFinite(duration) || duration < 0 || duration > 360) {
+          openConfirm("每一路浇水时长必须在 0 到 360 分钟之间，操作未执行。");
+          return;
+        }
+        if (duration > 0) sequence.push({ name: input.dataset.name, duration });
+      }
+      if (!sequence.length) {
+        openConfirm("请至少设置一路大于 0 分钟的浇水时长。");
         return;
       }
-      openConfirm(`开始 ${zoneLabel}，运行 ${duration} 分钟？`, () => startMockRun(zoneLabel, duration));
+      const total = sequence.reduce((sum, step) => sum + step.duration, 0);
+      const summary = sequence.map(step => `${step.name} ${step.duration} 分钟`).join("，");
+      openConfirm(`开始手动顺序浇水？将依次运行：${summary}。总时长 ${total} 分钟。`, () => startMockRun(sequence));
     });
 
     document.getElementById("stopRun").addEventListener("click", () => {
@@ -1407,11 +1420,12 @@
       openConfirm("停止当前运行？如果当前来源是自动计划，会取消剩余水路并清空等待队列。", stopMockRun);
     });
 
-    function startMockRun(zone, duration) {
+    function startMockRun(sequence) {
       if (state.timer) clearInterval(state.timer);
       state.running = true;
-      state.zone = zone;
-      state.targetMin = duration;
+      state.sequence = sequence;
+      state.source = "手动顺序浇水";
+      state.targetMin = sequence.reduce((sum, step) => sum + step.duration, 0);
       state.elapsedMin = 0;
       state.volumeMl = 0;
       state.flow = 520;
@@ -1441,6 +1455,7 @@
 
     function updateRunUi() {
       const percent = state.targetMin ? Math.min(100, Math.round(state.elapsedMin * 100 / state.targetMin)) : 0;
+      const active = getActiveStep();
       document.getElementById("manualState").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("manualState").className = `badge ${state.running ? "good" : ""}`;
       document.getElementById("manualProgress").style.width = `${percent}%`;
@@ -1448,12 +1463,16 @@
       document.getElementById("manualTarget").textContent = state.targetMin;
       document.getElementById("manualVolume").textContent = state.volumeMl;
       document.getElementById("manualFlow").textContent = state.running ? state.flow : 0;
+      document.getElementById("manualStepText").textContent = state.running && active
+        ? `正在运行：${active.name}。本次手动任务还会按顺序执行未完成的水路。`
+        : "当前没有手动浇水任务。开始后这里会显示正在运行的水路和剩余队列。";
 
       document.getElementById("overviewState").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("runStateBadge").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("runStateBadge").className = `badge ${state.running ? "good" : "good"}`;
       document.getElementById("overviewProgress").style.width = `${percent}%`;
-      document.getElementById("overviewZone").textContent = state.running ? state.zone : "-";
+      document.getElementById("overviewZone").textContent = state.running && active ? active.name : "-";
+      document.getElementById("overviewSource").textContent = state.running ? `来源：${state.source}` : "来源：-";
       document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
       document.getElementById("overviewVolume").textContent = `${state.volumeMl} 毫升`;
       document.getElementById("overviewFlow").textContent = state.running ? state.flow : 0;
@@ -1461,6 +1480,16 @@
       document.getElementById("flowQualityBadge").className = `badge ${state.running ? "good" : "blue"}`;
       drawFlowChart("overviewFlowChart", state.flowHistory);
       drawFlowChart("manualFlowChart", state.flowHistory);
+    }
+
+    function getActiveStep() {
+      if (!state.running || !state.sequence.length) return null;
+      let cursor = 0;
+      for (const step of state.sequence) {
+        cursor += step.duration;
+        if (state.elapsedMin < cursor) return step;
+      }
+      return state.sequence[state.sequence.length - 1] || null;
     }
 
     function drawFlowChart(canvasId, values) {
