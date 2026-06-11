@@ -544,9 +544,9 @@ zoneDurationsMin[6]
 
 页面不得提供按水量停止、多个 Zone 同时运行、暂停/恢复计划。
 
-## 5. 流量页 `/flow`
+## 5. 流量页面组
 
-流量页必须明确区分两件事：
+流量页面组必须明确区分两件事：
 
 ```text
 流量计校准：
@@ -556,7 +556,11 @@ Zone 正常流量：
   得到某个 Zone 的 normalFlowMlPerMin，决定低流量/高流量判断是否可用。
 ```
 
-### 内容
+### 5.1 流量入口页 `/flow`
+
+入口页只做状态总览和任务分流，不承载完整维护流程。
+
+内容：
 
 全局流量计状态：
 
@@ -572,37 +576,15 @@ calibrationTotalActualMl
 校准样本区：
 
 ```text
-样本编号
-校准 Zone
-运行时长
-totalPulseCount
-actualMl
-samplePulsesPerLiter
-deviationPercent
-样本状态：可用 / 偏差较大 / 无效
+当前 pulsesPerLiter
+calibratedAt
+calibrationSampleCount
+calibrationTotalPulseCount
+calibrationTotalActualMl
+参数来源：校准样本 / 手动调整
 ```
 
-校准操作：
-
-```text
-选择 enabled Zone
-开始校准维护运行
-停止校准维护运行
-输入实际接水量 actualMl
-加入样本
-查看合并建议 pulsesPerLiter
-确认保存全局 pulsesPerLiter
-```
-
-保护提示：
-
-```text
-维护运行最长 maintenanceMaxDurationSec 秒，超时会自动关闭泵和阀，本次样本失败。
-建议使用至少 2L，推荐总样本水量不低于 5L。
-样本偏差明显时不建议保存。
-```
-
-Zone 正常流量区：
+Zone 正常流量状态：
 
 ```text
 Zone 列表
@@ -610,8 +592,72 @@ enabled 状态
 normalFlowMlPerMin
 normalFlowMeasuredAt
 低/高流量阈值换算结果
-测定入口
-手工输入入口
+```
+
+入口操作：
+
+```text
+进入流量计校准
+进入水路正常流速测定
+查看参数详情
+导出校准记录
+```
+
+### 5.2 流量计校准页 `/flow/calibration`
+
+校准页使用单独流程，不和 Zone 正常流速测定混在同一表单中。
+
+流程内容：
+
+```text
+准备量桶
+选择 enabled Zone 作为放水水路
+开始校准维护运行
+停止校准维护运行
+输入实际接水量 actualMl
+加入样本
+显示样本列表、偏差和加权合并建议
+确认保存全局 pulsesPerLiter
+```
+
+保护提示：
+
+```text
+校准的是唯一流量计，不是某一路水路；选择水路只是为了打开阀门放水。
+维护运行最长 maintenanceMaxDurationSec 秒，超时会自动关闭泵和阀，本次样本失败。
+建议使用至少 2L，推荐总样本水量不低于 5L。
+样本偏差明显时不建议保存。
+```
+
+页面必须展示公式：
+
+```text
+pulsesPerLiter = totalPulseCount * 1000 / actualMl
+mergedPulsesPerLiter = sum(totalPulseCount) * 1000 / sum(actualMl)
+```
+
+### 5.3 水路正常流速测定页 `/flow/baseline`
+
+测定页使用单独流程。它要求全局流量计已经校准。
+
+流程内容：
+
+```text
+选择 enabled 且未锁定 Zone
+确认该水路当前管路和喷头状态正常
+开始维护运行
+等待首个有效脉冲
+等待 flowStabilizeSec
+稳定阶段采样，建议 30 秒
+显示平均流速、最低流速、最高流速
+确认保存 normalFlowMlPerMin
+```
+
+手工输入：
+
+```text
+手工输入 normalFlowMlPerMin 是次要入口，可折叠展示。
+适用于用户已用外部工具测得某路正常流速。
 ```
 
 ### 流量计校准操作流

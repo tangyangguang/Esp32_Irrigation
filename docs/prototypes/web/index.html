@@ -1822,126 +1822,46 @@
 
         <section id="flow" class="page">
           <div class="grid">
-            <div class="grid cols-2">
-              <div class="panel">
-                <div class="panel-header">
-                  <div>
-                    <h2 class="panel-title">流量计校准</h2>
-                    <p class="panel-subtitle">校准的是唯一流量计，不是某一路水路；选择水路只是为了打开阀门放水</p>
-                  </div>
-                  <span class="badge good">已校准</span>
-                </div>
-                <div class="panel-body stack">
-                  <div class="stepper">
-                    <div class="step">
-                      <div class="step-num">1</div>
-                      <div><div class="step-title">选择放水通道</div><div class="step-copy">选一条出水稳定、方便接水的水路。</div></div>
-                    </div>
-                    <div class="step">
-                      <div class="step-num">2</div>
-                      <div><div class="step-title">接水并停止</div><div class="step-copy">用量桶接水，达到足够水量后停止。</div></div>
-                    </div>
-                    <div class="step">
-                      <div class="step-num">3</div>
-                      <div><div class="step-title">输入实际水量</div><div class="step-copy">输入量桶读数，设备计算每升脉冲数。</div></div>
-                    </div>
-                    <div class="step">
-                      <div class="step-num">4</div>
-                      <div><div class="step-title">确认保存</div><div class="step-copy">检查样本偏差，再应用到全局流量计。</div></div>
-                    </div>
-                  </div>
-                  <div class="calibration-status">
-                    <div class="stage-row">
-                      <div class="stage-card">
-                        <div class="mini-label">当前校准阶段</div>
-                        <div class="stage-value">已停止，等待输入实际水量</div>
-                        <div class="mini-note">上一段维护运行已结束，可以把量桶读数加入样本。</div>
-                      </div>
-                      <div class="stage-card">
-                        <div class="mini-label">维护运行保护</div>
-                        <div class="stage-value">最长 600 秒</div>
-                        <div class="mini-note">运行中会显示剩余时间；超时会自动关闭当前水路和自吸泵。</div>
-                      </div>
-                    </div>
-                    <div class="metric-row">
-                      <div class="metric"><div class="metric-label">放水水路</div><div class="metric-value">第 1 路</div><div class="metric-note">前院滴灌</div></div>
-                      <div class="metric"><div class="metric-label">已运行</div><div class="metric-value">92 秒</div><div class="metric-note">已停止</div></div>
-                      <div class="metric"><div class="metric-label">当前脉冲</div><div class="metric-value">2245</div><div class="metric-note">等待确认水量</div></div>
-                      <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value">0.000</div><div class="metric-note">升/分钟</div></div>
-                    </div>
-                    <div class="callout">
-                      运行中阶段会依次显示：正在打开水路、等待流量稳定、正在接水计数、已停止等待输入实际水量。启动保护期只屏蔽异常判断，不补偿水量。
-                    </div>
-                  </div>
-                  <div class="metric-row">
-                    <div class="metric"><div class="metric-label">每升脉冲数</div><div class="metric-value">450</div><div class="metric-note">脉冲/升</div></div>
-                    <div class="metric"><div class="metric-label">校准时间</div><div class="metric-value">06-10</div><div class="metric-note">3 个样本</div></div>
-                    <div class="metric"><div class="metric-label">累计脉冲</div><div class="metric-value">6750</div><div class="metric-note">次</div></div>
-                    <div class="metric"><div class="metric-label">实际水量</div><div class="metric-value">15.000 升</div><div class="metric-note">合计</div></div>
-                  </div>
-                  <div class="form-grid">
-                    <div class="field">
-                      <label>校准放水通道</label>
-                      <select aria-label="校准放水通道"><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option><option>第 3 路 果树</option></select>
-                      <div class="hint">请选择一条出水稳定、方便接水的水路。校准结果会用于全部水路。</div>
-                    </div>
-                    <div class="field">
-                      <label>实际接水量（升）</label>
-                      <input type="number" value="5.000">
-                      <div class="hint">建议单次不少于 2.000 升，多次样本合并更稳。</div>
-                    </div>
-                  </div>
-                  <div class="toolbar">
-                    <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始放水校准</button>
-                    <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止放水校准</button>
-                  </div>
-                  <div class="callout warn">流程：准备量桶 → 开始校准 → 接水 → 停止校准 → 输入实际接水量 → 加入样本 → 确认保存。维护运行最长 600 秒，超时会自动关闭。</div>
-                </div>
-              </div>
-
-              <div class="panel">
-                <div class="panel-header">
-                  <div>
-                    <h2 class="panel-title">水路标准流速</h2>
-                    <p class="panel-subtitle">每一路单独测定，用于判断偏低或偏高；不会改变流量计校准结果</p>
-                  </div>
-                </div>
-                <div class="panel-body stack">
-                  <table>
-                    <thead><tr><th>水路</th><th>标准流速</th><th>状态</th><th>操作</th></tr></thead>
-                    <tbody>
-                      <tr><td>第 1 路 前院</td><td>0.520 升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 1 路标准流速？">重新测定</button></td></tr>
-                      <tr><td>第 2 路 菜床</td><td>0.480 升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 2 路标准流速？">重新测定</button></td></tr>
-                      <tr><td>第 3 路 果树</td><td>未设置</td><td><span class="badge warn">未设置</span></td><td><button class="btn primary" data-confirm="测定第 3 路标准流速？">测定标准流速</button></td></tr>
-                    </tbody>
-                  </table>
-                  <div class="form-grid">
-                    <div class="field"><label>手工输入水路</label><select><option>第 3 路 果树</option></select></div>
-                    <div class="field"><label>标准流速（升/分钟）</label><input type="number" value="0.650"></div>
-                  </div>
-                  <button class="btn" data-confirm="手工保存第 3 路标准流速为 0.650 升/分钟？">保存手工输入</button>
-                </div>
-              </div>
-            </div>
-
             <div class="panel">
               <div class="panel-header">
-                <h2 class="panel-title">校准样本</h2>
+                <div>
+                  <h2 class="panel-title">流量</h2>
+                  <p class="panel-subtitle">先看当前参数状态，再进入对应维护流程</p>
+                </div>
               </div>
-              <div class="panel-body">
-                <table>
-                  <thead><tr><th>样本</th><th>水路</th><th>运行时长</th><th>脉冲</th><th>实际水量</th><th>每升脉冲数</th><th>偏差</th><th>状态</th></tr></thead>
-                  <tbody>
-                    <tr><td>1</td><td>第 1 路</td><td>92 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
-                    <tr><td>2</td><td>第 1 路</td><td>95 秒</td><td>2260</td><td>5.000 升</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
-                    <tr><td>3</td><td>第 2 路</td><td>98 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
-	                  </tbody>
-	                </table>
-	                <div class="callout good" style="margin-top: 14px;">根据当前 3 个样本生成：每升脉冲数 450，样本最大偏差 0.4%。确认保存后，这个值会成为设备当前使用的全局流量计参数。</div>
-	                <div class="toolbar" style="margin-top: 14px;">
-	                  <button class="btn primary" data-confirm="生成并保存当前流量计参数？每升脉冲数将保存为 450。">生成并保存当前参数</button>
-	                  <button class="btn" data-confirm="丢弃当前未保存的校准样本？已保存的校准结果不会改变。">丢弃当前样本</button>
-	                </div>
+              <div class="panel-body stack">
+                <div class="metric-row">
+                  <div class="metric"><div class="metric-label">流量计参数</div><div class="metric-value">450</div><div class="metric-note">脉冲/升，06-10 17:02 保存</div></div>
+                  <div class="metric"><div class="metric-label">参数来源</div><div class="metric-value">校准样本</div><div class="metric-note">3 个样本，最大偏差 0.4%</div></div>
+                  <div class="metric"><div class="metric-label">标准流速</div><div class="metric-value">4 / 6</div><div class="metric-note">第 3、5 路未设置</div></div>
+                  <div class="metric"><div class="metric-label">水量计算</div><div class="metric-value">按脉冲估算</div><div class="metric-note">不按水量停止浇水</div></div>
+                </div>
+                <div class="grid cols-2">
+                  <div class="panel">
+                    <div class="panel-header">
+                      <div>
+                        <h2 class="panel-title">校准流量计</h2>
+                        <p class="panel-subtitle">用量桶和脉冲数得到全局每升脉冲数</p>
+                      </div>
+                    </div>
+                    <div class="panel-body stack">
+                      <div class="callout">校准结果用于所有水路的累计水量和实时流速。选择水路只是为了打开阀门放水，不代表给某一路单独校准。</div>
+                      <div class="toolbar"><button class="btn primary" data-goto="flowCalibration">进入流量计校准</button></div>
+                    </div>
+                  </div>
+                  <div class="panel">
+                    <div class="panel-header">
+                      <div>
+                        <h2 class="panel-title">测定水路正常流速</h2>
+                        <p class="panel-subtitle">给单路建立低流量和高流量判断基准</p>
+                      </div>
+                    </div>
+                    <div class="panel-body stack">
+                      <div class="callout">正常流速只属于某一路水路，不会改变流量计校准参数，也不会改变浇水时长。</div>
+                      <div class="toolbar"><button class="btn primary" data-goto="flowBaseline">进入正常流速测定</button></div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -1949,49 +1869,158 @@
               <div class="panel">
                 <div class="panel-header">
                   <div>
-                    <h2 class="panel-title">当前流量计参数</h2>
-                    <p class="panel-subtitle">这是设备当前正在使用的全局流量计校准结果</p>
-                  </div>
-                  <span class="badge good">正在使用</span>
-                </div>
-                <div class="panel-body stack">
-                  <div class="metric-row">
-                    <div class="metric"><div class="metric-label">每升脉冲数</div><div class="metric-value">450</div><div class="metric-note">全局参数</div></div>
-                    <div class="metric"><div class="metric-label">应用时间</div><div class="metric-value">06-10</div><div class="metric-note">17:02 保存</div></div>
-                    <div class="metric"><div class="metric-label">参数来源</div><div class="metric-value">校准样本</div><div class="metric-note">3 个样本合并</div></div>
-                    <div class="metric"><div class="metric-label">最大偏差</div><div class="metric-value">0.4%</div><div class="metric-note">样本间偏差</div></div>
-                  </div>
-                  <div class="form-grid">
-                    <div class="field"><label>手动调整每升脉冲数</label><input type="number" value="450"><div class="hint">用于现场微调或恢复旧参数。保存后会立即成为当前使用的全局参数。</div></div>
-                    <div class="field"><label>调整备注</label><input value="现场量桶复核后微调"><div class="hint">备注会进入参数历史，方便以后追溯。</div></div>
-                  </div>
-	                  <div class="callout good">保存校准结果或手动调整后，设备会把“每升脉冲数”写入当前配置。所有水路的水量估算和流速计算都会使用这个全局参数；历史浇水记录不会重新计算。</div>
-	                  <div class="toolbar">
-	                    <button class="btn" data-confirm="当前参数详情：每升脉冲数 450；来源为 3 个校准样本；保存时间 2026-06-10 17:02；当前正在使用。">查看参数详情</button>
-	                    <button class="btn primary" data-confirm="保存手动调整后的每升脉冲数 450？会生成一条新的参数版本并立即设为当前使用。">保存手动调整</button>
-	                    <button class="btn" data-confirm="导出校准记录？会下载当前参数、校准样本和历史保存记录。">导出校准记录</button>
-	                  </div>
-                </div>
-              </div>
-
-              <div class="panel">
-                <div class="panel-header">
-                  <div>
-                    <h2 class="panel-title">校准历史</h2>
-                    <p class="panel-subtitle">只记录确认保存过的结果，临时样本不会进入历史</p>
+                    <h2 class="panel-title">水路标准流速状态</h2>
+                    <p class="panel-subtitle">未设置时仍记录水量，但不判断低/高流量</p>
                   </div>
                 </div>
                 <div class="panel-body">
                   <table>
-                    <thead><tr><th>保存时间</th><th>每升脉冲数</th><th>来源</th><th>样本</th><th>偏差</th><th>备注</th></tr></thead>
+                    <thead><tr><th>水路</th><th>标准流速</th><th>正常范围</th><th>状态</th></tr></thead>
                     <tbody>
-                      <tr><td>06-10 17:02</td><td>450</td><td>校准样本</td><td>3 个</td><td>0.4%</td><td>当前使用</td></tr>
-                      <tr><td>06-08 16:40</td><td>452</td><td>手动调整</td><td>-</td><td>-</td><td>现场量桶复核后微调，已替换</td></tr>
-                      <tr><td>06-03 09:18</td><td>448</td><td>校准样本</td><td>2 个</td><td>0.7%</td><td>已替换</td></tr>
+                      <tr><td>第 1 路 前院滴灌</td><td>0.520 升/分钟</td><td>0.312 - 0.832 升/分钟</td><td><span class="badge good">已测定</span></td></tr>
+                      <tr><td>第 2 路 菜床</td><td>0.480 升/分钟</td><td>0.288 - 0.768 升/分钟</td><td><span class="badge good">已测定</span></td></tr>
+                      <tr><td>第 3 路 果树</td><td>未设置</td><td>-</td><td><span class="badge warn">未设置</span></td></tr>
+                      <tr><td>第 4 路 草坪</td><td>0.900 升/分钟</td><td>0.540 - 1.440 升/分钟</td><td><span class="badge danger">锁定中</span></td></tr>
                     </tbody>
                   </table>
                 </div>
               </div>
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">参数和历史</h2>
+                    <p class="panel-subtitle">当前使用参数和最近保存记录</p>
+                  </div>
+                </div>
+                <div class="panel-body stack">
+                  <div class="metric-row">
+                    <div class="metric"><div class="metric-label">累计样本水量</div><div class="metric-value">15.000 升</div><div class="metric-note">校准样本合计</div></div>
+                    <div class="metric"><div class="metric-label">累计脉冲</div><div class="metric-value">6750</div><div class="metric-note">次</div></div>
+                  </div>
+                  <table>
+                    <thead><tr><th>保存时间</th><th>每升脉冲数</th><th>来源</th><th>备注</th></tr></thead>
+                    <tbody>
+                      <tr><td>06-10 17:02</td><td>450</td><td>校准样本</td><td>当前使用</td></tr>
+                      <tr><td>06-08 16:40</td><td>452</td><td>手动调整</td><td>已替换</td></tr>
+                    </tbody>
+                  </table>
+                  <div class="toolbar">
+                    <button class="btn" data-confirm="当前参数详情：每升脉冲数 450；来源为 3 个校准样本；保存时间 2026-06-10 17:02；当前正在使用。">查看参数详情</button>
+                    <button class="btn" data-confirm="导出校准记录？会下载当前参数、校准样本和历史保存记录。">导出校准记录</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="flowCalibration" class="page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">流量计校准</h2>
+                <p class="panel-subtitle">用完整接水样本计算全局每升脉冲数</p>
+              </div>
+              <button class="btn" data-goto="flow">返回流量</button>
+            </div>
+            <div class="panel-body stack">
+              <div class="stepper">
+                <div class="step"><div class="step-num">1</div><div><div class="step-title">准备量桶</div><div class="step-copy">选择方便接水的水路，准备至少 2 升量桶。</div></div></div>
+                <div class="step"><div class="step-num">2</div><div><div class="step-title">放水计数</div><div class="step-copy">开始维护运行，设备记录全程脉冲。</div></div></div>
+                <div class="step"><div class="step-num">3</div><div><div class="step-title">输入实际水量</div><div class="step-copy">停止后输入量桶读数，生成样本。</div></div></div>
+                <div class="step"><div class="step-num">4</div><div><div class="step-title">确认保存</div><div class="step-copy">检查样本偏差，确认后应用到全局参数。</div></div></div>
+              </div>
+              <div class="callout">公式：每升脉冲数 = 本次总脉冲 × 1000 / 实际接水毫升。多样本保存时按总脉冲和总水量加权合并。</div>
+              <div class="stage-row">
+                <div class="stage-card"><div class="mini-label">当前阶段</div><div class="stage-value">已停止，等待输入实际水量</div><div class="mini-note">上一段维护运行已结束，可以加入样本。</div></div>
+                <div class="stage-card"><div class="mini-label">维护运行保护</div><div class="stage-value">最长 600 秒</div><div class="mini-note">超时会自动关闭当前水路和自吸泵，本次样本失败。</div></div>
+              </div>
+              <div class="form-grid">
+                <div class="field"><label>校准放水水路</label><select><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option><option>第 3 路 果树</option></select><div class="hint">只用于打开阀门放水；校准结果仍是全局流量计参数。</div></div>
+                <div class="field"><label>实际接水量（升）</label><input type="number" value="5.000"><div class="hint">建议单次不少于 2.000 升，总样本水量建议不低于 5.000 升。</div></div>
+              </div>
+              <div class="metric-row">
+                <div class="metric"><div class="metric-label">运行时长</div><div class="metric-value">92 秒</div><div class="metric-note">已停止</div></div>
+                <div class="metric"><div class="metric-label">本次脉冲</div><div class="metric-value">2245</div><div class="metric-note">次</div></div>
+                <div class="metric"><div class="metric-label">本次样本</div><div class="metric-value">449</div><div class="metric-note">脉冲/升</div></div>
+                <div class="metric"><div class="metric-label">当前建议</div><div class="metric-value">450</div><div class="metric-note">脉冲/升</div></div>
+              </div>
+              <div class="toolbar">
+                <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始放水</button>
+                <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止放水</button>
+                <button class="btn" data-confirm="把本次 2245 次脉冲、5.000 升接水量加入校准样本？">加入样本</button>
+              </div>
+              <div class="panel">
+                <div class="panel-header"><h2 class="panel-title">校准样本和保存</h2></div>
+                <div class="panel-body stack">
+                  <table>
+                    <thead><tr><th>样本</th><th>水路</th><th>时长</th><th>脉冲</th><th>实际水量</th><th>每升脉冲数</th><th>偏差</th><th>状态</th></tr></thead>
+                    <tbody>
+                      <tr><td>1</td><td>第 1 路</td><td>92 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                      <tr><td>2</td><td>第 1 路</td><td>95 秒</td><td>2260</td><td>5.000 升</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
+                      <tr><td>3</td><td>第 2 路</td><td>98 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                    </tbody>
+                  </table>
+                  <div class="callout good">根据 3 个样本加权合并：每升脉冲数 450，样本最大偏差 0.4%。确认保存后，后续所有水量估算和实时流速都会使用这个参数。</div>
+                  <div class="toolbar">
+                    <button class="btn primary" data-confirm="生成并保存当前流量计参数？每升脉冲数将保存为 450。">确认保存全局参数</button>
+                    <button class="btn" data-confirm="丢弃当前未保存的校准样本？已保存的校准结果不会改变。">丢弃未保存样本</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="flowBaseline" class="page">
+          <div class="panel">
+            <div class="panel-header">
+              <div>
+                <h2 class="panel-title">水路正常流速测定</h2>
+                <p class="panel-subtitle">为某一路建立低流量和高流量判断基准</p>
+              </div>
+              <button class="btn" data-goto="flow">返回流量</button>
+            </div>
+            <div class="panel-body stack">
+              <div class="callout">测定前必须先完成流量计校准。测得的正常流速只保存到所选水路，不影响全局每升脉冲数。</div>
+              <div class="stepper">
+                <div class="step"><div class="step-num">1</div><div><div class="step-title">选择水路</div><div class="step-copy">只显示已启用、未锁定的水路。</div></div></div>
+                <div class="step"><div class="step-num">2</div><div><div class="step-title">等待出水和稳定</div><div class="step-copy">先等首个脉冲，再等待稳定时间。</div></div></div>
+                <div class="step"><div class="step-num">3</div><div><div class="step-title">采样 30 秒</div><div class="step-copy">稳定阶段统计平均、最低、最高流速。</div></div></div>
+                <div class="step"><div class="step-num">4</div><div><div class="step-title">确认保存</div><div class="step-copy">保存为该水路 normalFlowMlPerMin。</div></div></div>
+              </div>
+              <div class="form-grid">
+                <div class="field"><label>测定水路</label><select><option>第 3 路 果树</option><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option></select><div class="hint">第 4 路当前锁定，不参与测定。</div></div>
+                <div class="field"><label>采样时长（秒）</label><input value="30" disabled><div class="hint">稳定等待结束后开始采样，普通用户不需要修改。</div></div>
+              </div>
+              <div class="stage-row">
+                <div class="stage-card"><div class="mini-label">当前阶段</div><div class="stage-value">稳定采样中</div><div class="mini-note">已过首脉冲和稳定等待，正在统计正常流速。</div></div>
+                <div class="stage-card"><div class="mini-label">启动阶段</div><div class="stage-value">已完成</div><div class="mini-note">flowStabilizeSec 只屏蔽异常判断，不补偿水量。</div></div>
+              </div>
+              <div class="metric-row">
+                <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value">0.648</div><div class="metric-note">升/分钟</div></div>
+                <div class="metric"><div class="metric-label">平均流速</div><div class="metric-value">0.650</div><div class="metric-note">建议保存值</div></div>
+                <div class="metric"><div class="metric-label">最低 / 最高</div><div class="metric-value">0.621 / 0.681</div><div class="metric-note">升/分钟</div></div>
+                <div class="metric"><div class="metric-label">采样进度</div><div class="metric-value">22 / 30</div><div class="metric-note">秒</div></div>
+              </div>
+              <div class="toolbar">
+                <button class="btn primary" data-confirm="开始测定第 3 路正常流速？维护运行最长 600 秒。">开始测定</button>
+                <button class="btn danger" data-confirm="停止正常流速测定？本次未完成采样，不会保存结果。">停止测定</button>
+                <button class="btn" data-confirm="保存第 3 路正常流速为 0.650 升/分钟？">保存测定结果</button>
+              </div>
+              <details class="inline-advanced">
+                <summary>
+                  <strong>手工输入正常流速</strong>
+                  <span class="hint">已有外部测量结果时使用</span>
+                </summary>
+                <div class="inline-body">
+                  <div class="form-grid">
+                    <div class="field"><label>水路</label><select><option>第 3 路 果树</option></select></div>
+                    <div class="field"><label>正常流速（升/分钟）</label><input type="number" value="0.650"></div>
+                  </div>
+                  <div class="toolbar" style="margin-top: 12px;"><button class="btn" data-confirm="手工保存第 3 路正常流速为 0.650 升/分钟？">保存手工输入</button></div>
+                </div>
+              </details>
             </div>
           </div>
         </section>
@@ -2214,9 +2243,16 @@
       plans: "计划管理",
       planEdit: "计划编辑",
       flow: "流量",
+      flowCalibration: "流量计校准",
+      flowBaseline: "水路正常流速",
       settings: "设置",
       records: "记录",
       events: "事件"
+    };
+
+    const navParents = {
+      flowCalibration: "flow",
+      flowBaseline: "flow"
     };
 
     const state = {
@@ -2234,7 +2270,8 @@
 
     function gotoPage(page) {
       document.querySelectorAll(".page").forEach(el => el.classList.toggle("active", el.id === page));
-      document.querySelectorAll(".nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.page === page));
+      const navPage = navParents[page] || page;
+      document.querySelectorAll(".nav button").forEach(btn => btn.classList.toggle("active", btn.dataset.page === navPage));
       document.getElementById("pageTitle").textContent = titles[page] || "原型";
     }
 
