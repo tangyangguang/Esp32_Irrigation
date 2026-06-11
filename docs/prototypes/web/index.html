@@ -481,10 +481,10 @@
       background: #f7faf8;
       padding: 14px;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.15fr) minmax(150px, .75fr);
+      grid-template-columns: minmax(170px, 1fr) minmax(260px, 1.4fr) minmax(150px, .72fr);
       align-items: center;
       gap: 12px;
-      min-height: 112px;
+      min-height: 118px;
     }
 
     .run-primary .toolbar {
@@ -495,6 +495,17 @@
 
     .run-primary .btn {
       width: 100%;
+    }
+
+    .run-progress-block {
+      display: grid;
+      gap: 10px;
+    }
+
+    .run-stat-line {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
     }
 
     .run-title {
@@ -522,11 +533,10 @@
     }
 
     .mini-stat {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      padding: 10px;
-      min-height: 72px;
+      border-left: 3px solid #c7ddd3;
+      background: transparent;
+      padding: 2px 0 2px 10px;
+      min-height: 0;
     }
 
     .mini-label {
@@ -536,7 +546,7 @@
     }
 
     .mini-value {
-      font-size: 19px;
+      font-size: 20px;
       font-weight: 760;
       line-height: 1.15;
     }
@@ -639,19 +649,20 @@
 
     .flow-summary {
       border-top: 1px solid var(--line);
-      padding: 12px;
+      padding: 10px 12px;
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 10px;
+      grid-template-columns: repeat(3, auto);
+      justify-content: start;
+      gap: 18px;
       background: #fbfcfb;
     }
 
     .flow-summary-item {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fff;
-      padding: 10px;
-      min-height: 68px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      padding: 0;
+      min-height: 0;
     }
 
     .flow-summary-label {
@@ -662,8 +673,32 @@
 
     .flow-summary-value {
       font-weight: 750;
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1.25;
+    }
+
+    .weather-card {
+      display: grid;
+    }
+
+    .weather-action-bar {
+      border-top: 1px solid rgba(255,255,255,.16);
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+      background: rgba(0,0,0,.06);
+    }
+
+    .weather-action-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .weather-action-bar .btn {
+      min-height: 36px;
+      padding: 7px 8px;
+      font-size: 13px;
     }
 
     .legend {
@@ -758,6 +793,12 @@
       white-space: nowrap;
     }
 
+    .weather-card .weather-action-bar .btn {
+      min-height: 36px;
+      padding: 7px 8px;
+      font-size: 13px;
+    }
+
     .weather-label {
       color: rgba(236,251,251,.72);
       font-size: 12px;
@@ -788,6 +829,18 @@
       border-radius: 8px;
       padding: 10px;
       background: rgba(255,255,255,.08);
+    }
+
+    .side-stack .panel .toolbar {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .side-stack .panel .btn {
+      min-height: 36px;
+      padding: 7px 10px;
+      justify-content: center;
     }
 
     .health-list {
@@ -1078,7 +1131,10 @@
       .home-focus-grid,
       .run-compact,
       .run-primary,
+      .run-stat-line,
       .next-list,
+      .weather-action-row,
+      .side-stack .panel .toolbar,
       .stage-row,
       .status-strip,
       .flow-summary,
@@ -1205,25 +1261,25 @@
                   <div class="run-compact">
                     <div class="run-primary">
                       <div>
-                        <div class="run-title">当前水路</div>
-                        <div class="run-zone" id="overviewZone">-</div>
-                        <div class="run-note" id="overviewSource">来源：-</div>
+                        <div class="run-title">当前运行</div>
+                        <div class="run-zone" id="overviewZone">未运行</div>
+                        <div class="run-note" id="overviewSource">没有正在浇水的水路</div>
                       </div>
-                      <div>
+                      <div class="run-progress-block">
                         <div class="run-title">运行进度</div>
                         <div class="progress"><span id="overviewProgress"></span></div>
                         <div class="run-note"><span id="overviewElapsed">0 / 0</span> 分钟</div>
-                      </div>
-                      <div class="run-kpis">
-                        <div class="mini-stat">
-                          <div class="mini-label">累计水量</div>
-                          <div class="mini-value" id="overviewVolume">0.000 升</div>
-                          <div class="mini-note">按流量计估算</div>
-                        </div>
-                        <div class="mini-stat">
-                          <div class="mini-label">实时流速</div>
-                          <div class="mini-value" id="overviewFlow">0.000</div>
-                          <div class="mini-note">升/分钟</div>
+                        <div class="run-stat-line">
+                          <div class="mini-stat">
+                            <div class="mini-label">累计水量</div>
+                            <div class="mini-value" id="overviewVolume">0.000 升</div>
+                            <div class="mini-note">按流量计估算</div>
+                          </div>
+                          <div class="mini-stat">
+                            <div class="mini-label">实时流速</div>
+                            <div class="mini-value" id="overviewFlow">0.000</div>
+                            <div class="mini-note">升/分钟</div>
+                          </div>
                         </div>
                       </div>
                       <div class="toolbar">
@@ -1253,10 +1309,6 @@
                         <div class="flow-summary-item">
                           <div class="flow-summary-label">当前判断</div>
                           <div class="flow-summary-value">最近一次正常</div>
-                        </div>
-                        <div class="flow-summary-item">
-                          <div class="flow-summary-label">采样窗口</div>
-                          <div class="flow-summary-value">最近 12 分钟</div>
                         </div>
                       </div>
                     </div>
@@ -1318,15 +1370,11 @@
                       <div class="weather-detail">预计 0 毫米 · 24-31°C</div>
                     </div>
                   </div>
-                  <div class="weather-row weather-actions">
-                    <div class="weather-cell">
-                      <button class="btn" data-confirm="让今晚 18:30 的自动计划照常执行？只影响本次天气暂停。">本次计划照常执行</button>
-                    </div>
-                    <div class="weather-cell">
-                      <button class="btn" data-confirm="把自动计划暂停延长到后天 08:00？期间到点计划会跳过，不补跑。">延长天气暂停</button>
-                    </div>
-                    <div class="weather-cell">
-                      <button class="btn warn" data-confirm="关闭自动天气暂停？之后设备不会因为天气预报自动暂停计划。">关闭天气自动暂停</button>
+                  <div class="weather-action-bar">
+                    <button class="btn" data-confirm="让今晚 18:30 的自动计划照常执行？只影响本次天气暂停。">本次计划照常执行</button>
+                    <div class="weather-action-row">
+                      <button class="btn" data-confirm="把自动计划暂停延长到后天 08:00？期间到点计划会跳过，不补跑。">延长暂停</button>
+                      <button class="btn warn" data-confirm="关闭自动天气暂停？之后设备不会因为天气预报自动暂停计划。">关闭自动暂停</button>
                     </div>
                   </div>
                 </div>
@@ -2178,8 +2226,8 @@
       document.getElementById("runStateBadge").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("runStateBadge").className = `badge ${state.running ? "good" : "good"}`;
       document.getElementById("overviewProgress").style.width = `${percent}%`;
-      document.getElementById("overviewZone").textContent = state.running && active ? active.name : "-";
-      document.getElementById("overviewSource").textContent = state.running ? `来源：${state.source}` : "来源：-";
+      document.getElementById("overviewZone").textContent = state.running && active ? active.name : "未运行";
+      document.getElementById("overviewSource").textContent = state.running ? `来源：${state.source}` : "没有正在浇水的水路";
       document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
 	      document.getElementById("overviewVolume").textContent = `${formatLiters(state.volumeMl)} 升`;
 	      document.getElementById("overviewFlow").textContent = state.running ? formatLiters(state.flow) : "0.000";
