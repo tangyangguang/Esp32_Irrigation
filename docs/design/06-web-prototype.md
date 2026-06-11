@@ -666,6 +666,8 @@ normalFlowMeasuredAt
 weatherAutoPauseEnabled
 weatherForecastWindowHours
 weatherReviewTimeLocal
+weatherPreRunCheckMin
+weatherCacheMaxAgeHours
 rainProbabilityThresholdPercent
 rainAmountThresholdMm
 windPauseThresholdMps
@@ -678,7 +680,10 @@ lowTemperatureThresholdC
 天气自动暂停只影响自动计划；手动浇水仍可使用。
 触发后到点计划跳过，不补跑。
 weatherReviewTimeLocal 是每天重新获取天气并判断是否恢复的时间，不是某个浇水计划开始时间。
+weatherPreRunCheckMin 是计划开始前复核天气的提前量，默认 60 分钟。
+weatherCacheMaxAgeHours 是天气缓存最大有效时间，默认 6 小时。
 复核时如果天气仍达到阈值，继续设置 disabled_until 到下一次复核。
+天气不可用或缓存过期时，不因为未知天气跳过计划；首页显示“天气不可用”。
 天气策略不会改变每个 Zone 的运行分钟数，也不会按天气增减水量。
 ```
 
@@ -689,6 +694,20 @@ weatherReviewTimeLocal 是每天重新获取天气并判断是否恢复的时间
 暂停到指定复核时间：手工延长 disabled_until。
 关闭天气自动暂停：关闭 weatherAutoPauseEnabled，不再由天气自动暂停计划。
 取消本次天气暂停：清除当前 weather reason 的 disabled_until，但不关闭天气自动暂停设置。
+```
+
+默认策略：
+
+```text
+预报判断窗口：24 小时
+首页展示：今天、明天、后天 3 天摘要
+计划前复核：计划开始前 60 分钟
+每天复核时间：08:00
+降雨触发：
+  预计雨量 >= 5 mm
+  或 降雨概率 >= 70% 且预计雨量 >= 2 mm
+强风触发：默认不启用；启用后默认 10 m/s
+低温触发：默认不启用；启用后默认 3°C
 ```
 
 ### 自动和外设
