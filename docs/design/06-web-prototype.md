@@ -49,7 +49,7 @@ Stop All
 第一阶段本地按键/屏幕操作
 ```
 
-天气能力仅限“天气自动暂停计划”：天气达到阈值时，把自动总控置为 `disabled_until`，到复核时间重新判断是否恢复。它只影响自动计划，不影响手动浇水，不改变每路运行时长。
+天气能力仅限“天气自动暂停计划”：系统定时更新天气，并在自动计划开始前判断是否跳过本次计划。它只影响自动计划，不影响手动浇水，不改变每路运行时长。
 
 需要补齐或在后续实现前明确的缺口：
 
@@ -670,8 +670,6 @@ weatherPreRunCheckMin
 weatherCacheMaxAgeHours
 rainProbabilityThresholdPercent
 rainAmountThresholdMm
-windPauseThresholdMps
-lowTemperatureThresholdC
 ```
 
 提示：
@@ -679,11 +677,12 @@ lowTemperatureThresholdC
 ```text
 天气自动暂停只影响自动计划；手动浇水仍可使用。
 触发后到点计划跳过，不补跑。
-weatherReviewTimeLocal 是每天重新获取天气并判断是否恢复的时间，不是某个浇水计划开始时间。
-weatherPreRunCheckMin 是计划开始前复核天气的提前量，默认 60 分钟。
-weatherCacheMaxAgeHours 是天气缓存最大有效时间，默认 6 小时。
-复核时如果天气仍达到阈值，继续设置 disabled_until 到下一次复核。
-天气不可用或缓存过期时，不因为未知天气跳过计划；首页显示“天气不可用”。
+weatherReviewTimeLocal 是每天刷新天气状态的时间，不是某个浇水计划开始时间，也不代表到点一定恢复浇水。
+weatherPreRunCheckMin 是计划开始前判断天气的提前量，默认 60 分钟。
+weatherForecastWindowHours 是预计降雨判断窗口，默认看未来 24 小时累计降雨。
+weatherCacheMaxAgeHours 是天气数据最大有效时间，默认 6 小时。
+天气不可用或数据过期时，不因为未知天气跳过计划；首页显示“天气不可用”。
+降雨概率和预计降雨量同时达到阈值时，才跳过本次自动计划。
 天气策略不会改变每个 Zone 的运行分钟数，也不会按天气增减水量。
 ```
 
@@ -691,7 +690,7 @@ weatherCacheMaxAgeHours 是天气缓存最大有效时间，默认 6 小时。
 
 ```text
 允许本次计划执行：只覆盖当前这一次天气暂停判断，后续仍按天气自动复核。
-暂停到指定复核时间：手工延长 disabled_until。
+暂停到指定时间：手工延长 disabled_until。
 关闭天气自动暂停：关闭 weatherAutoPauseEnabled，不再由天气自动暂停计划。
 取消本次天气暂停：清除当前 weather reason 的 disabled_until，但不关闭天气自动暂停设置。
 ```
@@ -701,13 +700,17 @@ weatherCacheMaxAgeHours 是天气缓存最大有效时间，默认 6 小时。
 ```text
 预报判断窗口：24 小时
 首页展示：今天、明天、后天 3 天摘要
-计划前复核：计划开始前 60 分钟
-每天复核时间：08:00
-降雨触发：
-  预计雨量 >= 5 mm
-  或 降雨概率 >= 70% 且预计雨量 >= 2 mm
-强风触发：默认不启用；启用后默认 10 m/s
-低温触发：默认不启用；启用后默认 3°C
+计划前天气判断：计划开始前 60 分钟
+每天更新天气时间：08:00
+天气数据有效期：6 小时
+降雨触发：降雨概率 >= 70% 且预计雨量 >= 5 mm
+```
+
+预计雨量来源：
+
+```text
+优先使用天气服务的逐小时预报，累计未来 weatherForecastWindowHours 内的降雨量。
+如果天气服务只提供按天预报，则使用今天/明天摘要近似，页面需标记为“按日预报估算”。
 ```
 
 ### 自动和外设

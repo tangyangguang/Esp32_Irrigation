@@ -1340,7 +1340,7 @@
               <div class="metric">
                 <div class="metric-label">自动浇水</div>
                 <div class="metric-value">天气暂停中</div>
-                <div class="metric-note">明天 08:00 复核天气</div>
+                <div class="metric-note">明天 08:00 更新天气</div>
               </div>
               <div class="metric">
                 <div class="metric-label">下一次计划</div>
@@ -1443,10 +1443,10 @@
                     </div>
                     <div class="next-item">
                       <div>
-                        <div class="next-title">明天 08:00 复核天气</div>
-                        <div class="next-copy">若预报已低于阈值，自动计划恢复；若仍达到阈值，会继续暂停并说明原因。</div>
+                        <div class="next-title">明天 08:00 更新天气</div>
+                        <div class="next-copy">页面会刷新天气状态；下一次自动计划开始前，仍会再判断是否需要跳过。</div>
                       </div>
-                      <span class="badge blue">自动复核</span>
+                      <span class="badge blue">天气更新</span>
                     </div>
                   </div>
                 </div>
@@ -1468,7 +1468,7 @@
                         <div class="weather-impact-item">
                           <div class="weather-label">复核方式</div>
                           <div class="weather-value">计划前 60 分钟</div>
-                          <div class="weather-detail">每天 08:00 也会复核</div>
+                          <div class="weather-detail">每天 08:00 更新天气状态</div>
                         </div>
                       </div>
                     </div>
@@ -1491,7 +1491,7 @@
                     </div>
                   </div>
                   <div class="weather-action-bar">
-                    <button class="btn" data-confirm="允许今晚 18:30 的自动计划执行？只覆盖本次天气暂停判断，之后仍会在计划前按天气复核。">允许今晚计划执行</button>
+                    <button class="btn" data-confirm="允许今晚 18:30 的自动计划执行？只覆盖本次天气判断，之后仍会在计划前按天气判断。">允许今晚计划执行</button>
                     <div class="weather-action-row">
                       <button class="btn" data-confirm="把自动计划暂停到后天 08:00？期间到点计划会跳过，不补跑。">暂停到后天 08:00</button>
                       <button class="btn warn" data-confirm="关闭天气自动暂停计划？之后设备不会因为天气预报自动暂停计划。">关闭天气自动暂停</button>
@@ -1508,7 +1508,7 @@
                       <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启自动浇水</button>
                       <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭自动浇水</button>
                       <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
-                      <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行，但之后仍会按天气设置自动复核。">取消本次天气暂停</button>
+                      <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行，但之后仍会按天气设置判断。">取消本次天气暂停</button>
                     </div>
                     <div class="callout">
                       这里只控制自动计划。手动浇水仍可使用；暂停期间到点计划会跳过，不补跑。
@@ -2013,28 +2013,16 @@
                       <button class="choice active">启用</button>
                       <button class="choice">不启用</button>
                     </div>
-                    <div class="hint">启用后，设备会根据天气预报自动把“自动浇水”暂停到下次复核时间。只影响自动计划，手动浇水仍可使用。</div>
+                    <div class="hint">启用后，自动计划开始前会检查天气；达到降雨阈值时跳过本次计划。只影响自动计划，手动浇水仍可使用。</div>
                   </div>
-                  <div class="field"><label>计划前复核时间（分钟）</label><input value="60"><div class="hint">自动计划开始前提前多久重新检查天气。达到阈值时跳过本次计划。</div></div>
-                  <div class="field"><label>每天兜底复核时间（HH:MM）</label><input value="08:00"><div class="hint">没有计划触发时，也在每天这个时间更新天气状态。</div></div>
-                  <div class="field"><label>预报判断范围（小时）</label><input value="24"><div class="hint">系统查看未来多少小时内的降雨、风和低温风险。</div></div>
-                  <div class="field"><label>天气缓存有效期（小时）</label><input value="6"><div class="hint">超过该时间还没有新天气时，只提示天气不可用，不因为未知天气跳过计划。</div></div>
-                  <div class="field"><label>降雨概率阈值（%）</label><input value="70"><div class="hint">预报判断范围内达到该概率，且预计雨量达到 2 毫米时，可触发天气暂停。</div></div>
-                  <div class="field"><label>预计降雨量阈值（毫米）</label><input value="5"><div class="hint">预报判断范围内累计雨量达到或超过该值时，可触发天气暂停。</div></div>
+                  <div class="field"><label>计划前天气判断（分钟）</label><input value="60"><div class="hint">自动计划开始前提前多久更新天气并判断是否跳过。</div></div>
+                  <div class="field"><label>每天更新天气时间（HH:MM）</label><input value="08:00"><div class="hint">用于刷新首页天气状态，不代表到这个时间一定恢复浇水。</div></div>
+                  <div class="field"><label>预报判断范围（小时）</label><input value="24"><div class="hint">判断未来 24 小时内的累计预计降雨。优先使用逐小时预报累计；如果天气服务只提供按天预报，则使用今天/明天摘要近似。</div></div>
+                  <div class="field"><label>天气数据有效期（小时）</label><input value="6"><div class="hint">超过该时间还没有新天气时，显示“天气不可用”，但不会因为未知天气跳过计划。</div></div>
+                  <div class="field"><label>降雨概率阈值（%）</label><input value="70"><div class="hint">与预计降雨量阈值同时达到时，才跳过本次自动计划。</div></div>
+                  <div class="field"><label>预计降雨量阈值（毫米）</label><input value="5"><div class="hint">未来判断范围内累计预计降雨达到该值，并且降雨概率也达到阈值时，才跳过本次自动计划。</div></div>
                 </div>
-                <details class="inline-advanced">
-                  <summary>
-                    <strong>高级天气保护</strong>
-                    <span class="hint">强风和低温，通常保持默认</span>
-                  </summary>
-                  <div class="inline-body">
-                    <div class="form-grid">
-                      <div class="field"><label>强风暂停阈值（米/秒）</label><input placeholder="留空不启用"><div class="hint">风太大时喷洒容易飘散；需要启用时建议从 10 米/秒开始。</div></div>
-                      <div class="field"><label>低温暂停阈值（°C）</label><input placeholder="留空不启用"><div class="hint">低温风险地区可启用；需要启用时建议从 3°C 开始。</div></div>
-                    </div>
-                  </div>
-                </details>
-                <div class="callout warn">天气自动暂停是自动计划开始前的一道检查。达到阈值时，本次计划跳过，不补跑；它不会改变每路浇水时长，也不会按天气自动增减水量。</div>
+                <div class="callout warn">天气自动暂停只判断降雨：降雨概率和预计降雨量同时达到阈值时，本次自动计划跳过，不补跑；它不会改变每路浇水时长，也不会按天气自动增减水量。</div>
               </div>
             </div>
 
