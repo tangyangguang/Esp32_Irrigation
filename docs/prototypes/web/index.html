@@ -555,6 +555,98 @@
       background: #f1faf5;
     }
 
+    .status-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .status-item {
+      border: 1px solid var(--line);
+      background: #fff;
+      border-radius: 8px;
+      padding: 12px;
+      min-height: 82px;
+    }
+
+    .status-item strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+    }
+
+    .status-item span {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .step {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      background: #fff;
+      display: grid;
+      grid-template-columns: 28px minmax(0, 1fr);
+      gap: 10px;
+      align-items: start;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 750;
+      font-size: 13px;
+    }
+
+    .step-title {
+      font-weight: 700;
+      margin-bottom: 4px;
+      font-size: 13px;
+    }
+
+    .step-copy {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    details.panel {
+      display: block;
+    }
+
+    details.panel > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 15px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      background: #fbfcfb;
+    }
+
+    details.panel > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .summary-chevron {
+      color: var(--muted);
+      font-size: 18px;
+    }
+
     .split {
       display: grid;
       grid-template-columns: 1.1fr .9fr;
@@ -668,6 +760,8 @@
       .grid.cols-2,
       .grid.cols-3,
       .insight-grid,
+      .status-strip,
+      .stepper,
       .split,
       .form-grid,
       .schedule-grid,
@@ -768,6 +862,35 @@
                 <div class="metric-label">故障摘要</div>
                 <div class="metric-value">1</div>
                 <div class="metric-note">第 4 路高流量锁定</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header">
+                <div>
+                  <h2 class="panel-title">今日重点</h2>
+                  <p class="panel-subtitle">把成熟控制器首页的高频信息集中到一屏：当前、天气暂停、下一次计划、故障处理</p>
+                </div>
+              </div>
+              <div class="panel-body">
+                <div class="status-strip">
+                  <div class="status-item">
+                    <strong>今晚计划会跳过</strong>
+                    <span>18:30「晨晚浇水」因天气暂停跳过，不补跑。</span>
+                  </div>
+                  <div class="status-item">
+                    <strong>明天自动恢复</strong>
+                    <span>天气暂停到明天 08:00，到期后自动浇水恢复开启。</span>
+                  </div>
+                  <div class="status-item">
+                    <strong>手动仍可使用</strong>
+                    <span>如果现场确实需要补水，可以手动顺序浇水。</span>
+                  </div>
+                  <div class="status-item">
+                    <strong>第 4 路待处理</strong>
+                    <span>高流量锁定未清除，计划和手动都会跳过。</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -957,6 +1080,8 @@
                 <div class="hint">手动顺序浇水只显示已启用且未锁定的水路；每一路范围 0..360 分钟，0 表示本次跳过。运行时仍然一次只打开一路。</div>
                 <div class="callout good">流量计已校准：每升 450 个脉冲。低液位保护已启用，当前水位正常。</div>
                 <div class="toolbar">
+                  <button class="btn" data-confirm="从「晨晚浇水」载入各水路时长？你仍可在启动前修改。">从常用计划载入</button>
+                  <button class="btn" data-confirm="清空本次手动顺序浇水的所有时长？">全部设为 0</button>
                   <button class="btn primary" id="startRun">开始顺序浇水</button>
                   <button class="btn danger" id="stopRun" disabled>停止当前运行</button>
                 </div>
@@ -1135,6 +1260,24 @@
                   <span class="badge good">已校准</span>
                 </div>
                 <div class="panel-body stack">
+                  <div class="stepper">
+                    <div class="step">
+                      <div class="step-num">1</div>
+                      <div><div class="step-title">选择放水通道</div><div class="step-copy">选一条出水稳定、方便接水的水路。</div></div>
+                    </div>
+                    <div class="step">
+                      <div class="step-num">2</div>
+                      <div><div class="step-title">接水并停止</div><div class="step-copy">用量桶接水，达到足够水量后停止。</div></div>
+                    </div>
+                    <div class="step">
+                      <div class="step-num">3</div>
+                      <div><div class="step-title">输入实际水量</div><div class="step-copy">输入量桶读数，设备计算每升脉冲数。</div></div>
+                    </div>
+                    <div class="step">
+                      <div class="step-num">4</div>
+                      <div><div class="step-title">确认保存</div><div class="step-copy">检查样本偏差，再应用到全局流量计。</div></div>
+                    </div>
+                  </div>
                   <div class="metric-row">
                     <div class="metric"><div class="metric-label">每升脉冲数</div><div class="metric-value">450</div><div class="metric-note">脉冲/升</div></div>
                     <div class="metric"><div class="metric-label">校准时间</div><div class="metric-value">06-10</div><div class="metric-note">3 个样本</div></div>
@@ -1251,8 +1394,14 @@
               </div>
             </div>
 
-            <div class="panel">
-              <div class="panel-header"><h2 class="panel-title">流量检测参数</h2></div>
+            <details class="panel">
+              <summary>
+                <div>
+                  <h2 class="panel-title">高级：流量检测参数</h2>
+                  <p class="panel-subtitle">通常保持默认值；只有排查误报或现场调试时才需要修改</p>
+                </div>
+                <span class="summary-chevron">⌄</span>
+              </summary>
               <div class="panel-body">
                 <div class="form-grid">
                   <div class="field"><label>流速采样窗口</label><input value="5"><div class="hint">单位：秒。用最近这段时间的脉冲计算实时流速。</div></div>
@@ -1264,10 +1413,16 @@
                   <div class="field"><label>待机漏水确认时间</label><input value="30"><div class="hint">单位：秒。空闲时连续检测到流量多久后锁定设备。</div></div>
                 </div>
               </div>
-            </div>
+            </details>
 
-            <div class="panel">
-              <div class="panel-header"><h2 class="panel-title">阀门保持参数</h2></div>
+            <details class="panel">
+              <summary>
+                <div>
+                  <h2 class="panel-title">高级：阀门保持参数</h2>
+                  <p class="panel-subtitle">会影响阀门吸合、发热和噪声，修改后需要实机验证</p>
+                </div>
+                <span class="summary-chevron">⌄</span>
+              </summary>
               <div class="panel-body stack">
                 <div class="form-grid">
                   <div class="field"><label>阀门全功率吸合时间</label><input value="3000"><div class="hint">单位：毫秒。阀门刚打开时保持全功率的时间。</div></div>
@@ -1277,7 +1432,7 @@
                 <div class="callout danger">阀门保持功率比例设为 100，表示不降低保持功率。修改阀门参数需要实机验证。</div>
                 <button class="btn primary" data-confirm="保存系统设置？阀门参数将在下一次运行生效。">保存设置</button>
               </div>
-            </div>
+            </details>
           </div>
         </section>
 
