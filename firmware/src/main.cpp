@@ -49,7 +49,7 @@ void setup() {
 
     Esp32Base::setFirmwareInfo("esp32-irrigation", "0.1.0");
 #if ESP32BASE_ENABLE_WEB
-    Esp32BaseWeb::setDefaultAuth("admin", "irrigation");
+    Esp32BaseWeb::setDefaultAuth("admin", "admin");
     Esp32BaseWeb::setDeviceName("ESP32 Irrigation");
     Esp32BaseWeb::setHomePath("/");
 #endif

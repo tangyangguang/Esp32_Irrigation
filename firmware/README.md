@@ -48,7 +48,7 @@ pio run -t webota
 
 ```text
 user = admin
-password = irrigation
+password = admin
 ```
 
 设备 IP 以串口启动日志或 `/esp32base` 状态页显示为准。
