@@ -103,7 +103,11 @@ public:
 
     static IrrigationConfigSnapshot makeDefaultSnapshot();
 
+    bool saveSnapshot(const IrrigationConfigSnapshot& snapshot);
+
 private:
+    void loadPersistedSnapshot();
+
     IrrigationConfigSnapshot _snapshot = {};
     bool _ready = false;
 };

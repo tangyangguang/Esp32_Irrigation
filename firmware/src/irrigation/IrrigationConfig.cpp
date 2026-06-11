@@ -1,5 +1,6 @@
 #include "IrrigationConfig.h"
 
+#include <Esp32Base.h>
 #include <stdio.h>
 
 namespace irrigation {
@@ -7,6 +8,23 @@ namespace irrigation {
 namespace {
 
 constexpr uint16_t kConfigVersion = 1;
+constexpr const char* kConfigKey = "data";
+
+struct ZoneConfigStore {
+    uint16_t version;
+    ZoneConfig zones[kMaxZones];
+};
+
+struct PlanGroupConfigStore {
+    uint16_t version;
+    PlanGroupConfig plans[kMaxPlanGroups];
+};
+
+static_assert(sizeof(SystemConfig) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN, "SystemConfig is too large for Esp32BaseConfig");
+static_assert(sizeof(ZoneConfigStore) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN, "ZoneConfigStore is too large for Esp32BaseConfig");
+static_assert(sizeof(PlanGroupConfigStore) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN, "PlanGroupConfigStore is too large for Esp32BaseConfig");
+static_assert(sizeof(FlowValveConfig) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN, "FlowValveConfig is too large for Esp32BaseConfig");
+static_assert(sizeof(FaultPolicyConfig) <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN, "FaultPolicyConfig is too large for Esp32BaseConfig");
 
 void setName(char* out, size_t len, const char* prefix, uint8_t id) {
     if (!out || len == 0) {
@@ -16,10 +34,52 @@ void setName(char* out, size_t len, const char* prefix, uint8_t id) {
     out[len - 1] = '\0';
 }
 
+template <typename T>
+bool loadVersionedPod(const char* ns, const char* key, T& out, const T& fallback) {
+    T loaded = fallback;
+    if (!Esp32BaseConfig::getPod(ns, key, loaded, fallback) || loaded.version != fallback.version) {
+        out = fallback;
+        return false;
+    }
+    out = loaded;
+    return true;
+}
+
+ZoneConfigStore makeZoneStore(const IrrigationConfigSnapshot& snapshot) {
+    ZoneConfigStore store = {};
+    store.version = kConfigVersion;
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        store.zones[i] = snapshot.zones[i];
+    }
+    return store;
+}
+
+PlanGroupConfigStore makePlanStore(const IrrigationConfigSnapshot& snapshot) {
+    PlanGroupConfigStore store = {};
+    store.version = kConfigVersion;
+    for (uint8_t i = 0; i < kMaxPlanGroups; ++i) {
+        store.plans[i] = snapshot.plans[i];
+    }
+    return store;
+}
+
+void applyZoneStore(IrrigationConfigSnapshot& snapshot, const ZoneConfigStore& store) {
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        snapshot.zones[i] = store.zones[i];
+    }
+}
+
+void applyPlanStore(IrrigationConfigSnapshot& snapshot, const PlanGroupConfigStore& store) {
+    for (uint8_t i = 0; i < kMaxPlanGroups; ++i) {
+        snapshot.plans[i] = store.plans[i];
+    }
+}
+
 }  // namespace
 
 bool IrrigationConfig::begin() {
     _snapshot = makeDefaultSnapshot();
+    loadPersistedSnapshot();
     _ready = true;
     return _ready;
 }
@@ -29,6 +89,45 @@ void IrrigationConfig::handle() {
 
 const IrrigationConfigSnapshot& IrrigationConfig::snapshot() const {
     return _snapshot;
+}
+
+bool IrrigationConfig::saveSnapshot(const IrrigationConfigSnapshot& snapshot) {
+    const ZoneConfigStore zoneStore = makeZoneStore(snapshot);
+    const PlanGroupConfigStore planStore = makePlanStore(snapshot);
+
+    bool ok = true;
+    ok = Esp32BaseConfig::setPod(kNamespaceSystem, kConfigKey, snapshot.system) && ok;
+    ok = Esp32BaseConfig::setPod(kNamespaceZone, kConfigKey, zoneStore) && ok;
+    ok = Esp32BaseConfig::setPod(kNamespacePlan, kConfigKey, planStore) && ok;
+    ok = Esp32BaseConfig::setPod(kNamespaceFlow, kConfigKey, snapshot.flowValve) && ok;
+    ok = Esp32BaseConfig::setPod(kNamespaceFault, kConfigKey, snapshot.faultPolicy) && ok;
+
+    if (ok) {
+        _snapshot = snapshot;
+    }
+    return ok;
+}
+
+void IrrigationConfig::loadPersistedSnapshot() {
+    const IrrigationConfigSnapshot defaults = makeDefaultSnapshot();
+
+    loadVersionedPod(kNamespaceSystem, kConfigKey, _snapshot.system, defaults.system);
+    loadVersionedPod(kNamespaceFlow, kConfigKey, _snapshot.flowValve, defaults.flowValve);
+    loadVersionedPod(kNamespaceFault, kConfigKey, _snapshot.faultPolicy, defaults.faultPolicy);
+
+    ZoneConfigStore zoneStore = makeZoneStore(defaults);
+    if (loadVersionedPod(kNamespaceZone, kConfigKey, zoneStore, makeZoneStore(defaults))) {
+        applyZoneStore(_snapshot, zoneStore);
+    } else {
+        applyZoneStore(_snapshot, makeZoneStore(defaults));
+    }
+
+    PlanGroupConfigStore planStore = makePlanStore(defaults);
+    if (loadVersionedPod(kNamespacePlan, kConfigKey, planStore, makePlanStore(defaults))) {
+        applyPlanStore(_snapshot, planStore);
+    } else {
+        applyPlanStore(_snapshot, makePlanStore(defaults));
+    }
 }
 
 IrrigationConfigSnapshot IrrigationConfig::makeDefaultSnapshot() {
