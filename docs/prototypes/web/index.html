@@ -442,13 +442,42 @@
     .chart-meta {
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 10px;
       padding: 10px 12px;
       border-top: 1px solid rgba(130, 154, 158, .32);
       color: var(--muted);
       font-size: 12px;
       background: rgba(255,255,255,.72);
+    }
+
+    .flow-summary {
+      border-top: 1px solid var(--line);
+      padding: 12px;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+      background: #fbfcfb;
+    }
+
+    .flow-summary-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 10px;
+      min-height: 68px;
+    }
+
+    .flow-summary-label {
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 6px;
+    }
+
+    .flow-summary-value {
+      font-weight: 750;
+      font-size: 15px;
+      line-height: 1.25;
     }
 
     .legend {
@@ -589,7 +618,7 @@
 
     .status-strip {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 10px;
     }
 
@@ -815,6 +844,7 @@
       .grid.cols-3,
       .insight-grid,
       .status-strip,
+      .flow-summary,
       .stepper,
       .split,
       .form-grid,
@@ -933,21 +963,42 @@
                   </div>
                   <span class="badge blue" id="flowQualityBadge">最近一次正常</span>
                 </div>
-                <div class="panel-body">
-                  <div class="chart-wrap">
-                    <canvas class="chart-canvas" id="overviewFlowChart" width="900" height="330"></canvas>
-                    <div class="chart-meta">
-                      <div class="legend">
-                        <span class="legend-item"><span class="legend-line"></span>实时流速</span>
-                        <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
-                        <span class="legend-item"><span class="legend-line low"></span>低流量提醒线</span>
-                        <span class="legend-item"><span class="legend-line high"></span>高流量停机线</span>
-                      </div>
-                      <span>单位：升/分钟 · 横轴：时间</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
+	                <div class="panel-body">
+	                  <div class="chart-wrap">
+	                    <canvas class="chart-canvas" id="overviewFlowChart" width="900" height="330"></canvas>
+	                    <div class="chart-meta">
+	                      <div class="legend">
+	                        <span class="legend-item"><span class="legend-line"></span>实时流速</span>
+	                        <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
+	                        <span class="legend-item"><span class="legend-line low"></span>低流量提醒线</span>
+	                        <span class="legend-item"><span class="legend-line high"></span>高流量停机线</span>
+	                      </div>
+	                    </div>
+	                    <div class="flow-summary">
+	                      <div class="flow-summary-item">
+	                        <div class="flow-summary-label">最近运行水路</div>
+	                        <div class="flow-summary-value">第 1 路 前院滴灌</div>
+	                      </div>
+	                      <div class="flow-summary-item">
+	                        <div class="flow-summary-label">标准流速</div>
+	                        <div class="flow-summary-value">0.520 升/分钟</div>
+	                      </div>
+	                      <div class="flow-summary-item">
+	                        <div class="flow-summary-label">平均流速</div>
+	                        <div class="flow-summary-value">0.516 升/分钟</div>
+	                      </div>
+	                      <div class="flow-summary-item">
+	                        <div class="flow-summary-label">最高流速</div>
+	                        <div class="flow-summary-value">0.556 升/分钟</div>
+	                      </div>
+	                      <div class="flow-summary-item">
+	                        <div class="flow-summary-label">累计水量</div>
+	                        <div class="flow-summary-value">5.800 升</div>
+	                      </div>
+	                    </div>
+	                  </div>
+	                </div>
+	              </div>
 
               <div class="weather-card">
                 <div class="weather-main">
@@ -989,14 +1040,39 @@
                   </div>
                 </div>
               </div>
-            </div>
+	            </div>
 
-            <div class="panel">
-              <div class="panel-header">
-                <div>
-                  <h2 class="panel-title">当前运行</h2>
-                  <p class="panel-subtitle">总览和手动页共用同一份运行状态；来源会显示为手动顺序浇水或自动计划</p>
-                </div>
+	            <div class="panel">
+	              <div class="panel-header">
+	                <div>
+	                  <h2 class="panel-title">设备状态</h2>
+	                  <p class="panel-subtitle">只显示当前设备已启用或必配的硬件状态</p>
+	                </div>
+	              </div>
+	              <div class="panel-body">
+	                <div class="status-strip">
+	                  <div class="status-item">
+	                    <strong>流量计正常</strong>
+	                    <span>已检测到稳定脉冲，当前校准值为每升 450 个脉冲。</span>
+	                  </div>
+	                  <div class="status-item">
+	                    <strong>水源液位正常</strong>
+	                    <span>低液位保护已启用，当前没有低液位停机风险。</span>
+	                  </div>
+	                  <div class="status-item">
+	                    <strong>阀门输出正常</strong>
+	                    <span>当前没有水路正在运行，所有阀门处于关闭状态。</span>
+	                  </div>
+	                </div>
+	              </div>
+	            </div>
+
+	            <div class="panel">
+	              <div class="panel-header">
+	                <div>
+	                  <h2 class="panel-title">当前运行</h2>
+	                  <p class="panel-subtitle">总览和手动页共用同一份运行状态；来源会显示为手动顺序浇水或自动计划</p>
+	                </div>
                 <span class="badge good" id="runStateBadge">空闲</span>
               </div>
               <div class="panel-body stack">
@@ -1117,18 +1193,17 @@
                   <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value" id="manualFlow">0.000</div><div class="metric-note">升/分钟；标准 0.520</div></div>
                 </div>
                 <div class="callout" id="manualStepText">当前没有手动浇水任务。开始后这里会显示正在运行的水路和剩余队列。</div>
-                <div class="chart-wrap">
-                  <canvas class="chart-canvas" id="manualFlowChart" width="720" height="260"></canvas>
-                  <div class="chart-meta">
-                    <div class="legend">
-                      <span class="legend-item"><span class="legend-line"></span>当前水路流速</span>
-                      <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
-                      <span class="legend-item"><span class="legend-line low"></span>偏低提醒</span>
-                      <span class="legend-item"><span class="legend-line high"></span>偏高停机</span>
-                    </div>
-                    <span>单位：升/分钟 · 最近 12 分钟</span>
-                  </div>
-                </div>
+	                <div class="chart-wrap">
+	                  <canvas class="chart-canvas" id="manualFlowChart" width="720" height="260"></canvas>
+	                  <div class="chart-meta">
+	                    <div class="legend">
+	                      <span class="legend-item"><span class="legend-line"></span>当前水路流速</span>
+	                      <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
+	                      <span class="legend-item"><span class="legend-line low"></span>偏低提醒</span>
+	                      <span class="legend-item"><span class="legend-line high"></span>偏高停机</span>
+	                    </div>
+	                  </div>
+	                </div>
                 <div class="callout">停止当前运行会关闭泵和当前水路；如果来源是自动计划，会取消剩余水路并清空等待队列。</div>
               </div>
             </div>
