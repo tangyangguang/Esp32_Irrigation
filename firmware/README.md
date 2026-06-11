@@ -2,7 +2,7 @@
 
 本目录是 ESP32 灌溉控制器的新固件工程，使用 PlatformIO + Arduino framework。
 
-当前阶段只建立基础环境和应用层骨架：
+当前阶段已建立基础环境和应用层基础骨架：
 
 ```text
 platformio.ini
@@ -12,7 +12,8 @@ src/main.cpp
   固件入口，初始化 Esp32Base 和 IrrigationApp，并进入 loop。
 
 src/irrigation/
-  灌溉业务模块 stub。当前只定义职责边界、初始化顺序和集中默认值。
+  灌溉业务模块。当前已有配置快照、推荐引脚、流量脉冲计数、基础 Runtime 控制门、
+  记录结构、事件封装和只读状态 API。
 
 src/irrigation/IrrigationPinMap.h
   推荐 ESP32 引脚对应关系。PCB 定稿后优先只改这里。
@@ -21,7 +22,6 @@ src/irrigation/IrrigationPinMap.h
 当前明确不实现：
 
 ```text
-GPIO/PWM 实际控制
 完整运行状态机
 计划调度行为
 流量异常判断
@@ -33,6 +33,12 @@ GPIO/PWM 实际控制
 
 ```bash
 pio run
+```
+
+native 单元测试：
+
+```bash
+pio test -e native_records
 ```
 
 串口烧录：
@@ -55,3 +61,15 @@ password = admin
 ```
 
 设备 IP 以串口启动日志或 `/esp32base` 状态页显示为准。
+
+当前已实现的业务 API：
+
+```text
+GET /api/status
+```
+
+示例：
+
+```bash
+curl -u admin:admin http://192.168.2.222/api/status
+```
