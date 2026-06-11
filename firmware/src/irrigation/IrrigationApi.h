@@ -19,6 +19,8 @@ public:
 
     bool ready() const;
 
+    void sendStatusJson() const;
+
 private:
     IrrigationConfig* _config = nullptr;
     IrrigationRuntime* _runtime = nullptr;

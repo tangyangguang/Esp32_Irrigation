@@ -91,6 +91,18 @@ const IrrigationConfigSnapshot& IrrigationConfig::snapshot() const {
     return _snapshot;
 }
 
+const char* IrrigationConfig::autoModeKey(AutoMode mode) {
+    switch (mode) {
+        case AutoMode::Enabled:
+            return "enabled";
+        case AutoMode::DisabledUntil:
+            return "disabled_until";
+        case AutoMode::Disabled:
+        default:
+            return "disabled";
+    }
+}
+
 bool IrrigationConfig::saveSnapshot(const IrrigationConfigSnapshot& snapshot) {
     const ZoneConfigStore zoneStore = makeZoneStore(snapshot);
     const PlanGroupConfigStore planStore = makePlanStore(snapshot);

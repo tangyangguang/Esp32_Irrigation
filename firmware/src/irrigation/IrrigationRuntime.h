@@ -65,6 +65,7 @@ public:
     bool startManualZone(uint8_t zoneId, uint16_t durationMin, IrrigationStartResult* result = nullptr);
     bool stopCurrent(IrrigationStopReason reason);
 
+    static const char* runStateKey(IrrigationRunState state);
     static const char* startResultReason(IrrigationStartResult result);
 
 private:

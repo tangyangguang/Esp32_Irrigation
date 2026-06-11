@@ -135,6 +135,27 @@ bool IrrigationRuntime::stopCurrent(IrrigationStopReason reason) {
     return true;
 }
 
+const char* IrrigationRuntime::runStateKey(IrrigationRunState state) {
+    switch (state) {
+        case IrrigationRunState::Idle:
+            return "idle";
+        case IrrigationRunState::Starting:
+            return "starting";
+        case IrrigationRunState::WaitingForFirstPulse:
+            return "waiting_for_first_pulse";
+        case IrrigationRunState::FlowStabilizing:
+            return "flow_stabilizing";
+        case IrrigationRunState::Running:
+            return "running";
+        case IrrigationRunState::Stopping:
+            return "stopping";
+        case IrrigationRunState::FaultStopping:
+            return "fault_stopping";
+        default:
+            return "unknown";
+    }
+}
+
 const char* IrrigationRuntime::startResultReason(IrrigationStartResult result) {
     switch (result) {
         case IrrigationStartResult::Started:

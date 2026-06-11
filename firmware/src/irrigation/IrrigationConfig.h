@@ -102,6 +102,7 @@ public:
     const IrrigationConfigSnapshot& snapshot() const;
 
     static IrrigationConfigSnapshot makeDefaultSnapshot();
+    static const char* autoModeKey(AutoMode mode);
 
     bool saveSnapshot(const IrrigationConfigSnapshot& snapshot);
 
