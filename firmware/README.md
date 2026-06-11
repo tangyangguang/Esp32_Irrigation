@@ -13,6 +13,9 @@ src/main.cpp
 
 src/irrigation/
   灌溉业务模块 stub。当前只定义职责边界、初始化顺序和集中默认值。
+
+src/irrigation/IrrigationPinMap.h
+  推荐 ESP32 引脚对应关系。PCB 定稿后优先只改这里。
 ```
 
 当前明确不实现：

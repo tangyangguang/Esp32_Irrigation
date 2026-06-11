@@ -20,4 +20,8 @@ bool IrrigationHardware::ready() const {
     return _ready;
 }
 
+const IrrigationPinMap& IrrigationHardware::pinMap() const {
+    return _pinMap;
+}
+
 }  // namespace irrigation

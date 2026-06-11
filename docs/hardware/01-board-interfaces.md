@@ -16,6 +16,47 @@ ESP32 主控
 
 硬件实现细节如 MOS 管型号、续流/钳位、EMI、保险、端子、布线和散热，属于电路板设计范畴，不在本软件方案中深入设计。
 
+## 推荐 ESP32 引脚对应表
+
+当前推荐表面向 classic ESP32 Dev Module / ESP32-D0WD 系列早期开发和 PCB 初版走线。它不是最终 PCB 定稿；后续如果 PCB 引脚变化，固件优先只修改 `firmware/src/irrigation/IrrigationPinMap.h`。
+
+设计依据：
+
+```text
+1. 避开 GPIO6..11：这些脚通常连接外部 SPI Flash，不作为业务 IO。
+2. 避开下载串口 GPIO1/GPIO3：保留串口烧录和启动日志。
+3. 避开启动绑带脚 GPIO0/GPIO2/GPIO4/GPIO5/GPIO12/GPIO15：避免外部负载影响启动模式。
+4. GPIO34..39 只作为输入；不能用于阀门、泵等输出。
+5. 阀门保持 PWM 使用 ESP32 LEDC；输出脚选择普通输出 GPIO，后续可统一接 LEDC 通道。
+6. FLOW_IN 和 LOW_LEVEL_IN 使用输入专用脚时，PCB 必须提供外部上拉/滤波，不能依赖内部上拉。
+```
+
+推荐引脚：
+
+| 软件信号 | 推荐 GPIO | 方向 | 默认电气语义 | 说明 |
+| --- | ---: | --- | --- | --- |
+| `FLOW_IN` | GPIO34 | 输入 | 脉冲输入，高/低按流量计输出定义 | 输入专用脚；建议外部上拉到 3.3V，并做必要限流/滤波/电平保护。 |
+| `LOW_LEVEL_IN` | GPIO35 | 输入 | 低液位或断线为高电平 | 输入专用脚；按常闭浮球到 GND 设计，PCB 外部上拉到 3.3V。 |
+| `VALVE_OUT_1` | GPIO25 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 1 默认启用。 |
+| `VALVE_OUT_2` | GPIO26 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 2 默认禁用。 |
+| `VALVE_OUT_3` | GPIO27 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 3 默认禁用。 |
+| `VALVE_OUT_4` | GPIO14 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 4 默认禁用。 |
+| `VALVE_OUT_5` | GPIO13 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 5 默认禁用。 |
+| `VALVE_OUT_6` | GPIO23 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 6 默认禁用。 |
+| `PUMP_START_OUT` | GPIO32 | 输出 | 高电平表示启动外部泵控制模块 | 可选，默认配置关闭。 |
+
+暂时保留：
+
+```text
+GPIO16 / GPIO17：可作为后续本地 UI、扩展输出或调试 IO。
+GPIO18 / GPIO19：优先保留给可能的 SPI 扩展。
+GPIO21 / GPIO22：优先保留给后续 I2C 屏幕或扩展。
+GPIO33：备用输出或输入。
+GPIO36 / GPIO39：备用输入；同样需要外部上拉/下拉。
+```
+
+如果最终 PCB IO 紧张，可以重新评估 GPIO16、17、18、19、21、22、33 的用途。不要优先占用 Flash、下载串口和启动绑带脚。
+
 ## 12V DC 电磁阀输出
 
 软件假设电磁阀类型固定为：

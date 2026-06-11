@@ -1,5 +1,7 @@
 #pragma once
 
+#include "IrrigationPinMap.h"
+
 namespace irrigation {
 
 class IrrigationConfig;
@@ -13,8 +15,10 @@ public:
     void closeAllOutputs();
 
     bool ready() const;
+    const IrrigationPinMap& pinMap() const;
 
 private:
+    IrrigationPinMap _pinMap = kRecommendedPinMap;
     bool _ready = false;
 };
 
