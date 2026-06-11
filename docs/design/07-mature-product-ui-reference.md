@@ -58,9 +58,15 @@ https://support.rachio.com/en_us/rachio-irrigation-schedule-overview-HJrFP8yYD
 Rachio Flow Meter Settings, Calibration, and Flow Alerts
 https://support.rachio.com/en_us/flow-meter-settings-calibration-and-flow-alerts-HyaxZc04x
 
+Rachio Weather Intelligence
+https://support.rachio.com/en_us/rachio-weather-intelligence-B153wIJKD
+
 Hydrawise downloads and flow meter documentation
 https://www.hydrawise.com/content/downloads
 https://www.hunterirrigation.com/support/hydrawise-app-custom-sensormeter
+
+Hydrawise dashboard/weather example
+https://www.hydrawise.com/content/use-water-wisely
 ```
 
 ## 共性设计模式
@@ -200,6 +206,46 @@ B-hyve 和 Rachio 都有天气驱动或天气延迟能力。它们会把 weather
 
 当前原型应从“天气参考”升级为“天气暂停”，但仍不能扩展到智能天气浇水或按天气调节水量。
 
+首页天气展示粒度：
+
+```text
+首页展示未来 3 天摘要：
+  今天
+  明天
+  后天
+  每天展示降雨概率和预计雨量
+
+天气暂停判断使用未来 48 小时窗口：
+  降雨概率阈值
+  预计降雨量阈值
+
+更长周期天气预报不放首页：
+  避免挤占当前运行、下一次计划和流速趋势
+  后续如需要，可放入天气详情页或外部天气服务说明
+```
+
+依据：
+
+```text
+Hydrawise 的仪表盘示例突出当前天气、本地降雨和 3 天预报。
+Rachio Weather Intelligence 的雨跳过规则围绕未来窗口内的降雨阈值判断。
+B-hyve WeatherSense 把降雨、强风、低温作为可调天气延迟条件。
+```
+
+因此，本项目原型采用：
+
+```text
+首页：
+  未来 3 天天气摘要
+  当前天气暂停原因
+  影响的下一次计划
+  恢复时间
+
+设置页：
+  常用项只保留降雨概率、预计雨量、恢复时间
+  强风和低温放入“高级天气保护”
+```
+
 ### 6. Zone / 水路管理应是列表摘要 + 单项详情
 
 成熟产品一般把 zone 作为一个可命名对象，详情页包含植物、土壤、喷头、智能参数或启用状态等。Rachio 的 zone setup 会收集 plant type、soil、sun exposure、sprinkler type 等，用于智能计划。
@@ -320,7 +366,8 @@ Rachio 有 flow meter settings、calibration、flow alerts。Hydrawise 资料中
 
 ```text
 总览：
-  当前运行、下一次计划、自动总控、天气参考、故障摘要、快捷入口
+  当前运行、下一次计划、自动总控、未来 3 天天气摘要、流速趋势、最近浇水
+  故障/锁定只在存在时以醒目横幅提醒，不占常态固定卡片
 
 手动：
   手动顺序浇水，按水路填写分钟数，0 跳过，二次确认启动
