@@ -476,6 +476,10 @@
       background: #d79a28;
     }
 
+    .legend-line.ref {
+      background: #2268a8;
+    }
+
     .legend-line.high {
       background: #b52727;
     }
@@ -509,13 +513,26 @@
       border-top: 1px solid rgba(255,255,255,.16);
     }
 
+    .weather-row.weather-actions {
+      grid-template-columns: 1fr;
+    }
+
     .weather-cell {
       padding: 12px;
       border-right: 1px solid rgba(255,255,255,.16);
     }
 
+    .weather-actions .weather-cell {
+      border-right: 0;
+      border-bottom: 1px solid rgba(255,255,255,.16);
+    }
+
     .weather-cell:last-child {
       border-right: 0;
+    }
+
+    .weather-actions .weather-cell:last-child {
+      border-bottom: 0;
     }
 
     .weather-card .btn {
@@ -897,7 +914,7 @@
               </div>
               <div class="metric">
                 <div class="metric-label">今日水量</div>
-                <div class="metric-value">18.6 升</div>
+                <div class="metric-value">18.600 升</div>
                 <div class="metric-note">3 次完成，42 分钟</div>
               </div>
             </div>
@@ -912,7 +929,7 @@
                 <div class="panel-header">
                   <div>
                     <h2 class="panel-title">最近流速趋势</h2>
-                    <p class="panel-subtitle">展示最近一次运行的水流变化；运行中会实时更新</p>
+                    <p class="panel-subtitle">展示最近一次运行的水流变化；当前水路标准流速 0.520 升/分钟</p>
                   </div>
                   <span class="badge blue" id="flowQualityBadge">最近一次正常</span>
                 </div>
@@ -922,10 +939,11 @@
                     <div class="chart-meta">
                       <div class="legend">
                         <span class="legend-item"><span class="legend-line"></span>实时流速</span>
+                        <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
                         <span class="legend-item"><span class="legend-line low"></span>低流量提醒线</span>
                         <span class="legend-item"><span class="legend-line high"></span>高流量停机线</span>
                       </div>
-                      <span>单位：毫升/分钟</span>
+                      <span>单位：升/分钟 · 横轴：时间</span>
                     </div>
                   </div>
                 </div>
@@ -946,28 +964,28 @@
                   <div class="weather-cell">
                     <div class="weather-label">今天</div>
                     <div class="weather-value">降雨 72%</div>
-                    <div class="weather-detail">预计 8 mm</div>
+                    <div class="weather-detail">预计 8 毫米</div>
                   </div>
                   <div class="weather-cell">
                     <div class="weather-label">明天</div>
                     <div class="weather-value">降雨 25%</div>
-                    <div class="weather-detail">预计 1 mm</div>
+                    <div class="weather-detail">预计 1 毫米</div>
                   </div>
                   <div class="weather-cell">
                     <div class="weather-label">后天</div>
                     <div class="weather-value">降雨 10%</div>
-                    <div class="weather-detail">预计 0 mm</div>
+                    <div class="weather-detail">预计 0 毫米</div>
                   </div>
                 </div>
-                <div class="weather-row">
+                <div class="weather-row weather-actions">
                   <div class="weather-cell">
-                    <button class="btn" data-confirm="忽略本次天气暂停？今晚 18:30 的自动计划将照常执行。">忽略本次</button>
+                    <button class="btn" data-confirm="本次天气暂停不生效？今晚 18:30 的自动计划将照常执行。">本次照常浇水</button>
                   </div>
                   <div class="weather-cell">
-                    <button class="btn" data-confirm="把天气暂停延长到后天 08:00？期间自动计划会跳过，不补跑。">延长</button>
+                    <button class="btn" data-confirm="把自动计划暂停延长到后天 08:00？期间到点计划会跳过，不补跑。">自动计划暂停到后天 08:00</button>
                   </div>
                   <div class="weather-cell">
-                    <button class="btn warn" data-confirm="关闭天气暂停？之后天气不会自动暂停计划。">关闭天气</button>
+                    <button class="btn warn" data-confirm="关闭自动天气暂停？之后设备不会因为天气预报自动暂停计划。">关闭自动天气暂停</button>
                   </div>
                 </div>
               </div>
@@ -996,13 +1014,13 @@
                   </div>
                   <div class="metric">
                     <div class="metric-label">累计水量</div>
-                    <div class="metric-value" id="overviewVolume">0 毫升</div>
+                    <div class="metric-value" id="overviewVolume">0.000 升</div>
                     <div class="metric-note">估算值</div>
                   </div>
                   <div class="metric">
                     <div class="metric-label">实时流速</div>
                     <div class="metric-value" id="overviewFlow">0</div>
-                    <div class="metric-note">毫升/分钟</div>
+                    <div class="metric-note">升/分钟；标准 0.520</div>
                   </div>
                 </div>
                 <div class="toolbar">
@@ -1023,9 +1041,9 @@
                       <tr><th>时间</th><th>水路</th><th>来源</th><th>时长</th><th>水量</th><th>结果</th></tr>
                     </thead>
                     <tbody>
-                      <tr><td>07:00</td><td>前院滴灌</td><td>计划 1</td><td>12 分</td><td>5.8 升</td><td><span class="badge good">完成</span></td></tr>
-                      <tr><td>07:14</td><td>菜床</td><td>计划 1</td><td>15 分</td><td>7.2 升</td><td><span class="badge good">完成</span></td></tr>
-                      <tr><td>08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>5.6 升</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>07:00</td><td>前院滴灌</td><td>计划 1</td><td>12 分</td><td>5.800 升</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>07:14</td><td>菜床</td><td>计划 1</td><td>15 分</td><td>7.200 升</td><td><span class="badge good">完成</span></td></tr>
+                      <tr><td>08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>5.600 升</td><td><span class="badge good">完成</span></td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -1037,10 +1055,10 @@
                 </div>
                 <div class="panel-body stack">
                   <div class="toolbar">
-                    <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启</button>
-                    <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭</button>
-                    <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">暂停到明天 08:00</button>
-                    <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行。">清除天气暂停</button>
+                    <button class="btn primary" data-confirm="开启自动浇水？系统将按已启用的计划执行。">开启自动浇水</button>
+                    <button class="btn" data-confirm="关闭自动浇水？关闭期间到点计划不会补跑。">关闭自动浇水</button>
+                    <button class="btn warn" data-confirm="暂停自动浇水到明天 08:00？暂停期间到点计划会跳过。">自动浇水暂停到明天 08:00</button>
+                    <button class="btn" data-confirm="清除当前天气暂停？今晚 18:30 的计划将恢复执行。">取消当前天气暂停</button>
                   </div>
                   <div class="callout">
                     自动总控和天气暂停只影响自动计划触发，不影响手动浇水。暂停期间到点计划会跳过，不补跑。
@@ -1075,7 +1093,7 @@
                 <div class="callout good">流量计已校准：每升 450 个脉冲。低液位保护已启用，当前水位正常。</div>
                 <div class="toolbar">
                   <button class="btn" data-confirm="从「晨晚浇水」载入各水路时长？你仍可在启动前修改。">从常用计划载入</button>
-                  <button class="btn" data-confirm="清空本次手动顺序浇水的所有时长？">全部设为 0</button>
+                  <button class="btn" data-confirm="清空本次手动顺序浇水的所有时长？">清空本次时长</button>
                   <button class="btn primary" id="startRun">开始顺序浇水</button>
                   <button class="btn danger" id="stopRun" disabled>停止当前运行</button>
                 </div>
@@ -1095,8 +1113,8 @@
                 <div class="metric-row">
                   <div class="metric"><div class="metric-label">已运行</div><div class="metric-value" id="manualElapsed">0</div><div class="metric-note">分钟</div></div>
                   <div class="metric"><div class="metric-label">总时长</div><div class="metric-value" id="manualTarget">0</div><div class="metric-note">分钟</div></div>
-                  <div class="metric"><div class="metric-label">累计水量</div><div class="metric-value" id="manualVolume">0</div><div class="metric-note">毫升</div></div>
-                  <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value" id="manualFlow">0</div><div class="metric-note">毫升/分钟</div></div>
+                  <div class="metric"><div class="metric-label">累计水量</div><div class="metric-value" id="manualVolume">0.000</div><div class="metric-note">升</div></div>
+                  <div class="metric"><div class="metric-label">实时流速</div><div class="metric-value" id="manualFlow">0.000</div><div class="metric-note">升/分钟；标准 0.520</div></div>
                 </div>
                 <div class="callout" id="manualStepText">当前没有手动浇水任务。开始后这里会显示正在运行的水路和剩余队列。</div>
                 <div class="chart-wrap">
@@ -1104,10 +1122,11 @@
                   <div class="chart-meta">
                     <div class="legend">
                       <span class="legend-item"><span class="legend-line"></span>当前水路流速</span>
+                      <span class="legend-item"><span class="legend-line ref"></span>标准流速</span>
                       <span class="legend-item"><span class="legend-line low"></span>偏低提醒</span>
                       <span class="legend-item"><span class="legend-line high"></span>偏高停机</span>
                     </div>
-                    <span>最近 12 分钟</span>
+                    <span>单位：升/分钟 · 最近 12 分钟</span>
                   </div>
                 </div>
                 <div class="callout">停止当前运行会关闭泵和当前水路；如果来源是自动计划，会取消剩余水路并清空等待队列。</div>
@@ -1131,10 +1150,10 @@
                     <tr><th>水路</th><th>名称</th><th>状态</th><th>锁定</th><th>默认时长</th><th>标准流速</th><th>告警阈值</th><th>操作</th></tr>
                   </thead>
                   <tbody>
-                    <tr><td>第 1 路</td><td>前院滴灌</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>10 分</td><td>520 毫升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
-                    <tr><td>第 2 路</td><td>菜床</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>15 分</td><td>480 毫升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>第 1 路</td><td>前院滴灌</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>10 分</td><td>0.520 升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
+                    <tr><td>第 2 路</td><td>菜床</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>15 分</td><td>0.480 升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
                     <tr><td>第 3 路</td><td>果树</td><td><span class="badge good">已启用</span></td><td><span class="badge good">无</span></td><td>20 分</td><td><span class="badge warn">未设置</span></td><td>暂不判断偏低/偏高</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
-                    <tr><td>第 4 路</td><td>草坪</td><td><span class="badge good">已启用</span></td><td><span class="badge danger">高流量锁定</span></td><td>8 分</td><td>900 毫升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn warn" data-confirm="清除第 4 路锁定？">清锁</button></td></tr>
+                    <tr><td>第 4 路</td><td>草坪</td><td><span class="badge good">已启用</span></td><td><span class="badge danger">高流量锁定</span></td><td>8 分</td><td>0.900 升/分钟</td><td>低于 60% / 高于 160%</td><td><button class="btn warn" data-confirm="清除第 4 路锁定？">清除锁定</button></td></tr>
                     <tr><td>第 5 路</td><td>预留 5</td><td><span class="badge">未启用</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
                     <tr><td>第 6 路</td><td>预留 6</td><td><span class="badge">未启用</span></td><td><span class="badge">不参与</span></td><td>5 分</td><td>-</td><td>-</td><td><button class="btn" data-goto="zoneEdit">编辑</button></td></tr>
                   </tbody>
@@ -1158,7 +1177,7 @@
                 <div class="field"><label>是否启用</label><select><option>已启用</option><option>未启用</option></select></div>
                 <div class="field"><label>水路名称</label><input value="前院滴灌"></div>
                 <div class="field"><label>默认手动时长（分钟）</label><input type="number" min="1" max="360" value="10"><div class="hint">手动页载入默认值时使用，实际启动前仍可修改。</div></div>
-                <div class="field"><label>标准流速（毫升/分钟）</label><input value="520，2026-06-10 17:20 测定" disabled><div class="hint">用于判断这一路是否偏低或偏高，不影响浇水停止条件。</div></div>
+                <div class="field"><label>标准流速（升/分钟）</label><input value="0.520，2026-06-10 17:20 测定" disabled><div class="hint">用于判断这一路是否偏低或偏高，不影响浇水停止条件。</div></div>
                 <div class="field"><label>低流量提醒线（%）</label><input type="number" value="60"><div class="hint">低于标准流速的这个比例时提醒，默认不停止。</div></div>
                 <div class="field"><label>高流量停机线（%）</label><input type="number" value="160"><div class="hint">高于标准流速的这个比例时停机并按策略锁定。</div></div>
                 <div class="field"><label>异常确认时间（秒）</label><input type="number" value="10"><div class="hint">流量持续异常达到该时间后才触发提醒或停机。</div></div>
@@ -1166,7 +1185,7 @@
               </div>
               <div class="callout">未启用的水路不会出现在手动选择列表，计划执行时会跳过；历史记录不会被删除。</div>
               <div class="toolbar">
-                <button class="btn primary" data-confirm="保存第 1 路配置？">保存</button>
+                <button class="btn primary" data-confirm="保存第 1 路配置？">保存水路配置</button>
                 <button class="btn" data-goto="flow">去测定标准流速</button>
               </div>
             </div>
@@ -1283,7 +1302,7 @@
                     <div class="metric"><div class="metric-label">每升脉冲数</div><div class="metric-value">450</div><div class="metric-note">脉冲/升</div></div>
                     <div class="metric"><div class="metric-label">校准时间</div><div class="metric-value">06-10</div><div class="metric-note">3 个样本</div></div>
                     <div class="metric"><div class="metric-label">累计脉冲</div><div class="metric-value">6750</div><div class="metric-note">次</div></div>
-                    <div class="metric"><div class="metric-label">实际水量</div><div class="metric-value">15 升</div><div class="metric-note">合计</div></div>
+                    <div class="metric"><div class="metric-label">实际水量</div><div class="metric-value">15.000 升</div><div class="metric-note">合计</div></div>
                   </div>
                   <div class="form-grid">
                     <div class="field">
@@ -1292,14 +1311,14 @@
                       <div class="hint">请选择一条出水稳定、方便接水的水路。校准结果会用于全部水路。</div>
                     </div>
                     <div class="field">
-                      <label>实际接水量（毫升）</label>
-                      <input type="number" value="5000">
-                      <div class="hint">建议单次不少于 2000 毫升，多次样本合并更稳。</div>
+                      <label>实际接水量（升）</label>
+                      <input type="number" value="5.000">
+                      <div class="hint">建议单次不少于 2.000 升，多次样本合并更稳。</div>
                     </div>
                   </div>
                   <div class="toolbar">
-                    <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始校准</button>
-                    <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止校准</button>
+                    <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始放水校准</button>
+                    <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止放水校准</button>
                   </div>
                   <div class="callout warn">流程：准备量桶 → 开始校准 → 接水 → 停止校准 → 输入实际接水量 → 加入样本 → 确认保存。维护运行最长 600 秒，超时会自动关闭。</div>
                 </div>
@@ -1316,16 +1335,16 @@
                   <table>
                     <thead><tr><th>水路</th><th>标准流速</th><th>状态</th><th>操作</th></tr></thead>
                     <tbody>
-                      <tr><td>第 1 路 前院</td><td>520 毫升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 1 路标准流速？">测定</button></td></tr>
-                      <tr><td>第 2 路 菜床</td><td>480 毫升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 2 路标准流速？">测定</button></td></tr>
-                      <tr><td>第 3 路 果树</td><td>0</td><td><span class="badge warn">未设置</span></td><td><button class="btn primary" data-confirm="测定第 3 路标准流速？">测定</button></td></tr>
+                      <tr><td>第 1 路 前院</td><td>0.520 升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 1 路标准流速？">重新测定</button></td></tr>
+                      <tr><td>第 2 路 菜床</td><td>0.480 升/分钟</td><td><span class="badge good">已测定</span></td><td><button class="btn" data-confirm="重新测定第 2 路标准流速？">重新测定</button></td></tr>
+                      <tr><td>第 3 路 果树</td><td>未设置</td><td><span class="badge warn">未设置</span></td><td><button class="btn primary" data-confirm="测定第 3 路标准流速？">测定标准流速</button></td></tr>
                     </tbody>
                   </table>
                   <div class="form-grid">
                     <div class="field"><label>手工输入水路</label><select><option>第 3 路 果树</option></select></div>
-                    <div class="field"><label>标准流速（毫升/分钟）</label><input type="number" value="650"></div>
+                    <div class="field"><label>标准流速（升/分钟）</label><input type="number" value="0.650"></div>
                   </div>
-                  <button class="btn" data-confirm="手工保存第 3 路标准流速为 650 毫升/分钟？">保存手工输入</button>
+                  <button class="btn" data-confirm="手工保存第 3 路标准流速为 0.650 升/分钟？">保存手工输入</button>
                 </div>
               </div>
             </div>
@@ -1338,14 +1357,14 @@
                 <table>
                   <thead><tr><th>样本</th><th>水路</th><th>运行时长</th><th>脉冲</th><th>实际水量</th><th>每升脉冲数</th><th>偏差</th><th>状态</th></tr></thead>
                   <tbody>
-                    <tr><td>1</td><td>第 1 路</td><td>92 秒</td><td>2245</td><td>5000 毫升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
-                    <tr><td>2</td><td>第 1 路</td><td>95 秒</td><td>2260</td><td>5000 毫升</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
-                    <tr><td>3</td><td>第 2 路</td><td>98 秒</td><td>2245</td><td>5000 毫升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>1</td><td>第 1 路</td><td>92 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>2</td><td>第 1 路</td><td>95 秒</td><td>2260</td><td>5.000 升</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
+                    <tr><td>3</td><td>第 2 路</td><td>98 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
                   </tbody>
                 </table>
                 <div class="toolbar" style="margin-top: 14px;">
                   <button class="btn primary" data-confirm="应用合并后的每升脉冲数 450？">确认保存校准结果</button>
-                  <button class="btn">丢弃样本</button>
+                  <button class="btn" data-confirm="丢弃当前未保存的校准样本？已保存的校准结果不会改变。">丢弃当前样本</button>
                 </div>
               </div>
             </div>
@@ -1467,9 +1486,9 @@
               <table>
                 <thead><tr><th>编号</th><th>开始时间</th><th>水路</th><th>来源</th><th>计划时长</th><th>实际时长</th><th>水量</th><th>平均流速</th><th>结果</th><th>详情</th></tr></thead>
                 <tbody>
-                  <tr><td>105</td><td>今天 08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>15:00</td><td>5.6 升</td><td>373 毫升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：累计脉冲 2520 次，没有流量告警。">查看</button></td></tr>
-                  <tr><td>104</td><td>今天 07:14</td><td>菜床</td><td>自动计划</td><td>15 分</td><td>15:00</td><td>7.2 升</td><td>480 毫升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：来自计划 1，开始时间 07:00。">查看</button></td></tr>
-                  <tr><td>103</td><td>今天 07:00</td><td>前院滴灌</td><td>自动计划</td><td>12 分</td><td>12:00</td><td>5.8 升</td><td>483 毫升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：没有低流量或高流量提醒。">查看</button></td></tr>
+                  <tr><td>105</td><td>今天 08:22</td><td>果树</td><td>手动</td><td>15 分</td><td>15:00</td><td>5.600 升</td><td>0.373 升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：累计脉冲 2520 次，没有流量告警。">查看</button></td></tr>
+                  <tr><td>104</td><td>今天 07:14</td><td>菜床</td><td>自动计划</td><td>15 分</td><td>15:00</td><td>7.200 升</td><td>0.480 升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：来自计划 1，开始时间 07:00。">查看</button></td></tr>
+                  <tr><td>103</td><td>今天 07:00</td><td>前院滴灌</td><td>自动计划</td><td>12 分</td><td>12:00</td><td>5.800 升</td><td>0.483 升/分钟</td><td>正常完成</td><td><button class="btn" data-confirm="记录详情：没有低流量或高流量提醒。">查看</button></td></tr>
                 </tbody>
               </table>
             </div>
@@ -1492,7 +1511,7 @@
               <table>
                 <thead><tr><th>时间</th><th>类型</th><th>对象</th><th>原因</th><th>摘要</th><th>数值</th></tr></thead>
                 <tbody>
-                  <tr><td>今天 08:51</td><td><span class="badge danger">故障</span></td><td>第 4 路</td><td>高流量停机</td><td>高流量停机并锁定水路</td><td>2980 毫升/分钟</td></tr>
+                  <tr><td>今天 08:51</td><td><span class="badge danger">故障</span></td><td>第 4 路</td><td>高流量停机</td><td>高流量停机并锁定水路</td><td>2.980 升/分钟</td></tr>
                   <tr><td>今天 08:15</td><td><span class="badge blue">状态</span></td><td>自动浇水</td><td>模式改变</td><td>自动浇水已开启</td><td>已开启</td></tr>
                   <tr><td>昨天 17:02</td><td><span class="badge">维护</span></td><td>流量计</td><td>校准已保存</td><td>应用 3 个样本的校准结果</td><td>450</td></tr>
                 </tbody>
@@ -1646,16 +1665,16 @@
       updateRunUi();
     }
 
-    function updateRunUi() {
-      const percent = state.targetMin ? Math.min(100, Math.round(state.elapsedMin * 100 / state.targetMin)) : 0;
-      const active = getActiveStep();
+	    function updateRunUi() {
+	      const percent = state.targetMin ? Math.min(100, Math.round(state.elapsedMin * 100 / state.targetMin)) : 0;
+	      const active = getActiveStep();
       document.getElementById("manualState").textContent = state.running ? "运行中" : "空闲";
       document.getElementById("manualState").className = `badge ${state.running ? "good" : ""}`;
       document.getElementById("manualProgress").style.width = `${percent}%`;
       document.getElementById("manualElapsed").textContent = state.elapsedMin;
       document.getElementById("manualTarget").textContent = state.targetMin;
-      document.getElementById("manualVolume").textContent = state.volumeMl;
-      document.getElementById("manualFlow").textContent = state.running ? state.flow : 0;
+	      document.getElementById("manualVolume").textContent = formatLiters(state.volumeMl);
+	      document.getElementById("manualFlow").textContent = state.running ? formatLiters(state.flow) : "0.000";
       document.getElementById("manualStepText").textContent = state.running && active
         ? `正在运行：${active.name}。本次手动任务还会按顺序执行未完成的水路。`
         : "当前没有手动浇水任务。开始后这里会显示正在运行的水路和剩余队列。";
@@ -1667,13 +1686,17 @@
       document.getElementById("overviewZone").textContent = state.running && active ? active.name : "-";
       document.getElementById("overviewSource").textContent = state.running ? `来源：${state.source}` : "来源：-";
       document.getElementById("overviewElapsed").textContent = `${state.elapsedMin} / ${state.targetMin}`;
-      document.getElementById("overviewVolume").textContent = `${state.volumeMl} 毫升`;
-      document.getElementById("overviewFlow").textContent = state.running ? state.flow : 0;
+	      document.getElementById("overviewVolume").textContent = `${formatLiters(state.volumeMl)} 升`;
+	      document.getElementById("overviewFlow").textContent = state.running ? formatLiters(state.flow) : "0.000";
       document.getElementById("flowQualityBadge").textContent = state.running ? "正在监测" : "最近一次正常";
       document.getElementById("flowQualityBadge").className = `badge ${state.running ? "good" : "blue"}`;
       drawFlowChart("overviewFlowChart", state.flowHistory);
       drawFlowChart("manualFlowChart", state.flowHistory);
-    }
+	    }
+
+	    function formatLiters(valueMl) {
+	      return (valueMl / 1000).toFixed(3);
+	    }
 
     function getActiveStep() {
       if (!state.running || !state.sequence.length) return null;
@@ -1691,13 +1714,14 @@
       const ctx = canvas.getContext("2d");
       const width = canvas.width;
       const height = canvas.height;
-      const pad = { left: 54, right: 20, top: 24, bottom: 34 };
-      const chartWidth = width - pad.left - pad.right;
-      const chartHeight = height - pad.top - pad.bottom;
-      const minY = 0;
-      const maxY = 1000;
-      const lowLine = 312;
-      const highLine = 832;
+	      const pad = { left: 62, right: 28, top: 28, bottom: 48 };
+	      const chartWidth = width - pad.left - pad.right;
+	      const chartHeight = height - pad.top - pad.bottom;
+	      const minY = 0;
+	      const maxY = 1.2;
+	      const lowLine = 0.312;
+	      const standardLine = 0.520;
+	      const highLine = 0.832;
 
       ctx.clearRect(0, 0, width, height);
       const bg = ctx.createLinearGradient(0, 0, 0, height);
@@ -1709,40 +1733,48 @@
       ctx.strokeStyle = "rgba(72, 98, 110, .15)";
       ctx.lineWidth = 1;
       ctx.fillStyle = "#60706a";
-      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
-      for (let i = 0; i <= 4; i++) {
-        const y = pad.top + chartHeight * i / 4;
-        const label = Math.round(maxY - (maxY - minY) * i / 4);
-        ctx.beginPath();
-        ctx.moveTo(pad.left, y);
-        ctx.lineTo(width - pad.right, y);
-        ctx.stroke();
-        ctx.fillText(String(label), 10, y + 4);
-      }
+	      ctx.font = "12px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+	      for (let i = 0; i <= 4; i++) {
+	        const y = pad.top + chartHeight * i / 4;
+	        const label = (maxY - (maxY - minY) * i / 4).toFixed(3);
+	        ctx.beginPath();
+	        ctx.moveTo(pad.left, y);
+	        ctx.lineTo(width - pad.right, y);
+	        ctx.stroke();
+	        ctx.fillText(String(label), 10, y + 4);
+	      }
+	      ctx.fillText("升/分钟", 10, 18);
+
+	      const timeLabels = ["12 分钟前", "8 分钟前", "4 分钟前", "现在"];
+	      timeLabels.forEach((label, index) => {
+	        const x = pad.left + chartWidth * index / Math.max(1, timeLabels.length - 1);
+	        ctx.fillText(label, x - (index === 0 ? 0 : 24), height - 14);
+	      });
 
       function yFor(v) {
         const clamped = Math.max(minY, Math.min(maxY, v));
         return pad.top + (maxY - clamped) * chartHeight / (maxY - minY);
       }
 
-      function drawThreshold(value, color) {
-        const y = yFor(value);
-        ctx.strokeStyle = color;
-        ctx.setLineDash([8, 6]);
-        ctx.beginPath();
-        ctx.moveTo(pad.left, y);
-        ctx.lineTo(width - pad.right, y);
+	      function drawThreshold(value, color, dash) {
+	        const y = yFor(value);
+	        ctx.strokeStyle = color;
+	        ctx.setLineDash(dash);
+	        ctx.beginPath();
+	        ctx.moveTo(pad.left, y);
+	        ctx.lineTo(width - pad.right, y);
         ctx.stroke();
         ctx.setLineDash([]);
       }
 
-      drawThreshold(lowLine, "rgba(215, 154, 40, .8)");
-      drawThreshold(highLine, "rgba(181, 39, 39, .7)");
+	      drawThreshold(lowLine, "rgba(215, 154, 40, .75)", [8, 6]);
+	      drawThreshold(standardLine, "rgba(34, 104, 168, .7)", [4, 5]);
+	      drawThreshold(highLine, "rgba(181, 39, 39, .72)", [8, 6]);
 
-      const points = values.map((value, index) => ({
-        x: pad.left + chartWidth * index / Math.max(1, values.length - 1),
-        y: yFor(value)
-      }));
+	      const points = values.map((value, index) => ({
+	        x: pad.left + chartWidth * index / Math.max(1, values.length - 1),
+	        y: yFor(value / 1000)
+	      }));
 
       const fill = ctx.createLinearGradient(0, pad.top, 0, height - pad.bottom);
       fill.addColorStop(0, "rgba(22, 131, 95, .28)");
