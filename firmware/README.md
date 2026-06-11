@@ -31,3 +31,24 @@ GPIO/PWM 实际控制
 ```bash
 pio run
 ```
+
+串口烧录：
+
+```bash
+pio run -t upload
+```
+
+首次串口烧录和 WiFi 配网完成后，可以使用 Esp32Base 提供的 Web OTA target：
+
+```bash
+pio run -t webota
+```
+
+`webota` 复用设备 Web Basic Auth。当前开发固件默认认证为：
+
+```text
+user = admin
+password = irrigation
+```
+
+设备 IP 以串口启动日志或 `/esp32base` 状态页显示为准。
