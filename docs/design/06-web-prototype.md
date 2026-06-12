@@ -19,7 +19,25 @@ Zone 管理
 故障/锁定清除
 ```
 
-Web 原型必须保持工具型、清晰、稳定，面向设备管理而不是营销展示。首页只展示状态和入口，不堆叠所有配置。
+Web 原型必须保持工具型、清晰、稳定，面向设备管理而不是营销展示。首页只展示状态和必要操作，不堆叠所有配置。
+
+本原型采用三层信息复杂度：
+
+```text
+日常使用层：
+  总览、手动浇水、计划、记录。
+  只回答“现在怎样、下一次怎样、我要不要操作”。
+
+设备维护层：
+  水路管理、流量计校准、水路标准流速学习、水源与外设状态。
+  使用用户能理解的维护语言，不把内部参数作为主视觉。
+
+高级参数层：
+  天气判断时机、流量检测窗口、阀门 PWM、故障策略细项。
+  默认折叠，只在安装、排障或现场调试时展开。
+```
+
+页面不得把 `pulsesPerLiter`、`normalFlowMlPerMin`、百分比阈值、确认时间等内部参数作为普通用户的主要操作对象。需要显示时，应同时给出用户语言解释，例如“已校准”“已学习标准流速”“偏高停机线”。
 
 ## 复审结论
 
@@ -57,7 +75,7 @@ Stop All
 1. Web 鉴权、同源校验和 CSRF token 的具体接口由 Esp32BaseWeb 提供，本文只定义业务要求。
 2. 事件 reason 枚举需要在实现计划中固化，避免页面、API 和记录导出命名不一致。
 3. disabled_until 的时间输入需要依赖设备可信时间；系统时间无效时应禁止设置“暂停到指定时间”。
-4. 维护运行中的“停止校准/停止测定”和普通“停止当前运行”语义不同，需要独立接口和页面提示。
+4. 维护运行中的“停止校准/停止学习”和普通“停止当前运行”语义不同，需要独立接口和页面提示。
 5. CSV 字段顺序应在记录存储结构确定后冻结，避免后续外部系统解析不稳定。
 ```
 
@@ -354,18 +372,18 @@ Zone
 启用状态
 锁定状态
 默认手动时长
-正常流量状态
-低/高流量阈值摘要
+流量保护状态
 最近运行摘要
 操作
 ```
 
-正常流量状态：
+流量保护状态：
 
 ```text
 未设置：normalFlowMlPerMin = 0
-已测定：显示 ml/min 和 normalFlowMeasuredAt
-手工设置：显示 ml/min，若没有 measuredAt 则标注“手工”
+已学习：显示“已学习标准流速”，必要时可在详情中显示 L/min 和 normalFlowMeasuredAt
+手工设置：显示“手工设置”，详情中显示 L/min
+锁定中：显示锁定原因，不在列表中展开阈值
 ```
 
 操作入口：
@@ -401,9 +419,9 @@ name：显示名称
 defaultManualDurationMin：1..360
 normalFlowMlPerMin：只读摘要，编辑入口在流量页或本页跳转
 normalFlowMeasuredAt：只读
-lowFlowPercent
-highFlowPercent
-flowFaultConfirmSec
+lowFlowPercent：高级折叠区
+highFlowPercent：高级折叠区
+flowFaultConfirmSec：高级折叠区
 锁定状态：只读摘要和清除入口
 ```
 
@@ -558,22 +576,20 @@ Zone 正常流量：
 
 ### 5.1 流量入口页 `/flow`
 
-入口页只做状态总览和任务分流，不承载完整维护流程。
+入口页只做状态总览和任务分流，不承载完整维护流程，也不把校准样本和脉冲参数作为主视觉。
 
 内容：
 
 全局流量计状态：
 
 ```text
-pulsesPerLiter
-calibratedAt
-calibrationSampleCount
-calibrationTotalPulseCount
-calibrationTotalActualMl
+已校准 / 未校准 / 建议重新校准
+最近保存时间
 当前是否允许普通手动/自动浇水
+水量用途：观察、记录、异常判断；不按水量停止
 ```
 
-校准样本区：
+参数详情区默认折叠：
 
 ```text
 当前 pulsesPerLiter
@@ -589,23 +605,23 @@ Zone 正常流量状态：
 ```text
 Zone 列表
 enabled 状态
-normalFlowMlPerMin
-normalFlowMeasuredAt
-低/高流量阈值换算结果
+已学习 / 未学习 / 锁定中
+必要时显示 normalFlowMlPerMin，单位用 L/min
+低/高流量阈值换算结果只在详情或高级区域显示
 ```
 
 入口操作：
 
 ```text
 进入流量计校准
-进入水路正常流速测定
-查看参数详情
+进入水路标准流速学习
+查看参数明细
 导出校准记录
 ```
 
 ### 5.2 流量计校准页 `/flow/calibration`
 
-校准页使用单独流程，不和 Zone 正常流速测定混在同一表单中。
+校准页使用单独流程，不和 Zone 标准流速学习混在同一表单中。
 
 流程内容：
 
@@ -636,9 +652,9 @@ pulsesPerLiter = totalPulseCount * 1000 / actualMl
 mergedPulsesPerLiter = sum(totalPulseCount) * 1000 / sum(actualMl)
 ```
 
-### 5.3 水路正常流速测定页 `/flow/baseline`
+### 5.3 水路标准流速学习页 `/flow/baseline`
 
-测定页使用单独流程。它要求全局流量计已经校准。
+页面标题对用户使用“学习水路标准流速”或“水路正常流速学习”，内部仍保存 `normalFlowMlPerMin`。它要求全局流量计已经校准。
 
 流程内容：
 
@@ -650,7 +666,7 @@ mergedPulsesPerLiter = sum(totalPulseCount) * 1000 / sum(actualMl)
 等待 flowStabilizeSec
 稳定阶段采样，建议 30 秒
 显示平均流速、最低流速、最高流速
-确认保存 normalFlowMlPerMin
+确认保存为该水路标准流速
 ```
 
 手工输入：
@@ -704,18 +720,25 @@ mergedPulsesPerLiter = sum(totalPulseCount) * 1000 / sum(actualMl)
 
 设置页按分组呈现，不把所有高级参数铺成一屏。
 
+设置页分为默认可见项和高级折叠项。默认可见项只保留用户经常理解和调整的开关、阈值和外设状态；高级项用于安装、维护和排障。
+
 ### 天气自动跳过计划
 
 字段：
 
 ```text
 weatherAutoSkipEnabled
+rainProbabilityThresholdPercent
+rainAmountThresholdMm
+```
+
+高级折叠字段：
+
+```text
 weatherForecastWindowHours
 weatherReviewTimeLocal
 weatherPreRunCheckMin
 weatherCacheMaxAgeHours
-rainProbabilityThresholdPercent
-rainAmountThresholdMm
 ```
 
 提示：
@@ -798,6 +821,16 @@ highFlowLockZone
 lowFlowAction：warn / stop
 lowFlowLockZone
 ```
+
+默认展示方式：
+
+```text
+无水保护：一定停机，摘要显示是否锁定当前水路。
+高流量保护：摘要显示“停机”或“只提醒”。
+低流量保护：摘要显示“提醒”或“停机”。
+```
+
+具体策略开关放入“高级故障策略”折叠区。普通用户不应在默认视图中直接面对 `warn`、`stop`、`lockZone` 等内部枚举。
 
 固定规则以只读提示显示：
 
