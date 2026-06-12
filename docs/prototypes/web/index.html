@@ -640,6 +640,13 @@
       text-align: right;
     }
 
+    .sample-volume {
+      width: 118px;
+      min-height: 32px;
+      padding: 6px 8px;
+      text-align: right;
+    }
+
     .detail-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1029,6 +1036,18 @@
       font-weight: 750;
     }
 
+    .page-action-bar {
+      margin-top: 16px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      box-shadow: var(--shadow);
+    }
+
     .weather-card {
       display: grid;
     }
@@ -1279,28 +1298,6 @@
       line-height: 1.45;
     }
 
-    .inline-advanced {
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #fbfcfb;
-      overflow: hidden;
-    }
-
-    .inline-advanced summary {
-      padding: 12px 14px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-
-    .inline-advanced .inline-body {
-      border-top: 1px solid var(--line);
-      padding: 14px;
-      background: #fff;
-    }
-
     .stepper {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1340,31 +1337,6 @@
       color: var(--muted);
       font-size: 12px;
       line-height: 1.45;
-    }
-
-    details.panel {
-      display: block;
-    }
-
-    details.panel > summary {
-      list-style: none;
-      cursor: pointer;
-      padding: 15px 16px;
-      border-bottom: 1px solid var(--line);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      background: #fbfcfb;
-    }
-
-    details.panel > summary::-webkit-details-marker {
-      display: none;
-    }
-
-    .summary-chevron {
-      color: var(--muted);
-      font-size: 18px;
     }
 
     .split {
@@ -1943,19 +1915,21 @@
                 <div class="field"><label>标准流速（升/分钟）</label><input value="0.520，2026-06-10 17:20 学习" disabled><div class="hint">用于识别明显堵塞或破管，不影响按时间停止浇水。</div></div>
                 <div class="field"><label>锁定状态</label><input value="未锁定" disabled></div>
               </div>
-              <details class="inline-advanced">
-                <summary>
-                  <strong>高级流量保护</strong>
-                  <span class="hint">通常保持默认值</span>
-                </summary>
-                <div class="inline-body">
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">流量保护</h2>
+                    <p class="panel-subtitle">通常保持默认值；只影响这一路的偏低和偏高判断</p>
+                  </div>
+                </div>
+                <div class="panel-body">
                   <div class="form-grid">
                     <div class="field"><label>偏低提醒线（标准流速的 %）</label><input type="number" min="1" max="100" value="60"><div class="hint">范围 1..100%。低于该比例并持续一段时间时提醒，默认不停止。</div></div>
                     <div class="field"><label>偏高停机线（标准流速的 %）</label><input type="number" min="101" max="500" value="160"><div class="hint">范围 101..500%。高于该比例并持续一段时间时停机，常用于识别脱管或破管。</div></div>
-                    <div class="field"><label>偏低/偏高确认时间（秒）</label><input type="number" min="1" max="300" value="10"><div class="hint">范围 1..300 秒。只用于这一路的偏低和偏高判断；无水停机使用系统设置里的无水时间。</div></div>
+                    <div class="field"><label>偏低/偏高确认时间（秒）</label><input type="number" min="1" max="300" value="10"><div class="hint">范围 1..300 秒。无水停机使用系统设置里的无水时间。</div></div>
                   </div>
                 </div>
-              </details>
+              </div>
               <div class="callout">未启用的水路不会出现在手动选择列表，计划执行时会跳过；历史记录不会被删除。</div>
               <div class="toolbar">
                 <button class="btn primary" data-confirm="保存第 1 路配置？">保存水路配置</button>
@@ -2209,21 +2183,13 @@
                       <span class="badge">历史</span>
                     </div>
                   </div>
-                  <details class="inline-advanced">
-                    <summary>
-                      <strong>查看参数明细</strong>
-                      <span class="hint">维护追溯时使用</span>
-                    </summary>
-                    <div class="inline-body">
-                      <table>
-                        <thead><tr><th>保存时间</th><th>每升脉冲数</th><th>来源</th><th>备注</th></tr></thead>
-                        <tbody>
-                          <tr><td>06-10 17:02</td><td>450</td><td>校准样本</td><td>当前使用</td></tr>
-                          <tr><td>06-08 16:40</td><td>452</td><td>手动调整</td><td>已替换</td></tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
+                  <table>
+                    <thead><tr><th>保存时间</th><th>每升脉冲数</th><th>来源</th><th>备注</th></tr></thead>
+                    <tbody>
+                      <tr><td>06-10 17:02</td><td>450</td><td>校准样本</td><td>当前使用</td></tr>
+                      <tr><td>06-08 16:40</td><td>452</td><td>手动调整</td><td>已替换</td></tr>
+                    </tbody>
+                  </table>
                   <div class="toolbar">
                     <button class="btn" data-confirm="导出校准记录？会下载当前参数、校准样本和历史保存记录。">导出校准记录</button>
                   </div>
@@ -2251,12 +2217,12 @@
               </div>
               <div class="callout">公式：每升脉冲数 = 本次总脉冲 × 1000 / 实际接水毫升。多样本保存时按总脉冲和总水量加权合并。</div>
               <div class="stage-row">
-                <div class="stage-card"><div class="mini-label">当前阶段</div><div class="stage-value">已停止，等待输入实际水量</div><div class="mini-note">上一段维护运行已结束，可以加入样本。</div></div>
+                <div class="stage-card"><div class="mini-label">当前阶段</div><div class="stage-value">已停止，等待确认接水量</div><div class="mini-note">输入实际接水量后，可加入样本；也可以放弃本次。</div></div>
                 <div class="stage-card"><div class="mini-label">维护运行保护</div><div class="stage-value">最长 600 秒</div><div class="mini-note">超时会自动关闭当前水路和自吸泵，本次样本失败。</div></div>
               </div>
               <div class="form-grid">
                 <div class="field"><label>校准放水水路</label><select><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option><option>第 3 路 果树</option></select><div class="hint">只用于打开阀门放水；校准结果仍是全局流量计参数。</div></div>
-                <div class="field"><label>实际接水量（升）</label><input type="number" min="0.100" max="999.999" step="0.001" value="5.000"><div class="hint">范围 0.100..999.999 升。建议单次不少于 2.000 升，总样本水量建议不低于 5.000 升。</div></div>
+                <div class="field"><label>本次实际接水量（升）</label><input type="number" min="0.100" max="999.999" step="0.001" value="5.000"><div class="hint">范围 0.100..999.999 升。停止放水后必须输入实际接水量，确认后才会进入样本列表。</div></div>
               </div>
               <div class="metric-row">
                 <div class="metric"><div class="metric-label">运行时长</div><div class="metric-value">92 秒</div><div class="metric-note">已停止</div></div>
@@ -2266,18 +2232,19 @@
               </div>
               <div class="toolbar">
                 <button class="btn primary" data-confirm="开始流量计校准维护运行？最长 600 秒，超时会自动关闭。">开始放水</button>
-                <button class="btn danger" data-confirm="停止校准维护运行？停止后需要输入实际接水量。">停止放水</button>
-                <button class="btn" data-confirm="把本次 2245 次脉冲、5.000 升接水量加入校准样本？">加入样本</button>
+                <button class="btn danger" data-confirm="停止放水？停止后需要输入实际接水量，确认后才会加入样本。">停止放水</button>
+                <button class="btn" data-confirm="确认本次实际接水量为 5.000 升，并加入校准样本？">确认加入样本</button>
+                <button class="btn" data-confirm="放弃本次 2245 次脉冲的校准记录？放弃后不会进入样本列表。">放弃本次</button>
               </div>
               <div class="panel">
                 <div class="panel-header"><h2 class="panel-title">校准样本和保存</h2></div>
                 <div class="panel-body stack">
                   <table>
-                    <thead><tr><th>样本</th><th>水路</th><th>时长</th><th>脉冲</th><th>实际水量</th><th>每升脉冲数</th><th>偏差</th><th>状态</th></tr></thead>
+                    <thead><tr><th>样本</th><th>水路</th><th>时长</th><th>脉冲</th><th>实际水量</th><th>每升脉冲数</th><th>偏差</th><th>状态</th><th>操作</th></tr></thead>
                     <tbody>
-                      <tr><td>1</td><td>第 1 路</td><td>92 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
-                      <tr><td>2</td><td>第 1 路</td><td>95 秒</td><td>2260</td><td>5.000 升</td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td></tr>
-                      <tr><td>3</td><td>第 2 路</td><td>98 秒</td><td>2245</td><td>5.000 升</td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td></tr>
+                      <tr><td>1</td><td>第 1 路</td><td>92 秒</td><td>2245</td><td><input class="sample-volume" type="number" min="0.100" max="999.999" step="0.001" value="5.000"></td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td><td><button class="btn" data-confirm="样本 1 详情：第 1 路放水 92 秒，2245 次脉冲，实际接水 5.000 升。">详情</button></td></tr>
+                      <tr><td>2</td><td>第 1 路</td><td>95 秒</td><td>2260</td><td><input class="sample-volume" type="number" min="0.100" max="999.999" step="0.001" value="5.000"></td><td>452</td><td>0.4%</td><td><span class="badge good">可用</span></td><td><button class="btn" data-confirm="样本 2 详情：第 1 路放水 95 秒，2260 次脉冲，实际接水 5.000 升。">详情</button></td></tr>
+                      <tr><td>3</td><td>第 2 路</td><td>98 秒</td><td>2245</td><td><input class="sample-volume" type="number" min="0.100" max="999.999" step="0.001" value="5.000"></td><td>449</td><td>-0.2%</td><td><span class="badge good">可用</span></td><td><button class="btn" data-confirm="样本 3 详情：第 2 路放水 98 秒，2245 次脉冲，实际接水 5.000 升。">详情</button></td></tr>
                     </tbody>
                   </table>
                   <div class="callout good">根据 3 个样本加权合并：每升脉冲数 450，样本最大偏差 0.4%。确认保存后，后续所有水量估算和实时流速都会使用这个参数。</div>
@@ -2327,19 +2294,21 @@
                 <button class="btn danger" data-confirm="停止标准流速学习？本次未完成采样，不会保存结果。">停止学习</button>
                 <button class="btn" data-confirm="保存第 3 路标准流速为 0.650 升/分钟？">保存学习结果</button>
               </div>
-              <details class="inline-advanced">
-                <summary>
-                  <strong>手工输入标准流速</strong>
-                  <span class="hint">已有外部测量结果时使用</span>
-                </summary>
-                <div class="inline-body">
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h2 class="panel-title">手工输入标准流速</h2>
+                    <p class="panel-subtitle">已有外部测量结果时使用</p>
+                  </div>
+                </div>
+                <div class="panel-body">
                   <div class="form-grid">
                     <div class="field"><label>水路</label><select><option>第 3 路 果树</option></select></div>
                     <div class="field"><label>标准流速（升/分钟）</label><input type="number" min="0.001" max="999.999" step="0.001" value="0.650"><div class="hint">范围 0.001..999.999 升/分钟。</div></div>
                   </div>
-                  <div class="toolbar" style="margin-top: 12px;"><button class="btn" data-confirm="手工保存第 3 路正常流速为 0.650 升/分钟？">保存手工输入</button></div>
+                  <div class="toolbar" style="margin-top: 12px;"><button class="btn" data-confirm="手工保存第 3 路标准流速为 0.650 升/分钟？">保存手工输入</button></div>
                 </div>
-              </details>
+              </div>
             </div>
           </div>
         </section>
@@ -2363,21 +2332,19 @@
                     <div class="field"><label>预计降雨达到（毫米）</label><input type="number" min="0" max="100" value="5"><div class="hint">范围 0..100 毫米。预计雨量也达到这个值时，才跳过计划。</div></div>
                   </div>
                 </div>
-                <details class="inline-advanced" open>
-                  <summary>
-                    <strong>高级天气判断</strong>
-                    <span class="hint">通常保持默认值</span>
-                  </summary>
-                  <div class="inline-body">
-                    <div class="form-grid">
-                      <div class="field"><label>计划前判断时间（分钟）</label><input type="number" min="0" max="360" value="60"><div class="hint">范围 0..360 分钟。自动计划开始前提前多久刷新天气并判断是否跳过。</div></div>
-                      <div class="field"><label>每天更新时间（HH:MM）</label><input value="08:00"><div class="hint">即使当天没有浇水计划，也会在这个时间更新天气。</div></div>
-                      <div class="field"><label>预报范围（小时）</label><input type="number" min="1" max="72" value="24"><div class="hint">范围 1..72 小时。判断未来这段时间内的累计预计降雨。</div></div>
-                      <div class="field"><label>天气数据有效期（小时）</label><input type="number" min="1" max="24" value="6"><div class="hint">范围 1..24 小时。超过有效期时不因为旧天气跳过计划。</div></div>
-                    </div>
-                  </div>
-                </details>
                 <div class="callout warn">天气只负责“本次计划是否跳过”：不改变每路分钟数，不自动增减水量，也不会关闭自动浇水总控。</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">天气信息获取</h2></div>
+              <div class="panel-body">
+                <div class="form-grid">
+                  <div class="field"><label>计划前判断时间（分钟）</label><input type="number" min="0" max="360" value="60"><div class="hint">范围 0..360 分钟。自动计划开始前提前多久刷新天气并判断是否跳过。</div></div>
+                  <div class="field"><label>每天更新时间（HH:MM）</label><input value="08:00"><div class="hint">即使当天没有浇水计划，也会在这个时间更新天气。</div></div>
+                  <div class="field"><label>预报范围（小时）</label><input type="number" min="1" max="72" value="24"><div class="hint">范围 1..72 小时。判断未来这段时间内的累计预计降雨。</div></div>
+                  <div class="field"><label>天气数据有效期（小时）</label><input type="number" min="1" max="24" value="6"><div class="hint">范围 1..24 小时。超过有效期时不因为旧天气跳过计划。</div></div>
+                </div>
               </div>
             </div>
 
@@ -2442,33 +2409,25 @@
                     <span class="badge warn">提醒</span>
                   </div>
                 </div>
-                <details class="inline-advanced" open>
-                  <summary>
-                    <strong>高级故障策略</strong>
-                    <span class="hint">只有明确现场策略时才修改</span>
-                  </summary>
-                  <div class="inline-body">
-                    <div class="form-grid">
-                      <div class="field"><label>无水后锁定当前水路</label><div class="choice-group" role="radiogroup" aria-label="无水后锁定当前水路"><button class="choice active">是</button><button class="choice">否</button></div></div>
-                      <div class="field"><label>高流量处理</label><div class="choice-group" role="radiogroup" aria-label="高流量处理"><button class="choice active">停机</button><button class="choice">只提醒</button></div></div>
-                      <div class="field"><label>高流量后锁定当前水路</label><div class="choice-group" role="radiogroup" aria-label="高流量后锁定当前水路"><button class="choice active">是</button><button class="choice">否</button></div></div>
-                      <div class="field"><label>低流量处理</label><div class="choice-group" role="radiogroup" aria-label="低流量处理"><button class="choice active">只提醒</button><button class="choice">停机</button></div></div>
-                      <div class="field"><label>低流量后锁定当前水路</label><div class="choice-group" role="radiogroup" aria-label="低流量后锁定当前水路"><button class="choice active">否</button><button class="choice">是</button></div></div>
-                    </div>
-                  </div>
-                </details>
+                <div class="settings-section-title">可调整策略</div>
+                <div class="form-grid">
+                  <div class="field"><label>无水后锁定当前水路</label><div class="choice-group" role="radiogroup" aria-label="无水后锁定当前水路"><button class="choice active">是</button><button class="choice">否</button></div></div>
+                  <div class="field"><label>高流量处理</label><div class="choice-group" role="radiogroup" aria-label="高流量处理"><button class="choice active">停机</button><button class="choice">只提醒</button></div></div>
+                  <div class="field"><label>高流量后锁定当前水路</label><div class="choice-group" role="radiogroup" aria-label="高流量后锁定当前水路"><button class="choice active">是</button><button class="choice">否</button></div></div>
+                  <div class="field"><label>低流量处理</label><div class="choice-group" role="radiogroup" aria-label="低流量处理"><button class="choice active">只提醒</button><button class="choice">停机</button></div></div>
+                  <div class="field"><label>低流量后锁定当前水路</label><div class="choice-group" role="radiogroup" aria-label="低流量后锁定当前水路"><button class="choice active">否</button><button class="choice">是</button></div></div>
+                </div>
                 <div class="callout warn">固定规则不可关闭：无水一定停机；低液位一定停机但不锁定水路；待机漏水和流量计异常一定全局锁定。</div>
               </div>
             </div>
 
-            <details class="panel" open>
-              <summary>
+            <div class="panel">
+              <div class="panel-header">
                 <div>
                   <h2 class="panel-title">高级：流量检测参数</h2>
                   <p class="panel-subtitle">通常保持默认值；只有排查误报或现场调试时才需要修改</p>
                 </div>
-                <span class="summary-chevron">⌄</span>
-              </summary>
+              </div>
               <div class="panel-body">
                 <div class="form-grid">
                   <div class="field"><label>流速采样窗口（秒）</label><input type="number" min="1" max="60" value="5"><div class="hint">范围 1..60 秒。用最近这段时间的脉冲计算实时流速。</div></div>
@@ -2480,16 +2439,15 @@
                   <div class="field"><label>待机漏水确认时间（秒）</label><input type="number" min="5" max="600" value="30"><div class="hint">范围 5..600 秒。空闲时连续检测到流量多久后锁定设备。</div></div>
                 </div>
               </div>
-            </details>
+            </div>
 
-            <details class="panel" open>
-              <summary>
+            <div class="panel">
+              <div class="panel-header">
                 <div>
                   <h2 class="panel-title">高级：阀门保持参数</h2>
                   <p class="panel-subtitle">会影响阀门吸合、发热和噪声，修改后需要实机验证</p>
                 </div>
-                <span class="summary-chevron">⌄</span>
-              </summary>
+              </div>
               <div class="panel-body stack">
                 <div class="form-grid">
                   <div class="field"><label>阀门全功率吸合时间（毫秒）</label><input type="number" min="100" max="10000" value="3000"><div class="hint">范围 100..10000 毫秒。阀门刚打开时保持全功率的时间。</div></div>
@@ -2497,9 +2455,11 @@
                   <div class="field"><label>阀门保持频率（赫兹）</label><input type="number" min="100" max="40000" value="20000"><div class="hint">范围 100..40000 赫兹。保持阶段 PWM 频率，需要结合阀门实测。</div></div>
                 </div>
                 <div class="callout danger">阀门保持功率比例设为 100，表示不降低保持功率。修改阀门参数需要实机验证。</div>
-                <button class="btn primary" data-confirm="保存系统设置？阀门参数将在下一次运行生效。">保存设置</button>
               </div>
-            </details>
+            </div>
+          </div>
+          <div class="page-action-bar">
+            <button class="btn primary" data-confirm="保存系统设置？新的设置将在下一次相关运行中生效。">保存设置</button>
           </div>
         </section>
 
