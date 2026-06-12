@@ -67,9 +67,6 @@ enabled：是否启用
 name：显示名称
 defaultManualDurationMin：手动浇水默认时长，单位分钟，1..360
 normalFlowMlPerMin：正常流量
-lowFlowPercent：低流量阈值百分比
-highFlowPercent：高流量阈值百分比
-flowFaultConfirmSec：流量异常确认时间
 normalFlowMeasuredAt：正常流量测定时间
 ```
 
@@ -81,9 +78,6 @@ Zone 2..6 enabled = false
 name = 水路1..水路6
 defaultManualDurationMin = 5
 normalFlowMlPerMin = 0
-lowFlowPercent = 60
-highFlowPercent = 160
-flowFaultConfirmSec = 10
 normalFlowMeasuredAt = none
 ```
 
@@ -166,6 +160,15 @@ runningNoPulseTimeoutSec
 flowStabilizeSec
   第一个有效脉冲后的流速稳定等待时间，默认 10 秒
 
+lowFlowPercent
+  低流量判断线，占 Zone 标准流速的百分比，默认 60
+
+highFlowPercent
+  高流量判断线，占 Zone 标准流速的百分比，默认 160
+
+flowFaultConfirmSec
+  低/高流量异常持续确认时间，默认 10 秒
+
 maintenanceMaxDurationSec
   单次维护放水最长运行时间，默认 600 秒
 
@@ -195,6 +198,9 @@ flowUpdateIntervalMs = 1000
 firstPulseTimeoutSec = 15
 runningNoPulseTimeoutSec = 15
 flowStabilizeSec = 10
+lowFlowPercent = 60
+highFlowPercent = 160
+flowFaultConfirmSec = 10
 maintenanceMaxDurationSec = 600
 idleLeakConfirmSec = 30
 valvePullInMs = 3000

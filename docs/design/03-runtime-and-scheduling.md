@@ -241,8 +241,8 @@ FlowStabilizing 阶段不做低流量/高流量判断。低流量和高流量只
 
 ```text
 Zone 有 normalFlowMlPerMin 时启用
-flowMlPerMin 持续低于 normalFlowMlPerMin * lowFlowPercent / 100
-持续超过 flowFaultConfirmSec 后成立
+flowMlPerMin 持续低于 zone.normalFlowMlPerMin * settings.lowFlowPercent / 100
+持续超过 settings.flowFaultConfirmSec 后成立
 按 lowFlowAction 处理
 ```
 
@@ -250,8 +250,8 @@ flowMlPerMin 持续低于 normalFlowMlPerMin * lowFlowPercent / 100
 
 ```text
 Zone 有 normalFlowMlPerMin 时启用
-flowMlPerMin 持续高于 normalFlowMlPerMin * highFlowPercent / 100
-持续超过 flowFaultConfirmSec 后成立
+flowMlPerMin 持续高于 zone.normalFlowMlPerMin * settings.highFlowPercent / 100
+持续超过 settings.flowFaultConfirmSec 后成立
 按 highFlowAction 处理
 ```
 

@@ -267,21 +267,19 @@ flowMlPerMin = windowPulseCount * 60000 / (pulsesPerLiter * windowMs)
 
 ```text
 normalFlowMlPerMin
-lowFlowPercent
-highFlowPercent
-flowFaultConfirmSec
+normalFlowMeasuredAt
 ```
 
 该值只在用户明确执行“测定正常流量”或手工输入并确认保存后更新；系统运行中不会自动修改正常流量。
 
-异常判断基于该 Zone 的正常流量：
+低/高流量判断使用每个 Zone 的正常流量和系统级百分比阈值：
 
 ```text
-低流量：低于 normalFlowMlPerMin * lowFlowPercent / 100
-高流量：高于 normalFlowMlPerMin * highFlowPercent / 100
+低流量：低于 zone.normalFlowMlPerMin * settings.lowFlowPercent / 100
+高流量：高于 zone.normalFlowMlPerMin * settings.highFlowPercent / 100
 ```
 
-低流量、高流量必须持续超过确认时间才成立，避免瞬时波动误报。
+`lowFlowPercent`、`highFlowPercent` 和 `flowFaultConfirmSec` 是系统级配置，默认分别为 60、160 和 10 秒。低流量、高流量必须持续超过确认时间才成立，避免瞬时波动误报。
 
 ## 自动浇水状态
 

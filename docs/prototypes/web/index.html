@@ -1919,14 +1919,26 @@
                 <div class="panel-header">
                   <div>
                     <h2 class="panel-title">流量保护</h2>
-                    <p class="panel-subtitle">通常保持默认值；只影响这一路的偏低和偏高判断</p>
+                    <p class="panel-subtitle">这里显示按当前系统设置换算出的参考线</p>
                   </div>
                 </div>
                 <div class="panel-body">
-                  <div class="form-grid">
-                    <div class="field"><label>偏低提醒线（标准流速的 %）</label><input type="number" min="1" max="100" value="60"><div class="hint">范围 1..100%。低于该比例并持续一段时间时提醒，默认不停止。</div></div>
-                    <div class="field"><label>偏高停机线（标准流速的 %）</label><input type="number" min="101" max="500" value="160"><div class="hint">范围 101..500%。高于该比例并持续一段时间时停机，常用于识别脱管或破管。</div></div>
-                    <div class="field"><label>偏低/偏高确认时间（秒）</label><input type="number" min="1" max="300" value="10"><div class="hint">范围 1..300 秒。无水停机使用系统设置里的无水时间。</div></div>
+                  <div class="status-strip">
+                    <div class="status-tile">
+                      <div class="status-title">低流量提醒线</div>
+                      <div class="status-value">0.312 升/分钟</div>
+                      <div class="status-copy">标准流速的 60%，低于此值持续 10 秒后提醒。</div>
+                    </div>
+                    <div class="status-tile">
+                      <div class="status-title">高流量停机线</div>
+                      <div class="status-value">0.832 升/分钟</div>
+                      <div class="status-copy">标准流速的 160%，高于此值持续 10 秒后停机。</div>
+                    </div>
+                    <div class="status-tile">
+                      <div class="status-title">配置位置</div>
+                      <div class="status-value">系统设置</div>
+                      <div class="status-copy">百分比和确认时间在“流量异常判断”中统一设置。</div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2380,6 +2392,18 @@
                   <div class="field"><label>计划排队最长等待（分钟）</label><input type="number" min="0" max="360" value="60"><div class="hint">范围 0..360 分钟。自动计划撞上当前运行时，最多等待多久；0 表示不排队，直接跳过。</div></div>
                 </div>
                 <div class="callout">任意时刻仍只允许一路水路运行；排队只是在当前运行结束后继续执行等待中的计划。</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">流量异常判断</h2></div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field"><label>低流量提醒线（标准流速的 %）</label><input type="number" min="1" max="100" value="60"><div class="hint">范围 1..100%。每一路按自己的标准流速换算；低于该线持续一段时间后触发低流量。</div></div>
+                  <div class="field"><label>高流量停机线（标准流速的 %）</label><input type="number" min="101" max="500" value="160"><div class="hint">范围 101..500%。每一路按自己的标准流速换算；高于该线持续一段时间后触发高流量。</div></div>
+                  <div class="field"><label>异常持续时间（秒）</label><input type="number" min="1" max="300" value="10"><div class="hint">范围 1..300 秒。流速连续超过低/高判断线这么久，异常才成立。</div></div>
+                </div>
+                <div class="callout">这些是全局判断规则。每一路仍使用自己的标准流速，因此第 1 路和第 2 路会换算出不同的实际升/分钟阈值。</div>
               </div>
             </div>
 

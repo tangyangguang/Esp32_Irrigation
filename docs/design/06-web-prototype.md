@@ -420,9 +420,6 @@ name：显示名称
 defaultManualDurationMin：1..360
 normalFlowMlPerMin：只读摘要，编辑入口在流量页或本页跳转
 normalFlowMeasuredAt：只读
-lowFlowPercent：高级区域
-highFlowPercent：高级区域
-flowFaultConfirmSec：高级区域
 锁定状态：只读摘要和清除入口
 ```
 
@@ -431,7 +428,7 @@ flowFaultConfirmSec：高级区域
 ```text
 禁用 Zone 不出现在手动选择列表，计划执行时会跳过。
 normalFlowMlPerMin 为 0 时，低流量/高流量判断不启用，但无水检测仍工作。
-lowFlowPercent 和 highFlowPercent 只在设置正常流量后生效。
+页面显示按当前系统“流量异常判断”设置换算出的低流量线、高流量线和异常持续时间；这些值不在水路编辑页单独配置。
 ```
 
 ### 操作流
@@ -741,6 +738,7 @@ mergedPulsesPerLiter = sum(totalPulseCount) * 1000 / sum(actualMl)
 天气信息获取
 水源与外设
 计划执行
+流量异常判断
 故障策略
 高级：流量检测参数
 高级：阀门保持参数
@@ -849,6 +847,24 @@ queuedPlanMaxDelayMin：0..360 分钟
 ```text
 queuedPlanMaxDelayMin = 0 表示冲突时不排队，直接跳过。
 任意时刻仍只允许一路水路运行；排队只是在当前运行结束后继续执行等待中的计划。
+```
+
+### 流量异常判断
+
+字段：
+
+```text
+lowFlowPercent：1..100 %
+highFlowPercent：101..500 %
+flowFaultConfirmSec：1..300 秒
+```
+
+提示：
+
+```text
+这些是全局判断规则。
+每一路仍使用自己的 normalFlowMlPerMin，因此会换算出不同的实际 L/min 阈值。
+低/高流量必须持续超过 flowFaultConfirmSec 后才成立。
 ```
 
 ### 故障策略
@@ -1136,9 +1152,6 @@ body:
   enabled
   name
   defaultManualDurationMin
-  lowFlowPercent
-  highFlowPercent
-  flowFaultConfirmSec
   confirm: true
 ```
 
@@ -1189,6 +1202,9 @@ body:
   pumpStartEnabled
   lowLevelEnabled
   queuedPlanMaxDelayMin
+  lowFlowPercent
+  highFlowPercent
+  flowFaultConfirmSec
   noWaterLockZone
   highFlowAction
   highFlowLockZone
