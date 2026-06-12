@@ -492,6 +492,154 @@
       display: grid;
     }
 
+    .plan-editor {
+      max-width: 980px;
+    }
+
+    .plan-section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .plan-section-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    .plan-section-title {
+      font-size: 15px;
+      font-weight: 760;
+    }
+
+    .plan-section-copy {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .plan-basic-grid {
+      display: grid;
+      grid-template-columns: 220px minmax(260px, 420px);
+      gap: 12px;
+      align-items: start;
+    }
+
+    .compact-segmented {
+      display: inline-grid;
+      grid-auto-flow: column;
+      grid-auto-columns: max-content;
+      gap: 2px;
+      width: max-content;
+      max-width: 100%;
+      border: 1px solid #d5e0dc;
+      border-radius: 999px;
+      padding: 2px;
+      background: #fff;
+      box-shadow: inset 0 1px 2px rgba(27, 54, 44, .04);
+    }
+
+    .compact-segmented button {
+      border: 1px solid transparent;
+      border-radius: 999px;
+      min-height: 30px;
+      padding: 5px 12px;
+      background: transparent;
+      cursor: pointer;
+      color: #41514b;
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .compact-segmented button.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 2px 6px rgba(22, 131, 95, .18);
+    }
+
+    .compact-choice-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .chip-choice {
+      border: 1px solid #d5e0dc;
+      border-radius: 999px;
+      background: #fff;
+      color: #41514b;
+      min-height: 30px;
+      padding: 5px 11px;
+      cursor: pointer;
+      font-size: 13px;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .chip-choice.active {
+      border-color: var(--accent);
+      background: #eaf6f0;
+      color: var(--accent-2);
+      font-weight: 700;
+    }
+
+    .short-field {
+      max-width: 190px;
+    }
+
+    .time-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-start;
+    }
+
+    .time-field {
+      width: 128px;
+      display: grid;
+      gap: 6px;
+    }
+
+    .zone-plan-list {
+      display: grid;
+      gap: 8px;
+      max-width: 680px;
+    }
+
+    .zone-plan-row {
+      display: grid;
+      grid-template-columns: minmax(160px, 1fr) 118px auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fbfcfb;
+    }
+
+    .zone-plan-name {
+      font-weight: 700;
+    }
+
+    .zone-plan-note {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .zone-plan-row input {
+      text-align: right;
+    }
+
     .detail-grid {
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1350,6 +1498,8 @@
       .stage-row,
       .status-strip,
       .maintenance-grid,
+      .plan-basic-grid,
+      .zone-plan-row,
       .flow-summary,
       .health-list.overview-health,
       .stepper,
@@ -1789,7 +1939,7 @@
                   </div>
                 </div>
                 <div class="field"><label>水路名称</label><input value="前院滴灌"></div>
-                <div class="field"><label>默认手动时长（分钟）</label><input type="number" min="1" max="360" value="10"><div class="hint">手动页载入默认值时使用，实际启动前仍可修改。</div></div>
+                <div class="field"><label>默认手动时长（分钟）</label><input type="number" min="1" max="360" value="10"><div class="hint">范围 1..360 分钟。手动页载入默认值时使用，实际启动前仍可修改。</div></div>
                 <div class="field"><label>标准流速（升/分钟）</label><input value="0.520，2026-06-10 17:20 学习" disabled><div class="hint">用于识别明显堵塞或破管，不影响按时间停止浇水。</div></div>
                 <div class="field"><label>锁定状态</label><input value="未锁定" disabled></div>
               </div>
@@ -1800,9 +1950,9 @@
                 </summary>
                 <div class="inline-body">
                   <div class="form-grid">
-                    <div class="field"><label>偏低提醒线（标准流速的 %）</label><input type="number" value="60"><div class="hint">低于该比例并持续一段时间时提醒，默认不停止。</div></div>
-                    <div class="field"><label>偏高停机线（标准流速的 %）</label><input type="number" value="160"><div class="hint">高于该比例并持续一段时间时停机，常用于识别脱管或破管。</div></div>
-                    <div class="field"><label>偏低/偏高确认时间（秒）</label><input type="number" value="10"><div class="hint">只用于这一路的偏低和偏高判断；无水停机使用系统设置里的无水时间。</div></div>
+                    <div class="field"><label>偏低提醒线（标准流速的 %）</label><input type="number" min="1" max="100" value="60"><div class="hint">范围 1..100%。低于该比例并持续一段时间时提醒，默认不停止。</div></div>
+                    <div class="field"><label>偏高停机线（标准流速的 %）</label><input type="number" min="101" max="500" value="160"><div class="hint">范围 101..500%。高于该比例并持续一段时间时停机，常用于识别脱管或破管。</div></div>
+                    <div class="field"><label>偏低/偏高确认时间（秒）</label><input type="number" min="1" max="300" value="10"><div class="hint">范围 1..300 秒。只用于这一路的偏低和偏高判断；无水停机使用系统设置里的无水时间。</div></div>
                   </div>
                 </div>
               </details>
@@ -1848,83 +1998,124 @@
               </div>
               <button class="btn" data-goto="plans">返回列表</button>
             </div>
-            <div class="panel-body stack">
-              <div class="form-grid">
-                <div class="field">
-                  <label>计划状态</label>
-                  <div class="choice-group" role="radiogroup" aria-label="计划状态">
-                    <button class="choice active">已启用</button>
-                    <button class="choice">未启用</button>
+            <div class="panel-body stack plan-editor">
+              <div class="plan-section">
+                <div class="plan-section-header">
+                  <div>
+                    <div class="plan-section-title">基本信息</div>
+                    <div class="plan-section-copy">计划名称和启用状态。</div>
                   </div>
                 </div>
-                <div class="field"><label>计划名称</label><input value="晨晚浇水"></div>
-              </div>
-              <div class="field">
-                <label>周期规则</label>
-                <div class="segmented" role="group" aria-label="周期规则">
-                  <button class="active" data-plan-mode="daily">每天</button>
-                  <button data-plan-mode="weekly">每周</button>
-                  <button data-plan-mode="custom">自定义周期</button>
-                </div>
-                <div class="hint">给用户看的是易懂规则；设备保存时仍转换为周期长度、周期起始日和周期内启用日。</div>
-              </div>
-              <div class="form-grid mode-panel active" id="planModeDaily">
-                <div class="field">
-                  <label>每天运行</label>
-                  <input value="每天都会按下面的开始时间运行" disabled>
-                  <div class="hint">保存到设备后等价于周期长度 1 天，周期内第 1 天运行。</div>
-                </div>
-                <div class="field"><label>周期起始日</label><input type="date" value="2026-06-08"><div class="hint">每天模式下仅作为内部周期锚点，用户通常不需要关心。</div></div>
-              </div>
-              <div class="form-grid mode-panel" id="planModeWeekly">
-                <div class="field" style="grid-column: 1 / -1;">
-                  <label>每周运行日</label>
-                  <div class="choice-group seven multi-choice" role="group" aria-label="每周运行日">
-                    <button class="choice active">周一</button>
-                    <button class="choice">周二</button>
-                    <button class="choice active">周三</button>
-                    <button class="choice">周四</button>
-                    <button class="choice active">周五</button>
-                    <button class="choice">周六</button>
-                    <button class="choice">周日</button>
+                <div class="plan-basic-grid">
+                  <div class="field">
+                    <label>计划状态</label>
+                    <div class="choice-group" role="radiogroup" aria-label="计划状态">
+                      <button class="choice active">已启用</button>
+                      <button class="choice">未启用</button>
+                    </div>
                   </div>
-                  <div class="hint">可同时选择多个星期几。保存后等价于 7 天周期，按所选星期运行。</div>
+                  <div class="field"><label>计划名称</label><input value="晨晚浇水"></div>
                 </div>
-                <div class="field"><label>本周周期起始日</label><input type="date" value="2026-06-08"><div class="hint">用于把周一到周日转换为设备内部的周期内第几天。</div></div>
               </div>
-              <div class="form-grid mode-panel" id="planModeCustom">
-                <div class="field"><label>周期起始日</label><input type="date" value="2026-06-08"><div class="hint">从这一天开始计算第 1 天。</div></div>
-                <div class="field"><label>周期长度（天）</label><input type="number" min="1" max="31" value="7"><div class="hint">范围 1..31 天。周期结束后自动从第 1 天重新开始。</div></div>
-                <div class="field" style="grid-column: 1 / -1;">
-                  <label>周期内运行日</label>
-                  <div class="choice-group wrap multi-choice" role="group" aria-label="周期内运行日">
-                    <button class="choice active">第 1 天</button>
-                    <button class="choice">第 2 天</button>
-                    <button class="choice active">第 3 天</button>
-                    <button class="choice">第 4 天</button>
-                    <button class="choice active">第 5 天</button>
-                    <button class="choice">第 6 天</button>
-                    <button class="choice">第 7 天</button>
+
+              <div class="plan-section">
+                <div class="plan-section-header">
+                  <div>
+                    <div class="plan-section-title">浇水周期</div>
+                    <div class="plan-section-copy">选择用户能理解的周期，设备保存为内部循环规则。</div>
                   </div>
-                  <div class="hint">例如 7 天周期内选择第 1、3、5 天运行，其余日期到点跳过。</div>
+                  <div class="compact-segmented" role="group" aria-label="周期规则">
+                    <button class="active" data-plan-mode="daily">每天</button>
+                    <button data-plan-mode="weekly">每周</button>
+                    <button data-plan-mode="custom">自定义周期</button>
+                  </div>
+                </div>
+                <div class="mode-panel active" id="planModeDaily">
+                  <div class="hint">每天都会按下面的开始时间运行。</div>
+                </div>
+                <div class="mode-panel" id="planModeWeekly">
+                  <div class="field">
+                    <label>每周运行日</label>
+                    <div class="compact-choice-row" role="group" aria-label="每周运行日">
+                      <button class="chip-choice active">周一</button>
+                      <button class="chip-choice">周二</button>
+                      <button class="chip-choice active">周三</button>
+                      <button class="chip-choice">周四</button>
+                      <button class="chip-choice active">周五</button>
+                      <button class="chip-choice">周六</button>
+                      <button class="chip-choice">周日</button>
+                    </div>
+                    <div class="hint">可同时选择多个星期几。保存后等价于 7 天周期。</div>
+                  </div>
+                </div>
+                <div class="mode-panel" id="planModeCustom">
+                  <div class="form-grid">
+                    <div class="field short-field"><label>周期长度（天）</label><input type="number" min="1" max="31" value="7"><div class="hint">范围 1..31 天。</div></div>
+                    <div class="field short-field"><label>周期起始日</label><input type="date" value="2026-06-08"><div class="hint">从这一天开始算第 1 天。</div></div>
+                  </div>
+                  <div class="field">
+                    <label>周期内运行日</label>
+                    <div class="compact-choice-row" role="group" aria-label="周期内运行日">
+                      <button class="chip-choice active">第 1 天</button>
+                      <button class="chip-choice">第 2 天</button>
+                      <button class="chip-choice active">第 3 天</button>
+                      <button class="chip-choice">第 4 天</button>
+                      <button class="chip-choice active">第 5 天</button>
+                      <button class="chip-choice">第 6 天</button>
+                      <button class="chip-choice">第 7 天</button>
+                    </div>
+                    <div class="hint">例如 7 天周期内选择第 1、3、5 天运行，其余日期到点跳过。</div>
+                  </div>
+                </div>
+                <div class="callout good" id="planRuleSummary">当前表达：每天运行。保存后等价于周期长度 1 天、周期内第 1 天运行。</div>
+              </div>
+
+              <div class="plan-section">
+                <div class="plan-section-header">
+                  <div>
+                    <div class="plan-section-title">开始时间</div>
+                    <div class="plan-section-copy">最多 4 个时间；留空表示不用。</div>
+                  </div>
+                </div>
+                <div class="time-row">
+                  <div class="time-field"><label>时间 1</label><input type="time" value="07:00"></div>
+                  <div class="time-field"><label>时间 2</label><input type="time" value="18:30"></div>
+                  <div class="time-field"><label>时间 3</label><input type="time"></div>
+                  <div class="time-field"><label>时间 4</label><input type="time"></div>
                 </div>
               </div>
-              <div class="callout good" id="planRuleSummary">当前表达：每天运行。保存到设备后等价于周期长度 1 天、周期起始日 2026-06-08、周期内第 1 天运行。</div>
-              <div class="schedule-grid">
-                <div class="field"><label>开始时间 1</label><input type="time" value="07:00"></div>
-                <div class="field"><label>开始时间 2</label><input type="time" value="18:30"></div>
-                <div class="field"><label>开始时间 3</label><input type="time"></div>
-                <div class="field"><label>开始时间 4</label><input type="time"></div>
+
+              <div class="plan-section">
+                <div class="plan-section-header">
+                  <div>
+                    <div class="plan-section-title">各水路时长</div>
+                    <div class="plan-section-copy">只显示已启用水路；0 分钟表示本计划跳过该水路。</div>
+                  </div>
+                </div>
+                <div class="zone-plan-list">
+                  <div class="zone-plan-row">
+                    <div><div class="zone-plan-name">第 1 路 前院滴灌</div><div class="zone-plan-note">已启用，按顺序第 1 个运行</div></div>
+                    <input type="number" min="0" max="360" value="10">
+                    <span class="hint">分钟</span>
+                  </div>
+                  <div class="zone-plan-row">
+                    <div><div class="zone-plan-name">第 2 路 菜床</div><div class="zone-plan-note">已启用，按顺序第 2 个运行</div></div>
+                    <input type="number" min="0" max="360" value="15">
+                    <span class="hint">分钟</span>
+                  </div>
+                  <div class="zone-plan-row">
+                    <div><div class="zone-plan-name">第 3 路 果树</div><div class="zone-plan-note">已启用，按顺序第 3 个运行</div></div>
+                    <input type="number" min="0" max="360" value="20">
+                    <span class="hint">分钟</span>
+                  </div>
+                  <div class="zone-plan-row">
+                    <div><div class="zone-plan-name">第 4 路 草坪</div><div class="zone-plan-note">已启用，填 0 时本计划不浇这一路</div></div>
+                    <input type="number" min="0" max="360" value="0">
+                    <span class="hint">分钟</span>
+                  </div>
+                </div>
               </div>
-              <div class="zone-duration-grid">
-                <div class="field"><label>第 1 路 前院（分钟）</label><input type="number" min="0" max="360" value="10"></div>
-                <div class="field"><label>第 2 路 菜床（分钟）</label><input type="number" min="0" max="360" value="15"></div>
-                <div class="field"><label>第 3 路 果树（分钟）</label><input type="number" min="0" max="360" value="20"></div>
-                <div class="field"><label>第 4 路 草坪（分钟）</label><input type="number" min="0" max="360" value="0"></div>
-                <div class="field"><label>第 5 路 未启用（分钟）</label><input type="number" min="0" max="360" value="0"></div>
-                <div class="field"><label>第 6 路 未启用（分钟）</label><input type="number" min="0" max="360" value="0"></div>
-              </div>
-              <div class="callout">0 表示跳过，1..360 表示运行分钟数。计划到点后按水路编号依次执行，不支持同时打开多路。</div>
+              <div class="callout">每一路支持 0..360 分钟；0 表示跳过，1..360 表示运行分钟数。计划到点后按水路编号依次执行，不支持同时打开多路。</div>
               <div class="toolbar">
                 <button class="btn primary" data-confirm="保存计划组 1？将每天 07:00 和 18:30 依次运行第 1 路、第 2 路、第 3 路。">保存计划</button>
               </div>
@@ -1944,19 +2135,19 @@
               <div class="panel-body stack">
                 <div class="status-strip">
                   <div class="status-tile">
-                    <div class="status-title">流量计</div>
+                    <div class="status-title">流量计状态</div>
                     <div class="status-value">已校准</div>
-                    <div class="status-copy">水量和实时流速可以正常显示。</div>
+                    <div class="status-copy">当前参数 450 脉冲/升，水量和实时流速可正常显示。</div>
                   </div>
                   <div class="status-tile">
-                    <div class="status-title">水路流量保护</div>
-                    <div class="status-value">4 / 6 已学习</div>
-                    <div class="status-copy">未学习的水路仍可浇水，但不判断偏低/偏高。</div>
+                    <div class="status-title">水路标准流速</div>
+                    <div class="status-value">4 路已建立</div>
+                    <div class="status-copy">用于判断各水路是否堵塞、脱管或破管。</div>
                   </div>
                   <div class="status-tile">
-                    <div class="status-title">水量用途</div>
-                    <div class="status-value">观察和保护</div>
-                    <div class="status-copy">浇水仍按时间停止，不按水量停止。</div>
+                    <div class="status-title">最近维护</div>
+                    <div class="status-value">06-10 17:02</div>
+                    <div class="status-copy">根据 3 个量桶样本保存流量计参数。</div>
                   </div>
                 </div>
                 <div class="maintenance-grid">
@@ -1978,18 +2169,18 @@
               <div class="panel">
                 <div class="panel-header">
                   <div>
-                    <h2 class="panel-title">水路流量保护</h2>
-                    <p class="panel-subtitle">用用户能理解的状态表达，不在列表中展开阈值</p>
+                    <h2 class="panel-title">水路标准流速</h2>
+                    <p class="panel-subtitle">每个已启用水路各自保存一个正常出水参考值</p>
                   </div>
                 </div>
                 <div class="panel-body">
                   <table>
-                    <thead><tr><th>水路</th><th>学习状态</th><th>当前参考</th><th>状态</th></tr></thead>
+                    <thead><tr><th>水路</th><th>标准流速</th><th>状态</th><th>说明</th></tr></thead>
                     <tbody>
-                      <tr><td>第 1 路 前院滴灌</td><td>已学习</td><td>0.520 升/分钟</td><td><span class="badge good">正常</span></td></tr>
-                      <tr><td>第 2 路 菜床</td><td>已学习</td><td>0.480 升/分钟</td><td><span class="badge good">正常</span></td></tr>
-                      <tr><td>第 3 路 果树</td><td>未学习</td><td>-</td><td><span class="badge warn">建议学习</span></td></tr>
-                      <tr><td>第 4 路 草坪</td><td>已学习</td><td>0.900 升/分钟</td><td><span class="badge danger">锁定中</span></td></tr>
+                      <tr><td>第 1 路 前院滴灌</td><td>0.520 升/分钟</td><td><span class="badge good">已建立</span></td><td>可判断偏低/偏高</td></tr>
+                      <tr><td>第 2 路 菜床</td><td>0.480 升/分钟</td><td><span class="badge good">已建立</span></td><td>可判断偏低/偏高</td></tr>
+                      <tr><td>第 3 路 果树</td><td>-</td><td><span class="badge warn">未建立</span></td><td>建议学习一次</td></tr>
+                      <tr><td>第 4 路 草坪</td><td>0.900 升/分钟</td><td><span class="badge danger">锁定中</span></td><td>先处理锁定</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -2065,7 +2256,7 @@
               </div>
               <div class="form-grid">
                 <div class="field"><label>校准放水水路</label><select><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option><option>第 3 路 果树</option></select><div class="hint">只用于打开阀门放水；校准结果仍是全局流量计参数。</div></div>
-                <div class="field"><label>实际接水量（升）</label><input type="number" value="5.000"><div class="hint">建议单次不少于 2.000 升，总样本水量建议不低于 5.000 升。</div></div>
+                <div class="field"><label>实际接水量（升）</label><input type="number" min="0.100" max="999.999" step="0.001" value="5.000"><div class="hint">范围 0.100..999.999 升。建议单次不少于 2.000 升，总样本水量建议不低于 5.000 升。</div></div>
               </div>
               <div class="metric-row">
                 <div class="metric"><div class="metric-label">运行时长</div><div class="metric-value">92 秒</div><div class="metric-note">已停止</div></div>
@@ -2118,11 +2309,11 @@
                 <div class="step"><div class="step-num">4</div><div><div class="step-title">确认保存</div><div class="step-copy">保存为该水路的标准流速。</div></div></div>
               </div>
               <div class="form-grid">
-                <div class="field"><label>测定水路</label><select><option>第 3 路 果树</option><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option></select><div class="hint">第 4 路当前锁定，不参与测定。</div></div>
+                <div class="field"><label>学习水路</label><select><option>第 3 路 果树</option><option>第 1 路 前院滴灌</option><option>第 2 路 菜床</option></select><div class="hint">第 4 路当前锁定，不参与学习。</div></div>
                 <div class="field"><label>采样时长（秒）</label><input value="30" disabled><div class="hint">稳定等待结束后开始采样，普通用户不需要修改。</div></div>
               </div>
               <div class="stage-row">
-                <div class="stage-card"><div class="mini-label">当前阶段</div><div class="stage-value">稳定采样中</div><div class="mini-note">已过首脉冲和稳定等待，正在统计正常流速。</div></div>
+                <div class="stage-card"><div class="mini-label">当前阶段</div><div class="stage-value">稳定采样中</div><div class="mini-note">已过首脉冲和稳定等待，正在统计标准流速。</div></div>
                 <div class="stage-card"><div class="mini-label">启动阶段</div><div class="stage-value">已完成</div><div class="mini-note">flowStabilizeSec 只屏蔽异常判断，不补偿水量。</div></div>
               </div>
               <div class="metric-row">
@@ -2138,13 +2329,13 @@
               </div>
               <details class="inline-advanced">
                 <summary>
-                  <strong>手工输入正常流速</strong>
+                  <strong>手工输入标准流速</strong>
                   <span class="hint">已有外部测量结果时使用</span>
                 </summary>
                 <div class="inline-body">
                   <div class="form-grid">
                     <div class="field"><label>水路</label><select><option>第 3 路 果树</option></select></div>
-                    <div class="field"><label>正常流速（升/分钟）</label><input type="number" value="0.650"></div>
+                    <div class="field"><label>标准流速（升/分钟）</label><input type="number" min="0.001" max="999.999" step="0.001" value="0.650"><div class="hint">范围 0.001..999.999 升/分钟。</div></div>
                   </div>
                   <div class="toolbar" style="margin-top: 12px;"><button class="btn" data-confirm="手工保存第 3 路正常流速为 0.650 升/分钟？">保存手工输入</button></div>
                 </div>
@@ -2168,21 +2359,21 @@
                     <div class="hint">启用后，自动计划开始前会看天气；预计明显下雨时只跳过这一次计划，不会补跑。手动浇水不受影响。</div>
                   </div>
                   <div class="form-grid">
-                    <div class="field"><label>降雨概率达到（%）</label><input value="70"><div class="hint">天气预报的降雨概率达到这个值，才可能跳过计划。</div></div>
-                    <div class="field"><label>预计降雨达到（毫米）</label><input value="5"><div class="hint">预计雨量也达到这个值时，才跳过计划；两个条件需要同时满足。</div></div>
+                    <div class="field"><label>降雨概率达到（%）</label><input type="number" min="0" max="100" value="70"><div class="hint">范围 0..100%。天气预报的降雨概率达到这个值，才可能跳过计划。</div></div>
+                    <div class="field"><label>预计降雨达到（毫米）</label><input type="number" min="0" max="100" value="5"><div class="hint">范围 0..100 毫米。预计雨量也达到这个值时，才跳过计划。</div></div>
                   </div>
                 </div>
-                <details class="inline-advanced">
+                <details class="inline-advanced" open>
                   <summary>
                     <strong>高级天气判断</strong>
                     <span class="hint">通常保持默认值</span>
                   </summary>
                   <div class="inline-body">
                     <div class="form-grid">
-                      <div class="field"><label>计划前判断时间（分钟）</label><input value="60"><div class="hint">自动计划开始前提前多久刷新天气并判断是否跳过。</div></div>
+                      <div class="field"><label>计划前判断时间（分钟）</label><input type="number" min="0" max="360" value="60"><div class="hint">范围 0..360 分钟。自动计划开始前提前多久刷新天气并判断是否跳过。</div></div>
                       <div class="field"><label>每天更新时间（HH:MM）</label><input value="08:00"><div class="hint">即使当天没有浇水计划，也会在这个时间更新天气。</div></div>
-                      <div class="field"><label>预报范围（小时）</label><input value="24"><div class="hint">判断未来这段时间内的累计预计降雨，优先使用逐小时预报。</div></div>
-                      <div class="field"><label>天气数据有效期（小时）</label><input value="6"><div class="hint">超过有效期时不因为旧天气跳过计划，首页只把旧天气作为参考显示。</div></div>
+                      <div class="field"><label>预报范围（小时）</label><input type="number" min="1" max="72" value="24"><div class="hint">范围 1..72 小时。判断未来这段时间内的累计预计降雨。</div></div>
+                      <div class="field"><label>天气数据有效期（小时）</label><input type="number" min="1" max="24" value="6"><div class="hint">范围 1..24 小时。超过有效期时不因为旧天气跳过计划。</div></div>
                     </div>
                   </div>
                 </details>
@@ -2191,7 +2382,7 @@
             </div>
 
             <div class="panel">
-              <div class="panel-header"><h2 class="panel-title">自动和外设</h2></div>
+              <div class="panel-header"><h2 class="panel-title">水源与外设</h2></div>
               <div class="panel-body stack">
                 <div class="form-grid">
                   <div class="field">
@@ -2210,9 +2401,18 @@
                     </div>
                     <div class="hint">启用后，检测到低液位会立即停止当前运行，但不锁定水路。</div>
                   </div>
-                  <div class="field"><label>计划排队最长等待（分钟）</label><input type="number" value="60"><div class="hint">自动计划撞上当前运行时，最多等待多久。</div></div>
                 </div>
-                <div class="callout">计划排队最长等待设为 0，表示遇到冲突时不排队，直接跳过。</div>
+                <div class="callout">这些是硬件接线相关配置。未安装的外设关闭后，首页不显示对应状态。</div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="panel-header"><h2 class="panel-title">计划执行</h2></div>
+              <div class="panel-body stack">
+                <div class="form-grid">
+                  <div class="field"><label>计划排队最长等待（分钟）</label><input type="number" min="0" max="360" value="60"><div class="hint">范围 0..360 分钟。自动计划撞上当前运行时，最多等待多久；0 表示不排队，直接跳过。</div></div>
+                </div>
+                <div class="callout">任意时刻仍只允许一路水路运行；排队只是在当前运行结束后继续执行等待中的计划。</div>
               </div>
             </div>
 
@@ -2242,7 +2442,7 @@
                     <span class="badge warn">提醒</span>
                   </div>
                 </div>
-                <details class="inline-advanced">
+                <details class="inline-advanced" open>
                   <summary>
                     <strong>高级故障策略</strong>
                     <span class="hint">只有明确现场策略时才修改</span>
@@ -2261,7 +2461,7 @@
               </div>
             </div>
 
-            <details class="panel">
+            <details class="panel" open>
               <summary>
                 <div>
                   <h2 class="panel-title">高级：流量检测参数</h2>
@@ -2271,18 +2471,18 @@
               </summary>
               <div class="panel-body">
                 <div class="form-grid">
-                  <div class="field"><label>流速采样窗口（秒）</label><input value="5"><div class="hint">用最近这段时间的脉冲计算实时流速。</div></div>
-                  <div class="field"><label>流速刷新间隔（毫秒）</label><input value="1000"><div class="hint">页面和运行监测多久刷新一次流速。</div></div>
-                  <div class="field"><label>等待首次出水超时（秒）</label><input value="15"><div class="hint">开阀后多久还没有脉冲就判断无水。</div></div>
-                  <div class="field"><label>运行中无水确认时间（秒）</label><input value="15"><div class="hint">稳定运行后连续多久无脉冲就停机。</div></div>
-                  <div class="field"><label>启动稳定等待（秒）</label><input value="10"><div class="hint">首次出水后先等待水流稳定，期间不判断偏低/偏高。</div></div>
-                  <div class="field"><label>维护运行最长时间（秒）</label><input value="600"><div class="hint">校准和测定标准流速时的最长放水时间。</div></div>
-                  <div class="field"><label>待机漏水确认时间（秒）</label><input value="30"><div class="hint">空闲时连续检测到流量多久后锁定设备。</div></div>
+                  <div class="field"><label>流速采样窗口（秒）</label><input type="number" min="1" max="60" value="5"><div class="hint">范围 1..60 秒。用最近这段时间的脉冲计算实时流速。</div></div>
+                  <div class="field"><label>流速刷新间隔（毫秒）</label><input type="number" min="200" max="10000" value="1000"><div class="hint">范围 200..10000 毫秒。页面和运行监测多久刷新一次流速。</div></div>
+                  <div class="field"><label>等待首次出水超时（秒）</label><input type="number" min="1" max="300" value="15"><div class="hint">范围 1..300 秒。开阀后多久还没有脉冲就判断无水。</div></div>
+                  <div class="field"><label>运行中无水确认时间（秒）</label><input type="number" min="1" max="300" value="15"><div class="hint">范围 1..300 秒。稳定运行后连续多久无脉冲就停机。</div></div>
+                  <div class="field"><label>启动稳定等待（秒）</label><input type="number" min="0" max="120" value="10"><div class="hint">范围 0..120 秒。首次出水后先等待水流稳定，期间不判断偏低/偏高。</div></div>
+                  <div class="field"><label>维护运行最长时间（秒）</label><input type="number" min="60" max="600" value="600"><div class="hint">范围 60..600 秒。校准和学习标准流速时的最长放水时间。</div></div>
+                  <div class="field"><label>待机漏水确认时间（秒）</label><input type="number" min="5" max="600" value="30"><div class="hint">范围 5..600 秒。空闲时连续检测到流量多久后锁定设备。</div></div>
                 </div>
               </div>
             </details>
 
-            <details class="panel">
+            <details class="panel" open>
               <summary>
                 <div>
                   <h2 class="panel-title">高级：阀门保持参数</h2>
@@ -2292,9 +2492,9 @@
               </summary>
               <div class="panel-body stack">
                 <div class="form-grid">
-                  <div class="field"><label>阀门全功率吸合时间（毫秒）</label><input value="3000"><div class="hint">阀门刚打开时保持全功率的时间。</div></div>
-                  <div class="field"><label>阀门保持功率比例（%）</label><input value="60"><div class="hint">吸合后用较低功率保持打开；100% 表示不降功率。</div></div>
-                  <div class="field"><label>阀门保持频率（赫兹）</label><input value="20000"><div class="hint">保持阶段 PWM 频率，需要结合阀门实测。</div></div>
+                  <div class="field"><label>阀门全功率吸合时间（毫秒）</label><input type="number" min="100" max="10000" value="3000"><div class="hint">范围 100..10000 毫秒。阀门刚打开时保持全功率的时间。</div></div>
+                  <div class="field"><label>阀门保持功率比例（%）</label><input type="number" min="1" max="100" value="60"><div class="hint">范围 1..100%。吸合后用较低功率保持打开；100% 表示不降功率。</div></div>
+                  <div class="field"><label>阀门保持频率（赫兹）</label><input type="number" min="100" max="40000" value="20000"><div class="hint">范围 100..40000 赫兹。保持阶段 PWM 频率，需要结合阀门实测。</div></div>
                 </div>
                 <div class="callout danger">阀门保持功率比例设为 100，表示不降低保持功率。修改阀门参数需要实机验证。</div>
                 <button class="btn primary" data-confirm="保存系统设置？阀门参数将在下一次运行生效。">保存设置</button>
@@ -2424,13 +2624,13 @@
 	      btn.addEventListener("click", () => gotoPage(btn.dataset.goto));
 	    });
 
-	    document.querySelectorAll(".choice-group, .segmented").forEach(group => {
+	    document.querySelectorAll(".choice-group, .segmented, .compact-segmented, .compact-choice-row").forEach(group => {
 	      group.addEventListener("click", event => {
 	        const button = event.target.closest("button");
 	        if (!button || !group.contains(button)) return;
-	        if (group.classList.contains("multi-choice")) {
+	        if (group.classList.contains("multi-choice") || group.classList.contains("compact-choice-row")) {
 	          button.classList.toggle("active");
-	          if (!group.querySelector(".choice.active")) button.classList.add("active");
+	          if (!group.querySelector("button.active")) button.classList.add("active");
 	        } else {
 	          group.querySelectorAll("button").forEach(item => item.classList.remove("active"));
 	          button.classList.add("active");
