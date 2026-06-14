@@ -8,6 +8,7 @@
 
 ```text
 ESP32 主控
+1 路外部 RTC，带备用电池
 1 路流量计输入
 6 路 12V DC 电磁阀控制输出
 1 路可选自吸泵启动输出
@@ -44,18 +45,76 @@ ESP32 主控
 | `VALVE_OUT_5` | GPIO13 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 5 默认禁用。 |
 | `VALVE_OUT_6` | GPIO23 | 输出 PWM | 高电平驱动对应 MOS 管输入 | Zone 6 默认禁用。 |
 | `PUMP_START_OUT` | GPIO32 | 输出 | 高电平表示启动外部泵控制模块 | 可选，默认配置关闭。 |
+| `RTC_SDA` | GPIO21 | I2C | 3.3V I2C | 外部 RTC 数据线，可与后续低速 I2C 外设共用总线。 |
+| `RTC_SCL` | GPIO22 | I2C | 3.3V I2C | 外部 RTC 时钟线，可与后续低速 I2C 外设共用总线。 |
+| `RTC_INT` | GPIO33 | 输入 | RTC 告警低有效 | 建议 PCB 连接并可通过 0 欧电阻或焊桥断开；第一版固件不依赖此信号。 |
 
 暂时保留：
 
 ```text
 GPIO16 / GPIO17：可作为后续本地 UI、扩展输出或调试 IO。
 GPIO18 / GPIO19：优先保留给可能的 SPI 扩展。
-GPIO21 / GPIO22：优先保留给后续 I2C 屏幕或扩展。
-GPIO33：备用输出或输入。
+GPIO21 / GPIO22：作为 I2C 总线使用；RTC 是默认挂载设备，后续 I2C 屏幕或扩展需共用地址不冲突。
 GPIO36 / GPIO39：备用输入；同样需要外部上拉/下拉。
 ```
 
 如果最终 PCB IO 紧张，可以重新评估 GPIO16、17、18、19、21、22、33 的用途。不要优先占用 Flash、下载串口和启动绑带脚。
+
+## 外部 RTC
+
+本项目把外部 RTC 作为控制板必配硬件，推荐 DS3231 / DS3231M 等带备用电池、I2C 接口和较高精度的 RTC。
+
+原因：
+
+```text
+灌溉控制器停电期间不能浇水，但来电后必须知道真实日期时间。
+ESP32 可通过 NTP 获取可信时间，但断网或路由器未恢复时不能依赖网络校时。
+ESP32 内部 RTC timer 在 power-on reset 后会复位，不能替代带电池的外部 RTC。
+```
+
+软件语义：
+
+```text
+RTC 只负责保存真实日期时间。
+RTC 不直接控制电磁阀、泵或运行状态机。
+自动计划仍由 ESP32 软件每分钟检查系统时间和计划配置后触发。
+```
+
+推荐上电时间策略：
+
+```text
+1. ESP32 上电后先关闭所有阀门和泵输出。
+2. 读取 RTC 时间；如果 RTC 时间有效，立即设置系统时间。
+3. 如果网络可用，NTP 校时成功后更新系统时间并回写 RTC。
+4. 如果网络不可用但 RTC 有效，自动计划继续按 RTC 提供的系统时间运行。
+5. 如果 RTC 无效且 NTP 也不可用，系统时间无效，自动计划不可用，手动浇水仍可按安全条件执行。
+6. 停电期间错过的计划不补跑；来电后只执行后续按当前时间应触发的计划。
+```
+
+`RTC_INT` 结论：
+
+```text
+PCB 建议接到 ESP32 一个普通输入 GPIO，默认推荐 GPIO33。
+第一版固件不依赖 RTC_INT 做浇水定时，也不要求 RTC alarm 唤醒。
+RTC_INT 仅作为后续低功耗睡眠唤醒、硬件告警或诊断扩展预留。
+```
+
+电气要求：
+
+```text
+RTC I2C 与 ESP32 之间使用 3.3V 电平。
+RTC_INT / SQW 通常是开漏输出，应上拉到 3.3V，不能上拉到 5V 后直接接 ESP32。
+建议 RTC_INT 通过 0 欧电阻、焊桥或测试点保留可断开能力。
+不用 RTC_INT 时，固件把对应 GPIO 配置为输入，不启用内部强驱动。
+```
+
+参考：
+
+```text
+https://docs.espressif.com/projects/esp-idf/en/stable/esp32/api-reference/system/system_time.html
+https://www.analog.com/media/en/technical-documentation/data-sheets/ds3231.pdf
+https://cdn.sparkfun.com/datasheets/Dev/Beagle/DS3231M.pdf
+```
 
 ## 12V DC 电磁阀输出
 

@@ -22,12 +22,23 @@ Esp32BaseConfig：小配置、POD 配置、故障锁定状态
 Esp32BaseFs：浇水记录等业务二进制定长文件
 Esp32BaseAppEventLog：轻量业务事件日志
 Esp32BaseWeb：业务 Web 页面、API、CSV/JSON 导出
-Esp32BaseNtp：计划调度所需的可信时间
+Esp32BaseNtp：联网后校准计划调度所需的可信时间
 Esp32BaseSystem：统一重启入口
 Esp32BaseWatchdog / Health：由基础库承担运行健康和看门狗
 ```
 
 应用层不直接 include `LittleFS.h`，不直接访问 Arduino `WebServer`，不直接调用底层 restart/deep sleep API。
+
+外部 RTC 是本项目必配硬件。时间源策略：
+
+```text
+上电先从外部 RTC 恢复系统时间
+RTC 时间有效时，断网也允许自动计划继续运行
+NTP 校时成功后更新系统时间，并回写外部 RTC
+RTC 和 NTP 都无效时，系统时间无效，自动计划不可用
+```
+
+如果 Esp32Base 已提供 RTC 抽象，应用层优先使用基础库接口；如果没有，需要在基础库项目中沉淀 RTC 时间源能力，本项目不临时复制一套基础时间框架。
 
 ## 模块划分
 
@@ -41,7 +52,10 @@ IrrigationConfig
   读取、保存和校验系统配置、Zone 配置、计划组、流量计参数和故障策略。
 
 IrrigationHardware
-  GPIO、PWM、流量计脉冲输入、低液位输入、阀门输出、泵启动输出的薄封装。
+  GPIO、PWM、I2C RTC、流量计脉冲输入、低液位输入、阀门输出、泵启动输出的薄封装。
+
+IrrigationTimeService
+  上电读取 RTC、判断 RTC 时间有效性、协调 NTP 校准后回写 RTC，并向调度模块提供系统时间是否可信的状态。
 
 FlowMeterService
   维护脉冲计数、首脉冲时间、滑动窗口流速、待机漏水检测输入。
