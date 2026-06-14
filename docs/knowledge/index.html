@@ -504,6 +504,47 @@
     <div class="callout" style="margin-top:14px">
       PCF8574 适合状态灯、低速输入、辅助干接点输出；不适合 UART、流量脉冲计数、阀门 PWM 或严格实时的保护输入。
     </div>
+    <div class="grid two" style="margin-top:14px">
+      <div class="card">
+        <h3>灌溉从站状态灯</h3>
+        <ul>
+          <li>PWR：电源灯，接从站逻辑电源，不占 MCU IO。</li>
+          <li>COM：通信灯，显示 RS485 收发和在线状态。</li>
+          <li>RUN：运行灯，本从站有阀门、主阀或泵输出动作时点亮。</li>
+          <li>ALM：故障灯，低液位、通信超时关阀、输出异常等需要处理时点亮或闪烁。</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h3>每路阀门通道灯</h3>
+        <ul>
+          <li>每个电磁阀输出建议有独立通道灯，不额外占 MCU IO。</li>
+          <li>通道灯表示“控制器正在命令这一路打开”。</li>
+          <li>PWM 保持阶段灯保持可见点亮或略暗，不需要单独处理。</li>
+          <li>如果某一路被设为主阀，它的通道灯仍按该输出动作状态显示。</li>
+        </ul>
+      </div>
+    </div>
+    <table class="table" style="margin-top:14px">
+      <thead>
+        <tr>
+          <th>通道灯位置</th>
+          <th>结论</th>
+          <th>原因</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>逻辑控制侧</td>
+          <td>推荐</td>
+          <td>不接入 12V 阀门负载回路，不受线圈反冲、续流和钳位影响；LED 故障也不影响电磁阀供电回路。它显示控制命令状态。</td>
+        </tr>
+        <tr>
+          <td>MOS / 负载侧</td>
+          <td>不作为当前首选</td>
+          <td>更接近输出导通状态，但会接入 12V 侧，可能引入漏电路径和瞬态应力；如果需要真实线圈诊断，应另做电流检测。</td>
+        </tr>
+      </tbody>
+    </table>
   </section>
 
   <section class="panel">
