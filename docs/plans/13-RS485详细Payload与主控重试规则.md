@@ -316,7 +316,9 @@ valve_output_bitmap  uint8
 input_bitmap         uint8
 raw_input_bitmap     uint8
 flow_pulse_count     uint32
+flow_pulse_rate_min  uint32
 flow_rate_ml_min     uint32
+flow_value_flags     uint16
 voltage_mv           uint16
 elapsed_sec          uint16
 target_duration_sec  uint16
@@ -332,6 +334,17 @@ last_stop_reason     uint8
 - `raw_input_bitmap` 表示原始电平读取状态。
 - `active_zone=0` 表示当前无分支水路运行。
 - `flow_pulse_count` 当前运行中表示本次累计，空闲时表示最近一次运行累计。
+- `flow_pulse_rate_min` 表示当前窗口脉冲率，流量计计量未校准时仍可用于判断是否有流量。
+- `flow_rate_ml_min` 仅在计量有效时表示估算流速；计量无效时必须为 0 或仅作无效值处理。
+
+`flow_value_flags`：
+
+| 位 | 含义 |
+|---:|---|
+| 0 | 流量计输入已配置 |
+| 1 | `pulses_per_liter` 已校准 |
+| 2 | `flow_rate_ml_min` 有效 |
+| 3 | 本次累计水量可估算 |
 
 ## `CLEAR_FAULT`
 

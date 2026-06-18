@@ -152,8 +152,10 @@ running_zone_index
 elapsed_sec
 target_duration_sec
 flow_pulse_count
+flow_pulse_rate_min
 flow_ml
 flow_ml_min
+flow_estimation_quality
 low_level_active
 voltage_mv
 pump_output
@@ -168,6 +170,7 @@ updated_at
 用途：
 
 - 首页运行状态。
+- `flow_estimation_quality` 表示 `flow_ml` 和 `flow_ml_min` 是否可靠，可为 `valid`、`reference_only`、`unavailable`。
 - 手动运行页。
 - 从站状态页。
 - 告警判断。
@@ -253,7 +256,7 @@ calibration_status     missing / calibrated
 规则：
 
 - 流量计是每个从站的必需配置。
-- 未完成校准的从站不能参与正常灌溉运行。
+- 未完成计量校准的从站仍可参与正常灌溉运行，但水量估算不可用或仅供参考。
 
 ### Schedule
 
@@ -300,8 +303,10 @@ started_at
 stopped_at
 elapsed_sec
 flow_pulse_count
+flow_pulse_rate_min
 flow_ml
 flow_ml_min
+flow_estimation_quality
 stop_reason
 fault_flags
 ```
@@ -311,6 +316,7 @@ fault_flags
 - 同一从站同一时间最多一个活动 `RunSession`。
 - 不同从站允许多个 `RunSession` 同时存在。
 - 页面停止运行时，停止原因应区分用户停止、本地保护停机、通信失败和计划结束。
+- 流量计计量未校准时，`flow_estimation_quality` 不能为 `valid`，页面不得把水量估算显示为准确值。
 
 ## API 分组
 
