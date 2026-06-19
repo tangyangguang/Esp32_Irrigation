@@ -21,8 +21,8 @@
 | 流量 | 流量计校准、标准流速学习、流量保护参数 |
 | 计划 | 自动计划、同站水路顺序、启用状态、跳过结果查看 |
 | 告警与记录 | 查看运行记录、故障记录、配置变更和维护记录 |
-| 系统设置 | 网络、时间、SHT30、RS485、备份恢复 |
-| 维护 | 从站识别、清除故障、重新同步配置、诊断状态 |
+| 系统设置 | 网络、时间、SHT30、RS485 |
+| 维护 | 从站识别、清除故障、重新同步配置、诊断状态、从站 OTA |
 
 ## 首页
 
@@ -144,56 +144,62 @@ API 只暴露产品业务对象，不暴露任意寄存器和通用 IO。
 
 ## 关键 API
 
+API 使用 `Esp32Base` 当前支持的 query 参数风格。所有业务操作使用固定入口：
+
 ```text
-GET  /api/irrigation/status
-GET  /api/irrigation/system/settings
-PUT  /api/irrigation/system/settings
-
-GET  /api/irrigation/stations
-GET  /api/irrigation/stations/{station_id}
-PUT  /api/irrigation/stations/{station_id}
-POST /api/irrigation/stations/{station_id}/sync-config
-POST /api/irrigation/stations/{station_id}/identify
-POST /api/irrigation/stations/{station_id}/clear-fault
-POST /api/irrigation/stations/{station_id}/factory-reset-config
-
-GET  /api/irrigation/stations/{station_id}/zones
-PUT  /api/irrigation/stations/{station_id}/zones
-GET  /api/irrigation/stations/{station_id}/inputs
-PUT  /api/irrigation/stations/{station_id}/inputs
-GET  /api/irrigation/stations/{station_id}/flow
-PUT  /api/irrigation/stations/{station_id}/flow
-POST /api/irrigation/stations/{station_id}/flow/calibrate
-POST /api/irrigation/stations/{station_id}/zones/{zone_index}/learn-baseline
-GET  /api/irrigation/stations/{station_id}/pump
-PUT  /api/irrigation/stations/{station_id}/pump
-
-POST /api/irrigation/runs
-POST /api/irrigation/runs/{run_id}/stop
-POST /api/irrigation/stop-all
-
-GET  /api/irrigation/schedules
-POST /api/irrigation/schedules
-PUT  /api/irrigation/schedules/{schedule_id}
-DELETE /api/irrigation/schedules/{schedule_id}
-POST /api/irrigation/schedules/{schedule_id}/enable
-POST /api/irrigation/schedules/{schedule_id}/disable
-
-GET  /api/irrigation/alarms
-POST /api/irrigation/alarms/{alarm_id}/ack
-POST /api/irrigation/alarms/{alarm_id}/clear
-GET  /api/irrigation/events
-GET  /api/irrigation/run-records
-GET  /api/irrigation/schedule-records
+/api/irrigation?op=<operation>&key=value
 ```
+
+核心 `op`：
+
+| `op` | 关键参数 | 用途 |
+|---|---|---|
+| `get_status` | 无 | 系统总览 |
+| `get_system_settings` | 无 | 读取系统设置 |
+| `save_system_settings` | 设置字段 query 参数 | 保存系统设置 |
+| `list_stations` | 无 | 从站列表 |
+| `get_station` | `station_id` | 从站详情 |
+| `save_station` | `station_id` 和从站字段 query 参数 | 保存从站业务配置 |
+| `sync_station_config` | `station_id` | 同步从站安全配置 |
+| `identify_station` | `station_id` | 识别从站 |
+| `clear_station_fault` | `station_id,fault_mask,flags` | 清除可恢复故障 |
+| `factory_reset_station_config` | `station_id,confirm` | 清空从站本地安全配置 |
+| `get_zones` | `station_id` | 读取水路配置 |
+| `save_zone` | `station_id,zone_index` 和水路字段 query 参数 | 保存单路水路配置 |
+| `get_inputs` | `station_id` | 读取输入配置 |
+| `save_input` | `station_id,input_index` 和输入字段 query 参数 | 保存单路输入配置 |
+| `get_flow` | `station_id` | 读取流量配置 |
+| `save_flow` | `station_id` 和流量字段 query 参数 | 保存流量配置 |
+| `calibrate_flow` | `station_id,zone_index` 和校准参数 | 流量计校准 |
+| `learn_baseline` | `station_id,zone_index` | 标准流速学习 |
+| `get_pump` | `station_id` | 读取自吸泵配置 |
+| `save_pump` | `station_id` 和泵字段 query 参数 | 保存自吸泵配置 |
+| `start_run` | `station_id,zone_index,duration_sec` | 启动手动运行 |
+| `stop_run` | `run_id` | 停止单次运行 |
+| `stop_all` | `confirm` | 停止全部 |
+| `list_schedules` | 无 | 计划列表 |
+| `save_schedule` | `schedule_id` 和计划字段 query 参数 | 新增或保存计划 |
+| `delete_schedule` | `schedule_id,confirm` | 删除计划 |
+| `set_schedule_enabled` | `schedule_id,enabled` | 启停计划 |
+| `list_alarms` | 过滤字段 query 参数 | 告警列表 |
+| `ack_alarm` | `alarm_id` | 确认告警 |
+| `clear_alarm` | `alarm_id` | 清除告警 |
+| `list_events` | 过滤字段 query 参数 | 事件列表 |
+| `list_run_records` | 过滤字段 query 参数 | 运行记录 |
+| `list_schedule_records` | 过滤字段 query 参数 | 计划记录 |
+| `get_station_ota_status` | `station_id` | 从站 OTA 状态 |
+| `start_station_ota` | `station_id,firmware_id,confirm` | 发起从站 RS485 OTA |
 
 API 规则：
 
-- 配置类 `PUT` 必须执行与 `02-配置模型与参数边界.md` 一致的校验。
+- 所有参数通过 URL query 传递，不使用 REST 路径参数、请求体 JSON、`PUT`、`DELETE` 或任意透传接口。
+- 配置类保存操作必须执行与 `02-配置模型与参数边界.md` 一致的校验。
+- 列表或复杂配置按单项保存，不要求一次请求提交完整大型 JSON。
 - 涉及从站安全配置的修改必须把该从站标记为待同步；从站处于 `STARTING`、`RUNNING`、`STOPPING` 时，Web 可以保存主控配置，但不得立即下发到从站。
 - 校准和标准流速学习通过受控业务 API 触发，不提供任意 RS485 帧透传。
 - `factory-reset-config` 只清空从站本地安全配置，必须二次确认，不删除主控侧业务配置和历史记录。
 - `stop-all` 对每个可能运行的从站发送保守停止请求，并按从站分别记录结果；不能把未确认停止的从站直接标记为已停止。
+- 从站 OTA 通过受控业务 API 触发，不提供 Web 任意上传后直透 RS485 帧的能力。
 
 ## 高影响动作
 
@@ -204,6 +210,7 @@ API 规则：
 - 清除锁定故障。
 - 恢复出厂配置。
 - 覆盖从站安全配置。
+- 发起从站 OTA。
 
 ## LCD 和本地按键
 
