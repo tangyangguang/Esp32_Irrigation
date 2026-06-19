@@ -125,6 +125,7 @@
 
 ```text
 SystemStatus
+SystemSettings
 Station
 Zone
 InputConfig
@@ -145,11 +146,27 @@ API 只暴露产品业务对象，不暴露任意寄存器和通用 IO。
 
 ```text
 GET  /api/irrigation/status
+GET  /api/irrigation/system/settings
+PUT  /api/irrigation/system/settings
+
 GET  /api/irrigation/stations
 GET  /api/irrigation/stations/{station_id}
+PUT  /api/irrigation/stations/{station_id}
 POST /api/irrigation/stations/{station_id}/sync-config
 POST /api/irrigation/stations/{station_id}/identify
 POST /api/irrigation/stations/{station_id}/clear-fault
+POST /api/irrigation/stations/{station_id}/factory-reset-config
+
+GET  /api/irrigation/stations/{station_id}/zones
+PUT  /api/irrigation/stations/{station_id}/zones
+GET  /api/irrigation/stations/{station_id}/inputs
+PUT  /api/irrigation/stations/{station_id}/inputs
+GET  /api/irrigation/stations/{station_id}/flow
+PUT  /api/irrigation/stations/{station_id}/flow
+POST /api/irrigation/stations/{station_id}/flow/calibrate
+POST /api/irrigation/stations/{station_id}/zones/{zone_index}/learn-baseline
+GET  /api/irrigation/stations/{station_id}/pump
+PUT  /api/irrigation/stations/{station_id}/pump
 
 POST /api/irrigation/runs
 POST /api/irrigation/runs/{run_id}/stop
@@ -169,6 +186,14 @@ GET  /api/irrigation/events
 GET  /api/irrigation/run-records
 GET  /api/irrigation/schedule-records
 ```
+
+API 规则：
+
+- 配置类 `PUT` 必须执行与 `02-配置模型与参数边界.md` 一致的校验。
+- 涉及从站安全配置的修改必须把该从站标记为待同步；从站处于 `STARTING`、`RUNNING`、`STOPPING` 时，Web 可以保存主控配置，但不得立即下发到从站。
+- 校准和标准流速学习通过受控业务 API 触发，不提供任意 RS485 帧透传。
+- `factory-reset-config` 只清空从站本地安全配置，必须二次确认，不删除主控侧业务配置和历史记录。
+- `stop-all` 对每个可能运行的从站发送保守停止请求，并按从站分别记录结果；不能把未确认停止的从站直接标记为已停止。
 
 ## 高影响动作
 
