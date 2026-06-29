@@ -1,0 +1,302 @@
+# 计划管理体系设计
+
+> Current status: historical background only. Current implementation must follow the 2 Flow / 6 Zone redesign and RAM schedule queue in `docs/superpowers/specs/2026-06-05-two-flow-six-zone-irrigation-design.md`.
+
+从零开始的计划管理完整设计。计划属于 Zone，每个 Zone 最多 6 条计划。
+
+## 一、三大核心概念
+
+```
+Plan Definition  ──调度器──►  Plan Execution  ──成功──►  Zone.start()  ──结束──►  Watering Record
+(用户配置)                        (今日运行态)                                (执行态)              (历史事实)
+```
+
+| 概念 | 是什么 | 存储 | 生命周期 |
+|------|--------|------|---------|
+| Plan Definition | 计划怎么配 | 持久化（NVS） | 永久，用户创建/编辑/删除 |
+| Plan Execution | 今天执行得怎么样 | 持久化（NVS） | 每天重置，恢复出厂清空 |
+| ScheduleSkip | 哪天哪个计划被跳过 | 持久化（NVS） | 固定容量，按 `planId × ymd` 覆盖 |
+| Watering Record | 实际浇水的历史事实 | 文件系统环形记录 | 永久 |
+
+## 二、Plan Definition（计划定义）
+
+```
+PlanDefinition
+├── planId              // 全局唯一 ID，uint32_t，1-based
+├── zoneId              // 属于哪个 Zone，不可变
+├── name[16]            // 计划名称，如 "早浇"、"午浇"
+├── enabled             // 启用/停用
+├── timeHour            // 0-23
+├── timeMinute          // 0-59
+├── durationSec         // 1-14400，必填，非零
+├── cycleDays           // 周期长度，1-30
+├── cycleMask           // 周期内哪些天浇水，bitmap（bit0 = 第 1 天）
+├── cycleStartYmd       // 周期起始日 YYYYMMDD，不可变
+└── createdAt           // 创建时的 Unix 时间戳
+```
+
+**循环模型（只有一种）**：
+
+```
+cycleDays = N, cycleMask = bitmap
+→ 以 cycleStartYmd 为起点，(today - cycleStartYmd) % cycleDays = dayInCycle
+→ 如果 cycleMask 的 dayInCycle 位为 1，则今天执行
+
+示例：
+  每天执行：     cycleDays=1, cycleMask=0b1
+  隔天执行：     cycleDays=2, cycleMask=0b1
+  周一三五：     cycleDays=7, cycleMask=0b1010101 (bit0/2/4)
+  浇 2 停 1：    cycleDays=3, cycleMask=0b011
+  浇 1 停 3：    cycleDays=4, cycleMask=0b0001
+```
+
+**归属**：每个计划自带循环。同一个 Zone 的不同计划可以用不同的循环规则。
+
+**每 Zone 最多 6 条计划。**
+
+## 三、ScheduleSkip（跳过管理）
+
+跳过最小单位：**单个计划的某一天（planId × ymd）**。不是 Zone 级别的一天。
+
+```
+ScheduleSkip
+├── enum SkipReason : uint8_t {
+│       SKIP_REASON_OTHER = 0,     // 默认/其他（扩展兜底，0 = 未初始化也合理）
+│       SKIP_REASON_MANUAL = 1,    // 用户手动跳过（已经浇过了/其他个人原因）
+│       SKIP_REASON_WEATHER = 2,   // 天气预报有雨
+│       // 后续扩展从这里往后加：
+│       // SKIP_REASON_SOIL_MOIST = 3,   // 土壤湿度足够
+│       // SKIP_REASON_HOLIDAY = 4,      // 节假日
+│       // SKIP_REASON_MAINTENANCE = 5,  // 设备维护
+│   }
+│
+├── struct SkipEntry {
+│       uint32_t planId;     // 跳过的是哪个具体计划
+│       uint32_t ymd;        // 哪一天
+│       SkipReason reason;
+│   }
+│
+├── entries[Capacity]       // 持久化，环形覆盖
+│
+├── isSkipped(planId, ymd) → bool
+├── skip(planId, ymd, reason)
+├── unskip(planId, ymd)
+│
+└── 后续目标：
+    ├── unskipZone(zoneId, ymd)           // 批量：取消某天该 Zone 所有计划的跳过
+    ├── getEntries(zoneId, fromYmd, toYmd) → SkipEntry[]  // 日历视图数据
+    └── pruneBefore(ymd)                  // 清理过期条目
+```
+
+**当前容量**：固定 128 条。跳过和取消跳过按受影响槽位更新，不再每次重写全部 128 条；启动时如果已有可信日期，会清理早于今天的过期条目。
+
+**场景示例**：
+
+```
+Zone 1 有三个计划：
+  计划 ID=1 "早浇"  07:00
+  计划 ID=2 "午浇"  13:00
+  计划 ID=3 "晚浇"  19:00
+
+场景 1: 明天下雨，只跳过午浇
+  → SkipEntry { planId=2, ymd=明天, WEATHER }
+  结果：早浇正常，午浇跳过，晚浇正常
+
+场景 2: 今天已经手动浇过了，跳过今天所有
+  → SkipEntry { planId=1, ymd=今天, MANUAL }
+  → SkipEntry { planId=2, ymd=今天, MANUAL }
+  → SkipEntry { planId=3, ymd=今天, MANUAL }
+```
+
+## 四、Plan Execution Tracker（执行跟踪）
+
+防止同一个计划在同一分钟重复触发。当前实现按水路持久化当天处理状态，重启后仍能识别已处理的 `planId + ymd + minuteOfDay`，避免计划窗口附近掉电导致重复执行或丢失已观察结果。恢复出厂会清空该 namespace。
+
+调度器不再因为 `dueEpoch` 早于本次启动后的首次可信时间就静默跳过计划；如果当前时间仍在 `scheduleGraceSec` 宽限期内，会继续按正常规则评估并启动或记录跳过原因；如果已经超过宽限期，会记录内存态 `MISSED` 观察和业务事件，但不持久化 `MISSED`。如果 NTP 随后回拨到计划窗口内，该计划会重新评估并用真实执行/跳过结果覆盖内存态观察。
+
+```
+PlanExecutionTracker（每 Zone 一个实例）
+│
+├── enum ExecutionStatus {
+│       NOT_EVALUATED,
+│       STARTED,              // 成功启动
+│       SKIPPED_CALENDAR,     // ScheduleSkip 跳过
+│       SKIPPED_DISABLED,     // Zone 停用
+│       SKIPPED_BUSY,         // Zone 忙
+│       SKIPPED_ERROR,        // Zone 异常
+│       SKIPPED_LEAK,         // 系统漏水告警
+│       SKIPPED_RESET,        // 恢复出厂待处理
+│       SKIPPED_CYCLE,        // 循环规则不匹配
+│       REJECTED              // Zone.start() 被拒绝
+│   }
+│
+├── struct PlanDayState {
+│       uint32_t planId;
+│       uint32_t ymd;
+│       uint16_t minuteOfDay;
+│       ExecutionStatus status;   // 当天该分钟的结果
+│   }
+│
+├── entries[MaxPlansPerZone]    // RAM 镜像，NVS 持久化
+│
+├── isHandled(planId, ymd, minuteOfDay) → bool
+├── mark(planId, ymd, minuteOfDay, status)
+├── resetNewDay(ymd)            // 新的一天，清空并写入新日期
+└── get(index) → PlanDayState
+```
+
+**与 ScheduleSkip 的区别**：
+
+| | ScheduleSkip | PlanExecutionTracker |
+|---|---|---|
+| 是什么 | 用户主动设置的跳过 | 调度器自动记录的"今天已处理" |
+| 存储 | 持久化（NVS） | 持久化（NVS） |
+| 粒度 | planId × ymd | planId × ymd × minuteOfDay |
+| 生命周期 | 固定容量覆盖 | 每天重置，恢复出厂清空 |
+
+## 五、ZoneScheduler（每路调度器）
+
+```
+ZoneScheduler
+├── Zone* zone                          // 绑定的 Zone
+├── plans[MaxPlansPerZone]              // 该 Zone 的计划定义
+├── tracker: PlanExecutionTracker       // 执行跟踪（NVS 持久化）
+├── scheduleSkip: ScheduleSkip*         // 引用全局 ScheduleSkip 实例
+│
+├── begin(now)
+│
+├── tick(now)                           // 每分钟调用
+│   ├── 1. 时间同步检查：未同步 → 返回
+│   ├── 2. 新的一天？→ tracker.resetNewDay()
+│   └── 3. 遍历该 Zone 的所有计划
+│       ├── 计划启用？
+│       ├── timeHour/timeMinute 匹配当前分钟？
+│       ├── 循环规则匹配？→ 不匹配 → tracker.mark(SKIPPED_CYCLE)
+│       ├── tracker.isHandled(planId, ymd, minuteOfDay)? → 跳过
+│       ├── ScheduleSkip.isSkipped(planId, today)? → tracker.mark(SKIPPED_CALENDAR)
+│       ├── Zone.isError()? → tracker.mark(SKIPPED_ERROR)
+│       ├── Zone.isBusy()? → tracker.mark(SKIPPED_BUSY)
+│       ├── 系统漏水告警? → tracker.mark(SKIPPED_LEAK)
+│       ├── 恢复出厂待处理? → tracker.mark(SKIPPED_RESET)
+│       └── 否则 → zone.start(PLAN, targetSec, planId, now)
+│           ├── 成功 → tracker.mark(STARTED)
+│           └── 失败 → tracker.mark(REJECTED)
+│
+└── 当前不提供独立管理 API；计划配置由 PlanStore 和 Web/API handler 直接管理，近期结果查询视图属于后续目标。
+```
+
+**每个 ZoneScheduler 只调度自己的 Zone，不关心其他 Zone。**
+
+## 六、ZoneManager（系统协调器）
+
+```
+ZoneManager
+├── zones[MaxZones]: Zone[]
+├── schedulers[MaxZones]: ZoneScheduler[]
+├── scheduleSkip: ScheduleSkip
+├── leakAlertActive: bool
+├── factoryResetPending: bool
+│
+├── begin(now)
+│   ├── for i in zones: zones[i].begin(config[i], now)
+│   └── for i in schedulers: schedulers[i].begin(now)
+│
+├── tick(now)
+│   ├── 每 10ms:  for i in zones: zones[i].tick(pulseCount, now)
+│   ├── 每分钟:   for i in schedulers: schedulers[i].tick(now)
+│   └── 漏水监控:  if allIdle(): checkLeakForAll()
+│
+├── startZone(zoneId, MANUAL, source, targetSec, now)
+├── stopZone(zoneId, source, now)
+├── stopAll(source, result, now)
+├── clearZoneError(zoneId)
+├── skipSchedule(planId, ymd, reason)   // 后续目标；当前由 Web/API handler 调用 ScheduleSkipStore
+└── getZoneStatus() → ZoneStatus[]
+```
+
+## 七、Watering Record（浇水记录）
+
+```
+WateringRecord
+├── recordId              // 自增 ID
+├── zoneId                // 属于哪个 Zone
+├── taskType              // MANUAL / PLAN
+├── startSource           // web_page / http_api / button / scheduler
+├── planId                // 计划 ID（手动任务为 0xFF）
+├── targetSec             // 目标时长
+├── startedMs             // 开始时间戳（系统时间）
+├── endedMs               // 结束时间戳
+├── stopSource            // 停止来源
+├── stopScope             // 本路 / 全部
+├── result                // COMPLETED / USER_STOPPED / FLOW_ERROR / LEAK_PROTECTED / FACTORY_RESET
+├── startedPulseCount     // 启动时脉冲
+├── endedPulseCount       // 结束时脉冲
+├── estimatedMilliliters  // 估算水量
+└── configSnapshot        // 启动时的配置快照
+    ├── startupPulseLimit
+    ├── startupEstimatedMl
+    └── stablePulsePerLiter
+```
+
+一条记录 = 一个 Zone 的一次实际浇水任务。`planId` 字段让记录可反查触发来源。`configSnapshot` 保证历史水量计算不受后续配置修改影响。
+
+## 八、完整结构总览
+
+```
+ZoneManager
+├── Zone[MaxZones]
+│   ├── config: ZoneConfig (id, name, pins, enabled, flow params, timeout params, suppressError)
+│   ├── state: DISABLED | IDLE | STARTING | RUNNING | ERROR
+│   ├── runner: ZoneTaskRunner (active, task, runtime, finished)
+│   ├── lastErrorCode
+│   └── leakAlert
+│
+├── ZoneScheduler[MaxZones]
+│   ├── plans[6]: PlanDefinition (planId, zoneId, name, time, duration, cycle, createdAt)
+│   ├── tracker: PlanExecutionTracker (NVS 持久化，今天是否已处理)
+│   └── scheduleSkip → ScheduleSkip (引用)
+│
+├── ScheduleSkip (持久化，环形)
+│   └── entries[]: { planId, ymd, reason }
+│
+├── leakAlertActive
+└── factoryResetPending
+```
+
+## 九、数据流
+
+```
+用户创建/修改计划 → ZoneScheduler.plans[] 更新（持久化）
+
+每分钟调度:
+  ZoneScheduler.tick()
+    ├── 遍历该 Zone 的所有计划
+    ├── 判断：启用？时间匹配？循环匹配？已处理？已跳过？Zone 可用？
+    ├── 满足条件 → Zone.start(PLAN, targetSec, planId)
+    └── 记录结果到 PlanExecutionTracker
+
+Zone.start():
+    ├── 检查 Zone 状态（必须 IDLE）
+    ├── 初始化 ZoneTaskRunner
+    └── 开阀
+
+Zone 执行中:
+    ├── 每 tick 更新 lastPulseCount / lastPulseMs
+    ├── 时长到 → finish(COMPLETED)
+    ├── 无脉冲超时 → finish(FLOW_ERROR)
+    └── 被停止 → finish(USER_STOPPED)
+
+Zone.finish():
+    ├── 关阀
+    ├── 写 WateringRecord（含 planId、configSnapshot）
+    ├── 按需写 Esp32BaseAppEventLog 业务事件
+    └── Zone 状态回 IDLE（或 ERROR）
+
+用户手动跳过:
+    POST /api/v1/schedule/skip
+    → ScheduleSkip.skip(planId, ymd, MANUAL)
+
+后续日历视图查询目标:
+    ScheduleSkip.getEntries(zoneId, monthStart, monthEnd) → 跳过的日期
+    RecordStore.read(zoneId, monthStart, monthEnd) → 实际浇水的日期
+```

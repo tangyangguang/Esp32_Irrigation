@@ -1,0 +1,739 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智能灌溉 Web 原型 v5</title>
+  <style>
+    :root {
+      --bg: #f6f7f4;
+      --surface: #ffffff;
+      --surface-2: #eef1ec;
+      --text: #20251f;
+      --muted: #667062;
+      --line: #d9ded5;
+      --green: #2f7d4f;
+      --green-2: #e4f2e9;
+      --amber: #a76318;
+      --amber-2: #fff0d8;
+      --red: #b13a32;
+      --red-2: #fbe4e1;
+      --blue: #2d6792;
+      --blue-2: #e2eef7;
+      --shadow: 0 10px 28px rgba(35, 43, 34, .08);
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, input, select {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 236px minmax(0, 1fr);
+    }
+
+    .side {
+      background: #18211b;
+      color: #eef5ee;
+      padding: 20px 14px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+    }
+
+    .brand {
+      padding: 4px 8px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, .12);
+      margin-bottom: 16px;
+    }
+
+    .brand strong {
+      display: block;
+      font-size: 18px;
+      line-height: 1.25;
+      font-weight: 700;
+    }
+
+    .brand span {
+      display: block;
+      margin-top: 4px;
+      color: #b8c7ba;
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+    }
+
+    .nav button {
+      border: 0;
+      background: transparent;
+      color: #dce8dd;
+      min-height: 40px;
+      border-radius: var(--radius);
+      padding: 0 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      background: rgba(255, 255, 255, .1);
+      color: #fff;
+    }
+
+    .nav .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: transparent;
+    }
+
+    .nav button.active .dot {
+      background: #7fd39a;
+    }
+
+    .main {
+      min-width: 0;
+      padding: 22px 28px 36px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      line-height: 1.25;
+      font-weight: 750;
+    }
+
+    .subtitle {
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid.cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .panel,
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 16px;
+    }
+
+    .panel-title {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .panel-title h2 {
+      margin: 0;
+      font-size: 16px;
+      line-height: 1.25;
+    }
+
+    .card {
+      padding: 14px;
+      min-height: 92px;
+    }
+
+    .metric {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .value {
+      margin-top: 6px;
+      font-size: 24px;
+      font-weight: 760;
+      line-height: 1.1;
+    }
+
+    .trend {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    .ok { color: var(--green); background: var(--green-2); border-color: #b9dfc4; }
+    .warn { color: var(--amber); background: var(--amber-2); border-color: #e6c18b; }
+    .bad { color: var(--red); background: var(--red-2); border-color: #e7aaa4; }
+    .info { color: var(--blue); background: var(--blue-2); border-color: #abcbe0; }
+    .muted-badge { color: #697066; background: #f0f2ee; border-color: #d8ded4; }
+
+    .btn {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--text);
+      min-height: 36px;
+      border-radius: var(--radius);
+      padding: 0 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .btn:hover {
+      border-color: #b9c2b4;
+      background: #f9faf8;
+    }
+
+    .btn.primary {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    .btn.danger {
+      background: var(--red);
+      border-color: var(--red);
+      color: #fff;
+    }
+
+    .btn.ghost {
+      background: transparent;
+    }
+
+    .btn[disabled] {
+      opacity: .48;
+      cursor: not-allowed;
+    }
+
+    .row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+
+    .row:first-child { border-top: 0; }
+
+    .stack {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .name {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      background: #f7f8f5;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    label.field {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .field input,
+    .field select {
+      width: 100%;
+      min-height: 38px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: #fff;
+      padding: 0 10px;
+      color: var(--text);
+    }
+
+    .seg {
+      display: inline-grid;
+      grid-auto-flow: column;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .seg button {
+      border: 0;
+      min-height: 34px;
+      padding: 0 12px;
+      background: transparent;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .seg button.active {
+      background: #243428;
+      color: #fff;
+    }
+
+    .progress {
+      height: 8px;
+      background: #e4e8df;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 10px;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      background: var(--green);
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(320px, .85fr);
+      gap: 14px;
+    }
+
+    .empty {
+      border: 1px dashed #c8d0c3;
+      border-radius: var(--radius);
+      min-height: 92px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      background: #fbfcfa;
+    }
+
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      .side {
+        height: auto;
+        position: static;
+        padding: 12px;
+      }
+      .brand { padding-bottom: 10px; margin-bottom: 10px; }
+      .nav {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+      .nav button {
+        justify-content: center;
+      }
+      .nav .dot { display: none; }
+      .main { padding: 18px 14px 28px; }
+      .topbar { display: grid; }
+      .top-actions { justify-content: flex-start; }
+      .grid.cols-2,
+      .grid.cols-3,
+      .grid.cols-4,
+      .two-col,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+      table { min-width: 720px; }
+      .table-wrap { overflow-x: auto; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand">
+        <strong>智能灌溉</strong>
+        <span>Web 原型 v5</span>
+      </div>
+      <nav class="nav" id="nav"></nav>
+    </aside>
+    <main class="main">
+      <div id="view"></div>
+    </main>
+  </div>
+
+  <script>
+    const navItems = [
+      ["overview", "总览"],
+      ["run", "运行"],
+      ["plans", "计划"],
+      ["sources", "水源"],
+      ["records", "记录"],
+      ["events", "事件"],
+      ["settings", "设置"]
+    ];
+
+    const sources = [
+      {
+        name: "北侧水源",
+        station: "从站 01",
+        address: "拨码 0001",
+        state: "运行中",
+        badge: "ok",
+        voltage: "12.4 V",
+        mainValve: "阀 8",
+        pump: "启用",
+        flow: "IN1",
+        level: "IN2 常闭",
+        routes: [
+          ["花箱滴灌", "运行中", "12 分钟", "3.2 L/min", "已校准"],
+          ["果树环线", "可用", "18 分钟", "4.1 L/min", "已校准"],
+          ["墙边花境", "可用", "10 分钟", "未校准", "待校准"]
+        ]
+      },
+      {
+        name: "南侧水源",
+        station: "从站 02",
+        address: "拨码 0010",
+        state: "禁止启动",
+        badge: "warn",
+        voltage: "12.1 V",
+        mainValve: "未启用",
+        pump: "启用",
+        flow: "IN1",
+        level: "IN2 常开",
+        routes: [
+          ["菜地一区", "低液位", "15 分钟", "2.9 L/min", "已校准"],
+          ["菜地二区", "低液位", "15 分钟", "3.0 L/min", "已校准"]
+        ]
+      },
+      {
+        name: "西侧水源",
+        station: "从站 03",
+        address: "拨码 0011",
+        state: "空闲",
+        badge: "info",
+        voltage: "12.6 V",
+        mainValve: "阀 8",
+        pump: "未启用",
+        flow: "IN1",
+        level: "未启用",
+        routes: [
+          ["草坪喷灌", "可用", "20 分钟", "5.5 L/min", "已校准"],
+          ["围栏滴灌", "可用", "12 分钟", "2.1 L/min", "已校准"]
+        ]
+      }
+    ];
+
+    const records = [
+      ["09:10", "自动计划", "北侧水源", "花箱滴灌", "12 / 12 分钟", "38.4 L", "完成"],
+      ["08:20", "自动计划", "西侧水源", "草坪喷灌", "20 / 20 分钟", "110.0 L", "完成"],
+      ["昨天 19:30", "手动", "南侧水源", "菜地一区", "4 / 15 分钟", "11.6 L", "低液位停止"],
+      ["昨天 07:00", "自动计划", "北侧水源", "果树环线", "18 / 18 分钟", "73.8 L", "完成"]
+    ];
+
+    const events = [
+      ["发生中", "南侧水源", "低液位有效", "禁止自动和手动启动", "10:18"],
+      ["发生中", "北侧水源", "花箱滴灌运行中", "剩余 6 分钟", "10:16"],
+      ["已恢复", "北侧水源", "无流量保护", "果树环线昨日异常停止", "昨天 07:41"],
+      ["信息", "西侧水源", "计划步骤完成", "草坪喷灌 20 分钟", "08:40"]
+    ];
+
+    const plans = [
+      ["早晨浇水", "启用", "每天 07:00", "5 个步骤", "下次 明天 07:00"],
+      ["傍晚补水", "启用", "周一/三/五 18:30", "3 个步骤", "下次 今天 18:30"],
+      ["菜地临时计划", "停用", "指定日期", "2 个步骤", "未计划"]
+    ];
+
+    function badge(text, type = "muted-badge") {
+      return `<span class="badge ${type}">${text}</span>`;
+    }
+
+    function page(title, subtitle, actions, body) {
+      return `
+        <div class="topbar">
+          <div>
+            <h1>${title}</h1>
+            <div class="subtitle">${subtitle}</div>
+          </div>
+          <div class="top-actions">${actions || ""}</div>
+        </div>
+        ${body}
+      `;
+    }
+
+    function table(headers, rows) {
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr>${headers.map(h => `<th>${h}</th>`).join("")}</tr></thead>
+            <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    function overview() {
+      return page("总览", "系统状态、当前运行和需要处理的问题", `<button class="btn primary" data-go="run">进入运行</button>`, `
+        <section class="grid cols-4">
+          <div class="card"><div class="metric">主控状态</div><div class="value">正常</div><div class="trend">RTC 10:22 同步</div></div>
+          <div class="card"><div class="metric">水源</div><div class="value">3</div><div class="trend">2 可运行，1 禁止启动</div></div>
+          <div class="card"><div class="metric">当前任务</div><div class="value">1</div><div class="trend">北侧水源运行中</div></div>
+          <div class="card"><div class="metric">今日水量</div><div class="value">148 L</div><div class="trend">2 次完成，1 次运行中</div></div>
+        </section>
+        <section class="two-col" style="margin-top:14px">
+          <div class="panel">
+            <div class="panel-title"><h2>当前运行</h2>${badge("运行中", "ok")}</div>
+            <div class="row">
+              <div class="stack"><div class="name">北侧水源 / 花箱滴灌</div><div class="meta">计划 12 分钟，已运行 6 分钟，估算 19.2 L</div></div>
+              <button class="btn danger">停止</button>
+            </div>
+            <div class="progress"><span style="width: 50%"></span></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><h2>最近事件</h2><button class="btn ghost" data-go="events">查看全部</button></div>
+            ${events.slice(0, 3).map(e => `<div class="row"><div class="stack"><div class="name">${e[2]}</div><div class="meta">${e[1]} · ${e[3]}</div></div>${badge(e[0], e[0] === "发生中" ? "warn" : e[0] === "已恢复" ? "ok" : "info")}</div>`).join("")}
+          </div>
+        </section>
+        <section class="panel" style="margin-top:14px">
+          <div class="panel-title"><h2>水源概况</h2></div>
+          <div class="grid cols-3">
+            ${sources.map(s => `<div class="card">
+              <div class="panel-title"><h2>${s.name}</h2>${badge(s.state, s.badge)}</div>
+              <div class="meta">${s.station} · ${s.address} · ${s.voltage}</div>
+              <div class="row"><span>主阀</span><strong>${s.mainValve}</strong></div>
+              <div class="row"><span>水泵</span><strong>${s.pump}</strong></div>
+            </div>`).join("")}
+          </div>
+        </section>
+      `);
+    }
+
+    function run() {
+      return page("运行", "手动启动、停止和运行保护状态", `<button class="btn primary">启动水路</button><button class="btn danger">停止当前</button>`, `
+        <section class="two-col">
+          <div class="panel">
+            <div class="panel-title"><h2>当前任务</h2>${badge("1 个运行中", "ok")}</div>
+            <div class="row">
+              <div class="stack"><div class="name">北侧水源 / 花箱滴灌</div><div class="meta">主阀 -> 分支阀 -> 水泵；剩余 6 分钟</div></div>
+              <button class="btn danger">停止</button>
+            </div>
+            <div class="progress"><span style="width: 50%"></span></div>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><h2>手动启动</h2></div>
+            <div class="form-grid">
+              <label class="field">水源<select><option>西侧水源</option><option>北侧水源</option><option>南侧水源</option></select></label>
+              <label class="field">水路<select><option>草坪喷灌</option><option>围栏滴灌</option></select></label>
+              <label class="field">时长<input value="20 分钟"></label>
+              <label class="field">状态<input value="可启动" readonly></label>
+            </div>
+            <div style="margin-top:12px"><button class="btn primary">启动</button></div>
+          </div>
+        </section>
+        <section class="panel" style="margin-top:14px">
+          <div class="panel-title"><h2>水源启动状态</h2></div>
+          ${sources.map(s => `<div class="row"><div class="stack"><div class="name">${s.name}</div><div class="meta">流量 ${s.flow} · 低液位 ${s.level} · 电压 ${s.voltage}</div></div>${badge(s.state, s.badge)}</div>`).join("")}
+        </section>
+      `);
+    }
+
+    function plansPage() {
+      return page("计划", "自动浇水时间和水路步骤", `<button class="btn primary">新建计划</button>`, `
+        <section class="two-col">
+          <div class="panel">
+            <div class="panel-title"><h2>计划列表</h2></div>
+            ${plans.map(p => `<div class="row"><div class="stack"><div class="name">${p[0]}</div><div class="meta">${p[2]} · ${p[3]} · ${p[4]}</div></div>${badge(p[1], p[1] === "启用" ? "ok" : "muted-badge")}</div>`).join("")}
+          </div>
+          <div class="panel">
+            <div class="panel-title"><h2>计划编辑</h2>${badge("草案", "info")}</div>
+            <div class="form-grid">
+              <label class="field">名称<input value="早晨浇水"></label>
+              <label class="field">触发方式<select><option>每天固定时间</option><option>按星期固定时间</option><option>指定日期时间</option></select></label>
+              <label class="field">时间<input value="07:00"></label>
+              <label class="field">状态<select><option>启用</option><option>停用</option></select></label>
+            </div>
+            <div style="margin-top:12px" class="table-wrap">
+              ${table(["水源", "水路", "时长", "状态"], [
+                ["北侧水源", "花箱滴灌", "12 分钟", badge("启用", "ok")],
+                ["北侧水源", "果树环线", "18 分钟", badge("启用", "ok")],
+                ["西侧水源", "草坪喷灌", "20 分钟", badge("启用", "ok")]
+              ])}
+            </div>
+          </div>
+        </section>
+      `);
+    }
+
+    function sourcesPage() {
+      return page("水源", "从站、水路、硬件状态和校准状态", `<button class="btn" data-go="settings">进入设置</button>`, `
+        <section class="grid cols-3">
+          ${sources.map(s => `<div class="card">
+            <div class="panel-title"><h2>${s.name}</h2>${badge(s.state, s.badge)}</div>
+            <div class="meta">${s.station} · ${s.address}</div>
+            <div class="row"><span>流量计</span><strong>${s.flow}</strong></div>
+            <div class="row"><span>低液位</span><strong>${s.level}</strong></div>
+            <div class="row"><span>电压</span><strong>${s.voltage}</strong></div>
+          </div>`).join("")}
+        </section>
+        <section class="panel" style="margin-top:14px">
+          <div class="panel-title"><h2>北侧水源水路</h2>${badge("参考流量 2/3 已校准", "info")}</div>
+          ${table(["水路", "状态", "默认时长", "参考流量", "校准"], sources[0].routes.map(r => [r[0], badge(r[1], r[1] === "运行中" ? "ok" : r[1] === "可用" ? "info" : "warn"), r[2], r[3], `<button class="btn">校准</button>`]))}
+        </section>
+      `);
+    }
+
+    function recordsPage() {
+      return page("记录", "真实启动过的水路任务", `<button class="btn">导出</button>`, `
+        <section class="panel">
+          <div class="panel-title">
+            <h2>浇水记录</h2>
+            <div class="seg"><button class="active">全部</button><button>自动</button><button>手动</button></div>
+          </div>
+          ${table(["时间", "来源", "水源", "水路", "时长", "水量", "结束原因"], records)}
+        </section>
+      `);
+    }
+
+    function eventsPage() {
+      return page("事件", "阻断、异常、恢复和配置变化", `<button class="btn">仅看发生中</button>`, `
+        <section class="panel">
+          <div class="panel-title"><h2>事件列表</h2></div>
+          ${table(["状态", "对象", "事件", "影响", "时间"], events.map(e => [badge(e[0], e[0] === "发生中" ? "warn" : e[0] === "已恢复" ? "ok" : "info"), e[1], e[2], e[3], e[4]]))}
+        </section>
+      `);
+    }
+
+    function settingsPage() {
+      return page("设置", "低频安装参数和系统参数", `<button class="btn">取消</button><button class="btn primary">保存</button>`, `
+        <section class="grid cols-3">
+          <div class="panel">
+            <div class="panel-title"><h2>全局</h2></div>
+            <label class="field">启动流量宽限<input value="10 秒"></label>
+            <label class="field" style="margin-top:10px">低流量比例<input value="30%"></label>
+            <label class="field" style="margin-top:10px">过流量比例<input value="200%"></label>
+            <label class="field" style="margin-top:10px">低/过流量动作<select><option>仅提示</option><option>停机</option></select></label>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><h2>水源硬件</h2></div>
+            <label class="field">水源<select><option>北侧水源</option><option>南侧水源</option><option>西侧水源</option></select></label>
+            <label class="field" style="margin-top:10px">主阀<select><option>启用，阀 8</option><option>不启用</option><option>启用，阀 1</option></select></label>
+            <label class="field" style="margin-top:10px">流量计输入<select><option>IN1</option><option>IN2</option><option>IN3</option><option>IN4</option></select></label>
+            <label class="field" style="margin-top:10px">低液位<select><option>IN2 常闭</option><option>IN2 常开</option><option>不启用</option></select></label>
+          </div>
+          <div class="panel">
+            <div class="panel-title"><h2>水路</h2></div>
+            <label class="field">水路<select><option>花箱滴灌</option><option>果树环线</option><option>墙边花境</option></select></label>
+            <label class="field" style="margin-top:10px">默认手动时长<input value="12 分钟"></label>
+            <label class="field" style="margin-top:10px">参考流量<input value="3.2 L/min" readonly></label>
+            <div style="margin-top:12px">${badge("已校准", "ok")}</div>
+          </div>
+        </section>
+      `);
+    }
+
+    const pages = {
+      overview,
+      run,
+      plans: plansPage,
+      sources: sourcesPage,
+      records: recordsPage,
+      events: eventsPage,
+      settings: settingsPage
+    };
+
+    function renderNav(active) {
+      document.getElementById("nav").innerHTML = navItems.map(([key, label]) => `
+        <button class="${key === active ? "active" : ""}" data-go="${key}">
+          <span>${label}</span><span class="dot"></span>
+        </button>
+      `).join("");
+    }
+
+    function render() {
+      const current = location.hash.replace("#", "") || "overview";
+      const key = pages[current] ? current : "overview";
+      renderNav(key);
+      document.getElementById("view").innerHTML = pages[key]();
+      document.querySelectorAll("[data-go]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          location.hash = btn.getAttribute("data-go");
+        });
+      });
+    }
+
+    window.addEventListener("hashchange", render);
+    render();
+  </script>
+</body>
+</html>

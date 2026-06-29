@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>首页 - 原型</title>
+  <link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body class="page-overview">
+  <nav class="topnav">
+    <a class="active" href="dashboard.html">首页</a>
+    <a href="plans.html">近期计划</a>
+    <a href="records.html">历史记录</a>
+    <a href="plan-config.html">计划配置</a>
+    <a href="settings.html">灌溉设置</a>
+  </nav>
+  <main class="shell">
+    <header class="page-head"><div><h1>首页</h1><p class="subtitle">查看设备状态、已启用水路浇水状态，并执行手动启动和停止操作。</p></div></header>
+    <section class="grid">
+      <div class="panel span-12"><h2>设备状态</h2><div class="overview-status"><div><span>设备</span><strong><span class="badge ok">正常</span></strong></div><div><span>当前</span><strong>空闲</strong></div><div><span>WiFi</span><strong>IOTHOME</strong></div><div><span>信号</span><strong>良好（-63 dBm）</strong></div></div></div>
+      <div class="panel span-12"><h2>浇水状态</h2><div class="table-wrap"><table><thead><tr><th>水路</th><th>状态</th><th>目标</th><th>剩余</th><th>水量</th><th>流速</th><th>操作</th></tr></thead><tbody><tr><td>第 1 路</td><td>关闭</td><td>0 分钟</td><td>0 分钟</td><td>0.000 L</td><td>0.00 L/min</td><td><button disabled>停止</button></td></tr><tr><td>第 2 路</td><td>关闭</td><td>0 分钟</td><td>0 分钟</td><td>0.000 L</td><td>0.00 L/min</td><td><button disabled>停止</button></td></tr><tr><td>第 3 路</td><td>未启用</td><td>-</td><td>-</td><td>-</td><td>-</td><td><button disabled>停止</button></td></tr><tr><td>第 4 路</td><td>未启用</td><td>-</td><td>-</td><td>-</td><td>-</td><td><button disabled>停止</button></td></tr></tbody></table></div><div class="actions"><button disabled>停止全部</button></div></div>
+      <div class="panel span-12 manual-start"><h2>手动浇水</h2><div class="manual-road-grid"><div class="manual-road"><div class="manual-road-head"><strong>第 1 路</strong><span class="badge ok">已启用</span></div><div class="manual-fields"><label><span>参与</span><select><option>浇水</option><option>不浇水</option></select></label><label><span>时长</span><span class="input-suffix"><input value="5"><em>分钟</em></span></label></div></div><div class="manual-road"><div class="manual-road-head"><strong>第 2 路</strong><span class="badge ok">已启用</span></div><div class="manual-fields"><label><span>参与</span><select><option>浇水</option><option>不浇水</option></select></label><label><span>时长</span><span class="input-suffix"><input value="5"><em>分钟</em></span></label></div></div><div class="manual-road off"><div class="manual-road-head"><strong>第 3 路</strong><span class="badge off">未启用</span></div><div class="manual-fields"><label><span>参与</span><select disabled><option>未启用</option></select></label><label><span>时长</span><span class="input-suffix"><input value="5" disabled><em>分钟</em></span></label></div></div><div class="manual-road off"><div class="manual-road-head"><strong>第 4 路</strong><span class="badge off">未启用</span></div><div class="manual-fields"><label><span>参与</span><select disabled><option>未启用</option></select></label><label><span>时长</span><span class="input-suffix"><input value="5" disabled><em>分钟</em></span></label></div></div></div><div class="actions"><button onclick="return confirm('确认开始手动浇水？')">开始浇水</button></div></div>
+      <div class="panel span-12"><h2>当前告警</h2><span class="badge ok">无当前告警</span></div>
+    </section>
+  </main>
+</body>
+</html>

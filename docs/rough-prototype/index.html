@@ -1,0 +1,1680 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>可操作模型原型</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #eef1f4;
+      --shell: #16202b;
+      --shell-soft: #253343;
+      --panel: #fff;
+      --soft: #f6f8fa;
+      --line: #d8dee6;
+      --line-strong: #9aa6b2;
+      --text: #18212b;
+      --muted: #627181;
+      --accent: #2f6b4f;
+      --danger: #a83f4b;
+      --warn-bg: #fff2d6;
+      --warn-text: #785511;
+      --ok-bg: #e5f4eb;
+      --ok-text: #1f613e;
+      --bad-bg: #f8e5e9;
+      --bad-text: #822a37;
+      --info-bg: #e7f0fa;
+      --info-text: #27557e;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.42;
+    }
+
+    button, input, select { font: inherit; }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+    }
+
+    .sidebar {
+      background: var(--shell);
+      color: #fff;
+      padding: 16px 12px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+
+    .brand {
+      padding: 4px 8px 14px;
+      margin-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,.16);
+    }
+
+    .brand h1 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+
+    .brand p {
+      margin: 5px 0 0;
+      color: rgba(255,255,255,.66);
+      font-size: 12px;
+    }
+
+    .nav-title {
+      padding: 12px 8px 5px;
+      color: rgba(255,255,255,.58);
+      font-size: 12px;
+    }
+
+    .nav button {
+      width: 100%;
+      min-height: 38px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: rgba(255,255,255,.78);
+      text-align: left;
+      padding: 8px 10px;
+      cursor: pointer;
+    }
+
+    .nav button.active {
+      background: #fff;
+      color: var(--shell);
+      font-weight: 650;
+    }
+
+    .content {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+    }
+
+    .topbar {
+      min-height: 64px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--line);
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+    }
+
+    .topbar h2 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .topbar p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .top-status {
+      display: flex;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    main {
+      min-width: 0;
+      padding: 18px 20px 30px;
+    }
+
+    .layout { display: grid; gap: 14px; }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 14px;
+      align-items: start;
+    }
+
+    .panel, .drawer {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    .drawer {
+      position: sticky;
+      top: 82px;
+      border-color: var(--line-strong);
+    }
+
+    .panel-head {
+      min-height: 46px;
+      padding: 11px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .drawer .panel-head { background: var(--info-bg); }
+
+    .panel-head h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .panel-body {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      display: grid;
+      gap: 6px;
+      min-height: 86px;
+    }
+
+    .metric strong {
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+
+    .muted, .fine { color: var(--muted); }
+    .fine { font-size: 12px; }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--soft);
+      padding: 2px 9px;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tag.ok { background: var(--ok-bg); color: var(--ok-text); border-color: #b9dcc9; }
+    .tag.warn { background: var(--warn-bg); color: var(--warn-text); border-color: #e7cf8e; }
+    .tag.bad { background: var(--bad-bg); color: var(--bad-text); border-color: #e5b8c0; }
+    .tag.info { background: var(--info-bg); color: var(--info-text); border-color: #bfd4ea; }
+    .tag.dark { background: var(--shell-soft); color: #fff; border-color: var(--shell-soft); }
+
+    .button-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .btn {
+      min-height: 32px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+
+    .btn.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .btn.danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    .btn:disabled {
+      opacity: .45;
+      cursor: not-allowed;
+    }
+
+    .table-wrap {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      background: var(--panel);
+    }
+
+    th, td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      background: #f8fafc;
+      color: #394657;
+      font-weight: 650;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+
+    .filters, .form-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .form-grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .form-grid.one { grid-template-columns: 1fr; }
+
+    .field {
+      display: grid;
+      gap: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .control {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--panel);
+      color: var(--text);
+      padding: 6px 8px;
+    }
+
+    .status-list { display: grid; gap: 8px; }
+
+    .status-line {
+      display: grid;
+      grid-template-columns: 138px minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      padding: 9px 10px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: var(--soft);
+      font-size: 13px;
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .source-tile {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      padding: 11px;
+      display: grid;
+      gap: 8px;
+      min-height: 132px;
+    }
+
+    .source-tile h4 {
+      margin: 0;
+      font-size: 14px;
+      letter-spacing: 0;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px 0;
+      background: #fbfcfd;
+    }
+
+    .tab {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-bottom: 0;
+      border-radius: 6px 6px 0 0;
+      background: var(--soft);
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+
+    .tab.active {
+      background: var(--panel);
+      color: var(--accent);
+      font-weight: 650;
+    }
+
+    .settings-groups {
+      display: grid;
+      gap: 14px;
+    }
+
+    .setting-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      overflow: hidden;
+    }
+
+    .setting-card-head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfcfd;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .setting-card-head h4 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .setting-card-head p {
+      margin: 3px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .setting-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      padding: 14px;
+    }
+
+    .setting-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--soft);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .setting-item strong {
+      font-size: 13px;
+    }
+
+    .setting-meta {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .pagination {
+      border-top: 1px solid var(--line);
+      background: #fbfcfd;
+      color: var(--muted);
+      padding: 10px 12px;
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .toast {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      z-index: 30;
+      max-width: 380px;
+      border-radius: 8px;
+      border: 1px solid #bcd2c5;
+      background: #f1faf5;
+      color: #184d33;
+      padding: 11px 13px;
+      box-shadow: 0 12px 28px rgba(0,0,0,.18);
+      display: none;
+      font-size: 13px;
+    }
+
+    .toast.show { display: block; }
+
+    .empty {
+      min-height: 78px;
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      background: #fbfcfd;
+      text-align: center;
+      padding: 14px;
+      font-size: 13px;
+    }
+
+    @media (max-width: 1180px) {
+      .split { grid-template-columns: 1fr; }
+      .drawer { position: static; }
+      .metric-grid, .grid-3, .source-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { position: static; height: auto; }
+      main { padding: 12px; }
+      .topbar { align-items: flex-start; flex-direction: column; }
+      .nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+      .nav-title { grid-column: 1 / -1; }
+      .grid-2, .grid-3, .metric-grid, .source-grid, .filters, .form-grid, .form-grid.two { grid-template-columns: 1fr; }
+      .setting-list, .setting-meta { grid-template-columns: 1fr; }
+      .status-line { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>智能灌溉</h1>
+        <p>可操作模型原型</p>
+      </div>
+      <nav class="nav" aria-label="页面导航">
+        <div class="nav-title">产品页面</div>
+        <button data-page="overview">总览</button>
+        <button data-page="run">运行</button>
+        <button data-page="plans">计划</button>
+        <button data-page="sources">水源</button>
+        <button data-page="records">记录</button>
+        <button data-page="events">事件</button>
+        <button data-page="settings">系统参数</button>
+        <div class="nav-title">评审辅助</div>
+        <button data-page="logic">流程 / 状态</button>
+      </nav>
+    </aside>
+
+    <div class="content">
+      <header class="topbar">
+        <div>
+          <h2 id="pageTitle"></h2>
+          <p id="pageDesc"></p>
+        </div>
+        <div class="top-status" id="topStatus"></div>
+      </header>
+      <main id="app"></main>
+    </div>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const pageMeta = {
+      overview: ["总览", "查看系统状态、当前运行、水源摘要和最近事件。"],
+      run: ["运行", "手动启动或停止水路任务；手动和自动使用同一套保护规则。"],
+      plans: ["计划", "配置周期、开始时间和水路步骤；列表与编辑视图分离。"],
+      sources: ["水源", "管理从站水源、主阀、水泵、流量计、低液位和分支水路。"],
+      records: ["记录", "只记录真实启动过的水路任务，可从正常记录采用参考流量。"],
+      events: ["事件", "记录跳过、异常、恢复和配置变更；发生中的事件不手动清除。"],
+      settings: ["系统参数", "只配置系统级参数；水源级参数到水源详情下的配置视图修改。"],
+      logic: ["流程 / 状态", "评审辅助：用按钮模拟计划触发、低液位、漏水等核心状态变化。"],
+      planForm: ["计划表单", "新建或编辑自动计划；这是独立页面，不和计划列表混排。"],
+      sourceForm: ["水源配置", "编辑一个水源的硬件映射和启用状态；这是独立页面。"],
+      waterwayForm: ["水路配置", "编辑一个分支水路的名称、启用状态和参考流量；这是独立页面。"],
+      recordDetail: ["记录详情", "查看一条真实运行记录，并在符合条件时采用稳定流速。"],
+      eventDetail: ["事件详情", "查看事件事实、原因和恢复方式；事件不手动清除。"]
+    };
+
+    const parentPage = {
+      planForm: "plans",
+      sourceForm: "sources",
+      waterwayForm: "sources",
+      recordDetail: "records",
+      eventDetail: "events"
+    };
+
+    const state = {
+      page: location.hash ? location.hash.slice(1) : "overview",
+      editPlanId: "p1",
+      selectedSourceId: "s1",
+      selectedWaterwayId: "s1-v1",
+      selectedRecordId: "r1",
+      selectedEventId: "e1",
+      lastManual: { sourceId: "s1", waterwayId: "s1-v1", duration: 10 },
+      settings: {
+        maxRunMinutes: 120,
+        masterValveLeadSec: 1,
+        masterValveCloseDelaySec: 1,
+        pumpStartDelaySec: 1,
+        pumpStopLeadSec: 1,
+        startupFlowGraceSec: 10,
+        noFlowConfirmSec: 10,
+        leakWindowSec: 30,
+        leakPulseCount: 3,
+        lowHighFlowDurationSec: 20,
+        lowFlowPercent: 30,
+        highFlowPercent: 200,
+        lowHighAction: "仅提示",
+        rs485Baud: "9600",
+        pollSec: 5,
+        offlineFailures: 3
+      },
+      sources: [
+        {
+          id: "s1",
+          name: "水源 1",
+          address: "01",
+          enabled: true,
+          online: true,
+          lowLevel: false,
+          leak: false,
+          voltage: "12.2 V",
+          mainValveEnabled: true,
+          mainValveNo: 8,
+          pwm: "吸合 100%，保持 60%",
+          pumpEnabled: true,
+          flowInput: "IN1",
+          lowLevelEnabled: true,
+          lowLevelInput: "IN2",
+          lowLevelMode: "常闭",
+          debounceMs: 500,
+          waterways: [
+            { id: "s1-v1", valve: 1, name: "1 号水路", enabled: true, refFlow: 2.4, calibrated: true, lastDuration: 10 },
+            { id: "s1-v2", valve: 2, name: "2 号水路", enabled: true, refFlow: 1.8, calibrated: true, lastDuration: 8 },
+            { id: "s1-v3", valve: 3, name: "3 号水路", enabled: true, refFlow: null, calibrated: false, lastDuration: 6 },
+            { id: "s1-v4", valve: 4, name: "4 号水路", enabled: false, refFlow: null, calibrated: false, lastDuration: 6 },
+            { id: "s1-valve5", valve: 5, name: "5 号水路", enabled: true, refFlow: null, calibrated: false, lastDuration: 6 },
+            { id: "s1-v6", valve: 6, name: "6 号水路", enabled: true, refFlow: null, calibrated: false, lastDuration: 6 },
+            { id: "s1-v7", valve: 7, name: "7 号水路", enabled: true, refFlow: null, calibrated: false, lastDuration: 6 }
+          ]
+        },
+        {
+          id: "s2",
+          name: "水源 2",
+          address: "02",
+          enabled: true,
+          online: true,
+          lowLevel: false,
+          leak: false,
+          voltage: "12.0 V",
+          mainValveEnabled: false,
+          mainValveNo: 8,
+          pwm: "吸合 100%，保持 60%",
+          pumpEnabled: true,
+          flowInput: "IN1",
+          lowLevelEnabled: true,
+          lowLevelInput: "IN2",
+          lowLevelMode: "常开",
+          debounceMs: 500,
+          waterways: Array.from({ length: 8 }, (_, index) => ({
+            id: `s2-v${index + 1}`,
+            valve: index + 1,
+            name: `${index + 1} 号水路`,
+            enabled: index !== 7,
+            refFlow: index === 0 ? 2.1 : null,
+            calibrated: index === 0,
+            lastDuration: 8
+          }))
+        }
+      ],
+      plans: [
+        {
+          id: "p1",
+          name: "每日早晨计划",
+          enabled: true,
+          cycleDays: 1,
+          anchorDate: "2026-06-28",
+          activeDays: "第 1 天",
+          times: "06:30",
+          steps: [
+            { sourceId: "s1", waterwayId: "s1-v1", duration: 10, enabled: true },
+            { sourceId: "s1", waterwayId: "s1-v2", duration: 8, enabled: true },
+            { sourceId: "s2", waterwayId: "s2-v1", duration: 12, enabled: true }
+          ]
+        }
+      ],
+      tasks: [],
+      records: [
+        {
+          id: "r1",
+          sourceId: "s1",
+          waterwayId: "s1-v1",
+          origin: "自动计划",
+          start: "2026-06-28 06:30",
+          end: "2026-06-28 06:40",
+          plannedMinutes: 10,
+          actualMinutes: 10,
+          pulses: 1440,
+          waterLiters: 24,
+          stableFlow: 2.4,
+          reason: "完成",
+          protection: "未触发"
+        },
+        {
+          id: "r2",
+          sourceId: "s2",
+          waterwayId: "s2-v1",
+          origin: "手动",
+          start: "2026-06-27 18:10",
+          end: "2026-06-27 18:18",
+          plannedMinutes: 8,
+          actualMinutes: 8,
+          pulses: 1010,
+          waterLiters: 16.8,
+          stableFlow: 2.1,
+          reason: "完成",
+          protection: "未触发"
+        }
+      ],
+      events: [
+        { id: "e1", time: "2026-06-28 06:30", level: "信息", type: "计划触发", object: "每日早晨计划", reason: "到达开始时间 06:30", recovery: "无需恢复" },
+        { id: "e2", time: "2026-06-27 18:18", level: "信息", type: "用户停止/完成", object: "水源 2 / 1 号水路", reason: "手动运行结束", recovery: "无需恢复" }
+      ]
+    };
+
+    const app = document.getElementById("app");
+    const toastBox = document.getElementById("toast");
+    const titleEl = document.getElementById("pageTitle");
+    const descEl = document.getElementById("pageDesc");
+    const topStatusEl = document.getElementById("topStatus");
+
+    function esc(value) {
+      return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+    }
+
+    function nowText() {
+      return new Date().toLocaleString("zh-CN", { hour12: false }).replace(/\//g, "-");
+    }
+
+    function toast(message) {
+      toastBox.textContent = message;
+      toastBox.classList.add("show");
+      clearTimeout(toastBox.timer);
+      toastBox.timer = setTimeout(() => toastBox.classList.remove("show"), 2600);
+    }
+
+    function getSource(id) {
+      return state.sources.find((source) => source.id === id);
+    }
+
+    function getWaterway(sourceId, waterwayId) {
+      return getSource(sourceId)?.waterways.find((waterway) => waterway.id === waterwayId);
+    }
+
+    function branchWaterways(source) {
+      return source.waterways.filter((waterway) => !source.mainValveEnabled || waterway.valve !== source.mainValveNo);
+    }
+
+    function runningTaskForSource(sourceId) {
+      return state.tasks.find((task) => task.sourceId === sourceId && task.status === "运行中");
+    }
+
+    function sourceStatus(source) {
+      if (!source.enabled) return ["停用", "bad"];
+      if (!source.online) return ["离线", "bad"];
+      if (source.lowLevel) return ["低液位", "bad"];
+      if (source.leak) return ["待机漏水", "bad"];
+      if (runningTaskForSource(source.id)) return ["运行中", "warn"];
+      return ["空闲", "ok"];
+    }
+
+    function sourceCanStart(source, waterway) {
+      if (!source) return "水源不存在";
+      if (!waterway) return "水路不存在";
+      if (!source.enabled) return "水源已停用";
+      if (!source.online) return "从站离线";
+      if (source.lowLevel) return "低液位有效";
+      if (source.leak) return "待机漏水未恢复";
+      if (runningTaskForSource(source.id)) return "同一水源已有水路运行";
+      if (!waterway.enabled) return "水路已停用";
+      return "";
+    }
+
+    function addEvent(level, type, object, reason, recovery = "按状态自动恢复或无需恢复") {
+      const event = { id: `e${Date.now()}`, time: nowText(), level, type, object, reason, recovery };
+      state.events.unshift(event);
+      state.selectedEventId = event.id;
+      return event;
+    }
+
+    function addRecord(task, reason, protection = "未触发") {
+      const waterway = getWaterway(task.sourceId, task.waterwayId);
+      const flow = waterway?.refFlow || 2;
+      const record = {
+        id: `r${Date.now()}`,
+        sourceId: task.sourceId,
+        waterwayId: task.waterwayId,
+        origin: task.origin,
+        start: task.start,
+        end: nowText(),
+        plannedMinutes: task.duration,
+        actualMinutes: Math.max(1, Math.min(task.duration, Math.round((Date.now() - task.startedAt) / 60000) || 1)),
+        pulses: Math.round(flow * task.duration * 60 * 10),
+        waterLiters: Number((flow * task.duration).toFixed(1)),
+        stableFlow: flow,
+        reason,
+        protection
+      };
+      state.records.unshift(record);
+      state.selectedRecordId = record.id;
+      return record;
+    }
+
+    function setPage(page) {
+      state.page = pageMeta[page] ? page : "overview";
+      history.replaceState(null, "", `#${state.page}`);
+      render();
+    }
+
+    function tag(text, tone = "") {
+      return `<span class="tag ${tone}">${esc(text)}</span>`;
+    }
+
+    function sourceName(id) {
+      const source = getSource(id);
+      return source ? `${source.name}（从站 ${source.address}）` : "未知水源";
+    }
+
+    function waterwayName(sourceId, waterwayId) {
+      const waterway = getWaterway(sourceId, waterwayId);
+      return waterway ? `阀 ${waterway.valve} / ${waterway.name}` : "未知水路";
+    }
+
+    function renderTop() {
+      const [title, desc] = pageMeta[state.page] || pageMeta.overview;
+      titleEl.textContent = title;
+      descEl.textContent = desc;
+      const activeParent = parentPage[state.page] || state.page;
+      document.querySelectorAll(".nav button[data-page]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.page === activeParent);
+      });
+      const blocking = state.sources.filter((source) => ["离线", "低液位", "待机漏水", "停用"].includes(sourceStatus(source)[0])).length;
+      topStatusEl.innerHTML = [
+        tag("主控在线", "ok"),
+        tag("RTC 有效", "info"),
+        tag(`运行 ${state.tasks.filter((task) => task.status === "运行中").length} 路`, state.tasks.length ? "warn" : "info"),
+        tag(`阻断 ${blocking} 个水源`, blocking ? "bad" : "ok")
+      ].join("");
+    }
+
+    function renderOverview() {
+      const running = state.tasks.filter((task) => task.status === "运行中");
+      const recentEvents = state.events.slice(0, 4);
+      return `
+        <div class="layout">
+          <div class="metric-grid">
+            <div class="metric"><span class="muted">主控</span><strong>在线</strong><span class="fine">RUN 心跳，ALM 由水源异常决定</span></div>
+            <div class="metric"><span class="muted">当前运行</span><strong>${running.length} 路</strong><span class="fine">同水源串行，不同水源可并行</span></div>
+            <div class="metric"><span class="muted">水源</span><strong>${state.sources.length} 个</strong><span class="fine">一个从站对应一个水源</span></div>
+            <div class="metric"><span class="muted">最近事件</span><strong>${state.events.length} 条</strong><span class="fine">事件解释跳过、异常和恢复</span></div>
+          </div>
+          <div class="grid-2">
+            <section class="panel">
+              <div class="panel-head"><h3>当前运行</h3>${tag("摘要", "info")}</div>
+              <div class="panel-body">${renderTaskTable(running, false, false)}</div>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><h3>最近事件</h3>${tag("摘要", "info")}</div>
+              <div class="panel-body">
+                <div class="status-list">
+                  ${recentEvents.map((event) => `
+                    <div class="status-line">
+                      <span>${esc(event.type)}</span>
+                      <span class="muted">${esc(event.object)}：${esc(event.reason)}</span>
+                      ${tag(event.level, event.level === "阻断" ? "bad" : event.level === "提示" ? "warn" : "info")}
+                    </div>`).join("")}
+                </div>
+              </div>
+            </section>
+          </div>
+          <section class="panel">
+            <div class="panel-head"><h3>水源状态</h3>${tag("只显示摘要，不编辑", "info")}</div>
+            <div class="panel-body">
+              <div class="source-grid">
+                ${state.sources.map((source) => {
+                  const [status, tone] = sourceStatus(source);
+                  const runningTask = runningTaskForSource(source.id);
+                  return `
+                    <div class="source-tile">
+                      <div class="button-row"><h4>${esc(source.name)}（从站 ${esc(source.address)}）</h4>${tag(status, tone)}</div>
+                      <div class="fine">主阀：${source.mainValveEnabled ? `阀 ${source.mainValveNo}` : "未启用"}；水泵：${source.pumpEnabled ? "启用" : "停用"}；流量计：${source.flowInput}；低液位：${source.lowLevelEnabled ? `${source.lowLevelInput} / ${source.lowLevelMode}` : "未启用"}</div>
+                      <div class="fine">电压：${esc(source.voltage)}，只显示，不参与告警或停机。</div>
+                      <div class="fine">${runningTask ? `正在运行：${waterwayName(source.id, runningTask.waterwayId)}` : "无运行任务"}</div>
+                    </div>`;
+                }).join("")}
+              </div>
+            </div>
+          </section>
+        </div>`;
+    }
+
+    function renderTaskTable(tasks, includeWaiting = true, showActions = true) {
+      const visibleTasks = includeWaiting ? tasks : tasks.filter((task) => task.status === "运行中");
+      if (!visibleTasks.length) return `<div class="empty">当前没有运行任务。</div>`;
+      return `
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>水源</th><th>水路</th><th>来源</th><th>状态</th><th>阶段</th><th>流量</th>${showActions ? "<th>操作</th>" : ""}</tr></thead>
+            <tbody>
+              ${visibleTasks.map((task) => `
+                <tr>
+                  <td>${sourceName(task.sourceId)}</td>
+                  <td>${waterwayName(task.sourceId, task.waterwayId)}</td>
+                  <td>${esc(task.origin)}</td>
+                  <td>${tag(task.status, task.status === "运行中" ? "warn" : "info")}</td>
+                  <td>${esc(task.stage)}</td>
+                  <td>${esc(task.flowState)}</td>
+                  ${showActions ? `<td>${task.status === "运行中" ? `<button class="btn danger" data-action="stop-task" data-task-id="${task.id}">停止</button>` : tag("等待同水源前序", "info")}</td>` : ""}
+                </tr>`).join("")}
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderRun() {
+      const sourceOptions = state.sources.map((source) => `<option value="${source.id}" ${state.lastManual.sourceId === source.id ? "selected" : ""}>${esc(source.name)}（从站 ${esc(source.address)}）</option>`).join("");
+      const selected = getSource(state.lastManual.sourceId) || state.sources[0];
+      const waterwayOptions = branchWaterways(selected).map((waterway) => `<option value="${waterway.id}" ${state.lastManual.waterwayId === waterway.id ? "selected" : ""}>阀 ${waterway.valve} / ${esc(waterway.name)}${waterway.enabled ? "" : "（停用）"}</option>`).join("");
+      return `
+        <div class="layout">
+          <div class="grid-2">
+            <section class="panel">
+              <div class="panel-head"><h3>运行中的水路任务</h3>${tag("同水源只允许一路", "info")}</div>
+              <div class="panel-body">${renderTaskTable(state.tasks)}</div>
+            </section>
+            <section class="panel">
+              <div class="panel-head"><h3>手动启动</h3>${tag("不排队、不抢占", "info")}</div>
+              <div class="panel-body">
+                <div class="form-grid two">
+                  <label class="field">水源<select id="manualSource" class="control">${sourceOptions}</select></label>
+                  <label class="field">分支水路<select id="manualWaterway" class="control">${waterwayOptions}</select></label>
+                  <label class="field">时长来源<select id="manualDurationMode" class="control"><option value="input">本次输入</option><option value="last">上次手动时长</option><option value="plan">从计划步骤带入</option></select></label>
+                  <label class="field">运行时长<input id="manualDuration" class="control" type="number" min="1" max="${state.settings.maxRunMinutes}" value="${state.lastManual.duration}"></label>
+                </div>
+                <div class="button-row">
+                  <button class="btn primary" data-action="start-manual">启动</button>
+                  <span class="fine">启动前检查：在线、启用、空闲、非低液位、非漏水、水路启用。</span>
+                </div>
+              </div>
+            </section>
+          </div>
+          <section class="panel">
+            <div class="panel-head"><h3>水源可运行性</h3>${tag("真实判断", "info")}</div>
+            <div class="panel-body">
+              <div class="status-list">
+                ${state.sources.map((source) => {
+                  const [status, tone] = sourceStatus(source);
+                  return `<div class="status-line"><span>${sourceName(source.id)}</span><span class="muted">${runReason(source)}</span>${tag(status, tone)}</div>`;
+                }).join("")}
+              </div>
+            </div>
+          </section>
+        </div>`;
+    }
+
+    function runReason(source) {
+      const [status] = sourceStatus(source);
+      if (status === "空闲") return "可以启动已启用分支水路。";
+      if (status === "运行中") return "同一水源已运行，手动不会排队或抢占。";
+      if (status === "低液位") return "启动前禁止，运行中触发会停泵并关阀。";
+      if (status === "待机漏水") return "所有输出保持关闭，流量恢复稳定前禁止新任务。";
+      if (status === "离线") return "从站离线，自动计划跳过该水源步骤。";
+      return "停用只影响新任务，不自动停止正在运行任务。";
+    }
+
+    function renderPlans() {
+      return `
+        <section class="panel">
+          <div class="panel-head">
+            <h3>计划列表</h3>
+            <button class="btn primary" data-action="open-plan" data-plan-id="new">新建计划</button>
+          </div>
+          <div class="panel-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>名称</th><th>启用</th><th>周期</th><th>开始时间</th><th>步骤摘要</th><th>操作</th></tr></thead>
+                <tbody>
+                  ${state.plans.map((plan) => `
+                    <tr>
+                      <td>${esc(plan.name)}</td>
+                      <td>${tag(plan.enabled ? "启用" : "停用", plan.enabled ? "ok" : "")}</td>
+                      <td>${plan.cycleDays} 天周期；${esc(plan.activeDays)}；起始 ${esc(plan.anchorDate)}</td>
+                      <td>${esc(plan.times)}</td>
+                      <td>${plan.steps.filter((step) => step.enabled).map((step) => `${sourceName(step.sourceId)} / ${waterwayName(step.sourceId, step.waterwayId)} / ${step.duration} 分钟`).join("<br>")}</td>
+                      <td class="button-row"><button class="btn" data-action="open-plan" data-plan-id="${plan.id}">编辑</button><button class="btn" data-action="toggle-plan" data-plan-id="${plan.id}">${plan.enabled ? "停用" : "启用"}</button></td>
+                    </tr>`).join("")}
+                </tbody>
+              </table>
+            </div>
+            <p class="fine">本页只展示、筛选和分页计划。新建或编辑进入独立计划表单页面；停用计划只阻止后续触发，不停止已经运行的任务。</p>
+          </div>
+        </section>`;
+    }
+
+    function renderSources() {
+      const selected = getSource(state.selectedSourceId) || state.sources[0];
+      return `
+        <div class="layout">
+          <section class="panel">
+            <div class="panel-head"><h3>水源列表</h3>${tag("一个从站 = 一个水源", "info")}</div>
+            <div class="panel-body">
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>水源</th><th>地址</th><th>状态</th><th>主阀</th><th>水泵</th><th>流量计</th><th>低液位</th><th>电压</th><th>操作</th></tr></thead>
+                  <tbody>
+                    ${state.sources.map((source) => {
+                      const [status, tone] = sourceStatus(source);
+                      return `<tr>
+                        <td>${esc(source.name)}</td><td>${esc(source.address)}</td><td>${tag(status, tone)}</td>
+                        <td>${source.mainValveEnabled ? `阀 ${source.mainValveNo}` : "未启用"}</td><td>${source.pumpEnabled ? "启用" : "停用"}</td>
+                        <td>${esc(source.flowInput)}</td><td>${source.lowLevelEnabled ? `${source.lowLevelInput} / ${source.lowLevelMode}` : "未启用"}</td><td>${esc(source.voltage)}</td>
+                        <td class="button-row"><button class="btn" data-action="select-source" data-source-id="${source.id}">查看水路</button><button class="btn" data-action="open-source-config" data-source-id="${source.id}">编辑</button></td>
+                      </tr>`;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+              <p class="fine">水源配置进入独立配置页面；本页不直接展示水源配置表单。</p>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><h3>${esc(selected.name)} 分支水路</h3>${tag(selected.mainValveEnabled ? `主阀：阀 ${selected.mainValveNo}` : "未启用主阀", "info")}</div>
+            <div class="panel-body">
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>阀号</th><th>名称</th><th>启用</th><th>角色</th><th>参考流量</th><th>校准</th><th>操作</th></tr></thead>
+                  <tbody>
+                    ${selected.waterways.map((waterway) => {
+                      const isMain = selected.mainValveEnabled && waterway.valve === selected.mainValveNo;
+                      return `<tr>
+                        <td>${waterway.valve}</td><td>${esc(isMain ? "主阀" : waterway.name)}</td><td>${isMain ? "随主阀配置" : tag(waterway.enabled ? "启用" : "停用", waterway.enabled ? "ok" : "")}</td>
+                        <td>${isMain ? tag("主阀", "dark") : "分支"}</td><td>${isMain ? "不适用" : waterway.refFlow ? `${waterway.refFlow} L/min` : "未设置"}</td>
+                        <td>${isMain ? "不适用" : waterway.calibrated ? "已校准" : "未校准"}</td>
+                        <td>${isMain ? `<button class="btn" data-action="open-source-config" data-source-id="${selected.id}">编辑主阀配置</button>` : `<button class="btn" data-action="open-waterway" data-source-id="${selected.id}" data-waterway-id="${waterway.id}">编辑水路</button>`}</td>
+                      </tr>`;
+                    }).join("")}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        </div>`;
+    }
+
+    function renderRecords() {
+      return `
+        <section class="panel">
+          <div class="panel-head"><h3>浇水记录</h3>${tag("只含真实启动任务", "info")}</div>
+          <div class="panel-body">
+            <div class="filters">
+              <label class="field">时间范围<select class="control"><option>最近记录</option></select></label>
+              <label class="field">来源<select class="control"><option>全部</option><option>手动</option><option>自动计划</option></select></label>
+              <label class="field">水源<select class="control"><option>全部水源</option></select></label>
+              <label class="field">结束原因<select class="control"><option>全部</option></select></label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>开始</th><th>来源</th><th>水源</th><th>水路</th><th>时长</th><th>水量</th><th>稳定流速</th><th>结束</th><th>操作</th></tr></thead>
+                <tbody>${state.records.map((item) => `
+                  <tr>
+                    <td>${esc(item.start)}</td><td>${esc(item.origin)}</td><td>${sourceName(item.sourceId)}</td><td>${waterwayName(item.sourceId, item.waterwayId)}</td>
+                    <td>${item.plannedMinutes} / ${item.actualMinutes} 分钟</td><td>${item.waterLiters} L</td><td>${item.stableFlow} L/min</td><td>${esc(item.reason)}</td>
+                    <td><button class="btn" data-action="select-record" data-record-id="${item.id}">详情</button></td>
+                  </tr>`).join("")}</tbody>
+              </table>
+              <div class="pagination"><span>第 1 页 / 共 ${state.records.length} 条</span><div class="button-row"><button class="btn" disabled>上一页</button><button class="btn" disabled>下一页</button></div></div>
+            </div>
+            <p class="fine">记录详情进入独立详情页面；列表页不展开详情或表单。</p>
+          </div>
+        </section>`;
+    }
+
+    function renderEvents() {
+      return `
+        <section class="panel">
+          <div class="panel-head"><h3>事件</h3>${tag("不替代记录", "info")}</div>
+          <div class="panel-body">
+            <div class="filters">
+              <label class="field">时间范围<select class="control"><option>最近事件</option></select></label>
+              <label class="field">级别<select class="control"><option>全部</option><option>信息</option><option>提示</option><option>阻断</option></select></label>
+              <label class="field">对象<select class="control"><option>全部对象</option></select></label>
+              <label class="field">状态<select class="control"><option>发生 / 恢复 / 记录</option></select></label>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>时间</th><th>级别</th><th>类型</th><th>对象</th><th>原因</th><th>恢复方式</th><th>操作</th></tr></thead>
+                <tbody>${state.events.map((item) => `
+                  <tr>
+                    <td>${esc(item.time)}</td><td>${tag(item.level, item.level === "阻断" ? "bad" : item.level === "提示" ? "warn" : "info")}</td><td>${esc(item.type)}</td>
+                    <td>${esc(item.object)}</td><td>${esc(item.reason)}</td><td>${esc(item.recovery)}</td>
+                    <td><button class="btn" data-action="select-event" data-event-id="${item.id}">详情</button></td>
+                  </tr>`).join("")}</tbody>
+              </table>
+              <div class="pagination"><span>第 1 页 / 共 ${state.events.length} 条</span><div class="button-row"><button class="btn" disabled>上一页</button><button class="btn" disabled>下一页</button></div></div>
+            </div>
+            <p class="fine">事件详情进入独立详情页面；发生中的事件不提供手动清除按钮。</p>
+          </div>
+        </section>`;
+    }
+
+    function renderSettings() {
+      return `
+        <section class="panel">
+          <div class="panel-head"><h3>系统参数</h3>${tag("只含系统级参数", "info")}</div>
+          <div class="panel-body">
+            <div class="settings-groups">
+              ${renderGlobalSettings()}
+              ${renderFlowSettings()}
+            </div>
+            <div class="button-row"><button class="btn primary" data-action="save-settings">保存系统参数</button><span class="fine">保存会生成“系统参数变更”事件。水源和水路相关内容回到对应页面修改。</span></div>
+          </div>
+        </section>`;
+    }
+
+    function settingItem({ id, name, purpose, scope, unit, range, value, type = "number", control = "input", options = [] }) {
+      const input = control === "select"
+        ? `<select id="${id}" class="control">${options.map((option) => `<option ${String(value) === String(option) ? "selected" : ""}>${esc(option)}</option>`).join("")}</select>`
+        : `<input id="${id}" class="control" type="${type}" value="${esc(value)}">`;
+      return `
+        <div class="setting-item">
+          <strong>${esc(name)}</strong>
+          <span class="fine">作用：${esc(purpose)}</span>
+          ${input}
+          <div class="setting-meta">
+            <span>范围：${esc(scope)}</span>
+            <span>单位：${esc(unit)}</span>
+            <span>取值：${esc(range)}</span>
+          </div>
+        </div>`;
+    }
+
+    function renderGlobalSettings() {
+      return `<section class="setting-card">
+        <div class="setting-card-head"><div><h4>全局运行与通信参数</h4><p>影响主控调度、任务输入上限、RS485 通信和离线判定。</p></div>${tag("系统级", "dark")}</div>
+        <div class="setting-list">
+          ${settingItem({ id: "setMaxRun", name: "最大单次运行时长", purpose: "限制计划步骤和手动浇水输入上限。", scope: "全部计划和手动任务", unit: "分钟", range: "1..120，默认 120", value: state.settings.maxRunMinutes })}
+          ${settingItem({ id: "setMasterLead", name: "主阀提前开启时间", purpose: "启用主阀时，主阀先开后等待再开分支阀。", scope: "启用主阀的水源", unit: "秒", range: "非负秒数，默认 1", value: state.settings.masterValveLeadSec })}
+          ${settingItem({ id: "setMasterDelay", name: "主阀延后关闭时间", purpose: "停止时分支阀关闭后等待再关主阀。", scope: "启用主阀的水源", unit: "秒", range: "非负秒数，默认 1", value: state.settings.masterValveCloseDelaySec })}
+          ${settingItem({ id: "setPumpDelay", name: "水泵启动延后时间", purpose: "分支阀打开后等待再启动水泵。", scope: "启用水泵的水源", unit: "秒", range: "非负秒数，默认 1", value: state.settings.pumpStartDelaySec })}
+          ${settingItem({ id: "setPumpLead", name: "水泵停止提前时间", purpose: "停止时先停泵，等待后关闭分支阀。", scope: "启用水泵的水源", unit: "秒", range: "非负秒数，默认 1", value: state.settings.pumpStopLeadSec })}
+          ${settingItem({ id: "setBaud", name: "RS485 通信速率", purpose: "主控与从站通信速率。", scope: "RS485 总线", unit: "bps", range: "9600/19200/38400", value: state.settings.rs485Baud, control: "select", options: ["9600", "19200", "38400"] })}
+          ${settingItem({ id: "setPoll", name: "从站轮询周期", purpose: "主控检查从站状态的周期。", scope: "全部从站", unit: "秒", range: "可配置，默认后续实现确认", value: state.settings.pollSec })}
+          ${settingItem({ id: "setOffline", name: "从站离线失败次数", purpose: "连续通信失败达到次数后判定离线。", scope: "全部从站", unit: "次", range: "可配置，默认后续实现确认", value: state.settings.offlineFailures })}
+        </div>
+      </section>`;
+    }
+
+    function renderFlowSettings() {
+      return `<section class="setting-card">
+        <div class="setting-card-head"><div><h4>流量保护参数</h4><p>全局保护参数；低/过流量比例不放到水源或水路里。</p></div>${tag("系统级", "dark")}</div>
+        <div class="setting-list">
+          ${settingItem({ id: "setGrace", name: "启动流量宽限时间", purpose: "阀和泵启动后等待管路建立流量。", scope: "所有水源", unit: "秒", range: "默认 10", value: state.settings.startupFlowGraceSec })}
+          ${settingItem({ id: "setNoFlow", name: "无流量确认时间", purpose: "宽限结束后仍无脉冲时判定无流量并停机。", scope: "运行中水路", unit: "秒", range: "默认 10", value: state.settings.noFlowConfirmSec })}
+          ${settingItem({ id: "setLeakWindow", name: "漏水检测窗口", purpose: "待机状态统计流量脉冲的时间窗口。", scope: "空闲水源", unit: "秒", range: "默认 30", value: state.settings.leakWindowSec })}
+          ${settingItem({ id: "setLeakPulse", name: "漏水判定脉冲数", purpose: "窗口内达到该脉冲数则判定待机漏水。", scope: "空闲水源", unit: "个脉冲", range: "默认 3", value: state.settings.leakPulseCount })}
+          ${settingItem({ id: "setFlowDuration", name: "低/过流量持续时间", purpose: "低/过流量持续达到该时间才触发。", scope: "有参考流量的水路", unit: "秒", range: "默认 20", value: state.settings.lowHighFlowDurationSec })}
+          ${settingItem({ id: "setLowFlow", name: "低流量比例", purpose: "低于参考流量该比例时判定低流量。", scope: "有参考流量的水路", unit: "%", range: "默认 30", value: state.settings.lowFlowPercent })}
+          ${settingItem({ id: "setHighFlow", name: "过流量比例", purpose: "高于参考流量该比例时判定过流量。", scope: "有参考流量的水路", unit: "%", range: "默认 200", value: state.settings.highFlowPercent })}
+          ${settingItem({ id: "setFlowAction", name: "低/过流量默认动作", purpose: "触发低/过流量后的默认处理。", scope: "有参考流量的水路", unit: "动作", range: "仅提示/停机，默认仅提示", value: state.settings.lowHighAction, control: "select", options: ["仅提示", "停机"] })}
+        </div>
+      </section>`;
+    }
+
+    function renderLogic() {
+      return `
+        <div class="layout">
+          <section class="panel">
+            <div class="panel-head"><h3>状态模拟</h3>${tag("评审辅助，不是产品后台", "dark")}</div>
+            <div class="panel-body">
+              <div class="button-row">
+                <button class="btn primary" data-action="simulate-plan">模拟计划触发</button>
+                <button class="btn" data-action="simulate-lowlevel" data-source-id="s1">模拟水源 1 低液位</button>
+                <button class="btn" data-action="restore-lowlevel" data-source-id="s1">恢复水源 1 低液位</button>
+                <button class="btn" data-action="simulate-leak" data-source-id="s2">模拟水源 2 待机漏水</button>
+                <button class="btn" data-action="restore-leak" data-source-id="s2">恢复水源 2 漏水</button>
+              </div>
+            </div>
+          </section>
+          <div class="grid-2">
+            <section class="panel"><div class="panel-head"><h3>启动顺序</h3></div><div class="panel-body"><div class="status-list">
+              <div class="status-line"><span>1. 启动前检查</span><span class="muted">低液位、漏水、在线、空闲、水路启用。</span>${tag("必须", "bad")}</div>
+              <div class="status-line"><span>2. 主阀</span><span class="muted">启用则先开主阀，默认阀 8。</span>${tag(`${state.settings.masterValveLeadSec} 秒`, "info")}</div>
+              <div class="status-line"><span>3. 分支阀</span><span class="muted">打开当前分支水路。</span>${tag("运行对象", "ok")}</div>
+              <div class="status-line"><span>4. 水泵</span><span class="muted">分支阀打开后延后启动水泵。</span>${tag(`${state.settings.pumpStartDelaySec} 秒`, "info")}</div>
+            </div></div></section>
+            <section class="panel"><div class="panel-head"><h3>停止顺序</h3></div><div class="panel-body"><div class="status-list">
+              <div class="status-line"><span>1. 停水泵</span><span class="muted">停止时先停水泵。</span>${tag("先停", "info")}</div>
+              <div class="status-line"><span>2. 分支阀</span><span class="muted">等待后关闭分支阀。</span>${tag(`${state.settings.pumpStopLeadSec} 秒`, "info")}</div>
+              <div class="status-line"><span>3. 主阀</span><span class="muted">分支阀关闭后延后关闭主阀。</span>${tag(`${state.settings.masterValveCloseDelaySec} 秒`, "info")}</div>
+              <div class="status-line"><span>4. 记录/事件</span><span class="muted">真实启动产生记录；跳过只产生事件。</span>${tag("边界", "ok")}</div>
+            </div></div></section>
+          </div>
+        </div>`;
+    }
+
+    function renderPlanForm() {
+      const planId = state.editPlanId || "new";
+      const plan = planId === "new" ? { id: "new", name: "新建计划", enabled: true, cycleDays: 1, anchorDate: "2026-06-28", activeDays: "第 1 天", times: "06:30", steps: [{ sourceId: "s1", waterwayId: "s1-v1", duration: 10, enabled: true }] } : state.plans.find((item) => item.id === planId);
+      const firstStep = plan.steps[0];
+      const source = getSource(firstStep.sourceId) || state.sources[0];
+      return `<section class="panel">
+        <div class="panel-head">
+          <h3>${planId === "new" ? "新建计划" : `编辑计划：${esc(plan.name)}`}</h3>
+          <button class="btn" data-action="back-to" data-page="plans">返回计划列表</button>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid two">
+            <label class="field">名称<input id="planName" class="control" value="${esc(plan.name)}"></label>
+            <label class="field">启用<select id="planEnabled" class="control"><option value="true" ${plan.enabled ? "selected" : ""}>启用</option><option value="false" ${!plan.enabled ? "selected" : ""}>停用</option></select></label>
+            <label class="field">周期长度<input id="planCycle" class="control" type="number" min="1" value="${plan.cycleDays}"><span class="fine">单位：天；默认 1 天。</span></label>
+            <label class="field">周期起始日期<input id="planAnchor" class="control" value="${esc(plan.anchorDate)}"><span class="fine">哪一天是周期第 1 天。</span></label>
+            <label class="field">周期内执行日<input id="planActiveDays" class="control" value="${esc(plan.activeDays)}"><span class="fine">例如第 1 天、第 1,2 天。</span></label>
+            <label class="field">开始时间<input id="planTimes" class="control" value="${esc(plan.times)}"><span class="fine">一个或多个开始时间。</span></label>
+            <label class="field">第一步水源<select id="planStepSource" class="control">${state.sources.map((item) => `<option value="${item.id}" ${firstStep.sourceId === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></label>
+            <label class="field">第一步水路<select id="planStepWaterway" class="control">${branchWaterways(source).map((waterway) => `<option value="${waterway.id}" ${firstStep.waterwayId === waterway.id ? "selected" : ""}>阀 ${waterway.valve} / ${esc(waterway.name)}</option>`).join("")}</select></label>
+            <label class="field">第一步时长<input id="planStepDuration" class="control" type="number" min="1" max="${state.settings.maxRunMinutes}" value="${firstStep.duration}"><span class="fine">单位：分钟；不超过系统最大单次运行时长。</span></label>
+          </div>
+          <div class="status-line"><span>执行规则</span><span class="muted">同一水源内步骤串行；不同水源可并行。水源忙或不具备条件时跳过，不排队、不补跑。</span>${tag("确认", "ok")}</div>
+          <div class="button-row"><button class="btn primary" data-action="save-plan" data-plan-id="${planId}">保存</button><button class="btn" data-action="back-to" data-page="plans">取消</button></div>
+        </div>
+      </section>`;
+    }
+
+    function renderSourceForm() {
+      const source = getSource(state.selectedSourceId) || state.sources[0];
+      return `<section class="panel">
+        <div class="panel-head">
+          <h3>${esc(source.name)} 配置</h3>
+          <button class="btn" data-action="back-to" data-page="sources">返回水源列表</button>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid two">
+            <label class="field">水源名称<input id="sourceName" class="control" value="${esc(source.name)}"></label>
+            <label class="field">从站地址<input class="control" value="${esc(source.address)}" disabled><span class="fine">来自拨码硬件，Web 只显示。</span></label>
+            <label class="field">水源启用<select id="sourceEnabled" class="control"><option value="true" ${source.enabled ? "selected" : ""}>启用</option><option value="false" ${!source.enabled ? "selected" : ""}>停用</option></select><span class="fine">只影响新任务。</span></label>
+            <label class="field">主阀<select id="sourceMainEnabled" class="control"><option value="true" ${source.mainValveEnabled ? "selected" : ""}>启用</option><option value="false" ${!source.mainValveEnabled ? "selected" : ""}>不启用</option></select></label>
+            <label class="field">主阀阀号<select id="sourceMainNo" class="control">${Array.from({ length: 8 }, (_, i) => `<option value="${i + 1}" ${source.mainValveNo === i + 1 ? "selected" : ""}>阀 ${i + 1}</option>`).join("")}</select><span class="fine">默认阀 8；作为主阀后不再作为分支。</span></label>
+            <label class="field">阀 PWM 参数<input id="sourcePwm" class="control" value="${esc(source.pwm)}"><span class="fine">水源级，从站 8 路阀统一使用，不逐水路配置。</span></label>
+            <label class="field">水泵输出<select id="sourcePump" class="control"><option value="true" ${source.pumpEnabled ? "selected" : ""}>启用</option><option value="false" ${!source.pumpEnabled ? "selected" : ""}>停用</option></select><span class="fine">固定从站干接点输出。</span></label>
+            <label class="field">流量计输入<select id="sourceFlowInput" class="control">${["IN1","IN2","IN3","IN4"].map((input) => `<option ${source.flowInput === input ? "selected" : ""}>${input}</option>`).join("")}</select><span class="fine">默认 IN1。</span></label>
+            <label class="field">低液位输入<select id="sourceLowInput" class="control">${["IN1","IN2","IN3","IN4"].map((input) => `<option ${source.lowLevelInput === input ? "selected" : ""}>${input}</option>`).join("")}</select><span class="fine">默认 IN2。</span></label>
+            <label class="field">低液位触点<select id="sourceLowMode" class="control"><option ${source.lowLevelMode === "常开" ? "selected" : ""}>常开</option><option ${source.lowLevelMode === "常闭" ? "selected" : ""}>常闭</option></select></label>
+            <label class="field">低液位去抖<input id="sourceDebounce" class="control" type="number" value="${source.debounceMs}"><span class="fine">单位：ms。</span></label>
+          </div>
+          <div class="status-line"><span>电压读数</span><span class="muted">${esc(source.voltage)}，只显示，不告警、不保护、不停机。</span>${tag("显示", "ok")}</div>
+          <div class="button-row"><button class="btn primary" data-action="save-source" data-source-id="${source.id}">保存</button><button class="btn" data-action="back-to" data-page="sources">取消</button></div>
+        </div>
+      </section>`;
+    }
+
+    function renderWaterwayForm() {
+      const sourceId = state.selectedSourceId;
+      const waterwayId = state.selectedWaterwayId;
+      const waterway = getWaterway(sourceId, waterwayId);
+      if (!waterway) return `<section class="panel"><div class="panel-body"><div class="empty">未找到水路。</div><button class="btn" data-action="back-to" data-page="sources">返回水源列表</button></div></section>`;
+      return `<section class="panel">
+        <div class="panel-head">
+          <h3>${sourceName(sourceId)} / ${waterwayName(sourceId, waterwayId)}</h3>
+          <button class="btn" data-action="back-to" data-page="sources">返回水源列表</button>
+        </div>
+        <div class="panel-body">
+          <div class="form-grid two">
+            <label class="field">水路名称<input id="waterwayName" class="control" value="${esc(waterway.name)}"></label>
+            <label class="field">启用<select id="waterwayEnabled" class="control"><option value="true" ${waterway.enabled ? "selected" : ""}>启用</option><option value="false" ${!waterway.enabled ? "selected" : ""}>停用</option></select><span class="fine">只影响新任务。</span></label>
+            <label class="field">参考流量<input id="waterwayRefFlow" class="control" type="number" step="0.1" value="${waterway.refFlow ?? ""}"><span class="fine">单位：L/min；可由校准或记录采用。</span></label>
+          </div>
+          <div class="button-row"><button class="btn primary" data-action="save-waterway" data-source-id="${sourceId}" data-waterway-id="${waterwayId}">保存</button><button class="btn" data-action="back-to" data-page="sources">取消</button></div>
+        </div>
+      </section>`;
+    }
+
+    function renderRecordDetail() {
+      const record = state.records.find((item) => item.id === state.selectedRecordId) || state.records[0];
+      if (!record) return `<section class="panel"><div class="panel-body"><div class="empty">没有记录。</div><button class="btn" data-action="back-to" data-page="records">返回记录列表</button></div></section>`;
+      const canAdopt = record.reason === "完成" && record.stableFlow;
+      return `<section class="panel">
+        <div class="panel-head">
+          <h3>记录详情</h3>
+          <button class="btn" data-action="back-to" data-page="records">返回记录列表</button>
+        </div>
+        <div class="panel-body">
+          <div class="status-list">
+            <div class="status-line"><span>水源 / 水路</span><span class="muted">${sourceName(record.sourceId)} / ${waterwayName(record.sourceId, record.waterwayId)}</span>${tag(record.origin, "info")}</div>
+            <div class="status-line"><span>时间</span><span class="muted">${esc(record.start)} - ${esc(record.end)}</span>${tag(`${record.actualMinutes} 分钟`, "info")}</div>
+            <div class="status-line"><span>流量</span><span class="muted">${record.pulses} 脉冲，${record.waterLiters} L，稳定流速 ${record.stableFlow} L/min。</span>${tag(record.protection, "info")}</div>
+            <div class="status-line"><span>结束原因</span><span class="muted">${esc(record.reason)}</span>${tag(record.reason, record.reason === "完成" ? "ok" : "warn")}</div>
+          </div>
+          <button class="btn primary" data-action="adopt-flow" data-record-id="${record.id}" ${canAdopt ? "" : "disabled"}>采用稳定流速为本水路参考流量</button>
+          <p class="fine">只有正常完成且有稳定流速的记录允许采用；异常停止记录不能采用。</p>
+        </div>
+      </section>`;
+    }
+
+    function renderEventDetail() {
+      const event = state.events.find((item) => item.id === state.selectedEventId) || state.events[0];
+      if (!event) return `<section class="panel"><div class="panel-body"><div class="empty">没有事件。</div><button class="btn" data-action="back-to" data-page="events">返回事件列表</button></div></section>`;
+      return `<section class="panel">
+        <div class="panel-head">
+          <h3>事件详情</h3>
+          <button class="btn" data-action="back-to" data-page="events">返回事件列表</button>
+        </div>
+        <div class="panel-body">
+          <div class="status-list">
+            <div class="status-line"><span>类型</span><span class="muted">${esc(event.type)}</span>${tag(event.level, event.level === "阻断" ? "bad" : event.level === "提示" ? "warn" : "info")}</div>
+            <div class="status-line"><span>对象</span><span class="muted">${esc(event.object)}</span>${tag(esc(event.time), "info")}</div>
+            <div class="status-line"><span>原因</span><span class="muted">${esc(event.reason)}</span>${tag("事实", "info")}</div>
+            <div class="status-line"><span>恢复方式</span><span class="muted">${esc(event.recovery)}</span>${tag("自动判断", "ok")}</div>
+          </div>
+          <p class="fine">发生中的事件不提供手动清除按钮；恢复由传感器状态或通信状态自动判断。</p>
+        </div>
+      </section>`;
+    }
+
+    function render() {
+      renderTop();
+      const views = {
+        overview: renderOverview,
+        run: renderRun,
+        plans: renderPlans,
+        sources: renderSources,
+        records: renderRecords,
+        events: renderEvents,
+        settings: renderSettings,
+        logic: renderLogic,
+        planForm: renderPlanForm,
+        sourceForm: renderSourceForm,
+        waterwayForm: renderWaterwayForm,
+        recordDetail: renderRecordDetail,
+        eventDetail: renderEventDetail
+      };
+      app.innerHTML = (views[state.page] || views.overview)();
+    }
+
+    function readNumber(id, fallback) {
+      const value = Number(document.getElementById(id)?.value);
+      return Number.isFinite(value) ? value : fallback;
+    }
+
+    function startTask(sourceId, waterwayId, duration, origin, status = "运行中") {
+      const source = getSource(sourceId);
+      const waterway = getWaterway(sourceId, waterwayId);
+      const blockReason = status === "运行中" ? sourceCanStart(source, waterway) : "";
+      if (blockReason) {
+        addEvent(origin === "手动" ? "提示" : "提示", `${origin}启动跳过`, `${source?.name || "未知水源"} / ${waterway?.name || "未知水路"}`, blockReason, "不排队、不补跑");
+        toast(`${origin}未启动：${blockReason}`);
+        return false;
+      }
+      const task = {
+        id: `t${Date.now()}${Math.random().toString(16).slice(2)}`,
+        sourceId,
+        waterwayId,
+        origin,
+        duration,
+        start: nowText(),
+        startedAt: Date.now(),
+        status,
+        stage: status === "运行中" ? `启动顺序：主阀 ${state.settings.masterValveLeadSec}s，水泵延后 ${state.settings.pumpStartDelaySec}s` : "等待同水源前序",
+        flowState: waterway?.refFlow ? `参考 ${waterway.refFlow} L/min，宽限 ${state.settings.startupFlowGraceSec}s` : "无参考流量，只做无流量和漏水保护"
+      };
+      state.tasks.push(task);
+      return true;
+    }
+
+    function handleAction(target) {
+      const action = target.dataset.action;
+      if (!action) return;
+
+      if (action === "start-manual") {
+        const sourceId = document.getElementById("manualSource").value;
+        const waterwayId = document.getElementById("manualWaterway").value;
+        const mode = document.getElementById("manualDurationMode").value;
+        let duration = readNumber("manualDuration", state.lastManual.duration);
+        if (mode === "last") duration = state.lastManual.duration;
+        if (mode === "plan") {
+          const matched = state.plans.flatMap((plan) => plan.steps).find((step) => step.sourceId === sourceId && step.waterwayId === waterwayId);
+          if (matched) duration = matched.duration;
+        }
+        duration = Math.min(Math.max(1, duration), state.settings.maxRunMinutes);
+        state.lastManual = { sourceId, waterwayId, duration };
+        if (startTask(sourceId, waterwayId, duration, "手动")) {
+          addEvent("信息", "手动任务启动", `${sourceName(sourceId)} / ${waterwayName(sourceId, waterwayId)}`, `手动启动 ${duration} 分钟`, "任务结束后记录运行结果");
+          toast("手动任务已启动。");
+        }
+        render();
+        return;
+      }
+
+      if (action === "stop-task") {
+        const task = state.tasks.find((item) => item.id === target.dataset.taskId);
+        if (task) {
+          addRecord(task, "用户停止", "未触发");
+          addEvent("信息", "用户停止任务", `${sourceName(task.sourceId)} / ${waterwayName(task.sourceId, task.waterwayId)}`, "用户主动停止运行中任务", "无需恢复");
+          state.tasks = state.tasks.filter((item) => item.id !== task.id);
+          toast("任务已停止，并生成运行记录和事件。");
+        }
+        render();
+        return;
+      }
+
+      if (action === "open-plan") {
+        state.editPlanId = target.dataset.planId;
+        state.page = "planForm";
+        history.replaceState(null, "", "#planForm");
+        render();
+        return;
+      }
+
+      if (action === "toggle-plan") {
+        const plan = state.plans.find((item) => item.id === target.dataset.planId);
+        if (plan) {
+          plan.enabled = !plan.enabled;
+          addEvent("信息", "计划启用状态变更", plan.name, plan.enabled ? "计划已启用" : "计划已停用", "影响后续触发，不影响已运行任务");
+          toast(plan.enabled ? "计划已启用。" : "计划已停用。");
+        }
+        render();
+        return;
+      }
+
+      if (action === "save-plan") {
+        const planId = target.dataset.planId;
+        const sourceId = document.getElementById("planStepSource").value;
+        const source = getSource(sourceId);
+        const waterwayId = document.getElementById("planStepWaterway").value || branchWaterways(source)[0]?.id;
+        const next = {
+          id: planId === "new" ? `p${Date.now()}` : planId,
+          name: document.getElementById("planName").value.trim() || "未命名计划",
+          enabled: document.getElementById("planEnabled").value === "true",
+          cycleDays: readNumber("planCycle", 1),
+          anchorDate: document.getElementById("planAnchor").value,
+          activeDays: document.getElementById("planActiveDays").value,
+          times: document.getElementById("planTimes").value,
+          steps: [{ sourceId, waterwayId, duration: Math.min(readNumber("planStepDuration", 10), state.settings.maxRunMinutes), enabled: true }]
+        };
+        if (planId === "new") state.plans.push(next);
+        else state.plans = state.plans.map((item) => item.id === planId ? next : item);
+        addEvent("信息", "计划配置变更", next.name, "保存计划配置", "影响下一次触发");
+        state.page = "plans";
+        history.replaceState(null, "", "#plans");
+        toast("计划已保存。");
+        render();
+        return;
+      }
+
+      if (action === "select-source") {
+        state.selectedSourceId = target.dataset.sourceId;
+        render();
+        return;
+      }
+
+      if (action === "open-source-config") {
+        state.selectedSourceId = target.dataset.sourceId;
+        state.page = "sourceForm";
+        history.replaceState(null, "", "#sourceForm");
+        render();
+        return;
+      }
+
+      if (action === "save-source") {
+        const source = getSource(target.dataset.sourceId);
+        const running = runningTaskForSource(source.id);
+        if (running) {
+          toast("该水源正在运行，不能修改主阀、流量计、低液位和水泵映射。");
+          return;
+        }
+        source.name = document.getElementById("sourceName").value.trim() || source.name;
+        source.enabled = document.getElementById("sourceEnabled").value === "true";
+        source.mainValveEnabled = document.getElementById("sourceMainEnabled").value === "true";
+        source.mainValveNo = readNumber("sourceMainNo", source.mainValveNo);
+        source.pwm = document.getElementById("sourcePwm").value.trim() || source.pwm;
+        source.pumpEnabled = document.getElementById("sourcePump").value === "true";
+        source.flowInput = document.getElementById("sourceFlowInput").value;
+        source.lowLevelInput = document.getElementById("sourceLowInput").value;
+        source.lowLevelMode = document.getElementById("sourceLowMode").value;
+        source.debounceMs = readNumber("sourceDebounce", source.debounceMs);
+        addEvent("信息", "水源配置变更", source.name, "保存水源配置", "影响新任务");
+        state.page = "sources";
+        history.replaceState(null, "", "#sources");
+        toast("水源配置已保存。");
+        render();
+        return;
+      }
+
+      if (action === "open-waterway") {
+        state.selectedSourceId = target.dataset.sourceId;
+        state.selectedWaterwayId = target.dataset.waterwayId;
+        state.page = "waterwayForm";
+        history.replaceState(null, "", "#waterwayForm");
+        render();
+        return;
+      }
+
+      if (action === "save-waterway") {
+        const sourceId = target.dataset.sourceId;
+        const waterway = getWaterway(sourceId, target.dataset.waterwayId);
+        if (runningTaskForSource(sourceId)?.waterwayId === waterway.id) {
+          toast("该水路正在运行，不能修改启用状态。");
+          return;
+        }
+        waterway.name = document.getElementById("waterwayName").value.trim() || waterway.name;
+        waterway.enabled = document.getElementById("waterwayEnabled").value === "true";
+        const refFlow = document.getElementById("waterwayRefFlow").value;
+        waterway.refFlow = refFlow ? Number(refFlow) : null;
+        waterway.calibrated = Boolean(waterway.refFlow);
+        addEvent("信息", "水路配置变更", `${sourceName(sourceId)} / ${waterway.name}`, "保存水路配置", "影响新任务");
+        state.page = "sources";
+        history.replaceState(null, "", "#sources");
+        toast("水路配置已保存。");
+        render();
+        return;
+      }
+
+      if (action === "select-record") {
+        state.selectedRecordId = target.dataset.recordId;
+        state.page = "recordDetail";
+        history.replaceState(null, "", "#recordDetail");
+        render();
+        return;
+      }
+
+      if (action === "adopt-flow") {
+        const record = state.records.find((item) => item.id === target.dataset.recordId);
+        const waterway = record && getWaterway(record.sourceId, record.waterwayId);
+        if (record && waterway && record.reason === "完成") {
+          waterway.refFlow = record.stableFlow;
+          waterway.calibrated = true;
+          addEvent("信息", "参考流量更新", `${sourceName(record.sourceId)} / ${waterway.name}`, `采用记录稳定流速 ${record.stableFlow} L/min`, "后续低/过流量判断使用该参考");
+          toast("已采用稳定流速为参考流量。");
+        }
+        render();
+        return;
+      }
+
+      if (action === "select-event") {
+        state.selectedEventId = target.dataset.eventId;
+        state.page = "eventDetail";
+        history.replaceState(null, "", "#eventDetail");
+        render();
+        return;
+      }
+
+      if (action === "save-settings") {
+        Object.assign(state.settings, {
+          maxRunMinutes: readNumber("setMaxRun", state.settings.maxRunMinutes),
+          masterValveLeadSec: readNumber("setMasterLead", state.settings.masterValveLeadSec),
+          masterValveCloseDelaySec: readNumber("setMasterDelay", state.settings.masterValveCloseDelaySec),
+          pumpStartDelaySec: readNumber("setPumpDelay", state.settings.pumpStartDelaySec),
+          pumpStopLeadSec: readNumber("setPumpLead", state.settings.pumpStopLeadSec),
+          rs485Baud: document.getElementById("setBaud")?.value || state.settings.rs485Baud,
+          pollSec: readNumber("setPoll", state.settings.pollSec),
+          offlineFailures: readNumber("setOffline", state.settings.offlineFailures),
+          startupFlowGraceSec: readNumber("setGrace", state.settings.startupFlowGraceSec),
+          noFlowConfirmSec: readNumber("setNoFlow", state.settings.noFlowConfirmSec),
+          leakWindowSec: readNumber("setLeakWindow", state.settings.leakWindowSec),
+          leakPulseCount: readNumber("setLeakPulse", state.settings.leakPulseCount),
+          lowHighFlowDurationSec: readNumber("setFlowDuration", state.settings.lowHighFlowDurationSec),
+          lowFlowPercent: readNumber("setLowFlow", state.settings.lowFlowPercent),
+          highFlowPercent: readNumber("setHighFlow", state.settings.highFlowPercent),
+          lowHighAction: document.getElementById("setFlowAction")?.value || state.settings.lowHighAction
+        });
+        addEvent("信息", "系统参数变更", "系统参数", "保存系统参数", "新任务使用新参数");
+        toast("系统参数已保存。");
+        render();
+        return;
+      }
+
+      if (action === "simulate-plan") {
+        const plan = state.plans.find((item) => item.enabled);
+        if (!plan) {
+          toast("没有启用的计划。");
+          return;
+        }
+        addEvent("信息", "计划触发", plan.name, `到达开始时间 ${plan.times}`, "按水源拆分执行");
+        const firstStepBySource = new Set();
+        plan.steps.filter((step) => step.enabled).forEach((step) => {
+          const status = firstStepBySource.has(step.sourceId) ? "等待" : "运行中";
+          if (startTask(step.sourceId, step.waterwayId, step.duration, "自动计划", status)) firstStepBySource.add(step.sourceId);
+        });
+        state.page = "run";
+        history.replaceState(null, "", "#run");
+        toast("已按计划模型展开任务。");
+        render();
+        return;
+      }
+
+      if (action === "simulate-lowlevel") {
+        setLowLevel(target.dataset.sourceId, true);
+        return;
+      }
+
+      if (action === "restore-lowlevel") {
+        setLowLevel(target.dataset.sourceId, false);
+        return;
+      }
+
+      if (action === "simulate-leak") {
+        const source = getSource(target.dataset.sourceId);
+        source.leak = true;
+        addEvent("阻断", "待机漏水", source.name, `待机 ${state.settings.leakWindowSec} 秒内达到 ${state.settings.leakPulseCount} 个脉冲`, "流量消失并稳定后自动解除");
+        toast(`${source.name} 已进入待机漏水阻断。`);
+        render();
+        return;
+      }
+
+      if (action === "restore-leak") {
+        const source = getSource(target.dataset.sourceId);
+        source.leak = false;
+        addEvent("信息", "待机漏水恢复", source.name, "流量消失并稳定", "允许启动新任务");
+        toast(`${source.name} 漏水阻断已恢复。`);
+        render();
+        return;
+      }
+
+      if (action === "close-drawer") {
+        state.page = parentPage[state.page] || "overview";
+        history.replaceState(null, "", `#${state.page}`);
+        render();
+      }
+
+      if (action === "back-to") {
+        state.page = target.dataset.page || parentPage[state.page] || "overview";
+        history.replaceState(null, "", `#${state.page}`);
+        render();
+      }
+    }
+
+    function setLowLevel(sourceId, enabled) {
+      const source = getSource(sourceId);
+      source.lowLevel = enabled;
+      if (enabled) {
+        const running = runningTaskForSource(sourceId);
+        if (running) {
+          addRecord(running, "异常停止", "低液位");
+          state.tasks = state.tasks.filter((task) => task.id !== running.id);
+        }
+        addEvent("阻断", "低液位有效", source.name, "低液位输入达到有效状态", "低液位恢复稳定后允许新任务");
+        toast(`${source.name} 低液位已触发；运行任务会停止。`);
+      } else {
+        addEvent("信息", "低液位恢复", source.name, "低液位输入恢复稳定", "允许启动新任务");
+        toast(`${source.name} 低液位已恢复。`);
+      }
+      render();
+    }
+
+    document.addEventListener("click", (event) => {
+      const nav = event.target.closest("button[data-page]");
+      if (nav) {
+        setPage(nav.dataset.page);
+        return;
+      }
+      const actionTarget = event.target.closest("[data-action]");
+      if (actionTarget) handleAction(actionTarget);
+    });
+
+    document.addEventListener("change", (event) => {
+      if (event.target.id === "manualSource") {
+        state.lastManual.sourceId = event.target.value;
+        const source = getSource(event.target.value);
+        state.lastManual.waterwayId = branchWaterways(source)[0]?.id;
+        render();
+      }
+      if (event.target.id === "planStepSource") {
+        const source = getSource(event.target.value);
+        const select = document.getElementById("planStepWaterway");
+        if (select) {
+          select.innerHTML = branchWaterways(source).map((waterway) => `<option value="${waterway.id}">阀 ${waterway.valve} / ${esc(waterway.name)}</option>`).join("");
+        }
+      }
+    });
+
+    window.addEventListener("hashchange", () => {
+      const nextPage = location.hash ? location.hash.slice(1) : "overview";
+      state.page = pageMeta[nextPage] ? nextPage : "overview";
+      render();
+    });
+
+    render();
+  </script>
+</body>
+</html>

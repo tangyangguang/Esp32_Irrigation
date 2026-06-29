@@ -1,0 +1,1053 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>v5 低保真线框</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page: #f3f3f3;
+      --panel: #ffffff;
+      --line: #222222;
+      --muted-line: #9a9a9a;
+      --soft: #e7e7e7;
+      --softer: #f8f8f8;
+      --text: #111111;
+      --muted: #555555;
+      --block: #d9d9d9;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--page);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .app {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      background: var(--panel);
+      border-bottom: 2px solid var(--line);
+      padding: 14px 18px 10px;
+    }
+
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      margin-bottom: 12px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+    }
+
+    h1 {
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: 18px;
+      margin-bottom: 10px;
+    }
+
+    h3 {
+      font-size: 15px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle,
+    .meta,
+    .hint {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .nav button,
+    .plain-button,
+    .danger-button {
+      min-height: 34px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      padding: 6px 10px;
+      cursor: pointer;
+      border-radius: 0;
+    }
+
+    .nav button.active {
+      background: var(--line);
+      color: #ffffff;
+    }
+
+    .danger-button {
+      border-width: 2px;
+    }
+
+    main {
+      display: grid;
+      grid-template-columns: 240px minmax(0, 1fr);
+      gap: 14px;
+      padding: 14px;
+    }
+
+    aside,
+    .page {
+      background: var(--panel);
+      border: 2px solid var(--line);
+    }
+
+    aside {
+      padding: 12px;
+      align-self: start;
+      position: sticky;
+      top: 12px;
+    }
+
+    aside ol {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    aside li + li {
+      margin-top: 6px;
+    }
+
+    .page {
+      display: none;
+      min-height: calc(100vh - 112px);
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .page-head {
+      padding: 14px;
+      border-bottom: 2px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+    }
+
+    .page-body {
+      padding: 14px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .box {
+      border: 1px solid var(--line);
+      background: var(--softer);
+      padding: 10px;
+      min-width: 0;
+    }
+
+    .box.muted {
+      border-style: dashed;
+      background: #ffffff;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .status-row {
+      display: grid;
+      grid-template-columns: 120px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid var(--muted-line);
+      background: var(--panel);
+    }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid var(--line);
+      padding: 2px 6px;
+      background: #ffffff;
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .tag.fill {
+      background: var(--block);
+    }
+
+    .list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .wire-list {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .wire-list li + li {
+      margin-top: 4px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      font-size: 13px;
+    }
+
+    th,
+    td {
+      border: 1px solid var(--line);
+      padding: 8px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: var(--soft);
+      font-weight: 600;
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    label {
+      display: grid;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-height: 34px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: #ffffff;
+      color: var(--text);
+      padding: 6px 8px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      align-items: stretch;
+    }
+
+    .flow-step {
+      border: 1px solid var(--line);
+      background: var(--soft);
+      padding: 8px;
+      min-height: 68px;
+      display: grid;
+      align-content: start;
+      gap: 4px;
+      font-size: 13px;
+    }
+
+    .flow-step small {
+      color: var(--muted);
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 12px;
+    }
+
+    .placeholder {
+      min-height: 90px;
+      border: 1px dashed var(--muted-line);
+      background:
+        linear-gradient(transparent 23px, var(--soft) 24px),
+        linear-gradient(90deg, transparent 23px, var(--soft) 24px);
+      background-size: 24px 24px;
+      padding: 10px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .only-wireframe {
+      border: 2px dashed var(--line);
+      padding: 8px;
+      background: #ffffff;
+      font-size: 13px;
+    }
+
+    @media (max-width: 960px) {
+      main {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: static;
+      }
+
+      .grid-2,
+      .grid-3,
+      .split,
+      .flow,
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .page-head {
+        display: grid;
+      }
+
+      .status-row {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="topbar">
+        <div class="stack">
+          <h1>v5 低保真线框</h1>
+          <p class="subtitle">用于确认页面数量、页面边界、信息层级和主要任务流。灰阶线框，不作为高保真视觉依据。</p>
+        </div>
+        <div class="only-wireframe">当前阶段：低保真评审</div>
+      </div>
+      <nav class="nav" aria-label="顶层导航">
+        <button data-page="overview">总览</button>
+        <button data-page="run">运行</button>
+        <button data-page="plans">计划</button>
+        <button data-page="sources">水源</button>
+        <button data-page="records">记录</button>
+        <button data-page="events">事件</button>
+        <button data-page="settings">设置</button>
+      </nav>
+    </header>
+
+    <main>
+      <aside>
+        <h3>评审口径</h3>
+        <p class="hint">只评审结构和流程，不评审颜色、字体、视觉质感。</p>
+        <ol>
+          <li>7 个顶层页面是否够用。</li>
+          <li>每页职责是否清楚。</li>
+          <li>任务流是否能闭环。</li>
+          <li>记录和事件是否分得清。</li>
+          <li>设置项是否放在正确位置。</li>
+          <li>是否需要新增或移除顶层页面。</li>
+        </ol>
+      </aside>
+
+      <section class="page" id="overview" data-title="总览">
+        <div class="page-head">
+          <div>
+            <h2>总览</h2>
+            <p class="meta">回答：现在系统是否正常，是否正在浇水，是否有需要处理的问题。</p>
+          </div>
+          <div class="row">
+            <span class="tag fill">主控在线</span>
+            <span class="tag">从站 2 个</span>
+            <span class="tag">当前事件 1 个</span>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="grid-3">
+            <div class="box">
+              <h3>系统状态</h3>
+              <div class="list">
+                <div class="status-row"><b>主控时间</b><span>2026-06-27 09:30</span><span class="tag">RTC</span></div>
+                <div class="status-row"><b>通信</b><span>2 个从站在线，0 个离线</span><span class="tag fill">正常</span></div>
+              </div>
+            </div>
+            <div class="box">
+              <h3>当前运行</h3>
+              <div class="status-row">
+                <b>水源 2</b>
+                <span>水路 3 正在运行，剩余 08:20，估算水量 3.2 L</span>
+                <span class="tag">摘要</span>
+              </div>
+            </div>
+            <div class="box">
+              <h3>今日概况</h3>
+              <div class="list">
+                <div class="status-row"><b>次数</b><span>3 次真实运行</span><span></span></div>
+                <div class="status-row"><b>总时长</b><span>42 分钟</span><span></span></div>
+                <div class="status-row"><b>估算水量</b><span>18.6 L</span><span></span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="split">
+            <div class="box">
+              <h3>水源概况</h3>
+              <div class="list">
+                <div class="status-row">
+                  <b>水源 1</b>
+                  <span>地址 01，在线，空闲，允许启动</span>
+                  <span class="tag fill">可用</span>
+                </div>
+                <div class="status-row">
+                  <b>水源 2</b>
+                  <span>地址 02，在线，运行中，水路 3</span>
+                  <span class="tag">运行中</span>
+                </div>
+              </div>
+            </div>
+            <div class="box">
+              <h3>最近事件</h3>
+              <table>
+                <thead>
+                  <tr><th>时间</th><th>类型</th><th>内容</th><th>入口</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>09:20</td><td>信息</td><td>计划触发，某水源开始运行</td><td><span class="tag">摘要</span></td></tr>
+                  <tr><td>08:10</td><td>提示</td><td>某水路低流量提示</td><td><span class="tag">摘要</span></td></tr>
+                  <tr><td>07:00</td><td>信息</td><td>从记录采用水路参考流量</td><td><span class="tag">摘要</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="box muted">
+            <h3>总览不做</h3>
+            <ul class="wire-list">
+              <li>不编辑计划。</li>
+              <li>不修改硬件映射。</li>
+              <li>不展开完整记录列表。</li>
+              <li>不放跨页面快捷入口。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="run" data-title="运行">
+        <div class="page-head">
+          <div>
+            <h2>运行</h2>
+            <p class="meta">回答：现在能不能浇水，正在浇哪一路，如何手动启动或停止。</p>
+          </div>
+          <div class="row">
+            <span class="tag fill">同一水源串行</span>
+            <span class="tag">不同水源可并行</span>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="grid-2">
+            <div class="box">
+              <h3>当前任务</h3>
+              <div class="list">
+                <div class="status-row">
+                  <b>水源 2 / 水路 3</b>
+                  <span>来源：自动计划。剩余 08:20，流量正常，估算水量 3.2 L。</span>
+                  <button class="danger-button">停止</button>
+                </div>
+                <div class="status-row">
+                  <b>水源 1</b>
+                  <span>空闲，可启动。</span>
+                  <span class="tag fill">可用</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="box">
+              <h3>手动启动</h3>
+              <div class="form-grid">
+                <label>水源
+                  <select>
+                    <option>水源 1：空闲，可用</option>
+                    <option>水源 2：运行中，不可选</option>
+                  </select>
+                </label>
+                <label>水路
+                  <select>
+                    <option>水路 1</option>
+                    <option>水路 2</option>
+                    <option>水路 4</option>
+                  </select>
+                </label>
+                <label>时长来源
+                  <select>
+                    <option>本次输入</option>
+                    <option>上次手动时长</option>
+                    <option>从计划步骤带入</option>
+                  </select>
+                </label>
+                <label>时长
+                  <input value="20 分钟" aria-label="手动时长">
+                </label>
+              </div>
+              <div class="row" style="margin-top: 10px;">
+                <button class="plain-button">启动</button>
+                <span class="hint">最大单次运行时长由设置限制，默认 120 分钟。</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="box">
+              <h3>水源可用性</h3>
+              <table>
+                <thead>
+                  <tr><th>水源</th><th>状态</th><th>是否可启动</th><th>原因</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>水源 1</td><td>在线 / 空闲</td><td>是</td><td>无阻断</td></tr>
+                  <tr><td>水源 2</td><td>在线 / 运行中</td><td>否</td><td>同一水源已有任务</td></tr>
+                  <tr><td>水源 3</td><td>离线</td><td>否</td><td>从站离线</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="box">
+              <h3>保护状态</h3>
+              <div class="list">
+                <div class="status-row"><b>低液位</b><span>未触发</span><span class="tag fill">允许启动</span></div>
+                <div class="status-row"><b>待机漏水</b><span>未触发</span><span class="tag fill">允许启动</span></div>
+                <div class="status-row"><b>运行无流量</b><span>水源 2 宽限期已结束，脉冲正常</span><span class="tag fill">正常</span></div>
+                <div class="status-row"><b>低/过流量</b><span>默认仅提示，有参考流量才检查</span><span class="tag">提示</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flow">
+            <div class="flow-step"><b>1 选择水源</b><small>必须在线、空闲、未阻断</small></div>
+            <div class="flow-step"><b>2 选择水路</b><small>必须启用，且不是主阀</small></div>
+            <div class="flow-step"><b>3 选择时长</b><small>本次、上次、计划带入</small></div>
+            <div class="flow-step"><b>4 系统检查</b><small>低液位、漏水、离线、忙碌</small></div>
+            <div class="flow-step"><b>5 启动任务</b><small>生成真实运行记录</small></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="plans" data-title="计划">
+        <div class="page-head">
+          <div>
+            <h2>计划</h2>
+            <p class="meta">回答：什么时候自动浇水，浇哪些水路，浇多久。</p>
+          </div>
+          <button class="plain-button">新建计划</button>
+        </div>
+        <div class="page-body">
+          <div class="split">
+            <div class="box">
+              <h3>计划列表</h3>
+              <div class="row" style="margin-bottom: 10px;">
+                <span class="tag fill">全部</span>
+                <span class="tag">启用</span>
+                <span class="tag">停用</span>
+                <span class="tag">分页</span>
+              </div>
+              <div class="list">
+                <div class="status-row">
+                  <b>早晨计划</b>
+                  <span>启用。1 天周期，第 1 天执行。每天 07:00。3 个步骤。</span>
+                  <span class="tag fill">下一次 07:00</span>
+                </div>
+                <div class="status-row">
+                  <b>隔天计划</b>
+                  <span>启用。2 天周期，第 1 天执行。18:30。2 个步骤。</span>
+                  <span class="tag">明天</span>
+                </div>
+                <div class="status-row">
+                  <b>备用计划</b>
+                  <span>停用。停用只阻止后续触发。</span>
+                  <span class="tag">停用</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="box">
+              <h3>计划编辑视图</h3>
+              <p class="hint" style="margin-bottom: 10px;">新建或编辑计划时独立打开，不在计划列表下方直接铺表单。</p>
+              <div class="form-grid">
+                <label>名称
+                  <input value="早晨计划">
+                </label>
+                <label>状态
+                  <select>
+                    <option>启用</option>
+                    <option>停用</option>
+                  </select>
+                </label>
+                <label>周期长度
+                  <input value="1 天">
+                </label>
+                <label>周期起始日期
+                  <input value="2026-06-27">
+                </label>
+              </div>
+              <div class="box muted" style="margin-top: 10px;">
+                <h3>周期内执行日</h3>
+                <div class="row">
+                  <span class="tag fill">第 1 天执行</span>
+                  <span class="tag">第 2 天不在本周期</span>
+                  <span class="tag">第 3 天不在本周期</span>
+                </div>
+              </div>
+              <div class="box muted" style="margin-top: 10px;">
+                <h3>开始时间</h3>
+                <div class="row">
+                  <span class="tag fill">07:00</span>
+                  <button class="plain-button">添加时间</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="box">
+            <h3>水路步骤</h3>
+            <table>
+              <thead>
+                <tr><th>顺序</th><th>水源</th><th>水路</th><th>时长</th><th>状态</th><th>说明</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>1</td><td>水源 1</td><td>水路 1</td><td>15 分钟</td><td>启用</td><td>同水源内串行</td></tr>
+                <tr><td>2</td><td>水源 1</td><td>水路 2</td><td>12 分钟</td><td>启用</td><td>等待水路 1 完成</td></tr>
+                <tr><td>3</td><td>水源 2</td><td>水路 3</td><td>20 分钟</td><td>启用</td><td>可与水源 1 并行</td></tr>
+              </tbody>
+            </table>
+            <div class="row" style="margin-top: 10px;">
+              <button class="plain-button">添加步骤</button>
+              <button class="plain-button">保存计划</button>
+              <span class="hint">修改计划只影响下一次触发。</span>
+            </div>
+          </div>
+
+          <div class="box muted">
+            <h3>计划触发规则</h3>
+            <ul class="wire-list">
+              <li>水源忙碌、低液位、漏水、离线或水路不可用时，本水源本次步骤跳过。</li>
+              <li>跳过只生成事件，不生成浇水记录，不排队，不补跑。</li>
+              <li>其它可运行水源不受影响。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="sources" data-title="水源">
+        <div class="page-head">
+          <div>
+            <h2>水源</h2>
+            <p class="meta">回答：有哪些水源和水路，每个水源当前能力是否可用。</p>
+          </div>
+          <div class="row">
+            <span class="tag">普通手动浇水在运行页</span>
+            <span class="tag">校准从水路进入</span>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="split">
+            <div class="box">
+              <h3>水源列表</h3>
+              <div class="list">
+                <div class="status-row"><b>水源 1</b><span>地址 01，在线，空闲，无阻断</span><span class="tag fill">可用</span></div>
+                <div class="status-row"><b>水源 2</b><span>地址 02，在线，运行中，水路 3</span><span class="tag">运行中</span></div>
+                <div class="status-row"><b>水源 3</b><span>地址 03，离线</span><span class="tag">不可用</span></div>
+              </div>
+            </div>
+            <div class="box">
+              <h3>水源详情</h3>
+              <table>
+                <tbody>
+                  <tr><th>从站地址</th><td>01，只显示，不通过 Web 修改拨码地址</td></tr>
+                  <tr><th>主阀</th><td>启用，使用阀 8</td></tr>
+                  <tr><th>水泵输出</th><td>启用，从站干接点</td></tr>
+                  <tr><th>流量计</th><td>IN1</td></tr>
+                  <tr><th>低液位</th><td>启用，IN2，常闭，去抖 500 ms</td></tr>
+                  <tr><th>电压读数</th><td>12.1 V，只显示，不告警、不保护、不停机</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="box">
+            <h3>水路列表</h3>
+            <table>
+              <thead>
+                <tr><th>水路</th><th>启用</th><th>参考流量</th><th>最近运行</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>水路 1</td><td>是</td><td>1.8 L/min，已校准</td><td>今天 07:00 正常完成</td><td><button class="plain-button">校准</button></td></tr>
+                <tr><td>水路 2</td><td>是</td><td>未设置</td><td>昨天 18:30 正常完成</td><td><button class="plain-button">校准</button></td></tr>
+                <tr><td>水路 3</td><td>停用</td><td>1.2 L/min</td><td>无</td><td><button class="plain-button">查看</button></td></tr>
+                <tr><td>水路 8</td><td>作为主阀</td><td>不适用</td><td>不作为分支水路</td><td><span class="tag">只显示</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box">
+            <h3>校准流程线框</h3>
+            <div class="flow">
+              <div class="flow-step"><b>1 选择水路</b><small>从水源详情进入</small></div>
+              <div class="flow-step"><b>2 启动前检查</b><small>在线、空闲、低液位、漏水</small></div>
+              <div class="flow-step"><b>3 正常运行</b><small>按启停顺序启动</small></div>
+              <div class="flow-step"><b>4 稳定采集</b><small>默认 60 秒</small></div>
+              <div class="flow-step"><b>5 确认保存</b><small>写入参考流量，生成事件</small></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="records" data-title="记录">
+        <div class="page-head">
+          <div>
+            <h2>记录</h2>
+            <p class="meta">回答：哪些水路真实运行过，运行结果是什么。</p>
+          </div>
+          <div class="row">
+            <span class="tag fill">只记录真实启动</span>
+            <span class="tag">跳过进入事件</span>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="box">
+            <h3>筛选</h3>
+            <div class="form-grid">
+              <label>时间
+                <select><option>今天</option><option>最近 7 天</option></select>
+              </label>
+              <label>水源
+                <select><option>全部水源</option><option>水源 1</option><option>水源 2</option></select>
+              </label>
+              <label>来源
+                <select><option>全部来源</option><option>自动计划</option><option>手动</option></select>
+              </label>
+              <label>结束原因
+                <select><option>全部</option><option>正常完成</option><option>用户停止</option><option>异常停止</option></select>
+              </label>
+            </div>
+            <div class="row" style="margin-top: 10px;">
+              <span class="tag fill">第 1 页</span>
+              <span class="tag">上一页</span>
+              <span class="tag">下一页</span>
+            </div>
+          </div>
+
+          <div class="box">
+            <h3>记录列表</h3>
+            <table>
+              <thead>
+                <tr><th>字段</th><th>说明</th><th>位置</th><th>操作</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>开始/结束时间</td><td>真实运行时间</td><td>列表和详情</td><td><button class="plain-button">详情</button></td></tr>
+                <tr><td>水源/水路/来源</td><td>自动计划或手动</td><td>列表和详情</td><td><button class="plain-button">详情</button></td></tr>
+                <tr><td>时长/水量/流速</td><td>计划时长、实际时长、估算水量、稳定流速</td><td>列表和详情</td><td><button class="plain-button">详情</button></td></tr>
+                <tr><td>结束原因</td><td>完成、用户停止、异常停止</td><td>列表和详情</td><td><button class="plain-button">详情</button></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box muted">
+            <h3>记录详情视图</h3>
+            <ul class="wire-list">
+              <li>从单条记录打开，不在列表下方直接展开。</li>
+              <li>正常完成且流速稳定的记录，详情里显示“采用为参考流量”。</li>
+              <li>采用后生成参考流量更新事件，不生成新的浇水记录。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="events" data-title="事件">
+        <div class="page-head">
+          <div>
+            <h2>事件</h2>
+            <p class="meta">回答：为什么没有运行，为什么停止，系统发生了什么需要注意的事。</p>
+          </div>
+          <div class="row">
+            <span class="tag">信息</span>
+            <span class="tag">提示</span>
+            <span class="tag fill">阻断</span>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="grid-2">
+            <div class="box">
+              <h3>当前事件</h3>
+              <div class="list">
+                <div class="status-row">
+                  <b>水源 3 离线</b>
+                  <span>影响：禁止启动水源 3，恢复在线后自动解除。</span>
+                  <span class="tag fill">阻断</span>
+                </div>
+                <div class="status-row">
+                  <b>水源 1 低流量提示</b>
+                  <span>影响：默认仅提示，不停止任务。</span>
+                  <span class="tag">提示</span>
+                </div>
+              </div>
+            </div>
+            <div class="box">
+              <h3>事件详情</h3>
+              <table>
+                <tbody>
+                  <tr><th>发生时间</th><td>09:05:12</td></tr>
+                  <tr><th>对象</th><td>水源 3 / 从站地址 03</td></tr>
+                  <tr><th>类型</th><td>阻断</td></tr>
+                  <tr><th>影响</th><td>自动计划和手动启动都不能使用该水源</td></tr>
+                  <tr><th>恢复</th><td>从站重新在线并稳定后自动恢复</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="box">
+            <h3>事件列表</h3>
+            <div class="row" style="margin-bottom: 10px;">
+              <span class="tag fill">全部类型</span>
+              <span class="tag">信息</span>
+              <span class="tag">提示</span>
+              <span class="tag">阻断</span>
+              <span class="tag">分页</span>
+            </div>
+            <table>
+              <thead>
+                <tr><th>时间</th><th>类型</th><th>对象</th><th>内容</th><th>状态</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>字段</td><td>信息/提示/阻断</td><td>系统/水源/水路</td><td>原因和影响摘要</td><td>发生中/已恢复/信息</td></tr>
+                <tr><td>字段</td><td>计划跳过</td><td>水源/水路</td><td>跳过原因</td><td>信息</td></tr>
+                <tr><td>字段</td><td>配置变更</td><td>系统</td><td>变更摘要</td><td>信息</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="box muted">
+            <h3>事件页规则</h3>
+            <ul class="wire-list">
+              <li>发生中事件不能手动清除，只能自动恢复。</li>
+              <li>已恢复事件保留历史，不要求确认。</li>
+              <li>事件不替代浇水记录。</li>
+              <li>事件详情从单条事件打开，不在列表下方铺表单。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="page" id="settings" data-title="设置">
+        <div class="page-head">
+          <div>
+            <h2>设置</h2>
+            <p class="meta">回答：低频安装参数和系统参数是什么。</p>
+          </div>
+          <div class="row">
+            <button class="plain-button">保存</button>
+            <button class="plain-button">取消</button>
+          </div>
+        </div>
+        <div class="page-body">
+          <div class="grid-3">
+            <div class="box">
+              <h3>全局设置</h3>
+              <div class="stack">
+                <label>最大单次运行时长
+                  <input value="120 分钟">
+                </label>
+                <label>阀 PWM 参数
+                  <input value="从站统一参数">
+                </label>
+                <label>主阀提前开启
+                  <input value="1 秒">
+                </label>
+                <label>主阀延后关闭
+                  <input value="1 秒">
+                </label>
+                <label>水泵启动延后
+                  <input value="1 秒">
+                </label>
+                <label>水泵停止提前
+                  <input value="1 秒">
+                </label>
+              </div>
+            </div>
+
+            <div class="box">
+              <h3>流量保护</h3>
+              <div class="stack">
+                <label>启动流量宽限
+                  <input value="10 秒">
+                </label>
+                <label>无流量确认
+                  <input value="10 秒">
+                </label>
+                <label>漏水检测窗口
+                  <input value="30 秒">
+                </label>
+                <label>漏水判定脉冲数
+                  <input value="3 个脉冲">
+                </label>
+                <label>低流量比例
+                  <input value="30%">
+                </label>
+                <label>过流量比例
+                  <input value="200%">
+                </label>
+                <label>低/过流量默认动作
+                  <select><option>仅提示</option><option>停机</option></select>
+                </label>
+              </div>
+            </div>
+
+            <div class="box">
+              <h3>通信和离线</h3>
+              <div class="stack">
+                <label>RS485 通信速率
+                  <select><option>9600</option><option>19200</option><option>38400</option></select>
+                </label>
+                <label>轮询周期
+                  <input value="2 秒">
+                </label>
+                <label>离线失败次数
+                  <input value="3 次">
+                </label>
+                <label>系统时间
+                  <input value="RTC 同步">
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid-2">
+            <div class="box">
+              <h3>水源硬件设置</h3>
+              <table>
+                <thead>
+                  <tr><th>项目</th><th>当前值</th><th>规则</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>水源名称</td><td>水源 1</td><td>可修改</td></tr>
+                  <tr><td>从站地址</td><td>01</td><td>只显示，不修改拨码地址</td></tr>
+                  <tr><td>主阀</td><td>启用，阀 8</td><td>可改，默认阀 8</td></tr>
+                  <tr><td>水泵输出</td><td>启用</td><td>从站干接点</td></tr>
+                  <tr><td>流量计输入</td><td>IN1</td><td>可从 IN1..IN4 选</td></tr>
+                  <tr><td>低液位输入</td><td>IN2，常闭</td><td>可配置常开/常闭和去抖</td></tr>
+                  <tr><td>电压读数</td><td>12.1 V</td><td>只显示，不参与保护</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="box">
+              <h3>水路设置</h3>
+              <table>
+                <thead>
+                  <tr><th>水路</th><th>名称</th><th>启用</th><th>参考流量</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>1</td><td>水路 1</td><td>是</td><td>1.8 L/min</td></tr>
+                  <tr><td>2</td><td>水路 2</td><td>是</td><td>未设置</td></tr>
+                  <tr><td>3</td><td>水路 3</td><td>否</td><td>1.2 L/min</td></tr>
+                  <tr><td>8</td><td>主阀</td><td>作为主阀</td><td>不适用</td></tr>
+                </tbody>
+              </table>
+              <div class="box muted" style="margin-top: 10px;">
+                <h3>运行中限制</h3>
+                <ul class="wire-list">
+                  <li>运行中的水源不能修改主阀、流量计、低液位和水泵映射。</li>
+                  <li>运行中的水路不能被停用。</li>
+                  <li>停用水源或水路只阻止新任务，不停止正在运行的任务。</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="box muted">
+            <h3>设置页不做</h3>
+            <ul class="wire-list">
+              <li>不发起普通浇水。</li>
+              <li>不展示完整记录列表。</li>
+              <li>不作为通用诊断后台。</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const pages = Array.from(document.querySelectorAll(".page"));
+    const navButtons = Array.from(document.querySelectorAll("[data-page]"));
+
+    function selectPage(pageId, updateHash = true) {
+      const nextId = pages.some((page) => page.id === pageId) ? pageId : "overview";
+      pages.forEach((page) => {
+        page.classList.toggle("active", page.id === nextId);
+      });
+      navButtons.forEach((button) => {
+        button.classList.toggle("active", button.dataset.page === nextId);
+      });
+      if (updateHash) {
+        history.replaceState(null, "", `#${nextId}`);
+      }
+      document.title = `v5 低保真线框 - ${document.querySelector(`#${nextId}`).dataset.title}`;
+    }
+
+    navButtons.forEach((button) => {
+      button.addEventListener("click", () => {
+        selectPage(button.dataset.page);
+      });
+    });
+
+    window.addEventListener("hashchange", () => {
+      selectPage(location.hash.replace("#", ""), false);
+    });
+
+    selectPage(location.hash.replace("#", "") || "overview", false);
+  </script>
+</body>
+</html>

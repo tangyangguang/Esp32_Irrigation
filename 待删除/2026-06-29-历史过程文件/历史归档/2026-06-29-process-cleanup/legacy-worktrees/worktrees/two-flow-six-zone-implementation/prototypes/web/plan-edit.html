@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>编辑计划 - 原型</title>
+  <link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body class="page-form">
+  <nav class="topnav">
+    <a href="dashboard.html">首页</a>
+    <a href="plans.html">近期计划</a>
+    <a href="records.html">历史记录</a>
+    <a class="active" href="plan-config.html">计划配置</a>
+    <a href="settings.html">灌溉设置</a>
+  </nav>
+  <main class="shell">
+    <header class="page-head">
+      <div>
+        <h1>编辑计划</h1>
+        <p class="subtitle">编辑单个计划的固定配置，保存后用于后续自动浇水。</p>
+      </div>
+      <a class="button secondary" href="plan-config.html">返回计划配置</a>
+    </header>
+
+    <section class="grid">
+      <div class="panel span-8">
+        <h2>第 1 路 / 计划 1</h2>
+        <div class="field-grid">
+          <div class="field"><label>启用状态</label><select><option>停用</option><option>启用</option></select></div>
+          <div class="field"><label>执行时间</label><input type="time" value="07:00"></div>
+          <div class="field"><label>水路</label><input value="第 1 路" disabled></div>
+          <div class="field"><label>目标时长</label><input value="5" inputmode="decimal"></div>
+        </div>
+        <h3>循环规则</h3>
+        <div class="field-grid">
+          <div class="field"><label>起始日期</label><input type="date" value="2026-05-27"></div>
+          <div class="field"><label>循环长度（天）</label><input value="7" inputmode="numeric"></div>
+        </div>
+        <div class="cycle-grid" aria-label="循环执行日">
+          <label><input type="checkbox" checked> 第 1 天</label>
+          <label><input type="checkbox" checked> 第 2 天</label>
+          <label><input type="checkbox" checked> 第 3 天</label>
+          <label><input type="checkbox" checked> 第 4 天</label>
+          <label><input type="checkbox" checked> 第 5 天</label>
+          <label><input type="checkbox" checked> 第 6 天</label>
+          <label><input type="checkbox" checked> 第 7 天</label>
+        </div>
+        <div class="summary-line">循环：从 2026-05-09 起，每 7 天循环，执行第 1-7 天。下次执行：今天 07:00，第 1 路 5 分钟。</div>
+        <div class="actions">
+          <button onclick="return confirm('确认保存计划 1？')">保存计划</button>
+        </div>
+      </div>
+      <div class="panel span-4">
+        <h2>说明</h2>
+        <p class="note">计划只使用循环规则：每天浇水是 1 天循环并执行第 1 天；浇 2 天停 1 天是 3 天循环并执行第 1、2 天；每周固定日期是 7 天循环并选择对应执行日。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

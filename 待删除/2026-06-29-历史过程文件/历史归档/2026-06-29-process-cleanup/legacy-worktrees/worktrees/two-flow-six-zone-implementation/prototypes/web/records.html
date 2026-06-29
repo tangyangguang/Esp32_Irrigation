@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>历史记录 - 原型</title>
+  <link rel="stylesheet" href="assets/prototype.css">
+</head>
+<body class="page-table">
+  <nav class="topnav">
+    <a href="dashboard.html">首页</a>
+    <a href="plans.html">近期计划</a>
+    <a class="active" href="records.html">历史记录</a>
+    <a href="plan-config.html">计划配置</a>
+    <a href="settings.html">灌溉设置</a>
+  </nav>
+  <main class="shell">
+    <header class="page-head"><div><h1>历史记录</h1><p class="subtitle">只显示浇水业务记录；系统诊断事件通过基础库日志和事件 API 查看。</p></div></header>
+    <section class="grid"><div class="panel span-12"><h2>浇水记录</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>路</th><th>任务</th><th>启动来源</th><th>停止来源</th><th>结果</th><th>目标</th><th>实际</th><th>水量</th></tr></thead><tbody><tr><td>42</td><td>第 1 路</td><td>计划</td><td>plan_scheduler</td><td>duration_reached</td><td><span class="badge ok">completed</span></td><td>5 分钟</td><td>300 秒</td><td>1.240 L</td></tr><tr><td>43</td><td>第 2 路</td><td>手动</td><td>web_page</td><td>web_page</td><td><span class="badge">user_stopped</span></td><td>5 分钟</td><td>18 秒</td><td>0.080 L</td></tr></tbody></table></div></div></section>
+  </main>
+</body>
+</html>

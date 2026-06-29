@@ -1,0 +1,45 @@
+# Web 原型说明
+
+本目录存放 ESP32 灌溉项目的 Web 页面原型。原型用于确认页面结构、操作流程、字段和中文文案，不承载真实业务逻辑，不接入 PlatformIO 构建。
+
+真实运行页面以 `src/web/IrrigationWeb.cpp` 生成的服务端 HTML 为准；本目录是静态设计稿，不代表当前固件一定逐字一致。
+
+## 当前状态
+
+本目录是历史静态原型归档，不作为当前固件验收依据。当前真实页面由 `src/web/IrrigationWeb.cpp` 生成，路由为：
+
+`/irrigation / /irrigation/flows / /irrigation/zones / /irrigation/plans / /irrigation/calibration / /irrigation/settings / /irrigation/records / /irrigation/events`
+
+## 页面清单
+
+- `index.html`：原型入口和评审状态。
+- `dashboard.html`：历史首页原型，真实首页以 `/irrigation` 为准。
+- `manual.html`：历史占位页，手动浇水已合并到 `/irrigation`。
+- `plans.html`：历史近期计划目标稿，真实计划页以 `/irrigation/plans` 为准。
+- `plan-config.html`：历史计划配置目标稿，真实计划页以 `/irrigation/plans` 为准。
+- `plan-edit.html`：编辑单一路计划的执行时间、循环规则和目标时长。
+- `records.html`：浇水任务历史记录。
+- `settings.html`：水路启用、名称、固定引脚、流量和安全阈值。
+
+## 原型到真实路由
+
+| 原型文件 | 当前真实路由 | 说明 |
+|---|---|---|
+| `dashboard.html` | `/irrigation` | 首页和手动浇水。 |
+| `manual.html` | 无真实路由 | 手动浇水已合并到首页。 |
+| `plans.html` | `/irrigation/plans` | 历史近期计划原型。 |
+| `plan-config.html` | `/irrigation/plans` | 计划列表。 |
+| `plan-edit.html` | `/irrigation/plan?planId=<id>` | 单条计划编辑。 |
+| `records.html` | `/irrigation/records` | 历史浇水记录。 |
+| `settings.html` | `/irrigation/zones` | 水路管理。 |
+| `index.html` | 无直接运行路由 | 原型入口。 |
+
+## 设计原则
+
+- 中文界面，简洁大方，采用紧凑卡片式布局，电脑宽屏不拉太宽，手机单列展示。
+- 卡片只用于功能分区，不做大面积装饰；模块标题在卡片内上方，内容自然占满有效宽度。
+- 所有改变状态的操作都必须有确认提示；计划编辑只使用循环规则表达重复执行，临时跳过当前通过 API 支持，近期计划页面仍需后续确认后再实现。
+- 顶部导航负责页面跳转，总览页不重复放快捷入口。
+- `/esp32base` 已提供 WiFi、认证账号密码、OTA、日志、重启等系统工具，业务页面不重复提供系统工具入口。
+- 原型保持轻量静态 HTML/CSS，不引入前端框架，后续应能映射到 ESP32 服务端 HTML。
+- 页面不追求装饰感，优先清晰、稳定、好用。
