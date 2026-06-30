@@ -153,25 +153,12 @@
       gap: 14px;
     }
 
-    .split {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) 380px;
-      gap: 14px;
-      align-items: start;
-    }
-
-    .panel, .drawer {
+    .panel {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: hidden;
       min-width: 0;
-    }
-
-    .drawer {
-      position: sticky;
-      top: 82px;
-      border-color: var(--line-strong);
     }
 
     .panel-head {
@@ -184,8 +171,6 @@
       align-items: center;
       gap: 10px;
     }
-
-    .drawer .panel-head { background: var(--info-bg); }
 
     .panel-head h3 {
       margin: 0;
@@ -483,6 +468,52 @@
 
     .toast.show { display: block; }
 
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: rgba(12, 18, 26, .42);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal-backdrop.show { display: flex; }
+
+    .modal {
+      width: min(720px, 100%);
+      max-height: min(760px, calc(100vh - 40px));
+      overflow: auto;
+      background: var(--panel);
+      border: 1px solid var(--line-strong);
+      border-radius: 8px;
+      box-shadow: 0 18px 42px rgba(0,0,0,.24);
+    }
+
+    .modal-head {
+      min-height: 50px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+      background: #fbfcfd;
+    }
+
+    .modal-head h3 {
+      margin: 0;
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    .modal-body {
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
     .empty {
       min-height: 78px;
       border: 1px dashed var(--line-strong);
@@ -497,8 +528,6 @@
     }
 
     @media (max-width: 1180px) {
-      .split { grid-template-columns: 1fr; }
-      .drawer { position: static; }
       .metric-grid, .grid-3, .source-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
@@ -549,6 +578,7 @@
     </div>
   </div>
   <div class="toast" id="toast"></div>
+  <div class="modal-backdrop" id="modalRoot"></div>
 
   <script>
     const pageMeta = {
@@ -582,6 +612,7 @@
       selectedWaterwayId: "s1-v1",
       selectedRecordId: "r1",
       selectedEventId: "e1",
+      manualModalOpen: false,
       lastManual: { sourceId: "s1", waterwayId: "s1-v1", duration: 10 },
       settings: {
         maxRunMinutes: 120,
@@ -716,6 +747,7 @@
 
     const app = document.getElementById("app");
     const toastBox = document.getElementById("toast");
+    const modalRoot = document.getElementById("modalRoot");
     const titleEl = document.getElementById("pageTitle");
     const descEl = document.getElementById("pageDesc");
     const topStatusEl = document.getElementById("topStatus");
@@ -914,32 +946,18 @@
     }
 
     function renderRun() {
-      const sourceOptions = state.sources.map((source) => `<option value="${source.id}" ${state.lastManual.sourceId === source.id ? "selected" : ""}>${esc(source.name)}（从站 ${esc(source.address)}）</option>`).join("");
-      const selected = getSource(state.lastManual.sourceId) || state.sources[0];
-      const waterwayOptions = branchWaterways(selected).map((waterway) => `<option value="${waterway.id}" ${state.lastManual.waterwayId === waterway.id ? "selected" : ""}>阀 ${waterway.valve} / ${esc(waterway.name)}${waterway.enabled ? "" : "（停用）"}</option>`).join("");
       return `
         <div class="layout">
-          <div class="grid-2">
-            <section class="panel">
-              <div class="panel-head"><h3>运行中的水路任务</h3>${tag("同水源只允许一路", "info")}</div>
-              <div class="panel-body">${renderTaskTable(state.tasks)}</div>
-            </section>
-            <section class="panel">
-              <div class="panel-head"><h3>手动启动</h3>${tag("不排队、不抢占", "info")}</div>
-              <div class="panel-body">
-                <div class="form-grid two">
-                  <label class="field">水源<select id="manualSource" class="control">${sourceOptions}</select></label>
-                  <label class="field">分支水路<select id="manualWaterway" class="control">${waterwayOptions}</select></label>
-                  <label class="field">时长来源<select id="manualDurationMode" class="control"><option value="input">本次输入</option><option value="last">上次手动时长</option><option value="plan">从计划步骤带入</option></select></label>
-                  <label class="field">运行时长<input id="manualDuration" class="control" type="number" min="1" max="${state.settings.maxRunMinutes}" value="${state.lastManual.duration}"></label>
-                </div>
-                <div class="button-row">
-                  <button class="btn primary" data-action="start-manual">启动</button>
-                  <span class="fine">启动前检查：在线、启用、空闲、非低液位、非漏水、水路启用。</span>
-                </div>
-              </div>
-            </section>
-          </div>
+          <section class="panel">
+            <div class="panel-head">
+              <h3>运行中的水路任务</h3>
+              <div class="button-row">${tag("同水源只允许一路", "info")}<button class="btn primary" data-action="open-manual">手动启动</button></div>
+            </div>
+            <div class="panel-body">
+              ${renderTaskTable(state.tasks)}
+              <p class="fine">手动启动通过按钮进入弹层输入。</p>
+            </div>
+          </section>
           <section class="panel">
             <div class="panel-head"><h3>水源可运行性</h3>${tag("真实判断", "info")}</div>
             <div class="panel-body">
@@ -951,6 +969,38 @@
               </div>
             </div>
           </section>
+        </div>`;
+    }
+
+    function renderManualModal() {
+      if (!state.manualModalOpen) {
+        modalRoot.classList.remove("show");
+        modalRoot.innerHTML = "";
+        return;
+      }
+      const sourceOptions = state.sources.map((source) => `<option value="${source.id}" ${state.lastManual.sourceId === source.id ? "selected" : ""}>${esc(source.name)}（从站 ${esc(source.address)}）</option>`).join("");
+      const selected = getSource(state.lastManual.sourceId) || state.sources[0];
+      const waterwayOptions = branchWaterways(selected).map((waterway) => `<option value="${waterway.id}" ${state.lastManual.waterwayId === waterway.id ? "selected" : ""}>阀 ${waterway.valve} / ${esc(waterway.name)}${waterway.enabled ? "" : "（停用）"}</option>`).join("");
+      modalRoot.classList.add("show");
+      modalRoot.innerHTML = `
+        <div class="modal" role="dialog" aria-modal="true" aria-label="手动启动">
+          <div class="modal-head">
+            <h3>手动启动</h3>
+            <button class="btn" data-action="close-manual">关闭</button>
+          </div>
+          <div class="modal-body">
+            <div class="form-grid two">
+              <label class="field">水源<select id="manualSource" class="control">${sourceOptions}</select></label>
+              <label class="field">分支水路<select id="manualWaterway" class="control">${waterwayOptions}</select></label>
+              <label class="field">时长来源<select id="manualDurationMode" class="control"><option value="input">本次输入</option><option value="last">上次手动时长</option><option value="plan">从计划步骤带入</option></select></label>
+              <label class="field">运行时长<input id="manualDuration" class="control" type="number" min="1" max="${state.settings.maxRunMinutes}" value="${state.lastManual.duration}"></label>
+            </div>
+            <div class="button-row">
+              <button class="btn primary" data-action="start-manual">启动</button>
+              <button class="btn" data-action="close-manual">取消</button>
+              <span class="fine">启动前检查：在线、启用、空闲、非低液位、非漏水、水路启用。</span>
+            </div>
+          </div>
         </div>`;
     }
 
@@ -1330,6 +1380,7 @@
         eventDetail: renderEventDetail
       };
       app.innerHTML = (views[state.page] || views.overview)();
+      renderManualModal();
     }
 
     function readNumber(id, fallback) {
@@ -1366,6 +1417,18 @@
       const action = target.dataset.action;
       if (!action) return;
 
+      if (action === "open-manual") {
+        state.manualModalOpen = true;
+        render();
+        return;
+      }
+
+      if (action === "close-manual") {
+        state.manualModalOpen = false;
+        render();
+        return;
+      }
+
       if (action === "start-manual") {
         const sourceId = document.getElementById("manualSource").value;
         const waterwayId = document.getElementById("manualWaterway").value;
@@ -1380,6 +1443,7 @@
         state.lastManual = { sourceId, waterwayId, duration };
         if (startTask(sourceId, waterwayId, duration, "手动")) {
           addEvent("信息", "手动任务启动", `${sourceName(sourceId)} / ${waterwayName(sourceId, waterwayId)}`, `手动启动 ${duration} 分钟`, "任务结束后记录运行结果");
+          state.manualModalOpen = false;
           toast("手动任务已启动。");
         }
         render();
@@ -1609,12 +1673,6 @@
         toast(`${source.name} 漏水阻断已恢复。`);
         render();
         return;
-      }
-
-      if (action === "close-drawer") {
-        state.page = parentPage[state.page] || "overview";
-        history.replaceState(null, "", `#${state.page}`);
-        render();
       }
 
       if (action === "back-to") {
