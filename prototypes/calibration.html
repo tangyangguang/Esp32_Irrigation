@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>水路校准</title><link rel="stylesheet" href="./styles.css"></head>
+<body class="window-shell">
+  <header class="window-header"><div><div class="crumb">对象配置 / 水路校准 / 独立窗口</div><div class="page-title">水路校准</div></div><div class="actions"><button class="btn secondary" onclick="window.close()">关闭窗口</button><button class="btn">保存校准结果</button></div></header>
+  <main class="window-main stack">
+    <section class="panel"><div class="panel-head"><div><div class="panel-title">校准对象</div><div class="panel-subtitle">水源 1 / 水路 2 · 当前空闲 · 流量计 IN1</div></div><span class="chip ok">可校准</span></div><div class="panel-body"><div class="detail-grid"><div class="info-item"><div class="info-label">当前标准流量</div><div class="info-value">5.2 L/min</div></div><div class="info-item"><div class="info-label">每升脉冲数</div><div class="info-value">450 脉冲/L</div></div><div class="info-item"><div class="info-label">启动检查</div><div class="info-value">水源在线、低液位未触发、水路启用</div></div><div class="info-item"><div class="info-label">最大运行时长</div><div class="info-value">120 分钟</div></div></div></div></section>
+    <section class="form-section"><div class="form-head"><div class="form-title">稳定流量校准</div><div class="form-desc">启动指定水路，过启动宽限后观察流速，稳定后保存为该水路标准流量。</div></div><div class="form-body"><div class="detail-grid"><div class="info-item"><div class="info-label">观察窗口</div><div class="info-value">最近 30 秒</div></div><div class="info-item"><div class="info-label">当前稳定流速</div><div class="info-value">5.1 L/min</div></div></div><div class="calibration-result" style="margin-top:12px">建议保存标准流量：5.1 L/min</div></div></section>
+    <section class="form-section"><div class="form-head"><div class="form-title">接水量校准</div><div class="form-desc">用户接一段固定水量，输入实际水量，系统换算该水源流量计的每升脉冲数。</div></div><div class="form-body"><div class="form-grid"><div class="field"><label>统计脉冲数</label><input value="4520" disabled><div class="field-copy">来自水源 1 流量计 IN1。</div></div><div class="field"><label>实际接水量</label><div class="input-unit"><input value="10.0"><span class="unit-suffix">L</span></div><div class="field-copy">按量杯或容器刻度输入。</div></div><div class="field"><label>计算结果</label><div class="input-unit"><input value="452"><span class="unit-suffix">脉冲/L</span></div><div class="field-copy">保存后写入水源流量计参数。</div></div></div></div></section>
+  </main>
+</body>
+</html>

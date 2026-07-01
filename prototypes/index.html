@@ -4,138 +4,257 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>ESP32 智能灌溉原型</title>
-  <style>
-    :root {
-      --bg:#f4f6f8; --panel:#fff; --soft:#f8fafb; --line:#d9e1e8; --line2:#bfccd7;
-      --text:#172331; --muted:#637381; --nav:#142331; --navActive:#263f52; --primary:#172331;
-      --green:#1f7a5a; --greenBg:#e7f4ed; --blue:#2267a2; --blueBg:#e8f1fa;
-      --amber:#9b6818; --amberBg:#fff2d5; --shadow:0 18px 44px rgba(19,35,50,.16);
-      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font-size:14px;line-height:1.45}
-    button,input,select{font:inherit} button{border:0;cursor:pointer}
-    .app{min-height:100vh;display:grid;grid-template-columns:224px minmax(0,1fr)}
-    .sidebar{background:var(--nav);color:#d8e5ee;padding:18px 14px}
-    .brand{padding:8px 10px 18px;border-bottom:1px solid rgba(255,255,255,.12);margin-bottom:18px}
-    .brand-title{font-size:17px;font-weight:600;margin-bottom:6px}.brand-subtitle{color:#a8b6c2;font-size:12px}
-    .nav{display:grid;gap:4px}.nav button,.mobile-nav button{color:#bdcbd7;background:transparent;border-radius:6px;font-size:14px}
-    .nav button{text-align:left;padding:9px 11px}.nav button.active,.mobile-nav button.active{color:#fff;background:var(--navActive);box-shadow:inset 3px 0 0 #72b18d}
-    .nav button:disabled,.mobile-nav button:disabled{color:#6f8290;cursor:default}
-    .mobile-nav{display:none;background:var(--nav);padding:10px 14px;gap:6px;overflow-x:auto}.mobile-nav button{flex:0 0 auto;min-height:32px;padding:0 10px;white-space:nowrap}
-    .content{display:grid;grid-template-rows:auto 1fr;min-width:0}
-    .topbar{min-height:62px;background:var(--panel);border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 28px}
-    .crumb{color:var(--muted);font-size:12px;margin-bottom:2px}.page-title{font-size:20px;line-height:1.2;font-weight:600}
-    .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-    .btn{min-height:32px;padding:0 12px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;background:var(--primary);color:#fff;white-space:nowrap;font-size:13px}
-    .btn.secondary{background:#eef3f6;color:var(--text);border:1px solid var(--line)}.btn.ghost{background:transparent;color:var(--blue);min-height:26px;padding:0}
-    main{padding:22px 28px 34px;min-width:0}.page{display:none}.page.active{display:block}.stack{display:grid;gap:16px}
-    .source-card,.param-section,.form-section{background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
-    .source-head,.param-section-head{min-height:52px;padding:13px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px;background:var(--panel)}
-    .source-title,.param-section-title{font-size:15px;font-weight:600}.source-subtitle,.param-section-subtitle{color:var(--muted);font-size:12px;margin-top:2px}
-    .source-body,.param-section-body{padding:16px}
-    .chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}.chip{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;font-size:12px;border:1px solid transparent;white-space:nowrap}
-    .chip.ok{color:var(--green);background:var(--greenBg);border-color:#b9ddca}.chip.info{color:var(--blue);background:var(--blueBg);border-color:#bdd5ea}.chip.warn{color:var(--amber);background:var(--amberBg);border-color:#efd38f}.chip.off{color:var(--muted);background:#eef2f5;border-color:var(--line)}
-    .source-info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}.info-item{min-width:0;border:1px solid #edf1f4;border-radius:7px;padding:9px 10px;background:#fbfcfd}
-    .info-label{color:var(--muted);font-size:12px;margin-bottom:4px}.info-value{color:var(--text);font-size:13px;overflow-wrap:anywhere}
-    .table-wrap{overflow-x:auto;border:1px solid #edf1f4;border-radius:7px}table{width:100%;border-collapse:collapse;min-width:760px}th,td{padding:10px 12px;border-bottom:1px solid #ecf0f3;text-align:left;vertical-align:middle;font-size:13px}th{background:var(--soft);color:var(--muted);font-size:12px;font-weight:500}tbody tr:last-child td{border-bottom:0}
-    .param-page{max-width:980px}.param-sections{display:grid;gap:14px}.param-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
-    .protection-layout{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.protection-block{border:1px solid #e2e8ee;border-radius:8px;background:#fbfcfd;padding:10px;display:grid;gap:9px}.protection-title{font-size:13px;font-weight:500}.protection-cards{display:grid;gap:8px}
-    .param-card{border:1px solid #e2e8ee;border-radius:8px;background:#fff;padding:10px;display:grid;gap:7px}.param-card-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.param-name{font-size:13px;font-weight:500}.param-unit{color:var(--muted);background:#f0f4f7;border:1px solid var(--line);border-radius:999px;padding:2px 7px;font-size:11px;white-space:nowrap}
-    .empty-state{border:1px dashed #cfd9e1;border-radius:8px;background:#fbfcfd;padding:18px;color:var(--muted);display:grid;gap:6px}.empty-title{color:var(--text);font-size:14px;font-weight:500}.rule-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.rule-item{border:1px solid #edf1f4;border-radius:7px;background:#fbfcfd;padding:10px;display:grid;gap:5px}.rule-title{font-size:13px;font-weight:500}.rule-copy{color:var(--muted);font-size:12px;line-height:1.45}.filter-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}.plan-card{border:1px solid #dfe7ee;border-radius:8px;background:#fff;overflow:hidden}.plan-head{padding:13px 14px;border-bottom:1px solid #edf1f4;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}.plan-title{font-size:15px;font-weight:500}.plan-meta{color:var(--muted);font-size:12px;margin-top:2px}.plan-body{padding:14px;display:grid;gap:12px}.plan-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}.detail-body{padding:14px;display:grid;gap:10px}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.day-picker{display:flex;gap:8px;flex-wrap:wrap}.day-pill{min-height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--line2);background:#f3f6f8;color:var(--muted);font-size:12px}.day-pill.active{background:var(--greenBg);color:var(--green);border-color:#b9ddca}.step-groups{display:grid;gap:12px}.step-group{border:1px solid #e2e8ee;border-radius:8px;background:#fbfcfd;overflow:hidden}.step-group-head{padding:11px 12px;border-bottom:1px solid #e7edf2;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.step-group-title{font-size:13px;font-weight:500}.step-group-subtitle{color:var(--muted);font-size:12px;margin-top:2px}.step-list{display:grid;gap:8px;padding:10px}.step-row{display:grid;grid-template-columns:minmax(140px,1fr) minmax(110px,.55fr) auto;gap:10px;align-items:center;background:#fff;border:1px solid #edf1f4;border-radius:7px;padding:9px 10px}.step-name{font-size:13px}.step-meta{color:var(--muted);font-size:12px;margin-top:2px}
-    input,select{width:100%;min-height:34px;border-radius:6px;border:1px solid var(--line2);padding:7px 9px;color:var(--text);background:#fff;font-size:13px}input:disabled,select:disabled{color:#7f8c97;background:#eef2f5}
-    .range-line,.desc-line,.help{color:var(--muted);font-size:12px;line-height:1.45}.range-line span{color:#344454}
-    .edit-page{max-width:980px}
-    .form-head{padding:13px 16px;background:var(--soft);border-bottom:1px solid var(--line)}.form-title{font-size:14px;font-weight:500}.form-desc{color:var(--muted);font-size:12px;margin-top:3px}.form-body{padding:16px}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px;align-items:start}.field{display:grid;gap:6px;min-width:0}.field-copy{color:var(--muted);font-size:12px;line-height:1.45}label{color:#243545;font-size:12px;font-weight:500}.input-unit{display:grid;grid-template-columns:minmax(0,1fr) auto}.input-unit input{border-radius:6px 0 0 6px}.unit-suffix{min-height:34px;display:flex;align-items:center;padding:0 10px;border:1px solid var(--line2);border-left:0;border-radius:0 6px 6px 0;background:#f3f6f8;color:var(--muted);font-size:12px;white-space:nowrap}.segmented{display:inline-grid;grid-auto-flow:column;grid-auto-columns:minmax(70px,1fr);width:max-content;max-width:100%;min-height:34px;border:1px solid var(--line2);border-radius:7px;background:#f3f6f8;padding:2px;align-items:center}.segmented button{min-height:28px;padding:0 11px;border-radius:5px;background:transparent;color:var(--muted);font-size:12px}.segmented button.active{background:#fff;color:var(--green);box-shadow:0 1px 3px rgba(19,35,50,.12)}.switch-card{border:1px solid #e2e8ee;border-radius:8px;background:#fbfcfd;padding:12px;display:grid;gap:7px}.switch-card+.switch-card{margin-top:12px}.switch-heading{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.switch-title{font-weight:500}.switch-copy{color:var(--muted);font-size:12px;line-height:1.45}.toggle{flex:0 0 auto;width:42px;height:24px;border-radius:999px;background:#c9d3dc;position:relative;cursor:pointer}.toggle:after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .15s}.toggle.on{background:var(--green)}.toggle.on:after{left:21px}
-    @media(max-width:1180px){.param-card-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.protection-layout{grid-template-columns:1fr}.source-info-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-    @media(max-width:900px){.app{grid-template-columns:1fr}.sidebar{display:none}.mobile-nav{display:flex}.topbar{align-items:flex-start;flex-direction:column;padding:14px 16px}.actions{justify-content:flex-start}main{padding:16px}.param-card-grid{grid-template-columns:1fr}.source-info-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-    @media(max-width:560px){.source-head,.step-group-head{align-items:flex-start;flex-direction:column}.source-info-grid,.form-grid,.step-row{grid-template-columns:1fr}.step-row .segmented{width:max-content}}
-  </style>
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <div class="app">
     <aside class="sidebar">
-      <div class="brand"><div class="brand-title">ESP32 智能灌溉</div><div class="brand-subtitle">本地控制器 Web 原型</div></div>
-      <nav class="nav"><button disabled>总览</button><button disabled>运行</button><button data-page="plans">计划</button><button class="active" data-page="sources">水源管理</button><button data-page="history">浇水历史</button><button data-page="settings">系统参数</button></nav>
+      <div class="brand">
+        <div class="brand-title">ESP32 智能灌溉</div>
+        <div class="brand-subtitle">本地控制器 Web 原型</div>
+      </div>
+      <nav class="nav">
+        <button class="active" data-page="overview">总览</button>
+        <button data-page="run">运行</button>
+        <button data-page="plans">计划</button>
+        <button data-page="sources">水源管理</button>
+        <button data-page="history">浇水历史</button>
+        <button data-page="settings">系统参数</button>
+      </nav>
     </aside>
+
     <div class="content">
-      <nav class="mobile-nav"><button disabled>总览</button><button disabled>运行</button><button data-page="plans">计划</button><button class="active" data-page="sources">水源管理</button><button data-page="history">浇水历史</button><button data-page="settings">系统参数</button></nav>
-      <header class="topbar"><div><div class="crumb" id="crumb">对象配置 / 水源管理</div><div class="page-title" id="pageTitle">水源管理</div></div><div class="actions" id="topActions"><button class="btn secondary" data-page="routeEdit">新建水路</button><button class="btn" data-page="sourceEdit">新建水源</button></div></header>
+      <nav class="mobile-nav">
+        <button class="active" data-page="overview">总览</button>
+        <button data-page="run">运行</button>
+        <button data-page="plans">计划</button>
+        <button data-page="sources">水源管理</button>
+        <button data-page="history">浇水历史</button>
+        <button data-page="settings">系统参数</button>
+      </nav>
+
+      <header class="topbar">
+        <div>
+          <div class="crumb" id="crumb">系统 / 总览</div>
+          <div class="page-title" id="pageTitle">总览</div>
+        </div>
+        <div class="actions" id="topActions"></div>
+      </header>
+
       <main>
-        <section class="page active" id="sources">
+        <section class="page active" id="overview">
           <div class="stack">
-            <article class="source-card">
-              <div class="source-head"><div><div class="source-title">水源 1</div><div class="source-subtitle">从站地址 01 · 拨码 0001 · 在线 · 空闲</div></div><div class="actions"><span class="chip ok">可启动</span><button class="btn secondary" data-page="sourceEdit">编辑水源</button><button class="btn" data-page="routeEdit">新建水路</button></div></div>
-              <div class="source-body">
-                <div class="source-info-grid">
-                  <div class="info-item"><div class="info-label">水源状态</div><div class="info-value">启用 · 空闲</div></div><div class="info-item"><div class="info-label">主阀</div><div class="info-value">阀 8 · 2 秒后 35%</div></div><div class="info-item"><div class="info-label">分支水阀</div><div class="info-value">2 秒后 35% · 全水路共用</div></div><div class="info-item"><div class="info-label">水泵/自吸泵</div><div class="info-value">启用 · 干接点输出</div></div><div class="info-item"><div class="info-label">流量计</div><div class="info-value">IN1 · 450 脉冲/L · 0.0 L/min</div></div><div class="info-item"><div class="info-label">低液位传感器</div><div class="info-value">IN2 · 常开 · 1 秒</div></div><div class="info-item"><div class="info-label">电压读数</div><div class="info-value">12.2 V · 只显示</div></div>
-                </div>
-                <div class="table-wrap"><table><thead><tr><th>水路</th><th>启用状态</th><th>标准流量</th><th>最近运行</th><th>校准状态</th><th>操作</th></tr></thead><tbody><tr><td>水路 1</td><td><span class="chip ok">启用</span></td><td>4.8 L/min</td><td>今天 07:30 · 10 分钟</td><td><span class="chip ok">已校准</span></td><td><button class="btn ghost" data-page="routeEdit">编辑</button></td></tr><tr><td>水路 2</td><td><span class="chip ok">启用</span></td><td>5.2 L/min</td><td>今天 07:42 · 8 分钟</td><td><span class="chip ok">已校准</span></td><td><button class="btn ghost" data-page="routeEdit">编辑</button></td></tr><tr><td>水路 4</td><td><span class="chip ok">启用</span></td><td>4.4 L/min</td><td>昨天 18:20 · 12 分钟</td><td><span class="chip ok">已校准</span></td><td><button class="btn ghost" data-page="routeEdit">编辑</button></td></tr><tr><td>水路 5</td><td><span class="chip off">停用</span></td><td>未设置</td><td>无记录</td><td><span class="chip warn">未校准</span></td><td><button class="btn ghost" data-page="routeEdit">编辑</button></td></tr></tbody></table></div>
+            <section class="hero-status">
+              <div>
+                <div class="eyebrow">当前状态</div>
+                <h1>系统可用，水源 2 正在运行</h1>
+                <p>主控时间 2026-07-01 20:28，2 个从站在线。水源 1 空闲可启动，水源 2 正在执行水路 3，本次运行剩余 4 分钟。</p>
               </div>
-            </article>
-            <article class="source-card">
-              <div class="source-head"><div><div class="source-title">水源 2</div><div class="source-subtitle">从站地址 02 · 拨码 0010 · 在线 · 运行中</div></div><div class="actions"><span class="chip info">运行中</span><button class="btn secondary" data-page="sourceEdit">编辑水源</button><button class="btn" data-page="routeEdit">新建水路</button></div></div>
-              <div class="source-body">
-                <div class="source-info-grid">
-                  <div class="info-item"><div class="info-label">水源状态</div><div class="info-value">启用 · 水路 3 运行中</div></div><div class="info-item"><div class="info-label">主阀</div><div class="info-value">禁用</div></div><div class="info-item"><div class="info-label">分支水阀</div><div class="info-value">2 秒后 35% · 全水路共用</div></div><div class="info-item"><div class="info-label">水泵/自吸泵</div><div class="info-value">禁用</div></div><div class="info-item"><div class="info-label">流量计</div><div class="info-value">IN3 · 520 脉冲/L · 3.5 L/min</div></div><div class="info-item"><div class="info-label">低液位传感器</div><div class="info-value">禁用</div></div><div class="info-item"><div class="info-label">电压读数</div><div class="info-value">12.0 V · 只显示</div></div>
-                </div>
-                <div class="table-wrap"><table><thead><tr><th>水路</th><th>启用状态</th><th>标准流量</th><th>最近运行</th><th>校准状态</th><th>操作</th></tr></thead><tbody><tr><td>水路 1</td><td><span class="chip ok">启用</span></td><td>3.9 L/min</td><td>今天 06:40 · 9 分钟</td><td><span class="chip ok">已校准</span></td><td><button class="btn ghost" data-page="routeEdit">编辑</button></td></tr><tr><td>水路 2</td><td><span class="chip ok">启用</span></td><td>4.1 L/min</td><td>昨天 18:08 · 10 分钟</td><td><span class="chip ok">已校准</span></td><td><button class="btn ghost" data-page="routeEdit">编辑</button></td></tr><tr><td>水路 3</td><td><span class="chip info">运行中</span></td><td>3.6 L/min</td><td>正在运行 · 6 分钟</td><td><span class="chip ok">已校准</span></td><td><button class="btn ghost" data-page="routeEdit">查看</button></td></tr><tr><td>水路 4</td><td><span class="chip ok">启用</span></td><td>4.0 L/min</td><td>无记录</td><td><span class="chip ok">已校准</span></td><td><button class="btn ghost" data-page="routeEdit">编辑</button></td></tr></tbody></table></div>
+              <div class="hero-actions">
+                <button class="btn" data-page="run">进入运行</button>
+                <a class="btn secondary" href="./history-detail.html" target="_blank" rel="noopener">查看最近记录</a>
               </div>
-            </article>
+            </section>
+
+            <div class="metric-grid">
+              <div class="metric-card"><div class="metric-label">从站</div><div class="metric-value">2 / 2 在线</div><div class="metric-copy">地址 01、02 通信正常</div></div>
+              <div class="metric-card"><div class="metric-label">当前运行</div><div class="metric-value">水源 2 / 水路 3</div><div class="metric-copy">已运行 6 分钟，稳定流速 3.5 L/min</div></div>
+              <div class="metric-card"><div class="metric-label">下一次计划</div><div class="metric-value">明天 06:30</div><div class="metric-copy">早间基础浇水，5 个启用步骤</div></div>
+              <div class="metric-card"><div class="metric-label">今日浇水</div><div class="metric-value">2 次完成</div><div class="metric-copy">估算 89 L，1 条低流量提示</div></div>
+            </div>
+
+            <div class="two-col">
+              <section class="panel">
+                <div class="panel-head"><div><div class="panel-title">水源摘要</div><div class="panel-subtitle">按从站/水源查看可用性</div></div></div>
+                <div class="status-list">
+                  <div class="status-row"><div><div class="row-title">水源 1</div><div class="row-meta">从站地址 01 · 主阀启用 · 水泵启用 · 流量计 IN1</div></div><span class="chip ok">可启动</span></div>
+                  <div class="status-row"><div><div class="row-title">水源 2</div><div class="row-meta">从站地址 02 · 主阀禁用 · 水泵禁用 · 流量计 IN3</div></div><span class="chip info">运行中</span></div>
+                </div>
+              </section>
+
+              <section class="panel">
+                <div class="panel-head"><div><div class="panel-title">需要注意</div><div class="panel-subtitle">只显示影响判断的事实</div></div></div>
+                <div class="status-list">
+                  <div class="status-row"><div><div class="row-title">水源 2 / 水路 3 低流量提示</div><div class="row-meta">持续 20 秒低于标准流量 30%，当前策略为提示，不停机。</div></div><span class="chip warn">提示</span></div>
+                  <div class="status-row"><div><div class="row-title">水源 1 / 水路 5 未校准</div><div class="row-meta">水路停用且标准流量未设置，不参与计划或手动启动。</div></div><span class="chip off">停用</span></div>
+                </div>
+              </section>
+            </div>
           </div>
         </section>
+
+        <section class="page" id="run">
+          <div class="stack run-page">
+            <section class="panel current-run">
+              <div class="panel-head">
+                <div><div class="panel-title">当前任务</div><div class="panel-subtitle">同一水源同一时刻只允许 1 条水路运行</div></div>
+                <div class="actions"><button class="btn danger">停止当前水路</button></div>
+              </div>
+              <div class="run-body">
+                <div class="run-meter"><div class="meter-ring">67%</div><div><div class="row-title">水源 2 / 水路 3</div><div class="row-meta">手动运行 · 计划 10 分钟 · 已运行 6 分钟 · 剩余 4 分钟</div></div></div>
+                <div class="info-grid">
+                  <div class="info-item"><div class="info-label">当前流速</div><div class="info-value">3.5 L/min</div></div>
+                  <div class="info-item"><div class="info-label">标准流量</div><div class="info-value">3.6 L/min</div></div>
+                  <div class="info-item"><div class="info-label">流量计</div><div class="info-value">IN3 · 520 脉冲/L</div></div>
+                  <div class="info-item"><div class="info-label">保护状态</div><div class="info-value">低流量提示 · 不停机</div></div>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head"><div><div class="panel-title">手动启动</div><div class="panel-subtitle">不排队、不抢占自动计划；同一水源忙碌时不能再启动另一条水路</div></div></div>
+              <div class="source-run-grid">
+                <article class="run-source">
+                  <div class="run-source-head"><div><div class="row-title">水源 1</div><div class="row-meta">在线 · 空闲 · 可启动</div></div><span class="chip ok">可启动</span></div>
+                  <div class="route-choice-list">
+                    <label class="route-choice"><input type="radio" name="manualRoute" checked><span>水路 1</span><small>标准流量 4.8 L/min</small></label>
+                    <label class="route-choice"><input type="radio" name="manualRoute"><span>水路 2</span><small>标准流量 5.2 L/min</small></label>
+                    <label class="route-choice"><input type="radio" name="manualRoute"><span>水路 4</span><small>标准流量 4.4 L/min</small></label>
+                    <label class="route-choice disabled"><input type="radio" name="manualRoute" disabled><span>水路 5</span><small>停用，未校准</small></label>
+                  </div>
+                </article>
+                <article class="run-source muted">
+                  <div class="run-source-head"><div><div class="row-title">水源 2</div><div class="row-meta">水路 3 正在运行</div></div><span class="chip info">忙碌</span></div>
+                  <div class="blocked-reason">同一水源当前已有水路运行。可以停止当前任务后再启动，系统不会排队或抢占。</div>
+                </article>
+              </div>
+              <div class="manual-bar">
+                <div class="field compact"><label>运行时长</label><div class="input-unit"><input value="10"><span class="unit-suffix">分钟</span></div></div>
+                <button class="btn">启动所选水路</button>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head"><div><div class="panel-title">启动前检查</div><div class="panel-subtitle">只展示会影响启动的检查项</div></div></div>
+              <div class="check-grid">
+                <div class="check-item ok">水源 1 在线</div>
+                <div class="check-item ok">目标水路启用</div>
+                <div class="check-item ok">低液位未触发</div>
+                <div class="check-item ok">流量计配置完整</div>
+                <div class="check-item warn">水源 2 忙碌，暂不可手动启动</div>
+              </div>
+            </section>
+          </div>
+        </section>
+
         <section class="page" id="plans">
-          <div class="param-page stack">
-            <article class="plan-card"><div class="plan-head"><div><div class="plan-title">早间基础浇水</div><div class="plan-meta">每天 · 06:30 · 2 个水源 · 5 个水路步骤</div></div><div class="actions"><span class="chip ok">启用</span><button class="btn secondary" data-page="planEdit">编辑</button></div></div><div class="plan-body"><div class="plan-summary"><div class="info-item"><div class="info-label">下一次触发</div><div class="info-value">明天 06:30</div></div><div class="info-item"><div class="info-label">展开规则</div><div class="info-value">同水源串行 · 不同水源并行</div></div><div class="info-item"><div class="info-label">水源 1</div><div class="info-value">水路 1 10 分钟 · 水路 2 8 分钟 · 水路 4 12 分钟</div></div><div class="info-item"><div class="info-label">水源 2</div><div class="info-value">水路 1 9 分钟 · 水路 2 10 分钟</div></div></div><div class="table-wrap"><table><thead><tr><th>顺序</th><th>水源</th><th>水路</th><th>时长</th><th>步骤状态</th></tr></thead><tbody><tr><td>1</td><td>水源 1</td><td>水路 1</td><td>10 分钟</td><td><span class="chip ok">启用</span></td></tr><tr><td>2</td><td>水源 1</td><td>水路 2</td><td>8 分钟</td><td><span class="chip ok">启用</span></td></tr><tr><td>3</td><td>水源 1</td><td>水路 4</td><td>12 分钟</td><td><span class="chip ok">启用</span></td></tr><tr><td>并行</td><td>水源 2</td><td>水路 1</td><td>9 分钟</td><td><span class="chip ok">启用</span></td></tr><tr><td>并行</td><td>水源 2</td><td>水路 2</td><td>10 分钟</td><td><span class="chip ok">启用</span></td></tr></tbody></table></div></div></article>
-            <article class="plan-card"><div class="plan-head"><div><div class="plan-title">三天一次补水</div><div class="plan-meta">自定义周期 · 3 天一轮 · 第 1 天、第 3 天执行</div></div><div class="actions"><span class="chip off">停用</span><button class="btn secondary" data-page="planEdit">编辑</button></div></div><div class="plan-body"><div class="plan-summary"><div class="info-item"><div class="info-label">下一次触发</div><div class="info-value">停用后不触发</div></div><div class="info-item"><div class="info-label">开始时间</div><div class="info-value">18:20</div></div><div class="info-item"><div class="info-label">周期起始</div><div class="info-value">2026-07-01 · 第 1 天</div></div><div class="info-item"><div class="info-label">步骤</div><div class="info-value">水源 1 / 水路 4 · 15 分钟</div></div></div></div></article>
+          <div class="stack">
+            <section class="panel">
+              <div class="panel-head">
+                <div><div class="panel-title">自动计划</div><div class="panel-subtitle">运行日作用于整个计划，到点后按水源拆分任务</div></div>
+                <a class="btn" href="./plan-form.html" target="_blank" rel="noopener">新建计划</a>
+              </div>
+              <div class="plan-list">
+                <article class="plan-card">
+                  <div class="plan-head"><div><div class="plan-title">早间基础浇水</div><div class="plan-meta">每天 · 06:30 · 2 个水源 · 5 个启用步骤</div></div><span class="chip ok">启用</span></div>
+                  <div class="plan-summary">
+                    <div class="info-item"><div class="info-label">下一次触发</div><div class="info-value">明天 06:30</div></div>
+                    <div class="info-item"><div class="info-label">水源 1</div><div class="info-value">水路 1 10 分钟 · 水路 2 8 分钟 · 水路 4 12 分钟</div></div>
+                    <div class="info-item"><div class="info-label">水源 2</div><div class="info-value">水路 1 9 分钟 · 水路 2 10 分钟</div></div>
+                  </div>
+                  <div class="card-actions"><a class="btn secondary" href="./plan-form.html" target="_blank" rel="noopener">编辑</a></div>
+                </article>
+                <article class="plan-card">
+                  <div class="plan-head"><div><div class="plan-title">三天一次补水</div><div class="plan-meta">自定义周期 · 3 天一轮 · 第 1 天、第 3 天执行</div></div><span class="chip off">停用</span></div>
+                  <div class="plan-summary">
+                    <div class="info-item"><div class="info-label">下一次触发</div><div class="info-value">停用后不触发</div></div>
+                    <div class="info-item"><div class="info-label">开始时间</div><div class="info-value">18:20</div></div>
+                    <div class="info-item"><div class="info-label">步骤</div><div class="info-value">水源 1 / 水路 4 · 15 分钟</div></div>
+                  </div>
+                  <div class="card-actions"><a class="btn secondary" href="./plan-form.html" target="_blank" rel="noopener">编辑</a></div>
+                </article>
+              </div>
+            </section>
           </div>
         </section>
-        <section class="page" id="planEdit">
-          <div class="edit-page stack">
-            <section class="form-section"><div class="form-head"><div class="form-title">计划信息</div><div class="form-desc">计划保存后只影响下一次及之后的触发，不改变已经展开或正在运行的任务。</div></div><div class="form-body"><div class="form-grid"><div class="field"><label>计划名称</label><input value="三天一次补水"><div class="field-copy">用于计划列表和浇水历史来源显示。</div></div><div class="field"><label>启用状态</label><div class="segmented"><button>启用</button><button class="active">停用</button></div><div class="field-copy">停用只阻止后续触发，保留计划内容。</div></div><div class="field"><label>周期类型</label><div class="segmented"><button>每天</button><button class="active">自定义周期</button></div><div class="field-copy">不使用 cron、脚本或天气条件。</div></div><div class="field"><label>开始时间</label><input type="time" value="18:20"><div class="field-copy">可继续添加多个开始时间；同一时间触发后按水源拆分。</div></div></div></div></section>
-            <section class="form-section"><div class="form-head"><div class="form-title">自定义周期</div><div class="form-desc">只有选择自定义周期时使用；周期长度决定下面出现第几天，点选需要执行的日期。</div></div><div class="form-body"><div class="form-grid"><div class="field"><label>周期长度</label><div class="input-unit"><input value="3"><span class="unit-suffix">天</span></div><div class="field-copy">例如 3 天一个周期时，只出现第 1 天到第 3 天。</div></div><div class="field"><label>周期起始日期</label><input type="date" value="2026-07-01"><div class="field-copy">作为周期第 1 天计算。</div></div><div class="field"><label>执行日</label><div class="day-picker"><button class="day-pill active" type="button">第 1 天</button><button class="day-pill" type="button">第 2 天</button><button class="day-pill active" type="button">第 3 天</button></div><div class="field-copy">当前计划会在第 1 天和第 3 天按开始时间触发。</div></div></div></div></section>
-            <section class="form-section"><div class="form-head"><div class="form-title">水路步骤</div><div class="form-desc">按水源分组选择水路；同一水源内串行执行，不同水源可并行展开。</div></div><div class="form-body"><div class="step-groups"><div class="step-group"><div class="step-group-head"><div><div class="step-group-title">水源 1</div><div class="step-group-subtitle">从站地址 01 · 主阀开启后按下列水路顺序执行</div></div><span class="chip ok">可排入计划</span></div><div class="step-list"><div class="step-row"><div><div class="step-name">水路 1</div><div class="step-meta">标准流量 4.8 L/min · 已校准</div></div><div class="input-unit"><input value="0"><span class="unit-suffix">分钟</span></div><div class="segmented"><button>启用</button><button class="active">停用</button></div></div><div class="step-row"><div><div class="step-name">水路 2</div><div class="step-meta">标准流量 5.2 L/min · 已校准</div></div><div class="input-unit"><input value="0"><span class="unit-suffix">分钟</span></div><div class="segmented"><button>启用</button><button class="active">停用</button></div></div><div class="step-row"><div><div class="step-name">水路 4</div><div class="step-meta">标准流量 4.4 L/min · 当前计划步骤</div></div><div class="input-unit"><input value="15"><span class="unit-suffix">分钟</span></div><div class="segmented"><button class="active">启用</button><button>停用</button></div></div><div class="step-row"><div><div class="step-name">水路 5</div><div class="step-meta">停用 · 未加入当前计划</div></div><div class="input-unit"><input value="0" disabled><span class="unit-suffix">分钟</span></div><div class="segmented"><button>启用</button><button class="active">停用</button></div></div></div></div><div class="step-group"><div class="step-group-head"><div><div class="step-group-title">水源 2</div><div class="step-group-subtitle">从站地址 02 · 与水源 1 分别控制各自主阀和水路阀</div></div><span class="chip ok">可排入计划</span></div><div class="step-list"><div class="step-row"><div><div class="step-name">水路 1</div><div class="step-meta">标准流量 3.9 L/min · 已校准</div></div><div class="input-unit"><input value="0"><span class="unit-suffix">分钟</span></div><div class="segmented"><button>启用</button><button class="active">停用</button></div></div><div class="step-row"><div><div class="step-name">水路 2</div><div class="step-meta">标准流量 4.1 L/min · 已校准</div></div><div class="input-unit"><input value="0"><span class="unit-suffix">分钟</span></div><div class="segmented"><button>启用</button><button class="active">停用</button></div></div><div class="step-row"><div><div class="step-name">水路 3</div><div class="step-meta">标准流量 3.6 L/min · 当前运行中不影响计划保存</div></div><div class="input-unit"><input value="0"><span class="unit-suffix">分钟</span></div><div class="segmented"><button>启用</button><button class="active">停用</button></div></div><div class="step-row"><div><div class="step-name">水路 4</div><div class="step-meta">标准流量 4.0 L/min · 已校准</div></div><div class="input-unit"><input value="0"><span class="unit-suffix">分钟</span></div><div class="segmented"><button>启用</button><button class="active">停用</button></div></div></div></div></div></div></section>
+
+        <section class="page" id="sources">
+          <div class="stack">
+            <section class="source-card">
+              <div class="source-head"><div><div class="source-title">水源 1</div><div class="source-subtitle">从站地址 01 · 拨码 0001 · 在线 · 空闲</div></div><div class="actions"><span class="chip ok">可启动</span><a class="btn secondary" href="./source-form.html" target="_blank" rel="noopener">编辑水源</a><a class="btn" href="./route-form.html" target="_blank" rel="noopener">新建水路</a></div></div>
+              <div class="source-body">
+                <div class="source-info-grid">
+                  <div class="info-item"><div class="info-label">主阀</div><div class="info-value">阀 8 · 2 秒后 35%</div></div>
+                  <div class="info-item"><div class="info-label">分支水阀</div><div class="info-value">2 秒后 35% · 全水路共用</div></div>
+                  <div class="info-item"><div class="info-label">水泵/自吸泵</div><div class="info-value">启用 · 干接点输出</div></div>
+                  <div class="info-item"><div class="info-label">流量计</div><div class="info-value">IN1 · 450 脉冲/L</div></div>
+                  <div class="info-item"><div class="info-label">低液位传感器</div><div class="info-value">IN2 · 常开 · 1 秒</div></div>
+                  <div class="info-item"><div class="info-label">电压读数</div><div class="info-value">12.2 V · 只显示</div></div>
+                </div>
+                <div class="table-wrap"><table><thead><tr><th>水路</th><th>启用状态</th><th>标准流量</th><th>最近运行</th><th>校准状态</th><th>操作</th></tr></thead><tbody>
+                  <tr><td>水路 1</td><td><span class="chip ok">启用</span></td><td>4.8 L/min</td><td>今天 07:30 · 10 分钟</td><td><span class="chip ok">已校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">编辑</a> <a class="btn ghost" href="./calibration.html" target="_blank" rel="noopener">校准</a></td></tr>
+                  <tr><td>水路 2</td><td><span class="chip ok">启用</span></td><td>5.2 L/min</td><td>今天 07:42 · 8 分钟</td><td><span class="chip ok">已校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">编辑</a> <a class="btn ghost" href="./calibration.html" target="_blank" rel="noopener">校准</a></td></tr>
+                  <tr><td>水路 4</td><td><span class="chip ok">启用</span></td><td>4.4 L/min</td><td>昨天 18:20 · 12 分钟</td><td><span class="chip ok">已校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">编辑</a> <a class="btn ghost" href="./calibration.html" target="_blank" rel="noopener">校准</a></td></tr>
+                  <tr><td>水路 5</td><td><span class="chip off">停用</span></td><td>未设置</td><td>无记录</td><td><span class="chip warn">未校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">编辑</a></td></tr>
+                </tbody></table></div>
+              </div>
+            </section>
+
+            <section class="source-card">
+              <div class="source-head"><div><div class="source-title">水源 2</div><div class="source-subtitle">从站地址 02 · 拨码 0010 · 在线 · 水路 3 运行中</div></div><div class="actions"><span class="chip info">运行中</span><a class="btn secondary" href="./source-form.html" target="_blank" rel="noopener">编辑水源</a><a class="btn" href="./route-form.html" target="_blank" rel="noopener">新建水路</a></div></div>
+              <div class="source-body">
+                <div class="source-info-grid">
+                  <div class="info-item"><div class="info-label">主阀</div><div class="info-value">禁用</div></div>
+                  <div class="info-item"><div class="info-label">分支水阀</div><div class="info-value">2 秒后 35% · 全水路共用</div></div>
+                  <div class="info-item"><div class="info-label">水泵/自吸泵</div><div class="info-value">禁用</div></div>
+                  <div class="info-item"><div class="info-label">流量计</div><div class="info-value">IN3 · 520 脉冲/L · 3.5 L/min</div></div>
+                  <div class="info-item"><div class="info-label">低液位传感器</div><div class="info-value">禁用</div></div>
+                  <div class="info-item"><div class="info-label">电压读数</div><div class="info-value">12.0 V · 只显示</div></div>
+                </div>
+                <div class="table-wrap"><table><thead><tr><th>水路</th><th>启用状态</th><th>标准流量</th><th>最近运行</th><th>校准状态</th><th>操作</th></tr></thead><tbody>
+                  <tr><td>水路 1</td><td><span class="chip ok">启用</span></td><td>3.9 L/min</td><td>今天 06:40 · 9 分钟</td><td><span class="chip ok">已校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">编辑</a> <a class="btn ghost" href="./calibration.html" target="_blank" rel="noopener">校准</a></td></tr>
+                  <tr><td>水路 2</td><td><span class="chip ok">启用</span></td><td>4.1 L/min</td><td>昨天 18:08 · 10 分钟</td><td><span class="chip ok">已校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">编辑</a> <a class="btn ghost" href="./calibration.html" target="_blank" rel="noopener">校准</a></td></tr>
+                  <tr><td>水路 3</td><td><span class="chip info">运行中</span></td><td>3.6 L/min</td><td>正在运行 · 6 分钟</td><td><span class="chip ok">已校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">查看</a></td></tr>
+                  <tr><td>水路 4</td><td><span class="chip ok">启用</span></td><td>4.0 L/min</td><td>无记录</td><td><span class="chip ok">已校准</span></td><td><a class="btn ghost" href="./route-form.html" target="_blank" rel="noopener">编辑</a> <a class="btn ghost" href="./calibration.html" target="_blank" rel="noopener">校准</a></td></tr>
+                </tbody></table></div>
+              </div>
+            </section>
           </div>
         </section>
+
         <section class="page" id="history">
-          <div class="param-page"><section class="param-section"><div class="param-section-head"><div><div class="param-section-title">浇水历史</div><div class="param-section-subtitle">按真实发生的任务、异常、配置和校准记录追溯</div></div></div><div class="param-section-body"><div class="filter-row"><select><option>全部类型</option><option>浇水</option><option>异常</option><option>配置</option><option>校准</option><option>操作</option></select><select><option>全部水源</option><option>水源 1</option><option>水源 2</option></select><select><option>全部水路</option><option>水路 1</option><option>水路 2</option><option>水路 3</option></select><select><option>全部结果</option><option>完成</option><option>用户停止</option><option>异常停止</option><option>跳过</option></select></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>类型</th><th>对象</th><th>摘要</th><th>结果</th><th>操作</th></tr></thead><tbody><tr><td>今天 07:42</td><td><span class="chip ok">浇水</span></td><td>水源 1 / 水路 2</td><td>计划 8 分钟，实际 8 分钟，稳定流速 5.1 L/min</td><td>完成</td><td><button class="btn ghost" data-page="historyDetail">查看</button></td></tr><tr><td>今天 07:30</td><td><span class="chip ok">浇水</span></td><td>水源 1 / 水路 1</td><td>计划 10 分钟，实际 10 分钟，估算 48 L</td><td>完成</td><td><button class="btn ghost" data-page="historyDetail">查看</button></td></tr><tr><td>今天 06:46</td><td><span class="chip warn">异常</span></td><td>水源 2 / 水路 3</td><td>低流量持续 20 秒，当前策略为仅提示</td><td>提示</td><td><button class="btn ghost" data-page="historyDetail">查看</button></td></tr><tr><td>昨天 18:20</td><td><span class="chip ok">浇水</span></td><td>水源 1 / 水路 4</td><td>手动运行 12 分钟，用户正常结束</td><td>完成</td><td><button class="btn ghost" data-page="historyDetail">查看</button></td></tr><tr><td>昨天 17:50</td><td><span class="chip info">校准</span></td><td>水源 1 / 水路 2</td><td>保存稳定流速 5.2 L/min 作为标准流量</td><td>已保存</td><td><button class="btn ghost" data-page="historyDetail">查看</button></td></tr></tbody></table></div></div></section></div>
-        </section>
-        <section class="page" id="historyDetail">
-          <div class="edit-page stack"><section class="form-section"><div class="form-head"><div class="form-title">浇水记录详情</div><div class="form-desc">今天 07:42 · 早间基础浇水 · 水源 1 / 水路 2</div></div><div class="detail-body"><div class="detail-grid"><div class="info-item"><div class="info-label">来源</div><div class="info-value">早间基础浇水</div></div><div class="info-item"><div class="info-label">对象</div><div class="info-value">水源 1 / 水路 2</div></div><div class="info-item"><div class="info-label">开始时间</div><div class="info-value">今天 07:42</div></div><div class="info-item"><div class="info-label">结束时间</div><div class="info-value">今天 07:50</div></div><div class="info-item"><div class="info-label">计划时长</div><div class="info-value">8 分钟</div></div><div class="info-item"><div class="info-label">实际时长</div><div class="info-value">8 分钟</div></div><div class="info-item"><div class="info-label">估算水量</div><div class="info-value">41.6 L</div></div><div class="info-item"><div class="info-label">稳定流速</div><div class="info-value">5.1 L/min</div></div></div><div class="rule-item"><div class="rule-title">结束原因</div><div class="rule-copy">到达计划时长后正常结束。未触发低液位、无流量、低流量停机或过流量停机。</div></div><button class="btn secondary">采用为标准流量</button></div></section></div>
-        </section>
-        <section class="page" id="sourceEdit">
-          <div class="edit-page stack">
-            <section class="form-section"><div class="form-head"><div class="form-title">基础信息</div><div class="form-desc">水源对应一个 RS485 从站；地址由硬件拨码决定，页面选择该水源绑定的从站地址。</div></div><div class="form-body"><div class="form-grid"><div class="field"><label>水源名称</label><input value="水源 1"><div class="field-copy">显示在水源列表、运行状态和历史记录中。</div></div><div class="field"><label>从站地址</label><select><option>地址 01</option><option>地址 02</option><option>地址 03</option><option>地址 04</option><option>地址 05</option><option>地址 06</option><option>地址 07</option><option>地址 08</option><option>地址 09</option><option>地址 10</option><option>地址 11</option><option>地址 12</option><option>地址 13</option><option>地址 14</option><option>地址 15</option></select><div class="field-copy">选择范围 1-15，需与从站板拨码一致。</div></div><div class="field"><label>水源状态</label><div class="segmented"><button class="active">启用</button><button>停用</button></div><div class="field-copy">停用只阻止新任务，保留配置和历史。</div></div></div></div></section>
-            <section class="form-section"><div class="form-head"><div class="form-title">执行输出</div><div class="form-desc">主阀和分支水阀都是电磁阀，但按两类阀分别配置 PWM；所有分支水路共用同一组分支水阀参数。</div></div><div class="form-body"><div class="switch-card"><div class="switch-heading"><div class="switch-title">主阀</div><span class="toggle on"></span></div><div class="switch-copy">启用后先开主阀再开分支阀，并占用一个阀号；关闭后分支阀直接动作。</div></div><div class="form-grid" style="margin:12px 0 14px"><div class="field"><label>主阀阀号</label><select><option>阀 8</option><option>阀 7</option><option>阀 6</option><option>阀 5</option><option>阀 4</option><option>阀 3</option><option>阀 2</option><option>阀 1</option></select><div class="field-copy">默认阀 8；不能再分配给水路。</div></div><div class="field"><label>主阀全功率启动时间</label><div class="input-unit"><input value="2"><span class="unit-suffix">秒</span></div><div class="field-copy">主阀打开瞬间 100% 输出。</div></div><div class="field"><label>主阀维持占空比</label><div class="input-unit"><input value="35"><span class="unit-suffix">%</span></div><div class="field-copy">主阀吸合后维持打开的 PWM 占空比。</div></div><div class="field"><label>分支水阀全功率启动时间</label><div class="input-unit"><input value="2"><span class="unit-suffix">秒</span></div><div class="field-copy">该水源下所有分支水路共用。</div></div><div class="field"><label>分支水阀维持占空比</label><div class="input-unit"><input value="35"><span class="unit-suffix">%</span></div><div class="field-copy">分支阀吸合后维持打开的 PWM 占空比。</div></div></div><div class="switch-card"><div class="switch-heading"><div class="switch-title">水泵/自吸泵</div><span class="toggle on"></span></div><div class="switch-copy">启用后随该水源任务启停干接点输出；关闭后系统只控制阀，不控制泵。</div></div></div></section>
-            <section class="form-section"><div class="form-head"><div class="form-title">流量计</div><div class="form-desc">一个水源只有一个流量计；输入口和脉冲系数属于水源，不属于单条水路。</div></div><div class="form-body"><div class="switch-card"><div class="switch-heading"><div class="switch-title">流量计</div><span class="toggle on"></span></div><div class="switch-copy">启用后显示当前流量并参与流量保护；关闭后不显示流量，也不触发无流量、低流量和过流量判断。</div></div><div class="form-grid" style="margin-top:12px"><div class="field"><label>流量计输入</label><select><option>IN1</option><option>IN2</option><option>IN3</option><option>IN4</option></select><div class="field-copy">在当前从站输入中选择，不能与低液位输入重复。</div></div><div class="field"><label>每升脉冲数</label><div class="input-unit"><input value="450"><span class="unit-suffix">脉冲/L</span></div><div class="field-copy">由接水量校准生成；用于估算水量，不用于区分水路。</div></div></div></div></section>
-            <section class="form-section"><div class="form-head"><div class="form-title">低液位</div><div class="form-desc">低液位只在启用后参与启动前检查和运行中保护；传感器不是必配项。</div></div><div class="form-body"><div class="switch-card"><div class="switch-heading"><div class="switch-title">低液位保护</div><span class="toggle on"></span></div><div class="switch-copy">启用后启动前检查水位，运行中触发低液位会停止本次任务；关闭后忽略低液位输入。</div></div><div class="form-grid" style="margin-top:12px"><div class="field"><label>低液位输入</label><select><option>IN2</option><option>IN1</option><option>IN3</option><option>IN4</option></select><div class="field-copy">在当前从站输入中选择，不能与流量计输入重复。</div></div><div class="field"><label>低液位触点</label><div class="segmented"><button class="active">常开</button><button>常闭</button></div><div class="field-copy">按实际传感器接线方式设置，常开表示触发时闭合。</div></div><div class="field"><label>低液位去抖时间</label><div class="input-unit"><input value="1"><span class="unit-suffix">秒</span></div><div class="field-copy">状态持续达到该时间后才认为低液位有效。</div></div></div></div></section>
+          <div class="panel">
+            <div class="panel-head"><div><div class="panel-title">浇水历史</div><div class="panel-subtitle">统一追溯浇水、异常、配置、校准和操作记录</div></div></div>
+            <div class="panel-body">
+              <div class="filter-row"><select><option>全部类型</option><option>浇水</option><option>异常</option><option>配置</option><option>校准</option><option>操作</option></select><select><option>全部水源</option><option>水源 1</option><option>水源 2</option></select><select><option>全部水路</option><option>水路 1</option><option>水路 2</option><option>水路 3</option><option>水路 4</option></select><select><option>全部结果</option><option>完成</option><option>用户停止</option><option>异常停止</option><option>跳过</option></select></div>
+              <div class="table-wrap"><table><thead><tr><th>时间</th><th>类型</th><th>对象</th><th>摘要</th><th>结果</th><th>操作</th></tr></thead><tbody>
+                <tr><td>今天 20:22</td><td><span class="chip info">操作</span></td><td>水源 2 / 水路 3</td><td>用户手动启动，计划 10 分钟</td><td>运行中</td><td><a class="btn ghost" href="./history-detail.html" target="_blank" rel="noopener">查看</a></td></tr>
+                <tr><td>今天 07:42</td><td><span class="chip ok">浇水</span></td><td>水源 1 / 水路 2</td><td>计划 8 分钟，实际 8 分钟，稳定流速 5.1 L/min</td><td>完成</td><td><a class="btn ghost" href="./history-detail.html" target="_blank" rel="noopener">查看</a></td></tr>
+                <tr><td>今天 07:30</td><td><span class="chip ok">浇水</span></td><td>水源 1 / 水路 1</td><td>计划 10 分钟，实际 10 分钟，估算 48 L</td><td>完成</td><td><a class="btn ghost" href="./history-detail.html" target="_blank" rel="noopener">查看</a></td></tr>
+                <tr><td>今天 06:46</td><td><span class="chip warn">异常</span></td><td>水源 2 / 水路 3</td><td>低流量持续 20 秒，当前策略为仅提示</td><td>提示</td><td><a class="btn ghost" href="./history-detail.html" target="_blank" rel="noopener">查看</a></td></tr>
+                <tr><td>昨天 17:50</td><td><span class="chip info">校准</span></td><td>水源 1 / 水路 2</td><td>保存稳定流速 5.2 L/min 作为标准流量</td><td>已保存</td><td><a class="btn ghost" href="./history-detail.html" target="_blank" rel="noopener">查看</a></td></tr>
+              </tbody></table></div>
+            </div>
           </div>
         </section>
-        <section class="page" id="routeEdit">
-          <div class="edit-page stack">
-            <section class="form-section"><div class="form-head"><div class="form-title">分支水路</div><div class="form-desc">水路只配置自身名称、启用状态和标准流量；流量计脉冲系数归属水源。</div></div><div class="form-body"><div class="form-grid"><div class="field"><label>所属水源</label><input value="水源 1" disabled><div class="field-copy">水路从属于一个水源，不能跨水源运行。</div></div><div class="field"><label>水路名称</label><input value="水路 1"><div class="field-copy">用于运行页、计划步骤和历史记录显示。</div></div><div class="field"><label>水路状态</label><div class="segmented"><button class="active">启用</button><button>停用</button></div><div class="field-copy">启用后可被手动或计划任务选择；停用后保留配置和历史，不再参与新任务。</div></div><div class="field"><label>阀号</label><input value="按输出顺序自动分配" disabled><div class="field-copy">水路不直接编辑阀号；主阀占用后由系统分配可用阀输出。</div></div><div class="field"><label>标准流量</label><div class="input-unit"><input value="4.8"><span class="unit-suffix">L/min</span></div><div class="field-copy">用于低流量和过流量判断，可由稳定流量校准写入。</div></div><div class="field"><label>最近手动时长</label><div class="input-unit"><input value="10" disabled><span class="unit-suffix">分钟</span></div><div class="field-copy">只读参考，来自最近一次手动运行。</div></div><div class="field"><label>校准状态</label><input value="已校准" disabled><div class="field-copy">由校准流程产生，不在这里手工切换。</div></div></div></div></section>
-          </div>
-        </section>
+
         <section class="page" id="settings">
-          <div class="param-page"><div class="param-sections">
-            <section class="param-section"><div class="param-section-head"><div><div class="param-section-title">运行限制与启停延时</div><div class="param-section-subtitle">影响手动任务和计划任务的执行边界</div></div></div><div class="param-section-body"><div class="param-card-grid"><div class="param-card"><div class="param-card-head"><div class="param-name">最大单次运行时长</div><div class="param-unit">分钟</div></div><input value="120"><div class="range-line">取值范围：<span>1-120 分钟</span></div><div class="desc-line">说明：手动和计划任务都不能超过该时长。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">主阀提前开启时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">说明：启用主阀时，主阀先于分支阀打开。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">主阀延后关闭时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">说明：停止时分支阀关闭后再关闭主阀。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">水泵/自吸泵启动延后时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">说明：分支阀打开后延后启动水泵或自吸泵。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">水泵/自吸泵停止提前时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">说明：停止任务时先停泵，再关闭分支阀和主阀。</div></div></div></div></section>
-            <section class="param-section"><div class="param-section-head"><div><div class="param-section-title">通信参数</div><div class="param-section-subtitle">主控与从站 RS485 通信设置</div></div></div><div class="param-section-body"><div class="param-card-grid"><div class="param-card"><div class="param-card-head"><div class="param-name">RS485 通信速率</div><div class="param-unit">bps</div></div><select><option>19200</option><option>9600</option><option>38400</option></select><div class="range-line">取值范围：<span>9600 / 19200 / 38400 bps</span></div><div class="desc-line">说明：主控和所有从站使用同一通信速率。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">轮询间隔</div><div class="param-unit">秒</div></div><input value="2"><div class="range-line">取值范围：<span>1-10 秒</span></div><div class="desc-line">说明：主控刷新从站状态的间隔。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">从站离线判定</div><div class="param-unit">次</div></div><input value="3"><div class="range-line">取值范围：<span>1-10 次连续无响应</span></div><div class="desc-line">说明：达到阈值后该水源不再启动新任务。</div></div></div></div></section>
-            <section class="param-section"><div class="param-section-head"><div><div class="param-section-title">流量保护</div><div class="param-section-subtitle">运行无流量、待机漏水、低流量和过流量</div></div></div><div class="param-section-body"><div class="protection-layout">
-              <div class="protection-block"><div class="protection-title">运行无流量</div><div class="protection-cards"><div class="param-card"><div class="param-card-head"><div class="param-name">启动流量宽限时间</div><div class="param-unit">秒</div></div><input value="10"><div class="range-line">取值范围：<span>0-60 秒</span></div><div class="desc-line">说明：启动后等待管路建立流量。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">无流量确认时间</div><div class="param-unit">秒</div></div><input value="10"><div class="range-line">取值范围：<span>1-60 秒</span></div><div class="desc-line">说明：宽限后仍无脉冲则停止本次任务。</div></div></div></div>
-              <div class="protection-block"><div class="protection-title">待机漏水</div><div class="protection-cards"><div class="param-card"><div class="param-card-head"><div class="param-name">待机漏水检测窗口</div><div class="param-unit">秒</div></div><input value="30"><div class="range-line">取值范围：<span>10-300 秒</span></div><div class="desc-line">说明：待机状态统计流量脉冲的时间窗口。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">待机漏水脉冲数</div><div class="param-unit">个</div></div><input value="3"><div class="range-line">取值范围：<span>1-100 个</span></div><div class="desc-line">说明：窗口内达到该脉冲数后报告疑似漏水。</div></div></div></div>
-              <div class="protection-block"><div class="protection-title">低流量</div><div class="protection-cards"><div class="param-card"><div class="param-card-head"><div class="param-name">低流量比例</div><div class="param-unit">%</div></div><input value="30"><div class="range-line">取值范围：<span>1-100%</span></div><div class="desc-line">说明：低于水路标准流量该比例时判定低流量。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">低流量持续时间</div><div class="param-unit">秒</div></div><input value="20"><div class="range-line">取值范围：<span>5-300 秒</span></div><div class="desc-line">说明：低流量持续达到该时长后才处理。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">低流量处理</div><div class="param-unit">策略</div></div><div class="segmented"><button class="active">仅提示</button><button>停机</button></div><div class="range-line">取值范围：<span>仅提示 / 停机</span></div><div class="desc-line">说明：仅提示会记录异常；停机会结束当前水路任务。</div></div></div></div>
-              <div class="protection-block"><div class="protection-title">过流量</div><div class="protection-cards"><div class="param-card"><div class="param-card-head"><div class="param-name">过流量比例</div><div class="param-unit">%</div></div><input value="200"><div class="range-line">取值范围：<span>101-500%</span></div><div class="desc-line">说明：高于水路标准流量该比例时判定过流量。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">过流量持续时间</div><div class="param-unit">秒</div></div><input value="20"><div class="range-line">取值范围：<span>5-300 秒</span></div><div class="desc-line">说明：过流量持续达到该时长后才处理。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">过流量处理</div><div class="param-unit">策略</div></div><div class="segmented"><button class="active">仅提示</button><button>停机</button></div><div class="range-line">取值范围：<span>仅提示 / 停机</span></div><div class="desc-line">说明：仅提示会记录异常；停机会结束当前水路任务。</div></div></div></div>
-            </div></div></section>
-          </div></div>
+          <div class="param-page stack">
+            <section class="panel"><div class="panel-head"><div><div class="panel-title">运行边界</div><div class="panel-subtitle">影响手动和计划的新任务</div></div></div><div class="param-card-grid">
+              <div class="param-card"><div class="param-card-head"><div class="param-name">最大单次运行时长</div><div class="param-unit">分钟</div></div><input value="120"><div class="range-line">取值范围：<span>1-120 分钟</span></div><div class="desc-line">手动和计划任务都不能超过该时长。</div></div>
+              <div class="param-card"><div class="param-card-head"><div class="param-name">主阀提前开启时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">启动时主阀先于分支阀打开。</div></div>
+              <div class="param-card"><div class="param-card-head"><div class="param-name">主阀延后关闭时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">停止时分支阀关闭后再关主阀。</div></div>
+              <div class="param-card"><div class="param-card-head"><div class="param-name">水泵启动延后时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">分支阀打开后再启动水泵或自吸泵。</div></div>
+              <div class="param-card"><div class="param-card-head"><div class="param-name">水泵停止提前时间</div><div class="param-unit">秒</div></div><input value="1"><div class="range-line">取值范围：<span>0-30 秒</span></div><div class="desc-line">停止时先停泵，再关闭分支阀和主阀。</div></div>
+            </div></section>
+
+            <section class="panel"><div class="panel-head"><div><div class="panel-title">流量保护</div><div class="panel-subtitle">全局默认阈值；低/过流量默认提示，不停机</div></div></div><div class="protection-layout">
+              <div class="protection-block"><div class="protection-title">启动无流量</div><div class="param-card"><div class="param-card-head"><div class="param-name">启动流量宽限时间</div><div class="param-unit">秒</div></div><input value="10"><div class="range-line">取值范围：<span>0-60 秒</span></div><div class="desc-line">启动后等待管路建立流量。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">无流量确认时间</div><div class="param-unit">秒</div></div><input value="10"><div class="range-line">取值范围：<span>1-60 秒</span></div><div class="desc-line">宽限后仍无脉冲则停止本次任务。</div></div></div>
+              <div class="protection-block"><div class="protection-title">低流量</div><div class="param-card"><div class="param-card-head"><div class="param-name">低流量持续时间</div><div class="param-unit">秒</div></div><input value="20"><div class="range-line">取值范围：<span>1-120 秒</span></div><div class="desc-line">持续低于标准流量后才触发。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">低流量比例</div><div class="param-unit">%</div></div><input value="30"><div class="range-line">取值范围：<span>1-99%</span></div><div class="desc-line">低于标准流量的该比例视为低流量。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">低流量动作</div><div class="param-unit">动作</div></div><div class="segmented"><button class="active">提示</button><button>停机</button></div><div class="desc-line">默认提示，不停止当前水路。</div></div></div>
+              <div class="protection-block"><div class="protection-title">过流量</div><div class="param-card"><div class="param-card-head"><div class="param-name">过流量持续时间</div><div class="param-unit">秒</div></div><input value="20"><div class="range-line">取值范围：<span>1-120 秒</span></div><div class="desc-line">持续高于标准流量后才触发。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">过流量比例</div><div class="param-unit">%</div></div><input value="200"><div class="range-line">取值范围：<span>101-500%</span></div><div class="desc-line">高于标准流量的该比例视为过流量。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">过流量动作</div><div class="param-unit">动作</div></div><div class="segmented"><button class="active">提示</button><button>停机</button></div><div class="desc-line">默认提示，不停止当前水路。</div></div></div>
+              <div class="protection-block"><div class="protection-title">待机漏水</div><div class="param-card"><div class="param-card-head"><div class="param-name">待机漏水检测窗口</div><div class="param-unit">秒</div></div><input value="30"><div class="range-line">取值范围：<span>5-300 秒</span></div><div class="desc-line">空闲时统计流量脉冲的窗口。</div></div><div class="param-card"><div class="param-card-head"><div class="param-name">待机漏水脉冲数</div><div class="param-unit">个</div></div><input value="3"><div class="range-line">取值范围：<span>1-100 个</span></div><div class="desc-line">窗口内达到该数量则报告疑似漏水。</div></div></div>
+            </div></section>
+
+            <section class="panel"><div class="panel-head"><div><div class="panel-title">通信参数</div><div class="panel-subtitle">主控与 RS485 从站通信</div></div></div><div class="param-card-grid">
+              <div class="param-card"><div class="param-card-head"><div class="param-name">RS485 通信速率</div><div class="param-unit">bps</div></div><select><option>19200</option><option>9600</option><option>38400</option></select><div class="range-line">取值范围：<span>9600 / 19200 / 38400 bps</span></div><div class="desc-line">主控和所有从站使用同一通信速率。</div></div>
+              <div class="param-card"><div class="param-card-head"><div class="param-name">轮询间隔</div><div class="param-unit">秒</div></div><input value="2"><div class="range-line">取值范围：<span>1-10 秒</span></div><div class="desc-line">主控刷新从站状态的间隔。</div></div>
+              <div class="param-card"><div class="param-card-head"><div class="param-name">从站离线判定</div><div class="param-unit">次</div></div><input value="3"><div class="range-line">取值范围：<span>1-10 次连续无响应</span></div><div class="desc-line">达到阈值后该水源不再启动新任务。</div></div>
+            </div></section>
+          </div>
         </section>
       </main>
     </div>
   </div>
-  <script>
-    const pageMeta={plans:{title:"计划",crumb:"自动浇水 / 计划",nav:"plans",actions:[["","新建计划","planEdit"]]},planEdit:{title:"编辑计划",crumb:"自动浇水 / 计划 / 计划配置",nav:"plans",actions:[["secondary","取消","plans"],["","保存","plans"]]},sources:{title:"水源管理",crumb:"对象配置 / 水源管理",nav:"sources",actions:[["secondary","新建水路","routeEdit"],["","新建水源","sourceEdit"]]},sourceEdit:{title:"编辑水源",crumb:"对象配置 / 水源管理 / 水源配置",nav:"sources",actions:[["secondary","取消","sources"],["","保存","sources"]]},routeEdit:{title:"编辑水路",crumb:"对象配置 / 水源管理 / 水路配置",nav:"sources",actions:[["secondary","取消","sources"],["","保存","sources"]]},history:{title:"浇水历史",crumb:"记录 / 浇水历史",nav:"history",actions:[]},historyDetail:{title:"浇水记录详情",crumb:"记录 / 浇水历史 / 记录详情",nav:"history",actions:[["secondary","返回列表","history"]]},settings:{title:"系统参数",crumb:"全局配置 / 系统参数",nav:"settings",actions:[["","保存参数",""]]}};
-    const pageTitleEl=document.getElementById("pageTitle"), crumbEl=document.getElementById("crumb"), topActionsEl=document.getElementById("topActions");
-    function setPage(id){const meta=pageMeta[id];document.querySelectorAll(".page").forEach(p=>p.classList.toggle("active",p.id===id));document.querySelectorAll(".nav [data-page],.mobile-nav [data-page]").forEach(b=>b.classList.toggle("active",b.dataset.page===(meta.nav||id)));pageTitleEl.textContent=meta.title;crumbEl.textContent=meta.crumb;topActionsEl.innerHTML="";meta.actions.forEach(([kind,label,target])=>{const b=document.createElement("button");b.className=`btn ${kind}`.trim();b.textContent=label;if(target)b.dataset.page=target;topActionsEl.appendChild(b)});window.scrollTo(0,0)}
-    document.addEventListener("click",e=>{const day=e.target.closest(".day-picker button");if(day){day.classList.toggle("active");return}const seg=e.target.closest(".segmented button");if(seg){seg.parentElement.querySelectorAll("button").forEach(b=>b.classList.toggle("active",b===seg));return}const tog=e.target.closest(".toggle");if(tog){tog.classList.toggle("on");return}const p=e.target.closest("[data-page]");if(p&&!p.disabled)setPage(p.dataset.page)});
-  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
