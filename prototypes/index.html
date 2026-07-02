@@ -44,39 +44,59 @@
       <main>
         <section class="page active" id="overview">
           <div class="stack">
-            <section class="hero-status">
+            <section class="overview-summary">
               <div>
-                <div class="eyebrow">当前状态</div>
-                <h1>系统可用，水源 2 正在运行</h1>
-                <p>主控时间 2026-07-01 20:28，2 个从站在线。水源 1 空闲可启动，水源 2 正在执行水路 3，本次运行剩余 4 分钟。</p>
+                <div class="eyebrow">2026-07-02 15:58 · 主控在线</div>
+                <h1>2 个水源在线，1 条水路正在浇水</h1>
+                <p>水源 2 正在执行水路 3。水源 1 空闲，可手动启动或等待明天 06:30 的自动计划。</p>
               </div>
-              <div class="hero-actions">
-                <button class="btn" data-page="run">进入运行</button>
-                <a class="btn secondary" href="./history-detail.html">查看最近记录</a>
-              </div>
+              <button class="btn" data-page="run">查看运行</button>
             </section>
 
-            <div class="metric-grid">
-              <div class="metric-card"><div class="metric-label">从站</div><div class="metric-value">2 / 2 在线</div><div class="metric-copy">地址 01、02 通信正常</div></div>
-              <div class="metric-card"><div class="metric-label">当前运行</div><div class="metric-value">水源 2 / 水路 3</div><div class="metric-copy">已运行 6 分钟，稳定流速 3.5 L/min</div></div>
-              <div class="metric-card"><div class="metric-label">下一次计划</div><div class="metric-value">明天 06:30</div><div class="metric-copy">早间基础浇水，5 个启用步骤</div></div>
-              <div class="metric-card"><div class="metric-label">今日浇水</div><div class="metric-value">2 次完成</div><div class="metric-copy">估算 89 L，1 条低流量提示</div></div>
+            <div class="overview-grid">
+              <article class="overview-card active">
+                <div class="overview-label">当前运行</div>
+                <div class="overview-value">水源 2 / 水路 3</div>
+                <div class="overview-copy">已运行 6 分钟，剩余约 4 分钟</div>
+              </article>
+              <article class="overview-card">
+                <div class="overview-label">今日完成</div>
+                <div class="overview-value">3 条水路</div>
+                <div class="overview-copy">累计 27 分钟，估算 130 L</div>
+              </article>
+              <article class="overview-card">
+                <div class="overview-label">下一次自动计划</div>
+                <div class="overview-value">明天 06:30</div>
+                <div class="overview-copy">早间基础浇水 · 5 个水路步骤</div>
+              </article>
+              <article class="overview-card warn">
+                <div class="overview-label">需要注意</div>
+                <div class="overview-value">1 条提示</div>
+                <div class="overview-copy">水源 2 / 水路 3 低流量提示，不停机</div>
+              </article>
             </div>
 
-            <div class="two-col">
+            <div class="overview-main">
               <section class="panel">
-                <div class="panel-head"><div><div class="panel-title">水源摘要</div><div class="panel-subtitle">按从站/水源查看可用性</div></div></div>
-                <div class="status-list">
-                  <div class="status-row"><div><div class="row-title">水源 1</div><div class="row-meta">从站地址 01 · 主阀启用 · 水泵启用 · 流量计 IN1</div></div><span class="chip ok">可启动</span></div>
-                  <div class="status-row"><div><div class="row-title">水源 2</div><div class="row-meta">从站地址 02 · 主阀禁用 · 水泵禁用 · 流量计 IN3</div></div><span class="chip info">运行中</span></div>
+                <div class="panel-head"><div><div class="panel-title">水源状态</div><div class="panel-subtitle">按水源判断是否能启动新任务</div></div></div>
+                <div class="water-source-list">
+                  <article class="water-source-row">
+                    <div><div class="row-title">水源 1</div><div class="row-meta">从站 01 在线 · 空闲 · 主阀和水泵启用 · 流量计 IN1</div></div>
+                    <span class="chip ok">可启动</span>
+                  </article>
+                  <article class="water-source-row">
+                    <div><div class="row-title">水源 2</div><div class="row-meta">从站 02 在线 · 水路 3 正在运行 · 流量计 IN3</div></div>
+                    <span class="chip info">运行中</span>
+                  </article>
                 </div>
               </section>
 
               <section class="panel">
-                <div class="panel-head"><div><div class="panel-title">需要注意</div><div class="panel-subtitle">只显示影响判断的事实</div></div></div>
-                <div class="status-list">
-                  <div class="status-row"><div><div class="row-title">水源 2 / 水路 3 低流量提示</div><div class="row-meta">持续 20 秒低于标准流量 30%，当前策略为提示，不停机。</div></div><span class="chip warn">提示</span></div>
-                  <div class="status-row"><div><div class="row-title">水源 1 / 水路 5 未校准</div><div class="row-meta">水路停用且标准流量未设置，不参与计划或手动启动。</div></div><span class="chip off">停用</span></div>
+                <div class="panel-head"><div><div class="panel-title">今日运行</div><div class="panel-subtitle">最近发生的浇水和异常事实</div></div><a class="btn secondary" href="./history-detail.html">查看详情</a></div>
+                <div class="today-feed">
+                  <div class="feed-row"><span class="feed-time">15:52</span><div><div class="row-title">水源 2 / 水路 3</div><div class="row-meta">手动启动，当前运行中，低流量提示</div></div><span class="chip info">运行中</span></div>
+                  <div class="feed-row"><span class="feed-time">07:42</span><div><div class="row-title">水源 1 / 水路 2</div><div class="row-meta">计划运行 8 分钟，实际完成 8 分钟</div></div><span class="chip ok">完成</span></div>
+                  <div class="feed-row"><span class="feed-time">07:30</span><div><div class="row-title">水源 1 / 水路 1</div><div class="row-meta">计划运行 10 分钟，估算 48 L</div></div><span class="chip ok">完成</span></div>
                 </div>
               </section>
             </div>
@@ -84,54 +104,78 @@
         </section>
 
         <section class="page" id="run">
-          <div class="stack run-page">
-            <section class="panel current-run">
-              <div class="panel-head">
-                <div><div class="panel-title">当前任务</div><div class="panel-subtitle">同一水源同一时刻只允许 1 条水路运行</div></div>
-                <div class="actions"><button class="btn danger">停止当前水路</button></div>
-              </div>
-              <div class="run-body">
-                <div class="run-meter"><div class="meter-ring">67%</div><div><div class="row-title">水源 2 / 水路 3</div><div class="row-meta">手动运行 · 计划 10 分钟 · 已运行 6 分钟 · 剩余 4 分钟</div></div></div>
-                <div class="info-grid">
-                  <div class="info-item"><div class="info-label">当前流速</div><div class="info-value">3.5 L/min</div></div>
-                  <div class="info-item"><div class="info-label">标准流量</div><div class="info-value">3.6 L/min</div></div>
-                  <div class="info-item"><div class="info-label">流量计</div><div class="info-value">IN3 · 520 脉冲/L</div></div>
-                  <div class="info-item"><div class="info-label">保护状态</div><div class="info-value">低流量提示 · 不停机</div></div>
+          <div class="stack">
+            <div class="run-dashboard">
+              <section class="active-run-panel">
+                <div class="active-run-head">
+                  <div>
+                    <div class="eyebrow">正在浇水</div>
+                    <h2>水源 2 · 水路 3</h2>
+                    <p>手动启动于 15:52，目标 10 分钟。当前由从站 02 本地计时闭环执行。</p>
+                  </div>
+                  <button class="btn danger">停止本次浇水</button>
                 </div>
-              </div>
-            </section>
+                <div class="progress-block">
+                  <div class="progress-label"><span>已运行 6:12</span><span>剩余约 3:48</span></div>
+                  <div class="progress-track"><span style="width:62%"></span></div>
+                </div>
+                <div class="task-kpis">
+                  <div><span>当前流速</span><strong>3.5 L/min</strong></div>
+                  <div><span>标准流量</span><strong>3.6 L/min</strong></div>
+                  <div><span>估算水量</span><strong>22 L</strong></div>
+                  <div><span>流量计</span><strong>IN3 · 520 脉冲/L</strong></div>
+                </div>
+                <div class="run-note warn-note">低流量已持续 20 秒，当前全局动作是提示，不停止本次任务。</div>
+              </section>
 
-            <section class="panel">
-              <div class="panel-head"><div><div class="panel-title">手动启动</div><div class="panel-subtitle">不排队、不抢占自动计划；同一水源忙碌时不能再启动另一条水路</div></div></div>
-              <div class="source-run-grid">
-                <article class="run-source">
-                  <div class="run-source-head"><div><div class="row-title">水源 1</div><div class="row-meta">在线 · 空闲 · 可启动</div></div><span class="chip ok">可启动</span></div>
+              <section class="panel today-run-panel">
+                <div class="panel-head"><div><div class="panel-title">今日运行信息</div><div class="panel-subtitle">按实际发生顺序显示，包含运行中任务</div></div></div>
+                <div class="today-stats">
+                  <div><span>已完成</span><strong>2 次</strong></div>
+                  <div><span>运行中</span><strong>1 次</strong></div>
+                  <div><span>累计时长</span><strong>24 分钟</strong></div>
+                  <div><span>估算水量</span><strong>约 111 L</strong></div>
+                </div>
+                <div class="today-feed compact-feed">
+                  <div class="feed-row"><span class="feed-time">15:52</span><div><div class="row-title">水源 2 / 水路 3</div><div class="row-meta">手动启动 · 已运行 6 分钟 · 低流量提示</div></div><span class="chip info">运行中</span></div>
+                  <div class="feed-row"><span class="feed-time">07:42</span><div><div class="row-title">水源 1 / 水路 2</div><div class="row-meta">计划 8 分钟 · 实际 8 分钟 · 稳定 5.1 L/min</div></div><span class="chip ok">完成</span></div>
+                  <div class="feed-row"><span class="feed-time">07:30</span><div><div class="row-title">水源 1 / 水路 1</div><div class="row-meta">计划 10 分钟 · 实际 10 分钟 · 估算 48 L</div></div><span class="chip ok">完成</span></div>
+                </div>
+              </section>
+            </div>
+
+            <section class="panel manual-run-panel">
+              <div class="panel-head"><div><div class="panel-title">手动浇水</div><div class="panel-subtitle">选择空闲水源下已启用的水路；不排队，不抢占正在运行的任务</div></div></div>
+              <div class="manual-layout">
+                <article class="manual-source">
+                  <div class="manual-source-head"><div><div class="row-title">水源 1</div><div class="row-meta">在线 · 空闲 · 可启动</div></div><span class="chip ok">可选</span></div>
                   <div class="route-choice-list">
-                    <label class="route-choice"><input type="radio" name="manualRoute" checked><span>水路 1</span><small>标准流量 4.8 L/min</small></label>
-                    <label class="route-choice"><input type="radio" name="manualRoute"><span>水路 2</span><small>标准流量 5.2 L/min</small></label>
-                    <label class="route-choice"><input type="radio" name="manualRoute"><span>水路 4</span><small>标准流量 4.4 L/min</small></label>
-                    <label class="route-choice disabled"><input type="radio" name="manualRoute" disabled><span>水路 5</span><small>停用，未校准</small></label>
+                    <label class="route-choice"><input type="radio" name="manualRoute" checked><span>水路 1</span><small>标准流量 4.8 L/min · 最近 10 分钟</small></label>
+                    <label class="route-choice"><input type="radio" name="manualRoute"><span>水路 2</span><small>标准流量 5.2 L/min · 最近 8 分钟</small></label>
+                    <label class="route-choice"><input type="radio" name="manualRoute"><span>水路 4</span><small>标准流量 4.4 L/min · 最近 12 分钟</small></label>
+                    <label class="route-choice disabled"><input type="radio" name="manualRoute" disabled><span>水路 5</span><small>水路停用，不能启动</small></label>
                   </div>
                 </article>
-                <article class="run-source muted">
-                  <div class="run-source-head"><div><div class="row-title">水源 2</div><div class="row-meta">水路 3 正在运行</div></div><span class="chip info">忙碌</span></div>
-                  <div class="blocked-reason">同一水源当前已有水路运行。可以停止当前任务后再启动，系统不会排队或抢占。</div>
+                <article class="manual-source locked">
+                  <div class="manual-source-head"><div><div class="row-title">水源 2</div><div class="row-meta">水路 3 正在运行</div></div><span class="chip info">暂不可选</span></div>
+                  <div class="blocked-reason">同一水源同一时刻只能运行 1 条水路。停止水路 3 后，水源 2 的其它水路才可手动启动。</div>
                 </article>
               </div>
               <div class="manual-bar">
                 <div class="field compact"><label>运行时长</label><div class="input-unit"><input value="10"><span class="unit-suffix">分钟</span></div></div>
-                <button class="btn">启动所选水路</button>
+                <button class="btn">启动水源 1 / 水路 1</button>
+                <div class="manual-hint">启动前会检查水源在线、水路启用、低液位、流量计和同水源忙碌状态。</div>
               </div>
             </section>
 
             <section class="panel">
-              <div class="panel-head"><div><div class="panel-title">启动前检查</div><div class="panel-subtitle">只展示会影响启动的检查项</div></div></div>
+              <div class="panel-head"><div><div class="panel-title">运行保护</div><div class="panel-subtitle">只显示本次浇水相关的检查结果</div></div></div>
               <div class="check-grid">
-                <div class="check-item ok">水源 1 在线</div>
-                <div class="check-item ok">目标水路启用</div>
-                <div class="check-item ok">低液位未触发</div>
-                <div class="check-item ok">流量计配置完整</div>
-                <div class="check-item warn">水源 2 忙碌，暂不可手动启动</div>
+                <div class="check-item ok">从站 02 通信正常</div>
+                <div class="check-item ok">水路 3 已启用</div>
+                <div class="check-item ok">无流量停机未触发</div>
+                <div class="check-item warn">低流量提示中</div>
+                <div class="check-item ok">低液位未启用，不参与本次判断</div>
               </div>
             </section>
           </div>
