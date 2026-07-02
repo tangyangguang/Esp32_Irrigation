@@ -2,10 +2,10 @@
 <html lang="zh-CN">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>编辑水路</title><link rel="stylesheet" href="./styles.css"></head>
 <body class="window-shell">
-  <header class="window-header"><div><div class="crumb">对象配置 / 水源管理 / 独立窗口</div><div class="page-title">编辑水路</div></div><div class="actions"><button class="btn secondary" onclick="window.close()">关闭窗口</button><button class="btn">保存水路</button></div></header>
+  <header class="window-header"><div><div class="crumb">对象配置 / 水源管理 / 独立页面</div><div class="page-title">编辑水路</div></div><div class="actions"><a class="btn secondary" href="./index.html#sources">返回水源管理</a><button class="btn">保存水路</button></div></header>
   <main class="window-main stack">
     <section class="form-section"><div class="form-head"><div class="form-title">分支水路</div><div class="form-desc">水路只配置自身名称、启用状态和标准流量；流量计脉冲系数归属水源。</div></div><div class="form-body"><div class="form-grid"><div class="field"><label>所属水源</label><input value="水源 1" disabled><div class="field-copy">水路从属于一个水源，不能跨水源运行。</div></div><div class="field"><label>水路名称</label><input value="水路 1"><div class="field-copy">用于运行页、计划步骤和历史记录显示。</div></div><div class="field"><label>水路状态</label><div class="segmented"><button class="active">启用</button><button>停用</button></div><div class="field-copy">启用后可被手动或计划任务选择。</div></div><div class="field"><label>阀号</label><input value="按输出顺序自动分配" disabled><div class="field-copy">水路不直接编辑阀号；主阀占用后由系统分配可用阀输出。</div></div><div class="field"><label>标准流量</label><div class="input-unit"><input value="4.8"><span class="unit-suffix">L/min</span></div><div class="field-copy">用于低流量和过流量判断，可由稳定流量校准写入。</div></div><div class="field"><label>最近手动时长</label><div class="input-unit"><input value="10" disabled><span class="unit-suffix">分钟</span></div><div class="field-copy">只读参考，来自最近一次手动运行。</div></div><div class="field"><label>校准状态</label><input value="已校准" disabled><div class="field-copy">由校准流程产生，不在这里手工切换。</div></div></div></div></section>
-    <section class="panel"><div class="panel-head"><div><div class="panel-title">关联操作</div><div class="panel-subtitle">校准会启动当前水路，运行中水源不能进入校准</div></div><a class="btn" href="./calibration.html" target="_blank" rel="noopener">打开校准窗口</a></div></section>
+    <section class="panel"><div class="panel-head"><div><div class="panel-title">关联操作</div><div class="panel-subtitle">校准会启动当前水路，运行中水源不能进入校准</div></div><a class="btn" href="./calibration.html">进入校准页面</a></div></section>
   </main>
   <script src="./form-common.js"></script>
 </body>

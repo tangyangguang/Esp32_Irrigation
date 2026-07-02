@@ -19,8 +19,6 @@ function renderActions(actions) {
       a.className = "btn";
       a.textContent = label;
       a.href = href;
-      a.target = "_blank";
-      a.rel = "noopener";
       topActionsEl.appendChild(a);
     } else {
       const b = document.createElement("button");
@@ -44,13 +42,6 @@ function setPage(id) {
 }
 
 document.addEventListener("click", event => {
-  const newWindowLink = event.target.closest("a[target=\"_blank\"]");
-  if (newWindowLink) {
-    const opened = window.open(newWindowLink.href, "_blank", "noopener,popup=yes,width=1100,height=820");
-    if (opened) event.preventDefault();
-    return;
-  }
-
   const nav = event.target.closest("[data-page]");
   if (nav) setPage(nav.dataset.page);
 
@@ -59,3 +50,6 @@ document.addEventListener("click", event => {
     seg.parentElement.querySelectorAll("button").forEach(button => button.classList.toggle("active", button === seg));
   }
 });
+
+const initialPage = window.location.hash.slice(1);
+if (pageMeta[initialPage]) setPage(initialPage);
