@@ -1,5 +1,6 @@
 .DS_Store
 .pio/
+**/.pio/
 .claude/
 .superpowers/
 .worktrees/
@@ -8,4 +9,4 @@ legacy/**/.pio/
 legacy/**/.claude/
 legacy/**/.superpowers/
 legacy/**/.worktrees/
-
+**/src/idf_component.yml
