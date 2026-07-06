@@ -4,7 +4,12 @@
 #include <Esp32Base.h>
 
 #include "BoardPins.h"
+#include "BoardHardware.h"
+#include "ConfigStore.h"
 #include "IrrigationConfig.h"
+#include "IrrigationWeb.h"
+#include "RunController.h"
+#include "Scheduler.h"
 
 namespace {
 
@@ -12,29 +17,6 @@ const Esp32BaseAppConfig::EnumOption LOW_LEVEL_CONTACT_OPTIONS[] = {
     {"normally_open", "Normally open"},
     {"normally_closed", "Normally closed"},
 };
-
-void setOutputsSafe() {
-    pinMode(IrrigationPins::kDriverShutdown, OUTPUT);
-    digitalWrite(IrrigationPins::kDriverShutdown, HIGH);
-
-    for (uint8_t i = 0; i < IrrigationPins::kValveCount; ++i) {
-        pinMode(IrrigationPins::kValvePwm[i], OUTPUT);
-        digitalWrite(IrrigationPins::kValvePwm[i], LOW);
-    }
-
-    pinMode(IrrigationPins::kPumpDryOut, OUTPUT);
-    digitalWrite(IrrigationPins::kPumpDryOut, LOW);
-}
-
-void configureInputs() {
-    pinMode(IrrigationPins::kFlowPulse, INPUT);
-    pinMode(IrrigationPins::kLowLevel, INPUT_PULLUP);
-    pinMode(IrrigationPins::kRtcInterrupt, INPUT_PULLUP);
-    pinMode(IrrigationPins::kButton1, INPUT);
-    pinMode(IrrigationPins::kButton2, INPUT);
-    pinMode(IrrigationPins::kButton3, INPUT);
-    pinMode(IrrigationPins::kButton4, INPUT);
-}
 
 void registerAppConfig() {
     Esp32BaseAppConfig::setTitle("Irrigation Config");
@@ -109,9 +91,11 @@ void verifyDefaultConfig() {
 namespace IrrigationApp {
 
 void setupBeforeBase() {
-    setOutputsSafe();
-    configureInputs();
+    Irrigation::IrrigationConfig config;
+    Irrigation::applyDefaultConfig(config);
+    Irrigation::BoardHardware::begin(config.valve, config.supply);
     registerAppConfig();
+    Irrigation::IrrigationWeb::registerRoutes();
 
     Esp32BaseWeb::setDeviceName("Smart Irrigation");
     Esp32BaseWeb::setHomePath("/esp32base");
@@ -121,6 +105,13 @@ void setupBeforeBase() {
 
 void setupAfterBase() {
     verifyDefaultConfig();
+    if (!Irrigation::ConfigStore::begin()) {
+        ESP32BASE_LOG_W("irrigation", "config_store_defaulted error=%s", Irrigation::ConfigStore::lastError());
+    }
+    Irrigation::BoardHardware::configure(Irrigation::ConfigStore::config().valve,
+                                         Irrigation::ConfigStore::config().supply);
+    Irrigation::RunController::begin();
+    Irrigation::Scheduler::begin();
     appendStartupEvent();
     ESP32BASE_LOG_I("irrigation", "base_ready valves=%u flow_pin=%u low_level_pin=%u pump_pin=%u",
                     IrrigationPins::kValveCount,
@@ -130,7 +121,8 @@ void setupAfterBase() {
 }
 
 void loop() {
-    // Business state machines will be called here. Keep this loop non-blocking.
+    Irrigation::Scheduler::handle();
+    Irrigation::RunController::handle(millis());
 }
 
 } // namespace IrrigationApp
