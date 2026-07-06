@@ -89,6 +89,40 @@ bool HistoryService::appendRun(const WateringRun& run) {
     return true;
 }
 
+bool HistoryService::readRecent(char* out, size_t len) {
+    if (out == nullptr || len == 0) {
+        setLastError("history_buffer_invalid");
+        return false;
+    }
+    out[0] = '\0';
+
+    if (!Esp32BaseFs::isReady()) {
+        setLastError("fs_not_ready");
+        return false;
+    }
+    if (!Esp32BaseFs::exists(kHistoryPath)) {
+        setLastError("history_missing");
+        return true;
+    }
+
+    const int64_t size = Esp32BaseFs::fileSize(kHistoryPath);
+    if (size <= 0) {
+        setLastError("history_empty");
+        return true;
+    }
+
+    const size_t maxRead = len - 1;
+    const uint32_t offset = size > static_cast<int64_t>(maxRead) ? static_cast<uint32_t>(size - maxRead) : 0;
+    size_t readLen = 0;
+    if (!Esp32BaseFs::readBytesAt(kHistoryPath, offset, reinterpret_cast<uint8_t*>(out), maxRead, &readLen)) {
+        setLastError("history_read_failed");
+        return false;
+    }
+    out[readLen] = '\0';
+    setLastError("ok");
+    return true;
+}
+
 const char* HistoryService::lastError() {
     return g_lastError;
 }
@@ -103,4 +137,3 @@ void HistoryService::setLastError(const char* error) {
 }
 
 } // namespace Irrigation
-

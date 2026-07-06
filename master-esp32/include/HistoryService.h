@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stddef.h>
+
 #include "IrrigationTypes.h"
 
 namespace Irrigation {
@@ -7,6 +9,7 @@ namespace Irrigation {
 class HistoryService {
 public:
     static bool appendRun(const WateringRun& run);
+    static bool readRecent(char* out, size_t len);
     static const char* lastError();
     static const char* path();
 
@@ -15,4 +18,3 @@ private:
 };
 
 } // namespace Irrigation
-
