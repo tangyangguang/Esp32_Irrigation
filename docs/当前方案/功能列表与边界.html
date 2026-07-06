@@ -412,7 +412,7 @@
     <section id="summary">
       <h2>总览</h2>
       <div class="summary-strip">
-        <div class="metric"><b>6</b><span>路 12V DC 分区电磁阀</span></div>
+        <div class="metric"><b>6</b><span>路 12V DC 水路电磁阀</span></div>
         <div class="metric"><b>1</b><span>路必配流量计固定输入</span></div>
         <div class="metric"><b>1</b><span>路可选低液位干接点输入</span></div>
         <div class="metric"><b>1</b><span>路可选自吸泵干接点控制输出</span></div>
@@ -429,8 +429,8 @@
         </article>
         <article class="card">
           <span class="tag must">必有</span>
-          <h3>6 路分区阀</h3>
-          <p>6 路输出全部作为浇水分区阀。每路为 12V DC 电磁阀低边驱动，不设置主阀。</p>
+          <h3>6 路水路阀</h3>
+          <p>6 路输出全部作为浇水水路阀。每路为 12V DC 电磁阀低边驱动，不设置主阀。</p>
         </article>
         <article class="card">
           <span class="tag must">必有</span>
@@ -440,7 +440,7 @@
         <article class="card">
           <span class="tag optional">可选</span>
           <h3>低液位 / 缺水传感器</h3>
-          <p>固定干接点输入。可启用或禁用，启用后可配置常开或常闭。</p>
+          <p>固定干接点输入。可启用或禁用，启用后可配置常开或常闭，只在自吸泵启用时参与防干抽保护。</p>
         </article>
         <article class="card">
           <span class="tag optional">可选</span>
@@ -467,24 +467,24 @@
         </thead>
         <tbody>
           <tr>
-            <td>分区管理</td>
-            <td>最多 6 个分区，每个分区固定对应一路阀。</td>
-            <td>分区可改名、启用、停用；不配置阀号，不做任意映射。</td>
+            <td>水路管理</td>
+            <td>最多 6 个水路，每个水路固定对应一路阀。</td>
+            <td>水路可改名、启用、停用；不配置阀号，不做任意映射。</td>
           </tr>
           <tr>
             <td>手动浇水</td>
-            <td>选择一个分区，设置运行时长，立即启动。</td>
-            <td>设备忙、分区停用、低液位有效或参数无效时不启动。</td>
+            <td>给每一路要浇的水路设置时长，点击启动后按顺序浇水。</td>
+            <td>设备忙、水路停用、参数无效，或自吸泵启用且低液位有效时不启动。</td>
           </tr>
           <tr>
             <td>自动计划</td>
-            <td>支持每天、自定义周期、每周固定日，按步骤顺序执行分区。</td>
-            <td>不做任务排队、不抢占、不补跑错过计划，不做天气条件。</td>
+            <td>只支持每天策略，按步骤顺序执行水路。</td>
+            <td>可选择某个自动计划立即执行；不做任务排队、不抢占、不补跑错过计划，不做天气条件。</td>
           </tr>
           <tr>
             <td>任务运行</td>
-            <td>一次任务只运行一路分区阀，到时间自动关闭。</td>
-            <td>同一时刻不允许多路同时浇水。</td>
+            <td>一次浇水批次可以包含多个水路步骤，每个步骤到时间自动关闭并进入下一步。</td>
+            <td>同一时刻只允许运行一路水路阀。</td>
           </tr>
           <tr>
             <td>流量监测</td>
@@ -498,8 +498,8 @@
           </tr>
           <tr>
             <td>低液位保护</td>
-            <td>启用后启动前阻止，运行中停机。</td>
-            <td>传感器未启用时不参与判断；缺水主要靠无流量保护发现。</td>
+            <td>只在自吸泵启用时生效，用于防止自吸泵干抽。</td>
+            <td>自吸泵未启用时，低液位即使配置启用也不影响浇水流程。</td>
           </tr>
           <tr>
             <td>自吸泵控制</td>
@@ -508,8 +508,8 @@
           </tr>
           <tr>
             <td>校准</td>
-            <td>接水量校准流量计每升脉冲数，稳定流量校准分区标准流量。</td>
-            <td>校准也是一次受保护的分区运行，不绕过低液位和无流量规则。</td>
+            <td>接水量校准流量计每升脉冲数，稳定流量校准水路标准流量。</td>
+            <td>校准也是一次受保护的水路运行，不绕过无流量规则；低液位只在自吸泵启用时参与。</td>
           </tr>
           <tr>
             <td>历史记录</td>
@@ -543,16 +543,16 @@
           <h3>供水配置</h3>
           <ul>
             <li>自吸泵控制：启用或禁用。</li>
-            <li>低液位传感器：启用或禁用。</li>
+            <li>低液位传感器：启用或禁用，只在自吸泵启用时生效。</li>
             <li>低液位触点类型：常开或常闭。</li>
             <li>低液位去抖时间。</li>
             <li>流量计每升脉冲数。</li>
           </ul>
         </article>
         <article class="card">
-          <h3>分区配置</h3>
+          <h3>水路配置</h3>
           <ul>
-            <li>分区名称。</li>
+            <li>水路名称。</li>
             <li>启用或停用。</li>
             <li>标准流量。</li>
             <li>最近手动时长。</li>
@@ -563,9 +563,10 @@
           <ul>
             <li>计划名称。</li>
             <li>启用或停用。</li>
-            <li>周期规则。</li>
+            <li>固定每天策略。</li>
             <li>开始时间。</li>
-            <li>分区步骤和每步时长。</li>
+            <li>水路步骤和每步时长。</li>
+            <li>立即执行入口。</li>
           </ul>
         </article>
       </div>
@@ -580,12 +581,12 @@
         <div class="step">
           <div class="num">1</div>
           <h3>启动检查</h3>
-          <p>检查设备空闲、分区启用、时长有效、低液位状态和必要参数。</p>
+          <p>检查设备空闲、水路启用、时长有效、必要参数；自吸泵和低液位都启用时检查缺水状态。</p>
         </div>
         <div class="step">
           <div class="num">2</div>
-          <h3>打开分区阀</h3>
-          <p>按阀驱动参数打开目标分区阀，不存在主阀动作。</p>
+          <h3>打开水路阀</h3>
+          <p>按阀驱动参数打开目标水路阀，不存在主阀动作。</p>
         </div>
         <div class="step">
           <div class="num">3</div>
@@ -595,12 +596,12 @@
         <div class="step">
           <div class="num">4</div>
           <h3>运行监测</h3>
-          <p>统计流量脉冲，判断无流量、低流量、过流量和低液位。</p>
+          <p>统计流量脉冲，判断无流量、低流量、过流量；自吸泵启用时再判断低液位。</p>
         </div>
         <div class="step">
           <div class="num">5</div>
           <h3>安全停止</h3>
-          <p>先撤销泵控制信号，再关闭分区阀，写入任务结果和历史。</p>
+          <p>当前水路到时后关闭并进入下一水路；批次结束或异常时关闭所有输出并写入历史。</p>
         </div>
       </div>
     </section>
@@ -616,12 +617,12 @@
         <article class="card">
           <span class="tag no">不做</span>
           <h3>主阀</h3>
-          <p>6 路阀全部是分区阀，不占用任何一路做主阀，也不设计主阀启停顺序。</p>
+          <p>6 路阀全部是水路阀，不占用任何一路做主阀，也不设计主阀启停顺序。</p>
         </article>
         <article class="card">
           <span class="tag no">不做</span>
           <h3>多水源并行</h3>
-          <p>设备只有一套供水系统，一次只浇一个分区，不做多个水源同时运行。</p>
+          <p>设备只有一套供水系统，同一时刻只运行一路水路，不做多个水源同时运行。</p>
         </article>
         <article class="card">
           <span class="tag no">不做</span>
@@ -635,8 +636,8 @@
         </article>
         <article class="card">
           <span class="tag no">不做</span>
-          <h3>天气和脚本联动</h3>
-          <p>计划只表达固定时间和周期，不做天气暂停、脚本、复杂触发器或自动化平台。</p>
+          <h3>复杂计划策略</h3>
+          <p>计划只支持每天，不做自定义周期、每周固定日、天气暂停、脚本、复杂触发器或自动化平台。</p>
         </article>
       </div>
     </section>
@@ -645,11 +646,13 @@
       <h2>确认清单</h2>
       <div class="checklist">
         <div class="check"><div class="box"></div><span>确认电源和阀均为 12V DC。</span></div>
-        <div class="check"><div class="box"></div><span>确认 6 路阀全部作为浇水分区，不做主阀。</span></div>
+        <div class="check"><div class="box"></div><span>确认 6 路阀全部作为浇水水路，不做主阀。</span></div>
         <div class="check"><div class="box"></div><span>确认流量计必配，固定输入，不提供启用/禁用和输入选择。</span></div>
-        <div class="check"><div class="box"></div><span>确认低液位是可选干接点输入，可配置常开或常闭。</span></div>
+        <div class="check"><div class="box"></div><span>确认低液位是可选干接点输入，可配置常开或常闭，且只在自吸泵启用时生效。</span></div>
         <div class="check"><div class="box"></div><span>确认自吸泵是可选干接点输出，只控制外部继电器模块信号。</span></div>
-        <div class="check"><div class="box"></div><span>确认同一时刻只运行一个分区，不做队列、抢占和补跑。</span></div>
+        <div class="check"><div class="box"></div><span>确认手动浇水是给多个水路设置时长后顺序执行，也可以选择自动计划立即执行。</span></div>
+        <div class="check"><div class="box"></div><span>确认自动计划只支持每天策略，不做复杂周期。</span></div>
+        <div class="check"><div class="box"></div><span>确认同一时刻只运行一个水路，不做队列、抢占和补跑。</span></div>
         <div class="check"><div class="box"></div><span>确认不再做 RS485、分站、多水源、主阀和输入输出映射。</span></div>
         <div class="check"><div class="box"></div><span>确认页面内容无误后，下一步直接进入固件代码实现。</span></div>
       </div>
