@@ -123,6 +123,7 @@ void RunController::handle(uint32_t nowMs) {
 
     switch (g_run.state) {
         case RunState::Idle:
+            FlowSafetyService::handleIdle(nowMs);
             return;
 
         case RunState::Precheck:
@@ -142,7 +143,7 @@ void RunController::handle(uint32_t nowMs) {
                 finish(RunResult::FaultStopped, RunReason::ConfigInvalid, nowMs);
                 return;
             }
-            FlowSafetyService::beginStep(nowMs);
+            FlowSafetyService::beginStep(nowMs, activeZoneId());
             if (ConfigStore::config().supply.pumpEnabled) {
                 enterState(RunState::PumpSignalOn, nowMs);
             } else {
@@ -369,8 +370,8 @@ StatusSnapshot RunController::statusSnapshot() {
     snapshot.runState = g_run.state;
     snapshot.runResult = g_run.result;
     snapshot.activeZoneId = busy() ? activeZoneId() : 0;
-    snapshot.currentFlowMlPerMin = 0;
-    snapshot.currentRunVolumeMl = 0;
+    snapshot.currentFlowMlPerMin = FlowSafetyService::currentFlowMlPerMin();
+    snapshot.currentRunVolumeMl = FlowSafetyService::currentStepVolumeMl();
     snapshot.todayVolumeMl = 0;
     snapshot.enabledZoneCount = enabledZoneCount(ConfigStore::config());
     snapshot.enabledPlanCount = enabledPlanCount(ConfigStore::config());

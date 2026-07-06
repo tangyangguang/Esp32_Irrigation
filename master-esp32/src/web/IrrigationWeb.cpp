@@ -151,6 +151,12 @@ void sendStatusJson() {
     Esp32BaseWeb::sendChunk("\"enabledPlanCount\":");
     snprintf(number, sizeof(number), "%u,", status.enabledPlanCount);
     Esp32BaseWeb::sendChunk(number);
+    Esp32BaseWeb::sendChunk("\"currentFlowMlPerMin\":");
+    snprintf(number, sizeof(number), "%lu,", static_cast<unsigned long>(status.currentFlowMlPerMin));
+    Esp32BaseWeb::sendChunk(number);
+    Esp32BaseWeb::sendChunk("\"currentRunVolumeMl\":");
+    snprintf(number, sizeof(number), "%lu,", static_cast<unsigned long>(status.currentRunVolumeMl));
+    Esp32BaseWeb::sendChunk(number);
     sendJsonStringField("reason", runReasonToString(run.reason), false);
     Esp32BaseWeb::sendChunk("}");
     Esp32BaseWeb::endJson();
@@ -734,6 +740,16 @@ void handleRunPage() {
     const StatusSnapshot status = RunController::statusSnapshot();
     Esp32BaseWeb::sendHeader("Run");
     Esp32BaseWeb::sendPageTitle("Run", "Manual sequential watering");
+    char value[32];
+    Esp32BaseWeb::beginMetricGrid();
+    Esp32BaseWeb::sendMetric("State", runStateName(status.runState), status.busy ? "Running" : "Idle");
+    snprintf(value, sizeof(value), "%u", status.activeZoneId);
+    Esp32BaseWeb::sendMetric("Active Zone", value, status.activeZoneId == 0 ? "None" : "Open");
+    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(status.currentFlowMlPerMin));
+    Esp32BaseWeb::sendMetric("Flow ml/min", value, "Estimated");
+    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(status.currentRunVolumeMl));
+    Esp32BaseWeb::sendMetric("Volume ml", value, "Current step");
+    Esp32BaseWeb::endMetricGrid();
     if (status.busy) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "Run active", runStateName(status.runState));
         Esp32BaseWeb::beginPanel("Stop");
