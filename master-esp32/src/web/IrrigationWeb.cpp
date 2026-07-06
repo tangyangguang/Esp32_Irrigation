@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "BoardHardware.h"
+#include "CalibrationService.h"
 #include "ConfigStore.h"
 #include "HistoryService.h"
 #include "IrrigationConfig.h"
@@ -44,6 +45,15 @@ const char* runResultName(RunResult result) {
         case RunResult::UserStopped: return "user_stopped";
         case RunResult::FaultStopped: return "fault_stopped";
         case RunResult::Skipped: return "skipped";
+    }
+    return "unknown";
+}
+
+const char* calibrationModeName(CalibrationMode mode) {
+    switch (mode) {
+        case CalibrationMode::None: return "none";
+        case CalibrationMode::FlowMeterVolume: return "flow_meter_volume";
+        case CalibrationMode::ZoneStandardFlow: return "zone_standard_flow";
     }
     return "unknown";
 }
@@ -220,6 +230,28 @@ void handleHistoryApi() {
     Esp32BaseWeb::sendText(200, g_historyViewBuffer);
 }
 
+void handleCalibrationApi() {
+    const CalibrationSnapshot snapshot = CalibrationService::snapshot();
+    Esp32BaseWeb::beginJson(200);
+    Esp32BaseWeb::sendChunk("{");
+    sendJsonStringField("mode", calibrationModeName(snapshot.mode));
+    Esp32BaseWeb::sendChunk("\"running\":");
+    Esp32BaseWeb::sendChunk(snapshot.running ? "true," : "false,");
+    Esp32BaseWeb::sendChunk("\"resultReady\":");
+    Esp32BaseWeb::sendChunk(snapshot.resultReady ? "true," : "false,");
+    char buf[96];
+    snprintf(buf, sizeof(buf),
+             "\"runId\":%lu,\"zoneId\":%u,\"durationSec\":%lu,\"pulses\":%lu,\"computedPulsesPerLiter\":%lu,\"suggestedFlowMlPerMin\":%lu}",
+             static_cast<unsigned long>(snapshot.runId),
+             snapshot.zoneId,
+             static_cast<unsigned long>(snapshot.durationSec),
+             static_cast<unsigned long>(snapshot.pulses),
+             static_cast<unsigned long>(snapshot.computedPulsesPerLiter),
+             static_cast<unsigned long>(snapshot.suggestedFlowMlPerMin));
+    Esp32BaseWeb::sendChunk(buf);
+    Esp32BaseWeb::endJson();
+}
+
 bool readDurationParam(uint8_t zoneId, uint32_t& out) {
     char key[8];
     char value[16];
@@ -234,6 +266,28 @@ bool readDurationParam(uint8_t zoneId, uint32_t& out) {
         return false;
     }
     out = static_cast<uint32_t>(minutes) * 60UL;
+    return true;
+}
+
+bool readZoneParam(uint8_t& zoneId) {
+    char value[8];
+    if (!Esp32BaseWeb::getParam("zone", value, sizeof(value))) {
+        return false;
+    }
+    const unsigned long parsed = strtoul(value, nullptr, 10);
+    if (parsed < 1 || parsed > kMaxZones) {
+        return false;
+    }
+    zoneId = static_cast<uint8_t>(parsed);
+    return true;
+}
+
+bool readDurationMinutesParam(uint32_t& durationSec) {
+    uint32_t minutes = 0;
+    if (!parseU32Param("durationMin", 1, 120, 5, minutes)) {
+        return false;
+    }
+    durationSec = minutes * 60UL;
     return true;
 }
 
@@ -257,6 +311,84 @@ void handleManualStartPost() {
     }
 
     Esp32BaseWeb::redirectSeeOther("/irrigation/run");
+}
+
+void handleCalibrationPost() {
+    if (!Esp32BaseWeb::checkPostAllowed("calibration")) {
+        return;
+    }
+
+    char action[24];
+    if (!Esp32BaseWeb::getParam("action", action, sizeof(action))) {
+        Esp32BaseWeb::sendText(400, "missing action");
+        return;
+    }
+
+    if (strcmp(action, "start_volume") == 0 || strcmp(action, "start_standard") == 0) {
+        uint8_t zoneId = 0;
+        uint32_t durationSec = 0;
+        if (!readZoneParam(zoneId) || !readDurationMinutesParam(durationSec)) {
+            Esp32BaseWeb::sendText(400, "invalid calibration request");
+            return;
+        }
+
+        RunReason reason = RunReason::None;
+        const bool ok = strcmp(action, "start_volume") == 0 ?
+            CalibrationService::startVolumeCalibration(zoneId, durationSec, reason) :
+            CalibrationService::startStandardFlowCalibration(zoneId, durationSec, reason);
+        if (!ok) {
+            Esp32BaseWeb::sendText(409, CalibrationService::lastError());
+            return;
+        }
+        Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
+        return;
+    }
+
+    if (strcmp(action, "stop") == 0) {
+        if (!CalibrationService::stop()) {
+            Esp32BaseWeb::sendText(409, CalibrationService::lastError());
+            return;
+        }
+        Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
+        return;
+    }
+
+    if (strcmp(action, "save_volume") == 0) {
+        uint32_t measuredMl = 0;
+        if (!parseU32Param("measuredMl", 1, 100000, 0, measuredMl)) {
+            Esp32BaseWeb::sendText(400, "invalid measured volume");
+            return;
+        }
+        if (!CalibrationService::savePulsesPerLiter(measuredMl)) {
+            Esp32BaseWeb::sendText(400, CalibrationService::lastError());
+            return;
+        }
+        Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
+        return;
+    }
+
+    if (strcmp(action, "save_standard") == 0) {
+        uint8_t zoneId = 0;
+        uint32_t flow = 0;
+        if (!readZoneParam(zoneId) || !parseU32Param("standardFlow", 1, 100000, 0, flow)) {
+            Esp32BaseWeb::sendText(400, "invalid standard flow");
+            return;
+        }
+        if (!CalibrationService::saveZoneStandardFlow(zoneId, flow)) {
+            Esp32BaseWeb::sendText(400, CalibrationService::lastError());
+            return;
+        }
+        Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
+        return;
+    }
+
+    if (strcmp(action, "clear") == 0) {
+        CalibrationService::clearResult();
+        Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
+        return;
+    }
+
+    Esp32BaseWeb::sendText(400, "unknown action");
 }
 
 void handlePlanNowPost() {
@@ -590,6 +722,7 @@ void handleDashboardPage() {
     Esp32BaseWeb::sendInfoRowCompactLink("Manual run", "Set enabled Zone durations and start a sequential run.", nullptr, "/irrigation/run", "Open", Esp32BaseWeb::UI_INFO);
     Esp32BaseWeb::sendInfoRowCompactLink("Plans", "Daily schedules with enable and disable control.", nullptr, "/irrigation/plans", "Open", Esp32BaseWeb::UI_INFO);
     Esp32BaseWeb::sendInfoRowCompactLink("Zones", "Enable, name and tune each fixed hardware Zone.", nullptr, "/irrigation/zones", "Open", Esp32BaseWeb::UI_INFO);
+    Esp32BaseWeb::sendInfoRowCompactLink("Calibration", "Calibrate flow pulses and Zone standard flow.", nullptr, "/irrigation/calibration", "Open", Esp32BaseWeb::UI_INFO);
     Esp32BaseWeb::sendInfoRowCompactLink("Settings", "Supply, flow and valve driver settings.", nullptr, "/irrigation/settings", "Open", Esp32BaseWeb::UI_INFO);
     Esp32BaseWeb::sendInfoRowCompactLink("History", "Recent run records and stop reasons.", nullptr, "/irrigation/history", "Open", Esp32BaseWeb::UI_INFO);
     Esp32BaseWeb::sendInfoRowCompactLink("Status API", "Machine-readable current state.", nullptr, "/api/status", "Open", Esp32BaseWeb::UI_INFO);
@@ -780,6 +913,98 @@ void handleSettingsPage() {
     Esp32BaseWeb::sendFooter();
 }
 
+void sendEnabledZoneSelect(uint8_t selectedZoneId) {
+    Esp32BaseWeb::sendChunk("<select name='zone'>");
+    const IrrigationConfig& config = ConfigStore::config();
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        const ZoneConfig& zone = config.zones[i];
+        if (!zone.enabled) {
+            continue;
+        }
+        char buf[80];
+        snprintf(buf, sizeof(buf), "<option value='%u'%s>Zone %u ",
+                 zone.id,
+                 zone.id == selectedZoneId ? " selected" : "",
+                 zone.id);
+        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::writeHtmlEscaped(zone.name);
+        Esp32BaseWeb::sendChunk("</option>");
+    }
+    Esp32BaseWeb::sendChunk("</select>");
+}
+
+void sendCalibrationStartForm(const char* title, const char* action, uint32_t defaultMinutes) {
+    Esp32BaseWeb::beginPanel(title);
+    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='");
+    Esp32BaseWeb::sendChunk(action);
+    Esp32BaseWeb::sendChunk("'><table><tbody><tr><td>Zone</td><td>");
+    sendEnabledZoneSelect(1);
+    Esp32BaseWeb::sendChunk("</td></tr><tr><td>Duration minutes</td><td>");
+    sendNumberInput("durationMin", defaultMinutes, 1, 120);
+    Esp32BaseWeb::sendChunk("</td></tr></tbody></table><div class='actions'><input type='submit' value='Start calibration'></div></form>");
+    Esp32BaseWeb::endPanel();
+}
+
+void sendCalibrationResultPanel(const CalibrationSnapshot& snapshot) {
+    if (!snapshot.resultReady) {
+        return;
+    }
+
+    char buf[192];
+    Esp32BaseWeb::beginPanel("Calibration result");
+    snprintf(buf, sizeof(buf), "<table><tbody><tr><td>Mode</td><td>%s</td></tr><tr><td>Zone</td><td>%u</td></tr><tr><td>Pulses</td><td>%lu</td></tr></tbody></table>",
+             calibrationModeName(snapshot.mode),
+             snapshot.zoneId,
+             static_cast<unsigned long>(snapshot.pulses));
+    Esp32BaseWeb::sendChunk(buf);
+
+    if (snapshot.mode == CalibrationMode::FlowMeterVolume) {
+        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_volume'><label>Measured water ml</label><input type='number' name='measuredMl' min='1' max='100000' value='1000'><div class='actions'><input type='submit' value='Save pulses per liter'></div></form>");
+    } else if (snapshot.mode == CalibrationMode::ZoneStandardFlow) {
+        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_standard'><input type='hidden' name='zone' value='%u'><label>Standard flow ml/min</label><input type='number' name='standardFlow' min='1' max='100000' value='%lu'><div class='actions'><input type='submit' value='Save Zone standard flow'></div></form>",
+                 snapshot.zoneId,
+                 static_cast<unsigned long>(snapshot.suggestedFlowMlPerMin));
+        Esp32BaseWeb::sendChunk(buf);
+        if (snapshot.suggestedFlowMlPerMin == 0) {
+            Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "Manual value required", "A completed run and flow pulses per liter are required for an automatic suggestion.");
+        }
+    }
+
+    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='clear'><div class='actions'><input type='submit' value='Discard result'></div></form>");
+    Esp32BaseWeb::endPanel();
+}
+
+void handleCalibrationPage() {
+    const CalibrationSnapshot snapshot = CalibrationService::snapshot();
+    const IrrigationConfig& config = ConfigStore::config();
+
+    Esp32BaseWeb::sendHeader("Calibration");
+    Esp32BaseWeb::sendPageTitle("Calibration", "Flow meter and Zone standard flow");
+
+    Esp32BaseWeb::beginMetricGrid();
+    char value[32];
+    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(config.flow.pulsesPerLiter));
+    Esp32BaseWeb::sendMetric("Pulses per liter", value, config.flow.pulsesPerLiter == 0 ? "Not calibrated" : "Saved");
+    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(snapshot.pulses));
+    Esp32BaseWeb::sendMetric("Current pulses", value, calibrationModeName(snapshot.mode));
+    snprintf(value, sizeof(value), "%u", snapshot.zoneId);
+    Esp32BaseWeb::sendMetric("Calibration Zone", value, snapshot.running ? "Running" : "Idle");
+    Esp32BaseWeb::endMetricGrid();
+
+    if (snapshot.running) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "Calibration running", "Stop after collecting enough water or wait for the duration to end.");
+        Esp32BaseWeb::beginPanel("Stop calibration");
+        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='stop'><div class='actions'><input class='danger' type='submit' value='Stop calibration'></div></form>");
+        Esp32BaseWeb::endPanel();
+    } else {
+        sendCalibrationResultPanel(snapshot);
+        sendCalibrationStartForm("Flow meter volume calibration", "start_volume", 5);
+        sendCalibrationStartForm("Zone standard flow calibration", "start_standard", 2);
+    }
+
+    Esp32BaseWeb::sendFooter();
+}
+
 void handleHistoryPage() {
     Esp32BaseWeb::sendHeader("History");
     Esp32BaseWeb::sendPageTitle("History", "Recent run records");
@@ -804,6 +1029,7 @@ void IrrigationWeb::registerRoutes() {
     Esp32BaseWeb::addPage("/irrigation/run", "Run", handleRunPage);
     Esp32BaseWeb::addPage("/irrigation/zones", "Zones", handleZonesPage);
     Esp32BaseWeb::addPage("/irrigation/plans", "Plans", handlePlansPage);
+    Esp32BaseWeb::addPage("/irrigation/calibration", "Calibration", handleCalibrationPage);
     Esp32BaseWeb::addPage("/irrigation/settings", "Settings", handleSettingsPage);
     Esp32BaseWeb::addPage("/irrigation/history", "History", handleHistoryPage);
     Esp32BaseWeb::addRoute("/irrigation/run/start", Esp32BaseWeb::METHOD_POST, handleManualStartPost);
@@ -813,11 +1039,13 @@ void IrrigationWeb::registerRoutes() {
     Esp32BaseWeb::addRoute("/irrigation/plans/create", Esp32BaseWeb::METHOD_POST, handlePlanCreatePost);
     Esp32BaseWeb::addRoute("/irrigation/plans/save", Esp32BaseWeb::METHOD_POST, handlePlanSavePost);
     Esp32BaseWeb::addRoute("/irrigation/plans/delete", Esp32BaseWeb::METHOD_POST, handlePlanDeletePost);
+    Esp32BaseWeb::addRoute("/irrigation/calibration/action", Esp32BaseWeb::METHOD_POST, handleCalibrationPost);
     Esp32BaseWeb::addRoute("/irrigation/settings/save", Esp32BaseWeb::METHOD_POST, handleSettingsSavePost);
     Esp32BaseWeb::addApi("/api/status", handleStatusApi);
     Esp32BaseWeb::addApi("/api/run/current", handleStatusApi);
     Esp32BaseWeb::addApi("/api/zones", handleZonesApi);
     Esp32BaseWeb::addApi("/api/plans", handlePlansApi);
+    Esp32BaseWeb::addApi("/api/calibration", handleCalibrationApi);
     Esp32BaseWeb::addApi("/api/history", handleHistoryApi);
     Esp32BaseWeb::addNavItem("/irrigation", "Irrigation");
 }

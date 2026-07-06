@@ -12,6 +12,7 @@ public:
     static bool startManual(const uint32_t zoneDurationSec[kMaxZones], RunReason& reason);
     static bool startPlan(uint8_t planId, RunReason& reason);
     static bool startPlanNow(uint8_t planId, RunReason& reason);
+    static bool startCalibration(uint8_t zoneId, uint32_t durationSec, RunReason& reason);
     static bool stop(RunReason reason = RunReason::UserStop);
 
     static bool busy();

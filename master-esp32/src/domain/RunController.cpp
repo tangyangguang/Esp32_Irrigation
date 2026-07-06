@@ -130,6 +130,10 @@ void RunController::handle(uint32_t nowMs) {
                 finish(RunResult::Skipped, RunReason::NoEffectiveStep, nowMs);
                 return;
             }
+            if (BoardHardware::lowLevelActive(nowMs)) {
+                finish(RunResult::Skipped, RunReason::LowLevel, nowMs);
+                return;
+            }
             enterState(RunState::OpenValve, nowMs);
             return;
 
@@ -297,6 +301,50 @@ bool RunController::startPlan(uint8_t planId, RunReason& reason) {
                     static_cast<unsigned>(g_run.id),
                     planId,
                     g_run.stepCount);
+    return true;
+}
+
+bool RunController::startCalibration(uint8_t zoneId, uint32_t durationSec, RunReason& reason) {
+    if (busy()) {
+        reason = RunReason::ControllerBusy;
+        setLastError("controller_busy");
+        return false;
+    }
+
+    const uint8_t index = zoneIndexFromId(zoneId);
+    if (index >= kMaxZones) {
+        reason = RunReason::ZoneDisabled;
+        setLastError("zone_id_invalid");
+        return false;
+    }
+
+    const IrrigationConfig& config = ConfigStore::config();
+    if (!config.zones[index].enabled) {
+        reason = RunReason::ZoneDisabled;
+        setLastError("zone_disabled");
+        return false;
+    }
+    if (durationSec == 0 || durationSec > config.valve.maxZoneDurationSec) {
+        reason = RunReason::InvalidDuration;
+        setLastError("calibration_duration_invalid");
+        return false;
+    }
+
+    clearRun();
+    g_run.id = g_nextRunId++;
+    g_run.source = RunSource::Calibration;
+    g_run.reason = RunReason::CalibrationRequest;
+    g_run.startedAtEpoch = currentEpoch();
+    addStep(zoneId, durationSec);
+
+    enterState(RunState::Precheck, millis());
+    reason = RunReason::CalibrationRequest;
+    setLastError("ok");
+    EventService::append(Esp32BaseAppEventLog::LEVEL_INFO, "calibration", "started", "request", "run", 0, g_run.id, zoneId, 0, Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2);
+    ESP32BASE_LOG_I("run", "calibration_started id=%u zone=%u duration=%lu",
+                    static_cast<unsigned>(g_run.id),
+                    zoneId,
+                    static_cast<unsigned long>(durationSec));
     return true;
 }
 

@@ -5,6 +5,7 @@
 
 #include "BoardPins.h"
 #include "BoardHardware.h"
+#include "CalibrationService.h"
 #include "ConfigStore.h"
 #include "IrrigationConfig.h"
 #include "IrrigationWeb.h"
@@ -111,6 +112,7 @@ void setupAfterBase() {
     Irrigation::BoardHardware::configure(Irrigation::ConfigStore::config().valve,
                                          Irrigation::ConfigStore::config().supply);
     Irrigation::RunController::begin();
+    Irrigation::CalibrationService::begin();
     Irrigation::Scheduler::begin();
     appendStartupEvent();
     ESP32BASE_LOG_I("irrigation", "base_ready valves=%u flow_pin=%u low_level_pin=%u pump_pin=%u",
@@ -123,6 +125,7 @@ void setupAfterBase() {
 void loop() {
     Irrigation::Scheduler::handle();
     Irrigation::RunController::handle(millis());
+    Irrigation::CalibrationService::handle();
 }
 
 } // namespace IrrigationApp

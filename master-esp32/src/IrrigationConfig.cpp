@@ -246,6 +246,8 @@ const char* runReasonToString(RunReason reason) {
             return "plan_start_time";
         case RunReason::RunPlanNow:
             return "run_plan_now";
+        case RunReason::CalibrationRequest:
+            return "calibration_request";
         case RunReason::UserStop:
             return "user_stop";
         case RunReason::NoEffectiveStep:
@@ -273,4 +275,3 @@ const char* runReasonToString(RunReason reason) {
 }
 
 } // namespace Irrigation
-

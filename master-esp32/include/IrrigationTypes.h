@@ -55,6 +55,7 @@ enum class RunReason : uint16_t {
     ManualRequest,
     PlanStartTime,
     RunPlanNow,
+    CalibrationRequest,
     UserStop,
     NoEffectiveStep,
     ControllerBusy,
@@ -181,4 +182,3 @@ struct PlanSnapshot {
 };
 
 } // namespace Irrigation
-
