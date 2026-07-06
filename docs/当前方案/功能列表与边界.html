@@ -478,8 +478,8 @@
           </tr>
           <tr>
             <td>自动计划</td>
-            <td>只支持每天策略，按步骤顺序执行Zone。</td>
-            <td>可选择某个自动计划立即执行；不做任务排队、不抢占、不补跑错过计划，不做天气条件。</td>
+            <td>最多 8 个计划，只支持每天策略，启用计划按步骤顺序执行Zone。</td>
+            <td>禁用计划保留配置但不触发；只可选择已启用计划立即执行；不做任务排队、不抢占、不补跑错过计划，不做天气条件。</td>
           </tr>
           <tr>
             <td>任务运行</td>
@@ -564,9 +564,9 @@
             <li>计划名称。</li>
             <li>启用或停用。</li>
             <li>固定每天策略。</li>
-            <li>开始时间。</li>
+            <li>最多 4 个每日开始时间。</li>
             <li>Zone步骤和每步时长。</li>
-            <li>立即执行入口。</li>
+            <li>已启用计划的立即执行入口。</li>
           </ul>
         </article>
       </div>
@@ -650,8 +650,8 @@
         <div class="check"><div class="box"></div><span>确认流量计必配，固定输入，不提供启用/禁用和输入选择。</span></div>
         <div class="check"><div class="box"></div><span>确认低液位是可选干接点输入，可配置常开或常闭，且只在自吸泵启用时生效。</span></div>
         <div class="check"><div class="box"></div><span>确认自吸泵是可选干接点输出，只控制外部继电器模块信号。</span></div>
-        <div class="check"><div class="box"></div><span>确认手动浇水是给多个Zone设置时长后顺序执行，也可以选择自动计划立即执行。</span></div>
-        <div class="check"><div class="box"></div><span>确认自动计划只支持每天策略，不做复杂周期。</span></div>
+        <div class="check"><div class="box"></div><span>确认手动浇水是给多个Zone设置时长后顺序执行，也可以选择已启用自动计划立即执行。</span></div>
+        <div class="check"><div class="box"></div><span>确认自动计划最多 8 个，只支持每天策略，禁用计划不触发。</span></div>
         <div class="check"><div class="box"></div><span>确认同一时刻只运行一个Zone，不做队列、抢占和补跑。</span></div>
         <div class="check"><div class="box"></div><span>确认不再做 RS485、分站、多水源、主阀和输入输出映射。</span></div>
         <div class="check"><div class="box"></div><span>确认页面内容无误后，下一步直接进入固件代码实现。</span></div>
