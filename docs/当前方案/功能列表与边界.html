@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>12V 智能浇水控制器功能列表与边界</title>
+  <style>
+    :root {
+      --bg: #f6f7f8;
+      --panel: #ffffff;
+      --ink: #1d2429;
+      --muted: #5f6b73;
+      --line: #dbe1e5;
+      --green: #2f7d55;
+      --blue: #2f6690;
+      --amber: #a7661b;
+      --red: #a33b3b;
+      --soft-green: #e7f3ec;
+      --soft-blue: #e8f0f7;
+      --soft-amber: #f7efe3;
+      --soft-red: #f8e8e8;
+      --shadow: 0 1px 2px rgba(20, 30, 40, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", sans-serif;
+      line-height: 1.58;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 22px 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: start;
+      padding: 8px 0 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+
+    .subtitle {
+      margin: 12px 0 0;
+      max-width: 780px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .status-box {
+      min-width: 240px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .status-box strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--green);
+      font-size: 15px;
+    }
+
+    .status-box span {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    nav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 22px 0 28px;
+    }
+
+    nav a {
+      display: inline-flex;
+      align-items: center;
+      min-height: 36px;
+      padding: 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      text-decoration: none;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    section {
+      margin: 32px 0 0;
+    }
+
+    h2 {
+      margin: 0 0 14px;
+      font-size: 22px;
+      line-height: 1.3;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    p {
+      margin: 0;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .grid.cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .card p,
+    .card li {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .tag.must {
+      background: var(--soft-green);
+      color: var(--green);
+    }
+
+    .tag.optional {
+      background: var(--soft-blue);
+      color: var(--blue);
+    }
+
+    .tag.fixed {
+      background: var(--soft-amber);
+      color: var(--amber);
+    }
+
+    .tag.no {
+      background: var(--soft-red);
+      color: var(--red);
+    }
+
+    .summary-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .metric {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+    }
+
+    .metric b {
+      display: block;
+      font-size: 26px;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: var(--shadow);
+    }
+
+    th,
+    td {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    th {
+      background: #eef2f4;
+      color: #2c363d;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    td {
+      color: var(--muted);
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    ul {
+      margin: 10px 0 0;
+      padding-left: 18px;
+    }
+
+    li + li {
+      margin-top: 6px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .step {
+      min-height: 92px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+    }
+
+    .step .num {
+      width: 26px;
+      height: 26px;
+      display: inline-grid;
+      place-items: center;
+      border-radius: 50%;
+      background: #26343c;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .step p {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .note {
+      border-left: 4px solid var(--amber);
+      background: #fff9ef;
+      padding: 12px 14px;
+      color: #664416;
+      border-radius: 0 8px 8px 0;
+      font-size: 14px;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 8px;
+    }
+
+    .check {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 8px;
+      align-items: start;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      box-shadow: var(--shadow);
+    }
+
+    .box {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #7e8a92;
+      border-radius: 4px;
+      margin-top: 2px;
+    }
+
+    .check span {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    footer {
+      margin-top: 36px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      header,
+      .grid.cols-2,
+      .grid.cols-3,
+      .summary-strip,
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      h1 {
+        font-size: 28px;
+      }
+
+      .status-box {
+        min-width: 0;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        max-width: none;
+        padding: 0;
+      }
+
+      nav {
+        display: none;
+      }
+
+      .card,
+      .metric,
+      .step,
+      table,
+      .check {
+        box-shadow: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header>
+      <div>
+        <h1>12V 智能浇水控制器功能列表与边界</h1>
+        <p class="subtitle">
+          这是需求确认页，不是界面原型。页面只把最终版本要做什么、不做什么、硬件固定能力和配置边界列清楚，确认后直接进入固件代码实现。
+        </p>
+      </div>
+      <aside class="status-box">
+        <strong>当前唯一有效版本</strong>
+        <span>单板 ESP32 控制器</span>
+        <span>12V DC 电源与 12V DC 电磁阀</span>
+        <span>无 RS485、无分站、无主阀</span>
+      </aside>
+    </header>
+
+    <nav aria-label="页面导航">
+      <a href="#summary">总览</a>
+      <a href="#hardware">硬件能力</a>
+      <a href="#features">功能列表</a>
+      <a href="#config">配置边界</a>
+      <a href="#runtime">运行规则</a>
+      <a href="#not-doing">明确不做</a>
+      <a href="#confirm">确认清单</a>
+    </nav>
+
+    <section id="summary">
+      <h2>总览</h2>
+      <div class="summary-strip">
+        <div class="metric"><b>6</b><span>路 12V DC 分区电磁阀</span></div>
+        <div class="metric"><b>1</b><span>路必配流量计固定输入</span></div>
+        <div class="metric"><b>1</b><span>路可选低液位干接点输入</span></div>
+        <div class="metric"><b>1</b><span>路可选自吸泵干接点控制输出</span></div>
+      </div>
+    </section>
+
+    <section id="hardware">
+      <h2>硬件能力</h2>
+      <div class="grid cols-3">
+        <article class="card">
+          <span class="tag must">必有</span>
+          <h3>12V DC 电源</h3>
+          <p>外部输入固定为 12V DC。系统按 12V DC 电磁阀设计，不按 24V 或 24VAC 阀使用。</p>
+        </article>
+        <article class="card">
+          <span class="tag must">必有</span>
+          <h3>6 路分区阀</h3>
+          <p>6 路输出全部作为浇水分区阀。每路为 12V DC 电磁阀低边驱动，不设置主阀。</p>
+        </article>
+        <article class="card">
+          <span class="tag must">必有</span>
+          <h3>流量计</h3>
+          <p>流量计固定接入，必须存在。用于脉冲计数、无流量保护、用水量估算和校准。</p>
+        </article>
+        <article class="card">
+          <span class="tag optional">可选</span>
+          <h3>低液位 / 缺水传感器</h3>
+          <p>固定干接点输入。可启用或禁用，启用后可配置常开或常闭。</p>
+        </article>
+        <article class="card">
+          <span class="tag optional">可选</span>
+          <h3>自吸泵控制</h3>
+          <p>固定干接点输出，只控制外部自吸泵继电器模块的信号输入，不直接驱动泵或继电器线圈。</p>
+        </article>
+        <article class="card">
+          <span class="tag fixed">固定</span>
+          <h3>RTC / WiFi / Web</h3>
+          <p>RTC 提供本地定时。WiFi 和 Web 用于配置、运行查看、历史查看和 OTA 维护。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="features">
+      <h2>功能列表</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>功能</th>
+            <th>范围</th>
+            <th>边界</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>分区管理</td>
+            <td>最多 6 个分区，每个分区固定对应一路阀。</td>
+            <td>分区可改名、启用、停用；不配置阀号，不做任意映射。</td>
+          </tr>
+          <tr>
+            <td>手动浇水</td>
+            <td>选择一个分区，设置运行时长，立即启动。</td>
+            <td>设备忙、分区停用、低液位有效或参数无效时不启动。</td>
+          </tr>
+          <tr>
+            <td>自动计划</td>
+            <td>支持每天、自定义周期、每周固定日，按步骤顺序执行分区。</td>
+            <td>不做任务排队、不抢占、不补跑错过计划，不做天气条件。</td>
+          </tr>
+          <tr>
+            <td>任务运行</td>
+            <td>一次任务只运行一路分区阀，到时间自动关闭。</td>
+            <td>同一时刻不允许多路同时浇水。</td>
+          </tr>
+          <tr>
+            <td>流量监测</td>
+            <td>统计脉冲、估算流速和用水量。</td>
+            <td>流量计必有；没有流量计的运行模式不进入当前方案。</td>
+          </tr>
+          <tr>
+            <td>流量保护</td>
+            <td>无流量停机，待机漏水提示，低/过流量提示或停机。</td>
+            <td>低/过流量默认提示，可配置为停机。</td>
+          </tr>
+          <tr>
+            <td>低液位保护</td>
+            <td>启用后启动前阻止，运行中停机。</td>
+            <td>传感器未启用时不参与判断；缺水主要靠无流量保护发现。</td>
+          </tr>
+          <tr>
+            <td>自吸泵控制</td>
+            <td>启用后任务运行时输出干接点控制信号。</td>
+            <td>只控制外部继电器模块信号，不做泵功率驱动。</td>
+          </tr>
+          <tr>
+            <td>校准</td>
+            <td>接水量校准流量计每升脉冲数，稳定流量校准分区标准流量。</td>
+            <td>校准也是一次受保护的分区运行，不绕过低液位和无流量规则。</td>
+          </tr>
+          <tr>
+            <td>历史记录</td>
+            <td>记录浇水、异常、配置变化、校准和用户操作。</td>
+            <td>不做复杂告警认领、派单、清除流程。</td>
+          </tr>
+          <tr>
+            <td>OTA 与维护</td>
+            <td>通过 Web 或基础维护入口更新固件、查看基础状态。</td>
+            <td>不做通用调试后台，不开放任意 IO 控制。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="config">
+      <h2>配置边界</h2>
+      <div class="grid cols-2">
+        <article class="card">
+          <h3>系统参数</h3>
+          <ul>
+            <li>最大单次运行时长。</li>
+            <li>阀全功率吸合时间。</li>
+            <li>阀维持 PWM 占空比。</li>
+            <li>自吸泵启动延时和停止延时。</li>
+            <li>流量保护参数。</li>
+            <li>历史保留策略。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>供水配置</h3>
+          <ul>
+            <li>自吸泵控制：启用或禁用。</li>
+            <li>低液位传感器：启用或禁用。</li>
+            <li>低液位触点类型：常开或常闭。</li>
+            <li>低液位去抖时间。</li>
+            <li>流量计每升脉冲数。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>分区配置</h3>
+          <ul>
+            <li>分区名称。</li>
+            <li>启用或停用。</li>
+            <li>标准流量。</li>
+            <li>最近手动时长。</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>计划配置</h3>
+          <ul>
+            <li>计划名称。</li>
+            <li>启用或停用。</li>
+            <li>周期规则。</li>
+            <li>开始时间。</li>
+            <li>分区步骤和每步时长。</li>
+          </ul>
+        </article>
+      </div>
+      <p class="note" style="margin-top:14px;">
+        流量计、低液位输入、自吸泵输出都是固定硬件位置，不再给用户选择输入口或输出口。
+      </p>
+    </section>
+
+    <section id="runtime">
+      <h2>运行规则</h2>
+      <div class="flow">
+        <div class="step">
+          <div class="num">1</div>
+          <h3>启动检查</h3>
+          <p>检查设备空闲、分区启用、时长有效、低液位状态和必要参数。</p>
+        </div>
+        <div class="step">
+          <div class="num">2</div>
+          <h3>打开分区阀</h3>
+          <p>按阀驱动参数打开目标分区阀，不存在主阀动作。</p>
+        </div>
+        <div class="step">
+          <div class="num">3</div>
+          <h3>泵控制</h3>
+          <p>仅在启用自吸泵时，延时后输出干接点控制信号。</p>
+        </div>
+        <div class="step">
+          <div class="num">4</div>
+          <h3>运行监测</h3>
+          <p>统计流量脉冲，判断无流量、低流量、过流量和低液位。</p>
+        </div>
+        <div class="step">
+          <div class="num">5</div>
+          <h3>安全停止</h3>
+          <p>先撤销泵控制信号，再关闭分区阀，写入任务结果和历史。</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="not-doing">
+      <h2>明确不做</h2>
+      <div class="grid cols-3">
+        <article class="card">
+          <span class="tag no">不做</span>
+          <h3>RS485 / 分站</h3>
+          <p>没有主控、从站、分站地址、从站发现、轮询、CRC 或通信异常恢复。</p>
+        </article>
+        <article class="card">
+          <span class="tag no">不做</span>
+          <h3>主阀</h3>
+          <p>6 路阀全部是分区阀，不占用任何一路做主阀，也不设计主阀启停顺序。</p>
+        </article>
+        <article class="card">
+          <span class="tag no">不做</span>
+          <h3>多水源并行</h3>
+          <p>设备只有一套供水系统，一次只浇一个分区，不做多个水源同时运行。</p>
+        </article>
+        <article class="card">
+          <span class="tag no">不做</span>
+          <h3>输入输出映射</h3>
+          <p>流量计、低液位、自吸泵和 6 路阀都是固定位置，不提供自由映射页面。</p>
+        </article>
+        <article class="card">
+          <span class="tag no">不做</span>
+          <h3>云端和多用户</h3>
+          <p>当前是本地控制器，不做云端账号、多用户权限、远程平台或消息推送。</p>
+        </article>
+        <article class="card">
+          <span class="tag no">不做</span>
+          <h3>天气和脚本联动</h3>
+          <p>计划只表达固定时间和周期，不做天气暂停、脚本、复杂触发器或自动化平台。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="confirm">
+      <h2>确认清单</h2>
+      <div class="checklist">
+        <div class="check"><div class="box"></div><span>确认电源和阀均为 12V DC。</span></div>
+        <div class="check"><div class="box"></div><span>确认 6 路阀全部作为浇水分区，不做主阀。</span></div>
+        <div class="check"><div class="box"></div><span>确认流量计必配，固定输入，不提供启用/禁用和输入选择。</span></div>
+        <div class="check"><div class="box"></div><span>确认低液位是可选干接点输入，可配置常开或常闭。</span></div>
+        <div class="check"><div class="box"></div><span>确认自吸泵是可选干接点输出，只控制外部继电器模块信号。</span></div>
+        <div class="check"><div class="box"></div><span>确认同一时刻只运行一个分区，不做队列、抢占和补跑。</span></div>
+        <div class="check"><div class="box"></div><span>确认不再做 RS485、分站、多水源、主阀和输入输出映射。</span></div>
+        <div class="check"><div class="box"></div><span>确认页面内容无误后，下一步直接进入固件代码实现。</span></div>
+      </div>
+    </section>
+
+    <footer>
+      当前依据：`docs/当前方案/` 与 `pcb/` 下 2026-07-06 的 BOM / 网表。旧 V6 资料只作为需求背景，不作为当前设计依据。
+    </footer>
+  </main>
+</body>
+</html>
