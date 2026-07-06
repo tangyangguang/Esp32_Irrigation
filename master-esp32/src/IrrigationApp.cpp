@@ -4,6 +4,7 @@
 #include <Esp32Base.h>
 
 #include "BoardPins.h"
+#include "IrrigationConfig.h"
 
 namespace {
 
@@ -66,7 +67,7 @@ void registerAppConfig() {
     Esp32BaseAppConfig::addInt({"safety", "irrigation", "no_flow_timeout_sec", "No-flow timeout",
                                 30, 5, 600, 5, "s",
                                 "Stops the current batch when no flow is detected while a valve is open.", false, nullptr});
-    Esp32BaseAppConfig::addInt({"schedule", "irrigation", "max_zone_duration_min", "Max waterway duration",
+    Esp32BaseAppConfig::addInt({"schedule", "irrigation", "max_zone_duration_min", "Max Zone duration",
                                 120, 1, 360, 1, "min",
                                 "Upper bound used by UI and schedule validation.", false, nullptr});
 }
@@ -86,6 +87,23 @@ void appendStartupEvent() {
     }
 }
 
+void verifyDefaultConfig() {
+    Irrigation::IrrigationConfig config;
+    Irrigation::applyDefaultConfig(config);
+
+    const char* error = nullptr;
+    if (!Irrigation::validateConfig(config, &error)) {
+        ESP32BASE_LOG_E("irrigation", "default_config_invalid error=%s", error != nullptr ? error : "unknown");
+        return;
+    }
+
+    ESP32BASE_LOG_I("irrigation", "default_config_ok zones_enabled=%u plans_enabled=%u max_plans=%u max_start_times=%u",
+                    Irrigation::enabledZoneCount(config),
+                    Irrigation::enabledPlanCount(config),
+                    Irrigation::kMaxPlans,
+                    Irrigation::kMaxPlanStartTimes);
+}
+
 } // namespace
 
 namespace IrrigationApp {
@@ -102,6 +120,7 @@ void setupBeforeBase() {
 }
 
 void setupAfterBase() {
+    verifyDefaultConfig();
     appendStartupEvent();
     ESP32BASE_LOG_I("irrigation", "base_ready valves=%u flow_pin=%u low_level_pin=%u pump_pin=%u",
                     IrrigationPins::kValveCount,

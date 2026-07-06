@@ -7,12 +7,12 @@ namespace IrrigationPins {
 constexpr uint8_t kValveCount = 6;
 
 constexpr uint8_t kValvePwm[kValveCount] = {
-    14, // PWM1 / waterway 1
-    27, // PWM2 / waterway 2
-    26, // PWM3 / waterway 3
-    25, // PWM4 / waterway 4
-    33, // PWM5 / waterway 5
-    32  // PWM6 / waterway 6
+    14, // PWM1 / Zone 1
+    27, // PWM2 / Zone 2
+    26, // PWM3 / Zone 3
+    25, // PWM4 / Zone 4
+    33, // PWM5 / Zone 5
+    32  // PWM6 / Zone 6
 };
 
 constexpr uint8_t kDriverShutdown = 19; // DRV_SD, HIGH disables valve driver.
