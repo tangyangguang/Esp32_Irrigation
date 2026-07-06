@@ -119,6 +119,12 @@ void minuteToText(uint16_t minuteOfDay, char* out, size_t len) {
     snprintf(out, len, "%02u:%02u", minuteOfDay / 60U, minuteOfDay % 60U);
 }
 
+void epochToText(uint32_t epoch, char* out, size_t len) {
+    if (epoch == 0 || !Esp32BaseTime::formatEpoch(epoch, out, len, "%Y-%m-%d %H:%M")) {
+        snprintf(out, len, "None");
+    }
+}
+
 void sendEscapedValue(const char* value) {
     Esp32BaseWeb::writeHtmlEscaped(value != nullptr ? value : "");
 }
@@ -156,6 +162,9 @@ void sendStatusJson() {
     Esp32BaseWeb::sendChunk(number);
     Esp32BaseWeb::sendChunk("\"currentRunVolumeMl\":");
     snprintf(number, sizeof(number), "%lu,", static_cast<unsigned long>(status.currentRunVolumeMl));
+    Esp32BaseWeb::sendChunk(number);
+    Esp32BaseWeb::sendChunk("\"nextRunEpoch\":");
+    snprintf(number, sizeof(number), "%lu,", static_cast<unsigned long>(status.nextRunEpoch));
     Esp32BaseWeb::sendChunk(number);
     sendJsonStringField("reason", runReasonToString(run.reason), false);
     Esp32BaseWeb::sendChunk("}");
@@ -723,6 +732,8 @@ void handleDashboardPage() {
     Esp32BaseWeb::sendMetric("Enabled Zones", value, "Hardware max 6");
     snprintf(value, sizeof(value), "%u / %u", status.enabledPlanCount, kMaxPlans);
     Esp32BaseWeb::sendMetric("Enabled Plans", value, "Daily plans");
+    epochToText(status.nextRunEpoch, value, sizeof(value));
+    Esp32BaseWeb::sendMetric("Next Run", value, status.nextRunEpoch == 0 ? "No enabled schedule" : "Local time");
     Esp32BaseWeb::endMetricGrid();
     Esp32BaseWeb::beginPanel("Actions");
     Esp32BaseWeb::sendInfoRowCompactLink("Manual run", "Set enabled Zone durations and start a sequential run.", nullptr, "/irrigation/run", "Open", Esp32BaseWeb::UI_INFO);

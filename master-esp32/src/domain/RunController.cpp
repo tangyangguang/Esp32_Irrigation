@@ -11,6 +11,7 @@
 #include "HistoryService.h"
 #include "IrrigationConfig.h"
 #include "PlanService.h"
+#include "Scheduler.h"
 
 namespace Irrigation {
 
@@ -375,7 +376,7 @@ StatusSnapshot RunController::statusSnapshot() {
     snapshot.todayVolumeMl = 0;
     snapshot.enabledZoneCount = enabledZoneCount(ConfigStore::config());
     snapshot.enabledPlanCount = enabledPlanCount(ConfigStore::config());
-    snapshot.nextRunEpoch = 0;
+    snapshot.nextRunEpoch = Scheduler::nextRunEpoch();
     return snapshot;
 }
 

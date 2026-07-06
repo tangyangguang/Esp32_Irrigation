@@ -46,6 +46,35 @@ bool currentLocalMinute(uint16_t& minuteOfDay, uint32_t& dayKey) {
     return dayKey != 0;
 }
 
+bool currentLocalClock(uint16_t& minuteOfDay, uint8_t& second, uint32_t& epoch) {
+    const Esp32BaseTime::Snapshot time = Esp32BaseTime::snapshot();
+    if (!time.synced || time.epochSec == 0) {
+        return false;
+    }
+
+    char clockText[9];
+    if (!Esp32BaseTime::formatTime(clockText, sizeof(clockText), "%H:%M:%S")) {
+        return false;
+    }
+    const uint8_t hour = static_cast<uint8_t>((clockText[0] - '0') * 10 + (clockText[1] - '0'));
+    const uint8_t minute = static_cast<uint8_t>((clockText[3] - '0') * 10 + (clockText[4] - '0'));
+    second = static_cast<uint8_t>((clockText[6] - '0') * 10 + (clockText[7] - '0'));
+    if (hour > 23 || minute > 59 || second > 59) {
+        return false;
+    }
+
+    minuteOfDay = static_cast<uint16_t>(hour) * 60U + minute;
+    epoch = time.epochSec;
+    return true;
+}
+
+uint16_t minutesUntilNextStart(uint16_t nowMinute, uint16_t startMinute) {
+    if (startMinute > nowMinute) {
+        return static_cast<uint16_t>(startMinute - nowMinute);
+    }
+    return static_cast<uint16_t>(kMinutesPerDay - nowMinute + startMinute);
+}
+
 void tryTriggerPlan(uint8_t planIndex, uint8_t startIndex, uint32_t dayKey) {
     const WateringPlan& plan = ConfigStore::config().plans[planIndex];
     if (Scheduler::alreadyTriggered(planIndex, startIndex, dayKey)) {
@@ -103,6 +132,42 @@ void Scheduler::handle() {
             tryTriggerPlan(planIndex, startIndex, dayKey);
         }
     }
+}
+
+uint32_t Scheduler::nextRunEpoch() {
+    uint16_t nowMinute = kInvalidMinuteOfDay;
+    uint8_t second = 0;
+    uint32_t epoch = 0;
+    if (!currentLocalClock(nowMinute, second, epoch)) {
+        return 0;
+    }
+
+    uint16_t bestDeltaMinutes = kMinutesPerDay;
+    const IrrigationConfig& config = ConfigStore::config();
+    for (uint8_t planIndex = 0; planIndex < kMaxPlans; ++planIndex) {
+        const WateringPlan& plan = config.plans[planIndex];
+        if (!plan.used || !plan.enabled || !planHasEffectiveStep(config, plan)) {
+            continue;
+        }
+
+        for (uint8_t startIndex = 0; startIndex < kMaxPlanStartTimes; ++startIndex) {
+            const StartTime& start = plan.startTimes[startIndex];
+            if (!start.enabled || !isValidMinuteOfDay(start.minuteOfDay)) {
+                continue;
+            }
+            const uint16_t delta = minutesUntilNextStart(nowMinute, start.minuteOfDay);
+            if (delta < bestDeltaMinutes) {
+                bestDeltaMinutes = delta;
+            }
+        }
+    }
+
+    if (bestDeltaMinutes >= kMinutesPerDay) {
+        return 0;
+    }
+
+    const uint32_t deltaSec = static_cast<uint32_t>(bestDeltaMinutes) * 60UL;
+    return epoch + deltaSec - second;
 }
 
 void Scheduler::markTriggered(uint8_t planIndex, uint8_t startIndex, uint32_t dayKey) {
