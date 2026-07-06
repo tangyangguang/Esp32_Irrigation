@@ -89,6 +89,15 @@ bool parseU32Param(const char* name, uint32_t minValue, uint32_t maxValue, uint3
     return true;
 }
 
+bool parseU8Param(const char* name, uint8_t minValue, uint8_t maxValue, uint8_t& out) {
+    uint32_t parsed = 0;
+    if (!parseU32Param(name, minValue, maxValue, 0, parsed)) {
+        return false;
+    }
+    out = static_cast<uint8_t>(parsed);
+    return true;
+}
+
 bool parseMinuteParam(const char* name, bool enabled, uint16_t& out) {
     char value[8];
     if (!Esp32BaseWeb::getParam(name, value, sizeof(value)) || value[0] == '\0') {
@@ -133,6 +142,12 @@ void sendChecked(bool checked) {
     if (checked) {
         Esp32BaseWeb::sendChunk(" checked");
     }
+}
+
+uint32_t maxZoneDurationMinutes() {
+    const uint32_t seconds = ConfigStore::config().valve.maxZoneDurationSec;
+    const uint32_t minutes = (seconds + 59UL) / 60UL;
+    return minutes > 0 ? minutes : 1;
 }
 
 void sendStatusJson() {
@@ -269,37 +284,22 @@ void handleCalibrationApi() {
 
 bool readDurationParam(uint8_t zoneId, uint32_t& out) {
     char key[8];
-    char value[16];
     snprintf(key, sizeof(key), "z%u", zoneId);
-    if (!Esp32BaseWeb::getParam(key, value, sizeof(value))) {
-        out = 0;
-        return true;
-    }
-    char* end = nullptr;
-    const unsigned long minutes = strtoul(value, &end, 10);
-    if (end == value || minutes > 120UL) {
+    uint32_t minutes = 0;
+    if (!parseU32Param(key, 0, maxZoneDurationMinutes(), 0, minutes)) {
         return false;
     }
-    out = static_cast<uint32_t>(minutes) * 60UL;
+    out = minutes * 60UL;
     return true;
 }
 
 bool readZoneParam(uint8_t& zoneId) {
-    char value[8];
-    if (!Esp32BaseWeb::getParam("zone", value, sizeof(value))) {
-        return false;
-    }
-    const unsigned long parsed = strtoul(value, nullptr, 10);
-    if (parsed < 1 || parsed > kMaxZones) {
-        return false;
-    }
-    zoneId = static_cast<uint8_t>(parsed);
-    return true;
+    return parseU8Param("zone", 1, kMaxZones, zoneId);
 }
 
 bool readDurationMinutesParam(uint32_t& durationSec) {
     uint32_t minutes = 0;
-    if (!parseU32Param("durationMin", 1, 120, 5, minutes)) {
+    if (!parseU32Param("durationMin", 1, maxZoneDurationMinutes(), 5, minutes)) {
         return false;
     }
     durationSec = minutes * 60UL;
@@ -415,7 +415,11 @@ void handlePlanNowPost() {
         Esp32BaseWeb::sendText(400, "missing plan");
         return;
     }
-    const uint8_t planId = static_cast<uint8_t>(strtoul(value, nullptr, 10));
+    uint8_t planId = 0;
+    if (!parseU8Param("plan", 1, kMaxPlans, planId)) {
+        Esp32BaseWeb::sendText(400, "invalid plan");
+        return;
+    }
     RunReason reason = RunReason::None;
     if (!RunController::startPlanNow(planId, reason)) {
         Esp32BaseWeb::sendText(409, runReasonToString(reason));
@@ -442,11 +446,11 @@ void handleZoneSavePost() {
     }
 
     char value[32];
-    if (!Esp32BaseWeb::getParam("id", value, sizeof(value))) {
-        Esp32BaseWeb::sendText(400, "missing zone id");
+    uint8_t zoneId = 0;
+    if (!parseU8Param("id", 1, kMaxZones, zoneId)) {
+        Esp32BaseWeb::sendText(400, "invalid zone id");
         return;
     }
-    const uint8_t zoneId = static_cast<uint8_t>(strtoul(value, nullptr, 10));
     const ZoneConfig* current = ZoneService::find(zoneId);
     if (current == nullptr) {
         Esp32BaseWeb::sendText(404, ZoneService::lastError());
@@ -461,7 +465,7 @@ void handleZoneSavePost() {
     }
 
     uint32_t minutes = 0;
-    if (!parseU32Param("defaultMinutes", 0, 120, zone.defaultDurationSec / 60UL, minutes)) {
+    if (!parseU32Param("defaultMinutes", 0, maxZoneDurationMinutes(), zone.defaultDurationSec / 60UL, minutes)) {
         Esp32BaseWeb::sendText(400, "invalid default duration");
         return;
     }
@@ -500,12 +504,11 @@ void handlePlanDeletePost() {
     if (!Esp32BaseWeb::checkPostAllowed("plan_delete")) {
         return;
     }
-    char value[8];
-    if (!Esp32BaseWeb::getParam("id", value, sizeof(value))) {
-        Esp32BaseWeb::sendText(400, "missing plan id");
+    uint8_t planId = 0;
+    if (!parseU8Param("id", 1, kMaxPlans, planId)) {
+        Esp32BaseWeb::sendText(400, "invalid plan id");
         return;
     }
-    const uint8_t planId = static_cast<uint8_t>(strtoul(value, nullptr, 10));
     if (!PlanService::deletePlan(planId)) {
         Esp32BaseWeb::sendText(400, PlanService::lastError());
         return;
@@ -519,11 +522,11 @@ void handlePlanSavePost() {
     }
 
     char value[32];
-    if (!Esp32BaseWeb::getParam("id", value, sizeof(value))) {
-        Esp32BaseWeb::sendText(400, "missing plan id");
+    uint8_t planId = 0;
+    if (!parseU8Param("id", 1, kMaxPlans, planId)) {
+        Esp32BaseWeb::sendText(400, "invalid plan id");
         return;
     }
-    const uint8_t planId = static_cast<uint8_t>(strtoul(value, nullptr, 10));
     const WateringPlan* current = PlanService::find(planId);
     if (current == nullptr) {
         Esp32BaseWeb::sendText(404, PlanService::lastError());
@@ -555,7 +558,7 @@ void handlePlanSavePost() {
         char key[8];
         snprintf(key, sizeof(key), "z%u", i + 1);
         uint32_t minutes = 0;
-        if (!parseU32Param(key, 0, 120, plan.zoneDurationSec[i] / 60UL, minutes)) {
+        if (!parseU32Param(key, 0, maxZoneDurationMinutes(), plan.zoneDurationSec[i] / 60UL, minutes)) {
             Esp32BaseWeb::sendText(400, "invalid zone duration");
             return;
         }
@@ -675,6 +678,7 @@ void sendRunPanel() {
     Esp32BaseWeb::beginPanel("Manual watering");
     Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/run/start'><table><thead><tr><th>Zone</th><th>Status</th><th>Minutes</th></tr></thead><tbody>");
     const IrrigationConfig& config = ConfigStore::config();
+    const uint32_t maxMinutes = maxZoneDurationMinutes();
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
         if (!zone.enabled) {
@@ -682,9 +686,10 @@ void sendRunPanel() {
         }
         char row[192];
         snprintf(row, sizeof(row),
-                 "<tr><td>Zone %u</td><td>Enabled</td><td><input name='z%u' type='number' min='0' max='120' value='%lu'></td></tr>",
+                 "<tr><td>Zone %u</td><td>Enabled</td><td><input name='z%u' type='number' min='0' max='%lu' value='%lu'></td></tr>",
                  zone.id,
                  zone.id,
+                 static_cast<unsigned long>(maxMinutes),
                  static_cast<unsigned long>(zone.defaultDurationSec / 60UL));
         Esp32BaseWeb::sendChunk(row);
     }
@@ -695,6 +700,7 @@ void sendRunPanel() {
 void sendPlanNowPanel() {
     const IrrigationConfig& config = ConfigStore::config();
     bool hasPlan = false;
+    const bool flowReady = config.flow.pulsesPerLiter > 0;
     Esp32BaseWeb::beginPanel("Run plan now");
     Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/run/plan-now'><select name='plan'>");
     for (uint8_t i = 0; i < kMaxPlans; ++i) {
@@ -710,12 +716,14 @@ void sendPlanNowPanel() {
         Esp32BaseWeb::sendChunk("</option>");
     }
     Esp32BaseWeb::sendChunk("</select><div class='actions'><input type='submit' value='Run selected plan now'");
-    if (!hasPlan) {
+    if (!hasPlan || !flowReady) {
         Esp32BaseWeb::sendChunk(" disabled");
     }
     Esp32BaseWeb::sendChunk("></div></form>");
     if (!hasPlan) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "No enabled plans", "Enable a plan before using this shortcut.");
+    } else if (!flowReady) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "Flow meter not calibrated", "Set pulses per liter before running an automatic plan.");
     }
     Esp32BaseWeb::endPanel();
 }
@@ -778,24 +786,24 @@ void handleZonesPage() {
     Esp32BaseWeb::sendHeader("Zones");
     Esp32BaseWeb::sendPageTitle("Zones", "Enable only the wired irrigation Zones");
     Esp32BaseWeb::beginPanel("Zone configuration");
-    Esp32BaseWeb::sendChunk("<table><thead><tr><th>Zone</th><th>Name</th><th>Enabled</th><th>Default minutes</th><th>Standard flow ml/min</th><th>Save</th></tr></thead><tbody>");
 
     const IrrigationConfig& config = ConfigStore::config();
+    const uint32_t maxMinutes = maxZoneDurationMinutes();
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
-        char buf[256];
-        snprintf(buf, sizeof(buf), "<tr><form method='post' action='/irrigation/zones/save'><td>Zone %u<input type='hidden' name='id' value='%u'></td><td><input name='name' maxlength='23' value='",
+        char buf[512];
+        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/zones/save'><input type='hidden' name='id' value='%u'><table><tbody><tr><td>Zone</td><td>%u</td></tr><tr><td>Name</td><td><input name='name' maxlength='23' value='",
                  zone.id, zone.id);
         Esp32BaseWeb::sendChunk(buf);
         sendEscapedValue(zone.name);
-        snprintf(buf, sizeof(buf), "'></td><td><input type='checkbox' name='enabled' value='1'%s></td><td><input type='number' min='0' max='120' name='defaultMinutes' value='%lu'></td><td><input type='number' min='0' max='100000' name='standardFlow' value='%lu'></td><td><input type='submit' value='Save'></td></form></tr>",
+        snprintf(buf, sizeof(buf), "'></td></tr><tr><td>Enabled</td><td><input type='checkbox' name='enabled' value='1'%s></td></tr><tr><td>Default minutes</td><td><input type='number' min='0' max='%lu' name='defaultMinutes' value='%lu'></td></tr><tr><td>Standard flow ml/min</td><td><input type='number' min='0' max='100000' name='standardFlow' value='%lu'></td></tr></tbody></table><div class='actions'><input type='submit' value='Save Zone'></div></form>",
                  zone.enabled ? " checked" : "",
+                 static_cast<unsigned long>(maxMinutes),
                  static_cast<unsigned long>(zone.defaultDurationSec / 60UL),
                  static_cast<unsigned long>(zone.standardFlowMlPerMin));
         Esp32BaseWeb::sendChunk(buf);
     }
 
-    Esp32BaseWeb::sendChunk("</tbody></table>");
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
@@ -821,6 +829,7 @@ void sendPlanStartFields(const WateringPlan& plan) {
 void sendPlanZoneDurationFields(const WateringPlan& plan) {
     Esp32BaseWeb::sendChunk("<fieldset><legend>Enabled Zone durations</legend><table><thead><tr><th>Zone</th><th>Minutes</th></tr></thead><tbody>");
     const IrrigationConfig& config = ConfigStore::config();
+    const uint32_t maxMinutes = maxZoneDurationMinutes();
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
         if (!zone.enabled) {
@@ -830,7 +839,8 @@ void sendPlanZoneDurationFields(const WateringPlan& plan) {
         snprintf(buf, sizeof(buf), "<tr><td>Zone %u ", zone.id);
         Esp32BaseWeb::sendChunk(buf);
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
-        snprintf(buf, sizeof(buf), "</td><td><input type='number' min='0' max='120' name='z%u' value='%lu'></td></tr>",
+        snprintf(buf, sizeof(buf), "</td><td><input type='number' min='0' max='%lu' name='z%u' value='%lu'></td></tr>",
+                 static_cast<unsigned long>(maxMinutes),
                  zone.id,
                  static_cast<unsigned long>(plan.zoneDurationSec[i] / 60UL));
         Esp32BaseWeb::sendChunk(buf);
@@ -967,7 +977,7 @@ void sendCalibrationStartForm(const char* title, const char* action, uint32_t de
     Esp32BaseWeb::sendChunk("'><table><tbody><tr><td>Zone</td><td>");
     sendEnabledZoneSelect(1);
     Esp32BaseWeb::sendChunk("</td></tr><tr><td>Duration minutes</td><td>");
-    sendNumberInput("durationMin", defaultMinutes, 1, 120);
+    sendNumberInput("durationMin", defaultMinutes, 1, maxZoneDurationMinutes());
     Esp32BaseWeb::sendChunk("</td></tr></tbody></table><div class='actions'><input type='submit' value='Start calibration'></div></form>");
     Esp32BaseWeb::endPanel();
 }

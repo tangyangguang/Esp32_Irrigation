@@ -63,6 +63,7 @@ enum class RunReason : uint16_t {
     ZoneDisabled,
     InvalidDuration,
     ConfigInvalid,
+    FlowNotCalibrated,
     TimeInvalid,
     NoFlow,
     LowLevel,

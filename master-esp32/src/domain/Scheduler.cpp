@@ -13,10 +13,12 @@
 namespace Irrigation {
 
 namespace {
+constexpr uint8_t kScheduleTriggerWindowSec = 5;
+
 uint32_t g_lastTriggeredDay[kMaxPlans][kMaxPlanStartTimes];
 uint32_t g_lastCheckedEpoch = 0;
 
-bool currentLocalMinute(uint16_t& minuteOfDay, uint32_t& dayKey) {
+bool currentLocalMinute(uint16_t& minuteOfDay, uint8_t& second, uint32_t& dayKey) {
     const Esp32BaseTime::Snapshot time = Esp32BaseTime::snapshot();
     if (!time.synced || time.epochSec == 0) {
         return false;
@@ -37,6 +39,7 @@ bool currentLocalMinute(uint16_t& minuteOfDay, uint32_t& dayKey) {
         return false;
     }
     minuteOfDay = static_cast<uint16_t>(hour) * 60U + minute;
+    second = static_cast<uint8_t>(time.epochSec % 60UL);
 
     char dayText[9];
     if (!Esp32BaseTime::formatTime(dayText, sizeof(dayText), "%Y%m%d")) {
@@ -46,7 +49,7 @@ bool currentLocalMinute(uint16_t& minuteOfDay, uint32_t& dayKey) {
     return dayKey != 0;
 }
 
-bool currentLocalClock(uint16_t& minuteOfDay, uint8_t& second, uint32_t& epoch) {
+bool currentLocalClock(uint16_t& minuteOfDay, uint8_t& second, uint32_t& epoch, uint32_t& dayKey) {
     const Esp32BaseTime::Snapshot time = Esp32BaseTime::snapshot();
     if (!time.synced || time.epochSec == 0) {
         return false;
@@ -65,10 +68,20 @@ bool currentLocalClock(uint16_t& minuteOfDay, uint8_t& second, uint32_t& epoch) 
 
     minuteOfDay = static_cast<uint16_t>(hour) * 60U + minute;
     epoch = time.epochSec;
-    return true;
+
+    char dayText[9];
+    if (!Esp32BaseTime::formatTime(dayText, sizeof(dayText), "%Y%m%d")) {
+        return false;
+    }
+    dayKey = static_cast<uint32_t>(strtoul(dayText, nullptr, 10));
+    return dayKey != 0;
 }
 
-uint16_t minutesUntilNextStart(uint16_t nowMinute, uint16_t startMinute) {
+uint16_t minutesUntilNextStart(uint8_t planIndex, uint8_t startIndex, uint16_t nowMinute, uint8_t second, uint16_t startMinute, uint32_t dayKey) {
+    if (startMinute == nowMinute) {
+        const bool missedWindow = second > kScheduleTriggerWindowSec;
+        return (missedWindow || Scheduler::alreadyTriggered(planIndex, startIndex, dayKey)) ? kMinutesPerDay : 0;
+    }
     if (startMinute > nowMinute) {
         return static_cast<uint16_t>(startMinute - nowMinute);
     }
@@ -112,8 +125,12 @@ void Scheduler::begin() {
 
 void Scheduler::handle() {
     uint16_t minuteOfDay = kInvalidMinuteOfDay;
+    uint8_t second = 0;
     uint32_t dayKey = 0;
-    if (!currentLocalMinute(minuteOfDay, dayKey)) {
+    if (!currentLocalMinute(minuteOfDay, second, dayKey)) {
+        return;
+    }
+    if (second > kScheduleTriggerWindowSec) {
         return;
     }
 
@@ -138,11 +155,12 @@ uint32_t Scheduler::nextRunEpoch() {
     uint16_t nowMinute = kInvalidMinuteOfDay;
     uint8_t second = 0;
     uint32_t epoch = 0;
-    if (!currentLocalClock(nowMinute, second, epoch)) {
+    uint32_t dayKey = 0;
+    if (!currentLocalClock(nowMinute, second, epoch, dayKey)) {
         return 0;
     }
 
-    uint16_t bestDeltaMinutes = kMinutesPerDay;
+    uint16_t bestDeltaMinutes = kMinutesPerDay + 1U;
     const IrrigationConfig& config = ConfigStore::config();
     for (uint8_t planIndex = 0; planIndex < kMaxPlans; ++planIndex) {
         const WateringPlan& plan = config.plans[planIndex];
@@ -155,14 +173,14 @@ uint32_t Scheduler::nextRunEpoch() {
             if (!start.enabled || !isValidMinuteOfDay(start.minuteOfDay)) {
                 continue;
             }
-            const uint16_t delta = minutesUntilNextStart(nowMinute, start.minuteOfDay);
+            const uint16_t delta = minutesUntilNextStart(planIndex, startIndex, nowMinute, second, start.minuteOfDay, dayKey);
             if (delta < bestDeltaMinutes) {
                 bestDeltaMinutes = delta;
             }
         }
     }
 
-    if (bestDeltaMinutes >= kMinutesPerDay) {
+    if (bestDeltaMinutes > kMinutesPerDay) {
         return 0;
     }
 

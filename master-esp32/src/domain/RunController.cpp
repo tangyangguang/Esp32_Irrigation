@@ -250,6 +250,11 @@ bool RunController::startPlanNow(uint8_t planId, RunReason& reason) {
         setLastError("controller_busy");
         return false;
     }
+    if (ConfigStore::config().flow.pulsesPerLiter == 0) {
+        reason = RunReason::FlowNotCalibrated;
+        setLastError("flow_not_calibrated");
+        return false;
+    }
 
     clearRun();
     g_run.id = g_nextRunId++;
@@ -279,6 +284,11 @@ bool RunController::startPlan(uint8_t planId, RunReason& reason) {
     if (busy()) {
         reason = RunReason::ControllerBusy;
         setLastError("controller_busy");
+        return false;
+    }
+    if (ConfigStore::config().flow.pulsesPerLiter == 0) {
+        reason = RunReason::FlowNotCalibrated;
+        setLastError("flow_not_calibrated");
         return false;
     }
 
@@ -371,8 +381,8 @@ StatusSnapshot RunController::statusSnapshot() {
     snapshot.runState = g_run.state;
     snapshot.runResult = g_run.result;
     snapshot.activeZoneId = busy() ? activeZoneId() : 0;
-    snapshot.currentFlowMlPerMin = FlowSafetyService::currentFlowMlPerMin();
-    snapshot.currentRunVolumeMl = FlowSafetyService::currentStepVolumeMl();
+    snapshot.currentFlowMlPerMin = busy() ? FlowSafetyService::currentFlowMlPerMin() : 0;
+    snapshot.currentRunVolumeMl = busy() ? FlowSafetyService::currentStepVolumeMl() : 0;
     snapshot.todayVolumeMl = 0;
     snapshot.enabledZoneCount = enabledZoneCount(ConfigStore::config());
     snapshot.enabledPlanCount = enabledPlanCount(ConfigStore::config());

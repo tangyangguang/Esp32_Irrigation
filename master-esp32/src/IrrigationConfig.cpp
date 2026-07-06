@@ -262,6 +262,8 @@ const char* runReasonToString(RunReason reason) {
             return "invalid_duration";
         case RunReason::ConfigInvalid:
             return "config_invalid";
+        case RunReason::FlowNotCalibrated:
+            return "flow_not_calibrated";
         case RunReason::TimeInvalid:
             return "time_invalid";
         case RunReason::NoFlow:
