@@ -6,7 +6,9 @@
 
 #include "BoardHardware.h"
 #include "ConfigStore.h"
+#include "EventService.h"
 #include "FlowSafetyService.h"
+#include "HistoryService.h"
 #include "IrrigationConfig.h"
 #include "PlanService.h"
 
@@ -85,6 +87,28 @@ bool buildManualSteps(const uint32_t zoneDurationSec[kMaxZones], RunReason& reas
 void safeAllOff() {
     BoardHardware::setPumpSignal(false);
     BoardHardware::closeAllValves();
+}
+
+uint32_t currentEpoch() {
+    const Esp32BaseTime::Snapshot time = Esp32BaseTime::snapshot();
+    return time.synced ? time.epochSec : 0;
+}
+
+Esp32BaseAppEventLog::Level levelForResult(RunResult result) {
+    return result == RunResult::FaultStopped ? Esp32BaseAppEventLog::LEVEL_ERROR :
+           result == RunResult::Skipped ? Esp32BaseAppEventLog::LEVEL_WARN :
+           Esp32BaseAppEventLog::LEVEL_INFO;
+}
+
+const char* typeForResult(RunResult result) {
+    switch (result) {
+        case RunResult::Completed: return "completed";
+        case RunResult::UserStopped: return "stopped";
+        case RunResult::FaultStopped: return "fault_stopped";
+        case RunResult::Skipped: return "skipped";
+        case RunResult::None: return "finished";
+    }
+    return "finished";
 }
 
 } // namespace
@@ -199,7 +223,7 @@ bool RunController::startManual(const uint32_t zoneDurationSec[kMaxZones], RunRe
     g_run.id = g_nextRunId++;
     g_run.source = RunSource::Manual;
     g_run.reason = RunReason::ManualRequest;
-    g_run.startedAtEpoch = 0;
+    g_run.startedAtEpoch = currentEpoch();
 
     if (!buildManualSteps(zoneDurationSec, reason)) {
         clearRun();
@@ -209,6 +233,7 @@ bool RunController::startManual(const uint32_t zoneDurationSec[kMaxZones], RunRe
     enterState(RunState::Precheck, millis());
     reason = RunReason::ManualRequest;
     setLastError("ok");
+    EventService::append(Esp32BaseAppEventLog::LEVEL_INFO, "run", "started", "manual", "run", 0, g_run.id, 0, 0, Esp32BaseAppEventLog::VALUE1);
     ESP32BASE_LOG_I("run", "manual_started id=%u steps=%u", static_cast<unsigned>(g_run.id), g_run.stepCount);
     return true;
 }
@@ -225,6 +250,7 @@ bool RunController::startPlanNow(uint8_t planId, RunReason& reason) {
     g_run.source = RunSource::RunPlanNow;
     g_run.planId = planId;
     g_run.reason = RunReason::RunPlanNow;
+    g_run.startedAtEpoch = currentEpoch();
 
     if (!PlanService::buildSteps(planId, g_run.steps, kMaxRunSteps, g_run.stepCount, reason)) {
         clearRun();
@@ -235,6 +261,7 @@ bool RunController::startPlanNow(uint8_t planId, RunReason& reason) {
     enterState(RunState::Precheck, millis());
     reason = RunReason::RunPlanNow;
     setLastError("ok");
+    EventService::append(Esp32BaseAppEventLog::LEVEL_INFO, "run", "started", "run_plan_now", "run", 0, g_run.id, planId, 0, Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2);
     ESP32BASE_LOG_I("run", "plan_now_started id=%u plan=%u steps=%u",
                     static_cast<unsigned>(g_run.id),
                     planId,
@@ -254,6 +281,7 @@ bool RunController::startPlan(uint8_t planId, RunReason& reason) {
     g_run.source = RunSource::Plan;
     g_run.planId = planId;
     g_run.reason = RunReason::PlanStartTime;
+    g_run.startedAtEpoch = currentEpoch();
 
     if (!PlanService::buildSteps(planId, g_run.steps, kMaxRunSteps, g_run.stepCount, reason)) {
         clearRun();
@@ -264,6 +292,7 @@ bool RunController::startPlan(uint8_t planId, RunReason& reason) {
     enterState(RunState::Precheck, millis());
     reason = RunReason::PlanStartTime;
     setLastError("ok");
+    EventService::append(Esp32BaseAppEventLog::LEVEL_INFO, "run", "started", "plan", "run", 0, g_run.id, planId, 0, Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2);
     ESP32BASE_LOG_I("run", "plan_started id=%u plan=%u steps=%u",
                     static_cast<unsigned>(g_run.id),
                     planId,
@@ -318,8 +347,21 @@ void RunController::finish(RunResult result, RunReason reason, uint32_t nowMs) {
     safeAllOff();
     g_run.result = result;
     g_run.reason = reason;
-    g_run.finishedAtEpoch = 0;
+    g_run.finishedAtEpoch = currentEpoch();
     enterState(RunState::Finished, nowMs);
+    if (!HistoryService::appendRun(g_run)) {
+        ESP32BASE_LOG_W("run", "history_append_failed error=%s", HistoryService::lastError());
+    }
+    EventService::append(levelForResult(result),
+                         "run",
+                         typeForResult(result),
+                         runReasonToString(reason),
+                         "run",
+                         0,
+                         g_run.id,
+                         g_run.planId,
+                         static_cast<int32_t>(result),
+                         Esp32BaseAppEventLog::VALUE1 | Esp32BaseAppEventLog::VALUE2 | Esp32BaseAppEventLog::VALUE3);
     setLastError("ok");
     ESP32BASE_LOG_I("run", "finished id=%u result=%u reason=%s",
                     static_cast<unsigned>(g_run.id),
