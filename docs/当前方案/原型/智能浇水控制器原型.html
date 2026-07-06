@@ -1,0 +1,1701 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>智能浇水控制器 Web 原型</title>
+  <style>
+    :root {
+      --bg: #f4f6f5;
+      --surface: #ffffff;
+      --surface-2: #eef3f0;
+      --ink: #18201c;
+      --muted: #65716b;
+      --subtle: #8a9690;
+      --line: #d9e0dc;
+      --line-strong: #c2ccc6;
+      --green: #23724f;
+      --green-2: #e3f2ea;
+      --blue: #2e6389;
+      --blue-2: #e5eff6;
+      --amber: #9a641e;
+      --amber-2: #f5ebdc;
+      --red: #a64040;
+      --red-2: #f7e5e5;
+      --charcoal: #23302a;
+      --shadow: 0 1px 2px rgba(20, 34, 27, 0.08);
+      --radius: 8px;
+      --sidebar: 236px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 320px;
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Microsoft YaHei", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.48;
+      letter-spacing: 0;
+      background: var(--bg);
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .icon {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+    }
+
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 18px 14px;
+      background: #23302a;
+      color: #ecf3ef;
+      border-right: 1px solid #19231e;
+    }
+
+    .brand {
+      display: grid;
+      grid-template-columns: 42px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      padding: 4px 4px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius);
+      color: #ffffff;
+      background: #2f7d55;
+    }
+
+    .brand-title {
+      min-width: 0;
+    }
+
+    .brand-title strong {
+      display: block;
+      font-size: 16px;
+      line-height: 1.2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand-title span {
+      display: block;
+      margin-top: 4px;
+      color: #aebcb4;
+      font-size: 12px;
+    }
+
+    .nav {
+      display: grid;
+      gap: 6px;
+      margin-top: 18px;
+    }
+
+    .nav button {
+      display: grid;
+      grid-template-columns: 22px minmax(0, 1fr);
+      gap: 10px;
+      align-items: center;
+      min-height: 42px;
+      padding: 10px 11px;
+      border-radius: var(--radius);
+      color: #c7d4cd;
+      background: transparent;
+      text-align: left;
+    }
+
+    .nav button:hover,
+    .nav button.active {
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .nav button.active {
+      box-shadow: inset 3px 0 0 #5cc08b;
+    }
+
+    .side-status {
+      position: absolute;
+      left: 14px;
+      right: 14px;
+      bottom: 16px;
+      padding: 12px;
+      border-radius: var(--radius);
+      background: rgba(255, 255, 255, 0.08);
+      color: #dce8e2;
+      font-size: 13px;
+    }
+
+    .side-status b {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+      color: #ffffff;
+      font-size: 14px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 0 3px rgba(35, 114, 79, 0.16);
+    }
+
+    .main {
+      min-width: 0;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 18px;
+      align-items: center;
+      min-height: 76px;
+      padding: 14px 28px;
+      background: rgba(244, 246, 245, 0.94);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+
+    .page-title h1 {
+      margin: 0;
+      font-size: 23px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    .page-title p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+
+    .toolbar .pill {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      min-height: 34px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .content {
+      width: min(1280px, 100%);
+      margin: 0 auto;
+      padding: 24px 28px 48px;
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .band {
+      margin-bottom: 18px;
+    }
+
+    .section-head {
+      display: flex;
+      gap: 14px;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin: 26px 0 12px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: 18px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .section-head p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 14px;
+    }
+
+    .cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .cols-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .panel,
+    .card,
+    .table-panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 16px;
+    }
+
+    .card {
+      padding: 15px;
+    }
+
+    .metric {
+      min-height: 104px;
+    }
+
+    .metric .label {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 12px;
+      font-size: 28px;
+      line-height: 1;
+      letter-spacing: 0;
+    }
+
+    .metric small {
+      display: block;
+      margin-top: 8px;
+      color: var(--subtle);
+      font-size: 12px;
+    }
+
+    .status-hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.9fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .run-panel {
+      padding: 18px;
+      background: #fdfefe;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .run-head {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+
+    .run-head h2 {
+      margin: 0;
+      font-size: 20px;
+      letter-spacing: 0;
+    }
+
+    .run-head p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .progress {
+      height: 10px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #dfe7e3;
+    }
+
+    .progress span {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--green);
+    }
+
+    .step-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .step {
+      min-height: 70px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #f7faf8;
+    }
+
+    .step b {
+      display: block;
+      font-size: 13px;
+    }
+
+    .step span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .step.current {
+      border-color: #82b99d;
+      background: var(--green-2);
+    }
+
+    .status-map {
+      display: grid;
+      min-height: 260px;
+      padding: 14px;
+      background: #f7faf8;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .status-map svg {
+      width: 100%;
+      height: auto;
+      align-self: center;
+    }
+
+    .tag {
+      display: inline-flex;
+      gap: 6px;
+      align-items: center;
+      min-height: 24px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .tag.ok {
+      color: var(--green);
+      background: var(--green-2);
+    }
+
+    .tag.info {
+      color: var(--blue);
+      background: var(--blue-2);
+    }
+
+    .tag.warn {
+      color: var(--amber);
+      background: var(--amber-2);
+    }
+
+    .tag.danger {
+      color: var(--red);
+      background: var(--red-2);
+    }
+
+    .tag.off {
+      color: var(--muted);
+      background: #edf0ee;
+    }
+
+    .btn {
+      display: inline-flex;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+      min-height: 38px;
+      padding: 8px 13px;
+      border-radius: var(--radius);
+      background: var(--charcoal);
+      color: #ffffff;
+      font-weight: 700;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .btn.secondary {
+      color: var(--ink);
+      background: #edf1ef;
+      border: 1px solid var(--line);
+    }
+
+    .btn.ghost {
+      color: var(--muted);
+      background: transparent;
+      border: 1px solid var(--line);
+    }
+
+    .btn.danger {
+      background: var(--red);
+    }
+
+    .btn:disabled {
+      cursor: not-allowed;
+      opacity: 0.48;
+    }
+
+    .icon-btn {
+      display: inline-grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--muted);
+      background: var(--surface);
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .field-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .field.full {
+      grid-column: 1 / -1;
+    }
+
+    label,
+    .field-label {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    input,
+    select {
+      width: 100%;
+      min-height: 38px;
+      padding: 8px 10px;
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      background: var(--surface);
+      color: var(--ink);
+    }
+
+    input[type="number"] {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .switch {
+      display: inline-flex;
+      gap: 9px;
+      align-items: center;
+      min-height: 32px;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .switch input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .track {
+      position: relative;
+      width: 42px;
+      height: 24px;
+      border-radius: 999px;
+      background: #c8d0cc;
+      transition: background 0.15s ease;
+    }
+
+    .track::after {
+      content: "";
+      position: absolute;
+      left: 3px;
+      top: 3px;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+      transition: transform 0.15s ease;
+    }
+
+    .switch input:checked + .track {
+      background: var(--green);
+    }
+
+    .switch input:checked + .track::after {
+      transform: translateX(18px);
+    }
+
+    .segmented {
+      display: inline-grid;
+      grid-auto-flow: column;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #edf1ef;
+    }
+
+    .segmented button {
+      min-height: 32px;
+      padding: 6px 10px;
+      border-radius: 6px;
+      color: var(--muted);
+      background: transparent;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .segmented button.active {
+      color: var(--ink);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .zone-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .zone-card {
+      min-height: 206px;
+    }
+
+    .zone-card.disabled {
+      background: #f4f6f5;
+      color: var(--muted);
+    }
+
+    .zone-top {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      justify-content: space-between;
+      min-height: 42px;
+    }
+
+    .zone-name {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .zone-name b {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 16px;
+    }
+
+    .zone-name span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .mini {
+      min-height: 58px;
+      padding: 9px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: #f8faf9;
+    }
+
+    .mini span {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .mini b {
+      display: block;
+      margin-top: 4px;
+      font-size: 14px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      min-width: 720px;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    th {
+      color: var(--muted);
+      background: #f7faf8;
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .duration-cell {
+      width: 138px;
+    }
+
+    .duration-input {
+      display: grid;
+      grid-template-columns: minmax(64px, 1fr) auto;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .duration-input span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .time-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .time-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .plan-card {
+      display: grid;
+      gap: 14px;
+    }
+
+    .plan-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+    }
+
+    .plan-top h3 {
+      margin: 0;
+      font-size: 16px;
+      letter-spacing: 0;
+    }
+
+    .plan-top p {
+      margin: 5px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 5px 8px;
+      border-radius: 999px;
+      color: var(--muted);
+      background: #edf1ef;
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .timeline {
+      display: grid;
+      gap: 10px;
+    }
+
+    .event {
+      display: grid;
+      grid-template-columns: 92px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: start;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+    }
+
+    .event time {
+      color: var(--muted);
+      font-size: 13px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .event b {
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    .event span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toast {
+      position: fixed;
+      right: 22px;
+      bottom: 22px;
+      z-index: 30;
+      display: none;
+      max-width: min(420px, calc(100vw - 44px));
+      padding: 12px 14px;
+      border: 1px solid #9bc7ae;
+      border-radius: var(--radius);
+      color: var(--green);
+      background: #f0faf4;
+      box-shadow: 0 12px 28px rgba(20, 34, 27, 0.16);
+      font-weight: 700;
+    }
+
+    .toast.show {
+      display: block;
+    }
+
+    .empty {
+      display: grid;
+      place-items: center;
+      min-height: 170px;
+      padding: 24px;
+      border: 1px dashed var(--line-strong);
+      border-radius: var(--radius);
+      color: var(--muted);
+      background: #f8faf9;
+      text-align: center;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .nowrap {
+      white-space: nowrap;
+    }
+
+    @media (max-width: 1080px) {
+      .app {
+        grid-template-columns: 1fr;
+      }
+
+      .sidebar {
+        position: static;
+        height: auto;
+        padding: 12px;
+      }
+
+      .brand {
+        grid-template-columns: 38px minmax(0, 1fr);
+        padding-bottom: 12px;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+      }
+
+      .nav {
+        display: flex;
+        overflow-x: auto;
+        padding-bottom: 2px;
+      }
+
+      .nav button {
+        grid-template-columns: 20px auto;
+        flex: 0 0 auto;
+      }
+
+      .nav button.active {
+        box-shadow: inset 0 -3px 0 #5cc08b;
+      }
+
+      .side-status {
+        display: none;
+      }
+
+      .topbar {
+        top: 0;
+        grid-template-columns: 1fr;
+        gap: 10px;
+        padding: 14px 18px;
+      }
+
+      .toolbar {
+        justify-content: flex-start;
+        overflow-x: auto;
+      }
+
+      .content {
+        padding: 18px 18px 42px;
+      }
+
+      .status-hero,
+      .cols-2,
+      .cols-3,
+      .cols-4,
+      .zone-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .status-hero {
+        align-items: start;
+      }
+    }
+
+    @media (max-width: 680px) {
+      body {
+        font-size: 14px;
+      }
+
+      .content {
+        padding: 14px 12px 34px;
+      }
+
+      .topbar {
+        padding: 12px;
+      }
+
+      .page-title h1 {
+        font-size: 20px;
+      }
+
+      .section-head {
+        display: grid;
+        gap: 10px;
+        align-items: start;
+      }
+
+      .field-grid,
+      .step-strip,
+      .mini-stats {
+        grid-template-columns: 1fr;
+      }
+
+      .plan-top,
+      .event {
+        grid-template-columns: 1fr;
+      }
+
+      .toolbar .pill:nth-child(2) {
+        display: none;
+      }
+
+      .actions .btn {
+        width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute">
+    <symbol id="i-droplet" viewBox="0 0 24 24"><path d="M12 2.5S5.5 9.5 5.5 15a6.5 6.5 0 0 0 13 0C18.5 9.5 12 2.5 12 2.5Z"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7Z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><path d="M8 2v4"/><path d="M16 2v4"/><path d="M3 10h18"/><path d="M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2Z"/></symbol>
+    <symbol id="i-map" viewBox="0 0 24 24"><path d="M9 18 3 21V6l6-3 6 3 6-3v15l-6 3-6-3Z"/><path d="M9 3v15"/><path d="M15 6v15"/></symbol>
+    <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.4 2.4-3-3 2.4-2.4Z"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2 3.4-.2-.1a1.7 1.7 0 0 0-2 .1 1.7 1.7 0 0 0-.8 1.6v.2H9.2V22a1.7 1.7 0 0 0-.8-1.6 1.7 1.7 0 0 0-2-.1l-.2.1-2-3.4.1-.1A1.7 1.7 0 0 0 4.6 15 1.7 1.7 0 0 0 3 14.2h-.2V9.8H3A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1 2-3.4.2.1a1.7 1.7 0 0 0 2-.1A1.7 1.7 0 0 0 9.2 2v-.2h5.6V2a1.7 1.7 0 0 0 .8 1.6 1.7 1.7 0 0 0 2 .1l.2-.1 2 3.4-.1.1A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6.8h.2v4.4H21a1.7 1.7 0 0 0-1.6.8Z"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><path d="M6 6h12v12H6Z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-edit" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></symbol>
+  </svg>
+
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark"><svg class="icon"><use href="#i-droplet"></use></svg></div>
+        <div class="brand-title">
+          <strong>Smart Irrigation</strong>
+          <span>ESP32 · 12V · 6 Zone</span>
+        </div>
+      </div>
+
+      <nav class="nav" aria-label="主导航">
+        <button class="active" data-view="overview"><svg class="icon"><use href="#i-home"></use></svg><span>总览</span></button>
+        <button data-view="run"><svg class="icon"><use href="#i-play"></use></svg><span>运行</span></button>
+        <button data-view="plans"><svg class="icon"><use href="#i-calendar"></use></svg><span>计划</span></button>
+        <button data-view="zones"><svg class="icon"><use href="#i-map"></use></svg><span>Zone</span></button>
+        <button data-view="calibration"><svg class="icon"><use href="#i-wrench"></use></svg><span>校准</span></button>
+        <button data-view="history"><svg class="icon"><use href="#i-history"></use></svg><span>历史</span></button>
+        <button data-view="settings"><svg class="icon"><use href="#i-settings"></use></svg><span>系统参数</span></button>
+      </nav>
+
+      <div class="side-status">
+        <b><span class="dot"></span>设备正常</b>
+        <div>WiFi 已连接 · RTC 已同步</div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="page-title">
+          <h1 id="pageTitle">总览</h1>
+          <p id="pageSubtitle">当前状态、今日任务和下一次自动浇水。</p>
+        </div>
+        <div class="toolbar">
+          <span class="pill"><svg class="icon"><use href="#i-check"></use></svg>在线</span>
+          <span class="pill">2026-07-06 15:42</span>
+          <span class="pill">Zone 启用 <b id="enabledCountTop">1/6</b></span>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="view active" id="overview">
+          <div class="status-hero band">
+            <div class="run-panel">
+              <div class="run-head">
+                <div>
+                  <h2>当前浇水任务</h2>
+                  <p>无运行任务 · 下一次计划 16:00</p>
+                </div>
+                <span class="tag off">空闲</span>
+              </div>
+              <div class="progress" aria-label="当前任务进度"><span style="width:0"></span></div>
+              <div class="step-strip">
+                <div class="step current"><b>Zone 1</b><span>下一次 · 10 分钟</span></div>
+                <div class="step"><b>Zone 2</b><span>未启用</span></div>
+                <div class="step"><b>Zone 3</b><span>未启用</span></div>
+                <div class="step"><b>Zone 4</b><span>未启用</span></div>
+              </div>
+              <div class="actions" style="margin-top:16px">
+                <button class="btn danger" disabled><svg class="icon"><use href="#i-stop"></use></svg>停止浇水</button>
+                <button class="btn secondary" data-view-jump="run"><svg class="icon"><use href="#i-play"></use></svg>进入运行</button>
+              </div>
+            </div>
+
+            <div class="status-map">
+              <svg viewBox="0 0 520 270" role="img" aria-label="供水与 Zone 示意">
+                <rect x="18" y="40" width="116" height="62" rx="8" fill="#ffffff" stroke="#c2ccc6"/>
+                <text x="76" y="68" text-anchor="middle" font-size="14" fill="#18201c" font-weight="700">12V 控制器</text>
+                <text x="76" y="88" text-anchor="middle" font-size="12" fill="#65716b">ESP32Base</text>
+                <path d="M134 71h48" stroke="#789084" stroke-width="3"/>
+                <rect x="182" y="40" width="94" height="62" rx="8" fill="#e5eff6" stroke="#91b5cf"/>
+                <text x="229" y="68" text-anchor="middle" font-size="14" fill="#2e6389" font-weight="700">流量计</text>
+                <text x="229" y="88" text-anchor="middle" font-size="12" fill="#65716b">必配</text>
+                <path d="M276 71h42v128h26" stroke="#789084" stroke-width="3" fill="none"/>
+                <path d="M318 71h26" stroke="#789084" stroke-width="3"/>
+                <rect x="344" y="39" width="138" height="64" rx="8" fill="#e3f2ea" stroke="#82b99d"/>
+                <text x="413" y="67" text-anchor="middle" font-size="14" fill="#23724f" font-weight="700">Zone 阀组</text>
+                <text x="413" y="88" text-anchor="middle" font-size="12" fill="#65716b">最多 6 路</text>
+                <rect x="344" y="132" width="138" height="64" rx="8" fill="#ffffff" stroke="#c2ccc6"/>
+                <text x="413" y="160" text-anchor="middle" font-size="14" fill="#18201c" font-weight="700">自吸泵信号</text>
+                <text x="413" y="181" text-anchor="middle" font-size="12" fill="#65716b">可选干节点</text>
+                <rect x="36" y="160" width="180" height="64" rx="8" fill="#f5ebdc" stroke="#d3ae77"/>
+                <text x="126" y="188" text-anchor="middle" font-size="14" fill="#9a641e" font-weight="700">低液位保护</text>
+                <text x="126" y="209" text-anchor="middle" font-size="12" fill="#65716b">仅随自吸泵生效</text>
+              </svg>
+            </div>
+          </div>
+
+          <div class="grid cols-4 band">
+            <div class="card metric">
+              <div class="label"><svg class="icon"><use href="#i-map"></use></svg>已启用 Zone</div>
+              <strong id="enabledCountMetric">1</strong>
+              <small>硬件最大 6 路</small>
+            </div>
+            <div class="card metric">
+              <div class="label"><svg class="icon"><use href="#i-calendar"></use></svg>今日计划</div>
+              <strong>2</strong>
+              <small>08:00、16:00</small>
+            </div>
+            <div class="card metric">
+              <div class="label"><svg class="icon"><use href="#i-droplet"></use></svg>今日用水</div>
+              <strong>12.4 L</strong>
+              <small>由必配流量计估算</small>
+            </div>
+            <div class="card metric">
+              <div class="label"><svg class="icon"><use href="#i-alert"></use></svg>保护状态</div>
+              <strong>正常</strong>
+              <small>无流量、过流、缺水均未触发</small>
+            </div>
+          </div>
+
+          <div class="section-head">
+            <div>
+              <h2>下一次自动浇水</h2>
+              <p>同一个计划的多个启动时间会重复执行同一组 Zone 时长。</p>
+            </div>
+            <button class="btn secondary" data-view-jump="plans"><svg class="icon"><use href="#i-calendar"></use></svg>计划</button>
+          </div>
+          <div class="grid cols-3">
+            <div class="card plan-card">
+              <div class="plan-top">
+                <div>
+                  <h3>日常浇水</h3>
+                  <p>今天 16:00 · 1 个 Zone · 10 分钟</p>
+                </div>
+                <span class="tag ok">启用</span>
+              </div>
+              <div class="chips"><span class="chip">08:00</span><span class="chip">16:00</span></div>
+            </div>
+            <div class="card plan-card">
+              <div class="plan-top">
+                <div>
+                  <h3>傍晚补水</h3>
+                  <p>停用 · 用于下午时长不同的场景</p>
+                </div>
+                <span class="tag off">停用</span>
+              </div>
+              <div class="chips"><span class="chip">19:30</span></div>
+            </div>
+            <div class="card plan-card">
+              <div class="plan-top">
+                <div>
+                  <h3>周末测试</h3>
+                  <p>已停用 · 保留配置</p>
+                </div>
+                <span class="tag off">停用</span>
+              </div>
+              <div class="chips"><span class="chip">07:30</span></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="run">
+          <div class="grid cols-2 band">
+            <div class="panel">
+              <div class="run-head">
+                <div>
+                  <h2>手动浇水</h2>
+                  <p>设置每个已启用 Zone 的时长，然后按顺序执行。</p>
+                </div>
+                <span class="tag info">顺序批次</span>
+              </div>
+              <div class="table-wrap">
+                <table id="manualTable">
+                  <thead>
+                    <tr><th>Zone</th><th>状态</th><th class="duration-cell">时长</th></tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn" data-toast="手动顺序浇水批次已创建"><svg class="icon"><use href="#i-play"></use></svg>启动顺序浇水</button>
+                <button class="btn ghost" data-toast="手动时长已恢复默认值"><svg class="icon"><use href="#i-history"></use></svg>恢复默认</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="run-head">
+                <div>
+                  <h2>立即执行计划</h2>
+                  <p>复制计划内容执行一次，不改变下一次每日触发。</p>
+                </div>
+                <span class="tag ok">可启动</span>
+              </div>
+              <div class="field-grid">
+                <div class="field full">
+                  <label for="runPlan">选择计划</label>
+                  <select id="runPlan">
+                    <option>日常浇水 · 08:00 / 16:00</option>
+                    <option>傍晚补水 · 19:30</option>
+                    <option>周末测试 · 停用但可手动执行</option>
+                  </select>
+                </div>
+              </div>
+              <div class="grid" style="margin-top:14px">
+                <div class="card">
+                  <div class="plan-top">
+                    <div>
+                      <h3>日常浇水</h3>
+                      <p id="runPlanSummary">按当前已启用 Zone 生成执行步骤。</p>
+                    </div>
+                    <span class="tag info">10 分钟</span>
+                  </div>
+                </div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn" data-toast="计划已复制为一次立即执行任务"><svg class="icon"><use href="#i-play"></use></svg>现在执行</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-head">
+            <div>
+              <h2>实时监测</h2>
+              <p>流量计固定必配；低液位仅在自吸泵启用时参与保护。</p>
+            </div>
+          </div>
+          <div class="grid cols-4">
+            <div class="card metric"><div class="label">当前流量</div><strong>0 L/min</strong><small>当前无任务</small></div>
+            <div class="card metric"><div class="label">累计脉冲</div><strong>0</strong><small>当前无任务</small></div>
+            <div class="card metric"><div class="label">估算水量</div><strong>0 L</strong><small>当前无任务</small></div>
+            <div class="card metric"><div class="label">自吸泵</div><strong>关闭</strong><small>供水设置未启用</small></div>
+          </div>
+        </section>
+
+        <section class="view" id="plans">
+          <div class="grid cols-2 band">
+            <div>
+              <div class="section-head" style="margin-top:0">
+                <div>
+                  <h2>浇水计划</h2>
+                  <p>每天策略；每个计划最多 4 个启动时间。</p>
+                </div>
+                <button class="btn"><svg class="icon"><use href="#i-plus"></use></svg>新建</button>
+              </div>
+              <div class="grid">
+                <div class="card plan-card">
+                  <div class="plan-top">
+                    <div>
+                      <h3>日常浇水</h3>
+                      <p>上午下午时长相同，用两个启动时间重复执行。</p>
+                    </div>
+                    <label class="switch"><input type="checkbox" checked><span class="track"></span></label>
+                  </div>
+                  <div class="chips"><span class="chip">08:00</span><span class="chip">16:00</span><span class="chip">每天</span></div>
+                  <div class="actions">
+                    <button class="btn secondary"><svg class="icon"><use href="#i-edit"></use></svg>编辑</button>
+                    <button class="btn ghost" data-toast="计划已复制为一次立即执行任务"><svg class="icon"><use href="#i-play"></use></svg>立即执行</button>
+                  </div>
+                </div>
+                <div class="card plan-card">
+                  <div class="plan-top">
+                    <div>
+                      <h3>傍晚补水</h3>
+                      <p>下午时长不同，单独作为一个计划。</p>
+                    </div>
+                    <label class="switch"><input type="checkbox" checked><span class="track"></span></label>
+                  </div>
+                  <div class="chips"><span class="chip">19:30</span><span class="chip">每天</span></div>
+                  <div class="actions">
+                    <button class="btn secondary"><svg class="icon"><use href="#i-edit"></use></svg>编辑</button>
+                    <button class="btn ghost" data-toast="计划已复制为一次立即执行任务"><svg class="icon"><use href="#i-play"></use></svg>立即执行</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="run-head">
+                <div>
+                  <h2>编辑计划</h2>
+                  <p>未启用 Zone 不出现在时长表内。</p>
+                </div>
+                <span class="tag info">最多 4 个启动时间</span>
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="planName">计划名称</label>
+                  <input id="planName" value="日常浇水">
+                </div>
+                <div class="field">
+                  <span class="field-label">启用</span>
+                  <label class="switch"><input type="checkbox" checked><span class="track"></span>自动执行</label>
+                </div>
+                <div class="field full">
+                  <span class="field-label">每日启动时间</span>
+                  <div class="time-list">
+                    <div class="time-row"><input type="time" value="08:00"><button class="icon-btn" title="删除"><svg class="icon"><use href="#i-trash"></use></svg></button></div>
+                    <div class="time-row"><input type="time" value="16:00"><button class="icon-btn" title="删除"><svg class="icon"><use href="#i-trash"></use></svg></button></div>
+                    <div class="time-row"><input type="time"><button class="icon-btn" title="添加"><svg class="icon"><use href="#i-plus"></use></svg></button></div>
+                  </div>
+                </div>
+              </div>
+              <div class="section-head">
+                <div>
+                  <h2>Zone 时长</h2>
+                  <p>时长为 0 的 Zone 会跳过。</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="planZoneTable">
+                  <thead>
+                    <tr><th>Zone</th><th>默认</th><th class="duration-cell">本计划</th></tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn" data-toast="计划已保存"><svg class="icon"><use href="#i-save"></use></svg>保存计划</button>
+                <button class="btn secondary" data-toast="计划已复制"><svg class="icon"><use href="#i-plus"></use></svg>复制</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="zones">
+          <div class="section-head" style="margin-top:0">
+            <div>
+              <h2>Zone 配置</h2>
+              <p>硬件最大 6 个 Zone；默认只启用 Zone 1。</p>
+            </div>
+            <div class="segmented" aria-label="Zone 筛选">
+              <button class="active">全部</button>
+              <button>已启用</button>
+              <button>未启用</button>
+            </div>
+          </div>
+          <div class="zone-grid" id="zoneGrid"></div>
+        </section>
+
+        <section class="view" id="calibration">
+          <div class="grid cols-2 band">
+            <div class="panel">
+              <div class="run-head">
+                <div>
+                  <h2>流量计校准</h2>
+                  <p>流量计固定必配，校准结果用于估算水量和流量保护。</p>
+                </div>
+                <span class="tag info">PULSE_IN1</span>
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="knownVolume">实测水量</label>
+                  <input id="knownVolume" type="number" value="10">
+                </div>
+                <div class="field">
+                  <label for="pulseCount">采集脉冲</label>
+                  <input id="pulseCount" type="number" value="4500">
+                </div>
+                <div class="field">
+                  <label for="ppl">每升脉冲</label>
+                  <input id="ppl" type="number" value="450">
+                </div>
+                <div class="field">
+                  <label for="flowWindow">保护判定窗口</label>
+                  <select id="flowWindow"><option>30 秒</option><option>45 秒</option><option>60 秒</option></select>
+                </div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn" data-toast="流量计校准值已保存"><svg class="icon"><use href="#i-save"></use></svg>保存校准</button>
+                <button class="btn secondary" data-toast="校准批次已启动"><svg class="icon"><use href="#i-play"></use></svg>启动校准批次</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="run-head">
+                <div>
+                  <h2>Zone 标准流量</h2>
+                  <p>按已启用 Zone 建立低流量和过流量判断基线。</p>
+                </div>
+              </div>
+              <div class="table-wrap">
+                <table id="calibrationTable">
+                  <thead><tr><th>Zone</th><th>标准流量</th><th>低流量</th><th>过流量</th></tr></thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="history">
+          <div class="section-head" style="margin-top:0">
+            <div>
+              <h2>历史记录</h2>
+              <p>浇水、停止、异常、配置变化和校准都会记录。</p>
+            </div>
+            <div class="segmented">
+              <button class="active">全部</button>
+              <button>浇水</button>
+              <button>异常</button>
+              <button>配置</button>
+            </div>
+          </div>
+          <div class="timeline">
+            <div class="event">
+              <time>今天 15:21</time>
+              <div><b>计划「日常浇水」完成</b><span>Zone 1 · 10 分钟 · 12.4 L</span></div>
+              <span class="tag ok">完成</span>
+            </div>
+            <div class="event">
+              <time>今天 14:08</time>
+              <div><b>Zone 1 名称已更新</b><span>用户配置变更 · 计划编辑页继续显示 Zone 1</span></div>
+              <span class="tag info">配置</span>
+            </div>
+            <div class="event">
+              <time>昨天 19:42</time>
+              <div><b>Zone 1 低流量提示</b><span>平均 2.1 L/min，低于标准范围，任务已完成</span></div>
+              <span class="tag warn">提示</span>
+            </div>
+            <div class="event">
+              <time>昨天 08:00</time>
+              <div><b>手动顺序浇水停止</b><span>用户停止 · Zone 1 运行 03:12</span></div>
+              <span class="tag danger">停止</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="settings">
+          <div class="grid cols-2 band">
+            <div class="panel">
+              <div class="run-head">
+                <div>
+                  <h2>供水设置</h2>
+                  <p>自吸泵可选；低液位只随自吸泵参与保护。</p>
+                </div>
+              </div>
+              <div class="field-grid">
+                <div class="field full">
+                  <span class="field-label">自吸泵启动信号</span>
+                  <label class="switch"><input type="checkbox" id="pumpEnabled"><span class="track"></span>启用干节点输出</label>
+                </div>
+                <div class="field">
+                  <label for="pumpDelay">泵启动延时</label>
+                  <input id="pumpDelay" type="number" value="500">
+                </div>
+                <div class="field">
+                  <label for="lowDebounce">低液位去抖</label>
+                  <input id="lowDebounce" type="number" value="300">
+                </div>
+                <div class="field full">
+                  <span class="field-label">缺水保护</span>
+                  <label class="switch"><input type="checkbox" id="lowEnabled"><span class="track"></span>启用低液位输入</label>
+                </div>
+                <div class="field">
+                  <label for="contactType">低液位触点</label>
+                  <select id="contactType"><option>常闭</option><option>常开</option></select>
+                </div>
+                <div class="field">
+                  <label for="pumpPin">输出位置</label>
+                  <input id="pumpPin" value="DRY_OUT1 / GPIO18" disabled>
+                </div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn" data-toast="供水设置已保存"><svg class="icon"><use href="#i-save"></use></svg>保存</button>
+              </div>
+            </div>
+
+            <div class="panel">
+              <div class="run-head">
+                <div>
+                  <h2>阀与流量保护</h2>
+                  <p>阀输出固定，不提供 IO 映射。</p>
+                </div>
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="pullMs">全功率吸合</label>
+                  <input id="pullMs" type="number" value="300">
+                </div>
+                <div class="field">
+                  <label for="holdDuty">PWM 维持</label>
+                  <input id="holdDuty" type="number" value="60">
+                </div>
+                <div class="field">
+                  <label for="noFlow">无流量停机</label>
+                  <input id="noFlow" type="number" value="30">
+                </div>
+                <div class="field">
+                  <label for="leakFlow">待机漏水阈值</label>
+                  <input id="leakFlow" type="number" value="0.4">
+                </div>
+              </div>
+              <div class="actions" style="margin-top:14px">
+                <button class="btn" data-toast="阀与流量保护参数已保存"><svg class="icon"><use href="#i-save"></use></svg>保存</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="section-head">
+            <div>
+              <h2>基础维护</h2>
+              <p>由 Esp32Base 提供，业务页面只保留入口。</p>
+            </div>
+          </div>
+          <div class="grid cols-3">
+            <div class="card plan-card"><div class="plan-top"><div><h3>WiFi</h3><p>已连接 Home-IoT，信号 -58 dBm</p></div><span class="tag ok">正常</span></div></div>
+            <div class="card plan-card"><div class="plan-top"><div><h3>OTA</h3><p>当前固件 esp32-irrigation 0.1.0</p></div><span class="tag info">可升级</span></div></div>
+            <div class="card plan-card"><div class="plan-top"><div><h3>系统日志</h3><p>LittleFS 可用，App Events 已启用</p></div><span class="tag ok">正常</span></div></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const pages = {
+      overview: ["总览", "当前状态、今日任务和下一次自动浇水。"],
+      run: ["运行", "手动顺序浇水，或选择计划立即执行一次。"],
+      plans: ["计划", "每天策略、最多 4 个启动时间、按 Zone 顺序执行。"],
+      zones: ["Zone", "启用、命名和校准最多 6 个 Zone。"],
+      calibration: ["校准", "流量计和 Zone 标准流量校准。"],
+      history: ["历史", "浇水、异常、配置变化和校准记录。"],
+      settings: ["系统参数", "供水、保护、阀驱动和基础维护入口。"]
+    };
+
+    const zones = [
+      { id: 1, name: "前院花坛", enabled: true, pin: "PWM1 / GPIO14", duration: 10, flow: 6.4, last: "今天 08:10" },
+      { id: 2, name: "草坪东侧", enabled: false, pin: "PWM2 / GPIO27", duration: 8, flow: 5.8, last: "未使用" },
+      { id: 3, name: "草坪西侧", enabled: false, pin: "PWM3 / GPIO26", duration: 8, flow: 6.0, last: "未使用" },
+      { id: 4, name: "菜园", enabled: false, pin: "PWM4 / GPIO25", duration: 6, flow: 4.2, last: "未使用" },
+      { id: 5, name: "果树", enabled: false, pin: "PWM5 / GPIO33", duration: 12, flow: 4.8, last: "未使用" },
+      { id: 6, name: "备用", enabled: false, pin: "PWM6 / GPIO32", duration: 0, flow: 0, last: "未使用" }
+    ];
+
+    const navButtons = [...document.querySelectorAll("[data-view]")];
+    const views = [...document.querySelectorAll(".view")];
+
+    function showView(id) {
+      navButtons.forEach(btn => btn.classList.toggle("active", btn.dataset.view === id));
+      views.forEach(view => view.classList.toggle("active", view.id === id));
+      document.getElementById("pageTitle").textContent = pages[id][0];
+      document.getElementById("pageSubtitle").textContent = pages[id][1];
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    navButtons.forEach(btn => btn.addEventListener("click", () => showView(btn.dataset.view)));
+    document.querySelectorAll("[data-view-jump]").forEach(btn => {
+      btn.addEventListener("click", () => showView(btn.dataset.viewJump));
+    });
+
+    function enabledZones() {
+      return zones.filter(zone => zone.enabled);
+    }
+
+    function updateCounts() {
+      const count = enabledZones().length;
+      document.getElementById("enabledCountTop").textContent = `${count}/6`;
+      document.getElementById("enabledCountMetric").textContent = String(count);
+    }
+
+    function renderZoneGrid() {
+      const grid = document.getElementById("zoneGrid");
+      grid.innerHTML = zones.map(zone => `
+        <div class="card zone-card ${zone.enabled ? "" : "disabled"}">
+          <div class="zone-top">
+            <div class="zone-name">
+              <b>Zone ${zone.id} · ${zone.name}</b>
+              <span>${zone.pin}</span>
+            </div>
+            <label class="switch" title="启用 Zone ${zone.id}">
+              <input type="checkbox" data-zone-toggle="${zone.id}" ${zone.enabled ? "checked" : ""}>
+              <span class="track"></span>
+            </label>
+          </div>
+          <div class="mini-stats">
+            <div class="mini"><span>默认时长</span><b>${zone.duration || 0} 分钟</b></div>
+            <div class="mini"><span>标准流量</span><b>${zone.flow ? zone.flow.toFixed(1) + " L/min" : "未校准"}</b></div>
+            <div class="mini"><span>最近浇水</span><b>${zone.last}</b></div>
+            <div class="mini"><span>计划显示</span><b>${zone.enabled ? "显示" : "隐藏"}</b></div>
+          </div>
+          <div class="actions" style="margin-top:14px">
+            <button class="btn secondary"><svg class="icon"><use href="#i-edit"></use></svg>编辑</button>
+            <button class="btn ghost" data-view-jump="calibration"><svg class="icon"><use href="#i-wrench"></use></svg>校准</button>
+          </div>
+        </div>
+      `).join("");
+
+      document.querySelectorAll("[data-zone-toggle]").forEach(toggle => {
+        toggle.addEventListener("change", event => {
+          const id = Number(event.currentTarget.dataset.zoneToggle);
+          const zone = zones.find(item => item.id === id);
+          zone.enabled = event.currentTarget.checked;
+          if (zone.enabled && zone.duration === 0) zone.duration = 5;
+          renderAll();
+          toast(`Zone ${id} 已${zone.enabled ? "启用" : "停用"}`);
+        });
+      });
+
+      grid.querySelectorAll("[data-view-jump]").forEach(btn => {
+        btn.addEventListener("click", () => showView(btn.dataset.viewJump));
+      });
+    }
+
+    function renderManualTable() {
+      const body = document.querySelector("#manualTable tbody");
+      const active = enabledZones();
+      if (!active.length) {
+        body.innerHTML = `<tr><td colspan="3"><div class="empty">没有启用的 Zone</div></td></tr>`;
+        return;
+      }
+      body.innerHTML = active.map(zone => `
+        <tr>
+          <td><b>Zone ${zone.id}</b><br><span class="muted">${zone.name}</span></td>
+          <td><span class="tag ok">启用</span></td>
+          <td>
+            <div class="duration-input">
+              <input type="number" min="0" max="360" value="${zone.duration}">
+              <span>分钟</span>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function renderPlanZoneTable() {
+      const body = document.querySelector("#planZoneTable tbody");
+      const active = enabledZones();
+      if (!active.length) {
+        body.innerHTML = `<tr><td colspan="3"><div class="empty">启用 Zone 后才会显示计划时长</div></td></tr>`;
+        return;
+      }
+      body.innerHTML = active.map(zone => `
+        <tr>
+          <td><b>Zone ${zone.id}</b><br><span class="muted">${zone.name}</span></td>
+          <td>${zone.duration} 分钟</td>
+          <td>
+            <div class="duration-input">
+              <input type="number" min="0" max="360" value="${zone.duration}">
+              <span>分钟</span>
+            </div>
+          </td>
+        </tr>
+      `).join("");
+    }
+
+    function renderCalibrationTable() {
+      const body = document.querySelector("#calibrationTable tbody");
+      const active = enabledZones();
+      if (!active.length) {
+        body.innerHTML = `<tr><td colspan="4"><div class="empty">启用 Zone 后才会显示标准流量</div></td></tr>`;
+        return;
+      }
+      body.innerHTML = active.map(zone => `
+        <tr>
+          <td><b>Zone ${zone.id}</b><br><span class="muted">${zone.name}</span></td>
+          <td>${zone.flow ? zone.flow.toFixed(1) : "0.0"} L/min</td>
+          <td>${zone.flow ? (zone.flow * 0.45).toFixed(1) : "0.0"} L/min</td>
+          <td>${zone.flow ? (zone.flow * 1.8).toFixed(1) : "0.0"} L/min</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderRunPlanSummary() {
+      const count = enabledZones().length;
+      document.getElementById("runPlanSummary").textContent =
+        count ? `按 ${count} 个已启用 Zone 生成执行步骤。` : "没有启用 Zone，不能生成执行步骤。";
+    }
+
+    function renderAll() {
+      updateCounts();
+      renderZoneGrid();
+      renderManualTable();
+      renderPlanZoneTable();
+      renderCalibrationTable();
+      renderRunPlanSummary();
+    }
+
+    function toast(message) {
+      const box = document.getElementById("toast");
+      box.textContent = message;
+      box.classList.add("show");
+      clearTimeout(window.__toastTimer);
+      window.__toastTimer = setTimeout(() => box.classList.remove("show"), 2200);
+    }
+
+    document.querySelectorAll("[data-toast]").forEach(btn => {
+      btn.addEventListener("click", () => toast(btn.dataset.toast));
+    });
+
+    document.querySelectorAll(".segmented button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        [...btn.parentElement.children].forEach(item => item.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
+
+    renderAll();
+  </script>
+</body>
+</html>
