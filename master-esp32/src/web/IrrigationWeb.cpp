@@ -38,14 +38,14 @@ void sendIrrigationHeadExtra() {
         ".ir-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.ir-grid.ir-three{grid-template-columns:repeat(3,minmax(0,1fr))}"
         ".ir-card{border:1px solid var(--ir-line);border-radius:8px;background:#fff;padding:13px;min-width:0}.ir-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.ir-card-title{font-size:15px;font-weight:800;color:var(--ir-ink)}.ir-card-note{margin:3px 0 0;color:var(--ir-muted);font-size:12px;line-height:1.45}"
         ".ir-empty{border:1px dashed #cbd6de;border-radius:8px;background:#fbfcfd;color:var(--ir-muted);padding:14px;text-align:center}"
-        ".ir-form{display:block;max-width:none;margin:0}.ir-card.ir-form{display:block}.ir-section{margin:0 0 14px}.ir-section:last-child{margin-bottom:0}.ir-section-title{font-size:15px;font-weight:800;margin:0 0 2px}.ir-section-note{margin:0 0 8px;color:var(--ir-muted);font-size:12px}"
-        ".ir-setting-list{display:grid;gap:8px}.ir-setting{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,260px);gap:12px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:11px 12px}.ir-setting-title{display:block;font-weight:800;color:var(--ir-ink)}.ir-setting-desc{display:block;margin-top:3px;color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-control{display:flex;align-items:center;justify-content:flex-end;gap:7px;min-width:0}.ir-control input[type=number],.ir-control input[type=time],.ir-control input:not([type]),.ir-control input[type=text]{width:100%}.ir-unit{flex:0 0 auto;color:var(--ir-muted);font-size:12px;font-weight:700;white-space:nowrap}"
+        ".ir-form{display:block;max-width:none;margin:0}.ir-card.ir-form{display:block}.ir-section{margin:0 0 14px;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:13px}.ir-section:last-child{margin-bottom:0}.ir-section-title{font-size:15px;font-weight:800;margin:0 0 2px}.ir-section-note{margin:0 0 12px;color:var(--ir-muted);font-size:12px}"
+        ".ir-setting-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}.ir-setting{border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:12px;min-width:0}.ir-setting-title{display:block;font-weight:800;color:var(--ir-ink)}.ir-setting-desc{display:block;margin-top:4px;color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-control{display:flex;align-items:center;justify-content:flex-start;gap:7px;min-width:0;margin-top:10px}.ir-control input[type=number],.ir-control input[type=time],.ir-control input:not([type]),.ir-control input[type=text]{width:100%;max-width:210px}.ir-unit{flex:0 0 auto;color:var(--ir-muted);font-size:12px;font-weight:700;white-space:nowrap}"
         ".ir-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;user-select:none}.ir-toggle input{position:absolute;opacity:0;pointer-events:none}.ir-toggle span{position:relative;display:inline-flex;align-items:center;justify-content:flex-end;width:74px;height:32px;padding:0 10px;border-radius:999px;background:#eef2f4;color:#667085;font-size:12px;font-weight:800;transition:.16s;box-sizing:border-box}.ir-toggle span:before{content:'';position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.24);transition:.16s}.ir-toggle span:after{content:'禁用'}.ir-toggle input:checked+span{justify-content:flex-start;background:#dff4e8;color:#087443}.ir-toggle input:checked+span:before{transform:translateX(42px)}.ir-toggle input:checked+span:after{content:'启用'}"
         ".ir-field{display:grid;gap:4px;margin:0 0 10px}.ir-field label{font-weight:800;margin:0}.ir-help{color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-input-unit{display:flex;align-items:center;gap:7px}.ir-input-unit input{flex:1 1 auto;min-width:0}.ir-input-unit .ir-unit{padding-right:2px}"
-        ".ir-run-list,.ir-zone-grid,.ir-plan-list{display:grid;gap:12px}.ir-run-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);gap:10px;align-items:center;border:1px solid #e4ebef;border-radius:8px;padding:11px;background:#fbfcfd}.ir-run-row b{display:block}.ir-badge{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;background:var(--ir-soft);color:var(--ir-accent-strong);font-size:12px;font-weight:800}"
-        ".ir-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px}.ir-toolbar p{margin:0;color:var(--ir-muted);font-size:13px}.ir-list{display:grid;gap:8px}.ir-list-row{display:grid;grid-template-columns:minmax(0,1.2fr) repeat(3,minmax(90px,.5fr)) auto;gap:10px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:11px 12px}.ir-list-main b{display:block}.ir-list-main small,.ir-list-cell small{display:block;color:var(--ir-muted);font-size:12px;margin-top:2px}.ir-list-cell{font-size:13px}.ir-pill{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:800;background:#eef2f4;color:#667085}.ir-pill.on{background:#dff4e8;color:#087443}.ir-pill.warn{background:#fff4d6;color:#935b00}.ir-kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ir-kv div{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:10px}.ir-kv b{display:block;font-size:18px}.ir-kv span{display:block;margin-top:2px;color:var(--ir-muted);font-size:12px}"
-        ".ir-time-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-time-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:8px}.ir-time-item input[type=time]{width:100%}.ir-zone-duration{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-danger-line{display:flex;justify-content:flex-end;margin-top:8px}"
-        "@media(max-width:820px){.ir-grid,.ir-grid.ir-three,.ir-time-grid,.ir-zone-duration,.ir-kv{grid-template-columns:1fr}.ir-setting,.ir-run-row,.ir-list-row{grid-template-columns:1fr}.ir-control{justify-content:flex-start}.actions,.ir-toolbar{justify-content:flex-start;align-items:flex-start}.ir-toolbar{flex-direction:column}select{width:100%;min-width:0}}"
+        ".ir-run-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.ir-run-row{border:1px solid #e4ebef;border-radius:8px;padding:12px;background:#fbfcfd;min-width:0}.ir-run-row b{display:block}.ir-run-row .ir-help{display:block;margin-top:4px}.ir-run-row .ir-input-unit{margin-top:12px}.ir-run-row input[type=number]{max-width:110px}.ir-badge{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;background:var(--ir-soft);color:var(--ir-accent-strong);font-size:12px;font-weight:800}"
+        ".ir-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px}.ir-toolbar p{margin:0;color:var(--ir-muted);font-size:13px}.ir-list{display:grid;gap:8px}.ir-list-row{display:grid;grid-template-columns:minmax(0,1.2fr) repeat(3,minmax(90px,.5fr)) auto;gap:10px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:11px 12px}.ir-zone-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}.ir-zone-row{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:12px;min-width:0}.ir-zone-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ir-zone-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.ir-list-main b{display:block}.ir-list-main small,.ir-list-cell small{display:block;color:var(--ir-muted);font-size:12px;margin-top:2px}.ir-list-cell{font-size:13px}.ir-pill{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap;background:#eef2f4;color:#667085}.ir-pill.on{background:#dff4e8;color:#087443}.ir-pill.warn{background:#fff4d6;color:#935b00}.ir-kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ir-kv div{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:10px}.ir-kv b{display:block;font-size:18px}.ir-kv span{display:block;margin-top:2px;color:var(--ir-muted);font-size:12px}"
+        ".ir-time-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-time-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:8px}.ir-time-item input[type=time]{width:100%}.ir-zone-duration{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.ir-zone-duration .ir-field{border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:10px;margin:0}.ir-zone-duration input[type=number]{max-width:100px}.ir-danger-line{display:flex;justify-content:flex-end;margin-top:8px}"
+        "@media(max-width:820px){.ir-grid,.ir-grid.ir-three,.ir-time-grid,.ir-zone-duration,.ir-kv,.ir-setting-list,.ir-run-list,.ir-zone-list{grid-template-columns:1fr}.ir-list-row{grid-template-columns:1fr}.actions,.ir-toolbar{justify-content:flex-start;align-items:flex-start}.ir-toolbar{flex-direction:column}select{width:100%;min-width:0}}"
         "</style>");
 }
 
@@ -973,9 +973,7 @@ void sendRunPanel() {
             continue;
         }
         any = true;
-        char row[224];
-        snprintf(row, sizeof(row), "<div class='ir-run-row'><div><b>水路 %u ", zone.id);
-        Esp32BaseWeb::sendChunk(row);
+        Esp32BaseWeb::sendChunk("<div class='ir-run-row'><div><b>");
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
         Esp32BaseWeb::sendChunk("</b><span class='ir-help'>本次手动任务会按水路编号顺序执行，填 0 表示跳过。</span></div><div class='ir-input-unit'>");
         char key[8];
@@ -1091,23 +1089,19 @@ void handleZonesPage() {
     Esp32BaseWeb::beginPanel("水路列表");
 
     const IrrigationConfig& config = ConfigStore::config();
-    Esp32BaseWeb::sendChunk("<div class='ir-list'>");
+    Esp32BaseWeb::sendChunk("<div class='ir-zone-list'>");
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
         char buf[256];
-        snprintf(buf, sizeof(buf), "<div class='ir-list-row'><div class='ir-list-main'><b>水路 %u ", zone.id);
-        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::sendChunk("<div class='ir-zone-row'><div class='ir-zone-top'><div class='ir-list-main'><b>");
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
-        Esp32BaseWeb::sendChunk("</b><small>固定输出端口，水路时长在手动浇水或计划中设置。</small></div><div class='ir-list-cell'>");
+        Esp32BaseWeb::sendChunk("</b><small>时长在手动浇水或计划中设置。</small></div>");
         sendEnabledPill(zone.enabled);
-        Esp32BaseWeb::sendChunk("</div><div class='ir-list-cell'><b>");
+        Esp32BaseWeb::sendChunk("</div><div class='ir-zone-meta'><span class='ir-pill'>");
         snprintf(buf, sizeof(buf), "%lu", static_cast<unsigned long>(zone.standardFlowMlPerMin));
         Esp32BaseWeb::sendChunk(buf);
-        Esp32BaseWeb::sendChunk("</b><small>ml/min 标准流量</small></div><div class='ir-list-cell'><b>");
-        snprintf(buf, sizeof(buf), "%u", zone.valveIndex + 1);
-        Esp32BaseWeb::sendChunk(buf);
-        Esp32BaseWeb::sendChunk("</b><small>固定输出序号</small></div>");
-        snprintf(buf, sizeof(buf), "<a class='btnlink info' href='/irrigation/zones/edit?id=%u'>配置</a></div>", zone.id);
+        Esp32BaseWeb::sendChunk(" ml/min 标准流量</span>");
+        snprintf(buf, sizeof(buf), "<a class='btnlink info' href='/irrigation/zones/edit?id=%u'>配置</a></div></div>", zone.id);
         Esp32BaseWeb::sendChunk(buf);
     }
     Esp32BaseWeb::sendChunk("</div>");
@@ -1176,8 +1170,7 @@ void sendPlanZoneDurationFields(const WateringPlan& plan) {
         }
         any = true;
         char buf[128];
-        snprintf(buf, sizeof(buf), "<div class='ir-field'><label>水路 %u ", zone.id);
-        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::sendChunk("<div class='ir-field'><label>");
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
         Esp32BaseWeb::sendChunk("</label><div class='ir-input-unit'>");
         char key[8];
