@@ -79,7 +79,6 @@ struct ZoneConfig {
     uint8_t id;
     bool enabled;
     char name[kZoneNameLength];
-    uint32_t defaultDurationSec;
     uint32_t standardFlowMlPerMin;
     uint8_t valveIndex;
 };
@@ -166,7 +165,6 @@ struct ZoneSnapshot {
     uint8_t id;
     bool enabled;
     const char* name;
-    uint32_t defaultDurationSec;
     uint32_t standardFlowMlPerMin;
     uint32_t lastRunEpoch;
 };

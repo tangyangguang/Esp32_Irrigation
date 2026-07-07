@@ -46,12 +46,6 @@ bool validateZones(const IrrigationConfig& config, const char** error) {
             }
             return false;
         }
-        if (zone.defaultDurationSec > config.valve.maxZoneDurationSec) {
-            if (error != nullptr) {
-                *error = "zone_default_duration_too_long";
-            }
-            return false;
-        }
     }
     return true;
 }
@@ -120,7 +114,6 @@ void applyDefaultConfig(IrrigationConfig& config) {
         zone.id = i + 1;
         zone.enabled = i < kDefaultEnabledZones;
         setName(zone.name, sizeof(zone.name), "水路", zone.id);
-        zone.defaultDurationSec = 0;
         zone.standardFlowMlPerMin = 0;
         zone.valveIndex = i;
     }

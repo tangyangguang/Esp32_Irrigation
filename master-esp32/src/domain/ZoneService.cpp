@@ -34,7 +34,6 @@ bool ZoneService::snapshot(uint8_t zoneId, ZoneSnapshot& out) {
     out.id = zone->id;
     out.enabled = zone->enabled;
     out.name = zone->name;
-    out.defaultDurationSec = zone->defaultDurationSec;
     out.standardFlowMlPerMin = zone->standardFlowMlPerMin;
     out.lastRunEpoch = 0;
     setLastError("ok");
@@ -70,7 +69,6 @@ bool ZoneService::saveZone(const ZoneConfig& zone) {
     ZoneConfig& target = next.zones[index];
     target.enabled = zone.enabled;
     copyZoneName(target.name, sizeof(target.name), zone.name);
-    target.defaultDurationSec = zone.defaultDurationSec;
     target.standardFlowMlPerMin = zone.standardFlowMlPerMin;
 
     const char* error = nullptr;

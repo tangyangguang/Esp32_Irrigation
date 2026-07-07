@@ -4,7 +4,7 @@
 
 namespace Irrigation {
 
-constexpr uint16_t kConfigVersion = 1;
+constexpr uint16_t kConfigVersion = 2;
 
 void applyDefaultConfig(IrrigationConfig& config);
 
@@ -24,4 +24,3 @@ bool validateConfig(const IrrigationConfig& config, const char** error);
 const char* runReasonToString(RunReason reason);
 
 } // namespace Irrigation
-

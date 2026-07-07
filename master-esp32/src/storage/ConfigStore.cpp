@@ -73,7 +73,6 @@ bool migrateOldDefaultEnabledZones(IrrigationConfig& config) {
         snprintf(expectedName, sizeof(expectedName), "水路 %u", static_cast<unsigned>(zone.id));
         if (zone.enabled != (i == 0) ||
             strcmp(zone.name, expectedName) != 0 ||
-            zone.defaultDurationSec != 0 ||
             zone.standardFlowMlPerMin != 0) {
             oldDefaultPattern = false;
             break;
@@ -154,7 +153,6 @@ void writeZones(JsonObject data, const IrrigationConfig& config) {
         obj["id"] = zone.id;
         obj["enabled"] = zone.enabled;
         obj["name"] = zone.name;
-        obj["defaultDurationSec"] = zone.defaultDurationSec;
         obj["standardFlowMlPerMin"] = zone.standardFlowMlPerMin;
         obj["valveIndex"] = zone.valveIndex;
     }
@@ -254,7 +252,6 @@ void readZones(JsonObjectConst data, IrrigationConfig& config) {
         zone.id = readU8(obj["id"], zone.id);
         zone.enabled = readBool(obj["enabled"], zone.enabled);
         copyString(zone.name, sizeof(zone.name), obj["name"] | zone.name);
-        zone.defaultDurationSec = readU32(obj["defaultDurationSec"], zone.defaultDurationSec);
         zone.standardFlowMlPerMin = readU32(obj["standardFlowMlPerMin"], zone.standardFlowMlPerMin);
         zone.valveIndex = readU8(obj["valveIndex"], zone.valveIndex);
         ++index;
@@ -402,9 +399,13 @@ bool ConfigStore::begin() {
         }
         g_loadedFromDefaults = true;
     } else {
+        const bool versionChanged = g_config.version != kConfigVersion;
+        if (versionChanged) {
+            g_config.version = kConfigVersion;
+        }
         const bool namesChanged = normalizeLegacyEnglishNames(g_config);
         const bool zonesChanged = migrateOldDefaultEnabledZones(g_config);
-        if (!namesChanged && !zonesChanged) {
+        if (!versionChanged && !namesChanged && !zonesChanged) {
             return g_configValid;
         }
         ESP32BASE_LOG_I("config_store", "config_normalized");
