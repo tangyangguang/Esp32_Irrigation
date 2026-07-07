@@ -360,6 +360,10 @@ bool parseFlowRateParam(const char* name, uint32_t minMlPerMin, uint32_t maxMlPe
     return true;
 }
 
+bool parseLiterAmountParam(const char* name, uint32_t minMl, uint32_t maxMl, uint32_t fallbackMl, uint32_t& out) {
+    return parseFlowRateParam(name, minMl, maxMl, fallbackMl, out);
+}
+
 bool parseMinuteParam(const char* name, bool enabled, uint16_t& out) {
     char value[8];
     if (!Esp32BaseWeb::getParam(name, value, sizeof(value)) || value[0] == '\0') {
@@ -396,9 +400,9 @@ void epochToText(uint32_t epoch, char* out, size_t len) {
     }
 }
 
-void flowRateToText(uint32_t mlPerMin, char* out, size_t len) {
-    const uint32_t whole = mlPerMin / 1000UL;
-    const uint32_t fractional = mlPerMin % 1000UL;
+void literAmountToText(uint32_t ml, char* out, size_t len) {
+    const uint32_t whole = ml / 1000UL;
+    const uint32_t fractional = ml % 1000UL;
     if (fractional == 0) {
         snprintf(out, len, "%lu", static_cast<unsigned long>(whole));
         return;
@@ -412,6 +416,10 @@ void flowRateToText(uint32_t mlPerMin, char* out, size_t len) {
         text[--n] = '\0';
     }
     snprintf(out, len, "%s", text);
+}
+
+void flowRateToText(uint32_t mlPerMin, char* out, size_t len) {
+    literAmountToText(mlPerMin, out, len);
 }
 
 void sendEscapedValue(const char* value) {
@@ -433,7 +441,7 @@ void sendToggleInput(const char* name, bool checked) {
 }
 
 void sendTextInput(const char* name, const char* value, uint8_t maxLength) {
-    char buf[192];
+    char buf[512];
     snprintf(buf, sizeof(buf), "<input name='%s' maxlength='%u' value='", name, maxLength);
     Esp32BaseWeb::sendChunk(buf);
     sendEscapedValue(value);
@@ -457,7 +465,7 @@ void sendFlowRateInput(const char* name, uint32_t mlPerMin, uint32_t minMlPerMin
     flowRateToText(mlPerMin, value, sizeof(value));
     flowRateToText(minMlPerMin, minValue, sizeof(minValue));
     flowRateToText(maxMlPerMin, maxValue, sizeof(maxValue));
-    char buf[192];
+    char buf[512];
     snprintf(buf, sizeof(buf), "<input type='number' name='%s' min='%s' max='%s' step='0.001' value='%s'>",
              name,
              minValue,
@@ -531,6 +539,12 @@ void sendSectionEnd() {
 }
 
 uint32_t maxZoneDurationMinutes();
+
+uint32_t maxCalibrationDurationMinutes() {
+    const uint32_t configMax = maxZoneDurationMinutes();
+    const uint32_t calibrationMax = kCalibrationMaxDurationSec / 60UL;
+    return configMax < calibrationMax ? configMax : calibrationMax;
+}
 
 void sendEnabledPill(bool enabled) {
     Esp32BaseWeb::sendChunk(enabled ? "<span class='ir-pill on'>启用</span>" : "<span class='ir-pill'>禁用</span>");
@@ -868,9 +882,10 @@ void handleCalibrationApi() {
     Esp32BaseWeb::sendChunk(snapshot.running ? "true," : "false,");
     Esp32BaseWeb::sendChunk("\"resultReady\":");
     Esp32BaseWeb::sendChunk(snapshot.resultReady ? "true," : "false,");
-    char buf[192];
+    char buf[256];
     snprintf(buf, sizeof(buf),
-             "\"runId\":%lu,\"zoneId\":%u,\"durationSec\":%lu,\"pulses\":%lu,\"computedPulsesPerLiter\":%lu,\"suggestedFlowMlPerMin\":%lu",
+             "\"runId\":%lu,\"zoneId\":%u,\"durationSec\":%lu,\"pulses\":%lu,"
+             "\"computedPulsesPerLiter\":%lu,\"suggestedFlowMlPerMin\":%lu,",
              static_cast<unsigned long>(snapshot.runId),
              snapshot.zoneId,
              static_cast<unsigned long>(snapshot.durationSec),
@@ -878,6 +893,48 @@ void handleCalibrationApi() {
              static_cast<unsigned long>(snapshot.computedPulsesPerLiter),
              static_cast<unsigned long>(snapshot.suggestedFlowMlPerMin));
     Esp32BaseWeb::sendChunk(buf);
+    snprintf(buf, sizeof(buf),
+             "\"standardFlowStable\":%s,\"standardFlowSampleCount\":%u,"
+             "\"standardFlowAverageMlPerMin\":%lu,\"standardFlowMinMlPerMin\":%lu,"
+             "\"standardFlowMaxMlPerMin\":%lu,",
+             snapshot.standardFlowStable ? "true" : "false",
+             snapshot.standardFlowSampleCount,
+             static_cast<unsigned long>(snapshot.standardFlowAverageMlPerMin),
+             static_cast<unsigned long>(snapshot.standardFlowMinMlPerMin),
+             static_cast<unsigned long>(snapshot.standardFlowMaxMlPerMin));
+    Esp32BaseWeb::sendChunk(buf);
+    snprintf(buf, sizeof(buf),
+             "\"volumeSampleCount\":%u,\"volumeFitReady\":%s,\"volumeFitAcceptable\":%s,"
+             "\"fittedPulsesPerLiter\":%lu,\"fittedStartupOffsetPulses\":%ld,"
+             "\"fitMaxErrorPermille\":%lu,\"fitWaterSpreadMl\":%lu,\"volumeSamples\":[",
+             snapshot.volumeSampleCount,
+             snapshot.volumeFitReady ? "true" : "false",
+             snapshot.volumeFitAcceptable ? "true" : "false",
+             static_cast<unsigned long>(snapshot.fittedPulsesPerLiter),
+             static_cast<long>(snapshot.fittedStartupOffsetPulses),
+             static_cast<unsigned long>(snapshot.fitMaxErrorPermille),
+             static_cast<unsigned long>(snapshot.fitWaterSpreadMl));
+    Esp32BaseWeb::sendChunk(buf);
+    bool firstSample = true;
+    for (uint8_t i = 0; i < snapshot.volumeSampleCount && i < kCalibrationMaxVolumeSamples; ++i) {
+        const VolumeCalibrationSample& sample = snapshot.volumeSamples[i];
+        if (!sample.used) {
+            continue;
+        }
+        if (!firstSample) {
+            Esp32BaseWeb::sendChunk(",");
+        }
+        firstSample = false;
+        snprintf(buf,
+                 sizeof(buf),
+                 "{\"runId\":%lu,\"zoneId\":%u,\"pulses\":%lu,\"measuredMl\":%lu}",
+                 static_cast<unsigned long>(sample.runId),
+                 sample.zoneId,
+                 static_cast<unsigned long>(sample.pulses),
+                 static_cast<unsigned long>(sample.measuredMl));
+        Esp32BaseWeb::sendChunk(buf);
+    }
+    Esp32BaseWeb::sendChunk("]");
     Esp32BaseWeb::endJson();
 }
 
@@ -899,6 +956,17 @@ bool readZoneParam(uint8_t& zoneId) {
 bool readDurationMinutesParam(uint32_t& durationSec) {
     uint32_t minutes = 0;
     if (!parseU32Param("durationMin", 1, maxZoneDurationMinutes(), 5, minutes)) {
+        return false;
+    }
+    durationSec = minutes * 60UL;
+    return true;
+}
+
+bool readCalibrationMaxDurationParam(uint32_t& durationSec) {
+    uint32_t minutes = 0;
+    const uint32_t maxMinutes = maxCalibrationDurationMinutes();
+    const uint32_t fallback = kCalibrationDefaultMaxDurationSec / 60UL;
+    if (!parseU32Param("maxDurationMin", 1, maxMinutes, fallback, minutes)) {
         return false;
     }
     durationSec = minutes * 60UL;
@@ -941,7 +1009,7 @@ void handleCalibrationPost() {
     if (strcmp(action, "start_volume") == 0 || strcmp(action, "start_standard") == 0) {
         uint8_t zoneId = 0;
         uint32_t durationSec = 0;
-        if (!readZoneParam(zoneId) || !readDurationMinutesParam(durationSec)) {
+        if (!readZoneParam(zoneId) || !readCalibrationMaxDurationParam(durationSec)) {
             Esp32BaseWeb::sendText(400, "校准请求无效");
             return;
         }
@@ -967,16 +1035,31 @@ void handleCalibrationPost() {
         return;
     }
 
-    if (strcmp(action, "save_volume") == 0) {
+    if (strcmp(action, "save_volume_sample") == 0) {
         uint32_t measuredMl = 0;
-        if (!parseU32Param("measuredMl", 1, 100000, 0, measuredMl)) {
+        if (!parseLiterAmountParam("measuredL", 1, 100000, 0, measuredMl)) {
             Esp32BaseWeb::sendText(400, "实测水量无效");
             return;
         }
-        if (!CalibrationService::savePulsesPerLiter(measuredMl)) {
+        if (!CalibrationService::addVolumeSample(measuredMl)) {
             Esp32BaseWeb::sendText(400, CalibrationService::lastError());
             return;
         }
+        Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
+        return;
+    }
+
+    if (strcmp(action, "save_volume_fit") == 0) {
+        if (!CalibrationService::saveFittedPulsesPerLiter()) {
+            Esp32BaseWeb::sendText(400, CalibrationService::lastError());
+            return;
+        }
+        Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
+        return;
+    }
+
+    if (strcmp(action, "clear_volume_samples") == 0) {
+        CalibrationService::clearVolumeSamples();
         Esp32BaseWeb::redirectSeeOther("/irrigation/calibration");
         return;
     }
@@ -1861,7 +1944,9 @@ void sendCalibrationStartCard(const char* title,
                               const char* note,
                               const char* action,
                               uint32_t defaultMinutes,
-                              const char* buttonText) {
+                              const char* buttonText,
+                              bool disabled = false,
+                              const char* disabledText = "当前不可启动校准。") {
     const IrrigationConfig& config = ConfigStore::config();
     const bool hasEnabledZone = firstEnabledZoneId(config) != 0;
     Esp32BaseWeb::sendChunk("<div class='ir-calib-card'><h3>");
@@ -1873,34 +1958,103 @@ void sendCalibrationStartCard(const char* title,
         Esp32BaseWeb::sendChunk("<div class='ir-empty'>还没有启用水路，不能启动校准。</div></div>");
         return;
     }
+    if (disabled) {
+        Esp32BaseWeb::sendChunk("<div class='ir-empty'>");
+        Esp32BaseWeb::sendChunk(disabledText);
+        Esp32BaseWeb::sendChunk("</div></div>");
+        return;
+    }
     Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='");
     Esp32BaseWeb::sendChunk(action);
     Esp32BaseWeb::sendChunk("'><div class='ir-grid'><div class='ir-field'><label>校准水路</label><span class='ir-help'>选择一个已启用水路，系统会打开该水路并累计流量计脉冲。</span>");
     sendEnabledZoneSelect(firstEnabledZoneId(config));
-    Esp32BaseWeb::sendChunk("</div><div class='ir-field'><label>运行时长</label><span class='ir-help'>校准会打开所选水路并累计流量计脉冲。</span><div class='ir-input-unit'>");
-    sendNumberInput("durationMin", defaultMinutes, 1, maxZoneDurationMinutes());
+    Esp32BaseWeb::sendChunk("</div><div class='ir-field'><label>最长出水时间</label><span class='ir-help'>到达这个时间会自动停止，防止接水时误操作导致一直出水。</span><div class='ir-input-unit'>");
+    sendNumberInput("maxDurationMin", defaultMinutes, 1, maxCalibrationDurationMinutes());
     Esp32BaseWeb::sendChunk("<span class='ir-unit'>分钟</span></div></div></div><div class='actions'><input type='submit' value='");
     Esp32BaseWeb::sendChunk(buttonText);
     Esp32BaseWeb::sendChunk("'></div></form></div>");
 }
 
-void sendCalibrationStartPanel() {
+void sendCalibrationStartPanel(const CalibrationSnapshot& snapshot) {
     const IrrigationConfig& config = ConfigStore::config();
     Esp32BaseWeb::beginPanel("开始校准");
     Esp32BaseWeb::sendChunk("<div class='ir-calib-flow'>");
-    sendCalibrationStartCard("流量计水量校准",
-                             "先让某一路运行一段时间，用量杯或水桶记录实际出水量；结束后填写实测水量，系统计算每升脉冲数。",
+    sendCalibrationStartCard("流量计接水校准",
+                             "每次从出水开始接水，停止后输入实际水量。至少 2 次、推荐 3 次，系统用差分/拟合抵消启动阶段影响。",
                              "start_volume",
-                             5,
-                             "启动流量计校准");
+                             kCalibrationDefaultMaxDurationSec / 60UL,
+                             "开始接水样本",
+                             snapshot.volumeSampleCount >= kCalibrationMaxVolumeSamples,
+                             "当前接水样本已满，请先保存流量计系数或清空样本。");
     sendCalibrationStartCard("水路标准流量校准",
                              config.flow.pulsesPerLiter == 0 ?
-                                 "建议先完成流量计水量校准；没有每升脉冲数时，系统无法自动建议标准流量，只能后续手动填写。" :
-                                 "用于得到某一路正常工作时的标准流量，保存后作为低流量和高流量判断基准。",
+                                 "先完成流量计校准或手工录入每升脉冲数；否则无法把脉冲换算成 L/min。" :
+                                 "启动稳定时间后采集滑动窗口流速，稳定后建议保存为该 Zone 的标准流量。",
                              "start_standard",
-                             2,
-                             "启动水路流量校准");
+                             kCalibrationDefaultMaxDurationSec / 60UL,
+                             "开始标准流量校准",
+                             config.flow.pulsesPerLiter == 0,
+                             "需要先完成流量计校准，或在设置页手工录入每升脉冲数。");
     Esp32BaseWeb::sendChunk("</div>");
+    Esp32BaseWeb::endPanel();
+}
+
+void sendVolumeSamplesPanel(const CalibrationSnapshot& snapshot) {
+    Esp32BaseWeb::beginPanel("流量计接水样本");
+    if (snapshot.volumeSampleCount == 0) {
+        Esp32BaseWeb::sendChunk("<div class='ir-empty'>暂无接水样本。建议采集 3 次，水量尽量拉开，例如约 2 L、5 L、8 L。</div>");
+    } else {
+        Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='ir-data-table'><thead><tr><th class='num'>样本</th><th>Zone</th><th class='num'>脉冲数</th><th class='num'>实测水量</th><th class='num'>本样本比值</th></tr></thead><tbody>");
+        for (uint8_t i = 0; i < snapshot.volumeSampleCount && i < kCalibrationMaxVolumeSamples; ++i) {
+            const VolumeCalibrationSample& sample = snapshot.volumeSamples[i];
+            if (!sample.used) {
+                continue;
+            }
+            char water[24];
+            literAmountToText(sample.measuredMl, water, sizeof(water));
+            const uint32_t sampleRatio = sample.measuredMl > 0 ?
+                static_cast<uint32_t>((static_cast<uint64_t>(sample.pulses) * 1000ULL + sample.measuredMl / 2ULL) / sample.measuredMl) : 0;
+            char row[320];
+            snprintf(row,
+                     sizeof(row),
+                     "<tr><td class='num'>%u</td><td>Zone %u</td><td class='num'>%lu</td><td class='num'>%s L</td><td class='num'>%lu 脉冲/L</td></tr>",
+                     static_cast<unsigned>(i + 1U),
+                     sample.zoneId,
+                     static_cast<unsigned long>(sample.pulses),
+                     water,
+                     static_cast<unsigned long>(sampleRatio));
+            Esp32BaseWeb::sendChunk(row);
+        }
+        Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    }
+
+    if (snapshot.volumeFitReady) {
+        char spread[24];
+        literAmountToText(snapshot.fitWaterSpreadMl, spread, sizeof(spread));
+        char buf[512];
+        snprintf(buf,
+                 sizeof(buf),
+                 "<div class='ir-calib-result' style='margin-top:12px'><div><b>%lu</b><span>拟合结果 脉冲/L</span></div><div><b>%ld</b><span>启动偏移诊断</span></div><div><b>%lu.%lu%%</b><span>最大误差</span></div></div>",
+                 static_cast<unsigned long>(snapshot.fittedPulsesPerLiter),
+                 static_cast<long>(snapshot.fittedStartupOffsetPulses),
+                 static_cast<unsigned long>(snapshot.fitMaxErrorPermille / 10UL),
+                 static_cast<unsigned long>(snapshot.fitMaxErrorPermille % 10UL));
+        Esp32BaseWeb::sendChunk(buf);
+        snprintf(buf,
+                 sizeof(buf),
+                 "<p class='ir-section-note'>样本水量跨度 %s L。%s</p>",
+                 spread,
+                 snapshot.volumeFitAcceptable ? "样本质量满足保存条件。" : "样本跨度或一致性不足，建议继续采样或清空重测。");
+        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::sendChunk("<div class='actions'><form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_volume_fit'><input type='submit' value='保存流量计系数'");
+        if (!snapshot.volumeFitAcceptable) {
+            Esp32BaseWeb::sendChunk(" disabled");
+        }
+        Esp32BaseWeb::sendChunk("></form><form method='post' action='/irrigation/calibration/action' onsubmit=\"return confirm('确认清空所有接水样本？')\"><input type='hidden' name='action' value='clear_volume_samples'><input class='secondary' type='submit' value='清空样本'></form></div>");
+    } else if (snapshot.volumeSampleCount > 0) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "继续采样", "至少需要 2 次样本才能计算流量计系数，推荐 3 次。");
+        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action' onsubmit=\"return confirm('确认清空所有接水样本？')\"><input type='hidden' name='action' value='clear_volume_samples'><div class='actions'><input class='secondary' type='submit' value='清空样本'></div></form>");
+    }
     Esp32BaseWeb::endPanel();
 }
 
@@ -1920,16 +2074,25 @@ void sendCalibrationResultPanel(const CalibrationSnapshot& snapshot) {
     Esp32BaseWeb::sendChunk(buf);
 
     if (snapshot.mode == CalibrationMode::FlowMeterVolume) {
-        Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_volume'><div class='ir-field'><label>实测水量</label><span class='ir-help'>填写本次实际接到的水量，系统据此计算每升脉冲数。</span><div class='ir-input-unit'><input type='number' name='measuredMl' min='1' max='100000' value='1000'><span class='ir-unit'>ml</span></div></div><div class='actions'><input type='submit' value='保存每升脉冲数'></div></form>");
+        Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_volume_sample'><div class='ir-field'><label>本次实测水量</label><span class='ir-help'>填写本次从出水开始接到的真实水量。保存为样本后，继续采集下一次；至少 2 次样本才能计算。</span><div class='ir-input-unit'><input type='number' name='measuredL' min='0.001' max='100' step='0.001' value='2'><span class='ir-unit'>L</span></div></div><div class='actions'><input type='submit' value='保存为接水样本'></div></form>");
     } else if (snapshot.mode == CalibrationMode::ZoneStandardFlow) {
         char flowText[24];
-        flowRateToText(snapshot.suggestedFlowMlPerMin, flowText, sizeof(flowText));
+        flowRateToText(snapshot.suggestedFlowMlPerMin != 0 ? snapshot.suggestedFlowMlPerMin : snapshot.standardFlowAverageMlPerMin, flowText, sizeof(flowText));
+        char minText[24];
+        char maxText[24];
+        flowRateToText(snapshot.standardFlowMinMlPerMin, minText, sizeof(minText));
+        flowRateToText(snapshot.standardFlowMaxMlPerMin, maxText, sizeof(maxText));
+        snprintf(buf, sizeof(buf), "<div class='ir-calib-result'><div><b>%s</b><span>稳定状态</span></div><div><b>%s L/min</b><span>窗口最小值</span></div><div><b>%s L/min</b><span>窗口最大值</span></div></div>",
+                 snapshot.standardFlowStable ? "已稳定" : "未稳定",
+                 minText,
+                 maxText);
+        Esp32BaseWeb::sendChunk(buf);
         snprintf(buf, sizeof(buf), "<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_standard'><input type='hidden' name='zone' value='%u'><div class='ir-field'><label>标准流量</label><span class='ir-help'>保存后用于该水路的低流量和高流量判断。</span><div class='ir-input-unit'><input type='number' name='standardFlow' min='0.001' max='100' step='0.001' value='%s'><span class='ir-unit'>L/min</span></div></div><div class='actions'><input type='submit' value='保存水路标准流量'></div></form>",
                  snapshot.zoneId,
                  flowText);
         Esp32BaseWeb::sendChunk(buf);
-        if (snapshot.suggestedFlowMlPerMin == 0) {
-            Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "需要手动填写", "需要一次已完成的运行记录和每升脉冲数，才能自动建议标准流量。");
+        if (!snapshot.standardFlowStable) {
+            Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "建议人工确认", "本次采样未达到稳定判定，可以继续重测，或按现场判断手工修正后保存。");
         }
     }
 
@@ -1940,6 +2103,7 @@ void sendCalibrationResultPanel(const CalibrationSnapshot& snapshot) {
 void handleCalibrationPage() {
     const CalibrationSnapshot snapshot = CalibrationService::snapshot();
     const IrrigationConfig& config = ConfigStore::config();
+    const StatusSnapshot status = RunController::statusSnapshot();
 
     Esp32BaseWeb::sendHeader("校准");
     Esp32BaseWeb::sendPageTitle("校准", "流量计和水路标准流量");
@@ -1948,8 +2112,10 @@ void handleCalibrationPage() {
     char value[32];
     snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(config.flow.pulsesPerLiter));
     Esp32BaseWeb::sendMetric("每升脉冲数", value, config.flow.pulsesPerLiter == 0 ? "未校准" : "已保存");
-    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(snapshot.pulses));
-    Esp32BaseWeb::sendMetric("当前脉冲数", value, calibrationModeLabel(snapshot.mode));
+    flowRateToText(status.currentFlowMlPerMin, value, sizeof(value));
+    Esp32BaseWeb::sendMetric("当前流速", value, "L/min");
+    snprintf(value, sizeof(value), "%u / %u", snapshot.volumeSampleCount, kCalibrationMaxVolumeSamples);
+    Esp32BaseWeb::sendMetric("接水样本", value, snapshot.volumeFitReady ? "可计算" : "继续采样");
     snprintf(value, sizeof(value), "%u", snapshot.zoneId);
     Esp32BaseWeb::sendMetric("校准水路", value, snapshot.running ? "正在运行" : "空闲");
     Esp32BaseWeb::endMetricGrid();
@@ -1957,6 +2123,10 @@ void handleCalibrationPage() {
     if (snapshot.running) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "正在校准", "接够水后可以手动停止，也可以等待设定时长结束。");
         Esp32BaseWeb::beginPanel("停止校准");
+        char flowText[24];
+        flowRateToText(status.currentFlowMlPerMin, flowText, sizeof(flowText));
+        char suggestedText[24];
+        flowRateToText(snapshot.suggestedFlowMlPerMin, suggestedText, sizeof(suggestedText));
         Esp32BaseWeb::sendChunk("<div class='ir-calib-result'><div><b>");
         Esp32BaseWeb::sendChunk(calibrationModeLabel(snapshot.mode));
         Esp32BaseWeb::sendChunk("</b><span>当前模式</span></div><div><b>");
@@ -1966,14 +2136,24 @@ void handleCalibrationPage() {
         snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(snapshot.pulses));
         Esp32BaseWeb::sendChunk(value);
         Esp32BaseWeb::sendChunk("</b><span>已累计脉冲</span></div></div>");
+        if (snapshot.mode == CalibrationMode::ZoneStandardFlow) {
+            Esp32BaseWeb::sendChunk("<div class='ir-calib-result'><div><b>");
+            Esp32BaseWeb::writeHtmlEscaped(flowText);
+            Esp32BaseWeb::sendChunk(" L/min</b><span>当前流速</span></div><div><b>");
+            Esp32BaseWeb::sendChunk(snapshot.standardFlowStable ? "已稳定" : "未稳定");
+            Esp32BaseWeb::sendChunk("</b><span>稳定判定</span></div><div><b>");
+            Esp32BaseWeb::writeHtmlEscaped(suggestedText);
+            Esp32BaseWeb::sendChunk(" L/min</b><span>建议标准流量</span></div></div>");
+        }
         Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='stop'><div class='actions'><input class='danger' type='submit' value='停止校准'></div></form>");
         Esp32BaseWeb::endPanel();
     } else {
         sendCalibrationResultPanel(snapshot);
+        sendVolumeSamplesPanel(snapshot);
         Esp32BaseWeb::beginPanel("校准流程");
-        Esp32BaseWeb::sendChunk("<div class='ir-calib-steps'><div class='ir-calib-step'><span class='ir-step-no'>1</span><div><b>校准流量计</b><span class='ir-help'>运行任意已启用水路，接取实际水量，保存每升脉冲数。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>2</span><div><b>校准水路标准流量</b><span class='ir-help'>每个水路单独运行，保存正常出水时的 L/min，供异常流量判断使用。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>3</span><div><b>回到水路页复核</b><span class='ir-help'>确认各水路标准流量已写入；浇水时长仍在手动任务或计划中设置。</span></div></div></div>");
+        Esp32BaseWeb::sendChunk("<div class='ir-calib-steps'><div class='ir-calib-step'><span class='ir-step-no'>1</span><div><b>流量计接水校准</b><span class='ir-help'>采集 2-3 次接水样本，系统用差分/拟合得到脉冲/L。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>2</span><div><b>Zone 标准流量校准</b><span class='ir-help'>启动稳定时间后采集滑动窗口流速，稳定后保存 L/min。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>3</span><div><b>手工修正</b><span class='ir-help'>已知参数时可在校准结果、水路配置或设置页直接录入；浇水时长仍在运行或计划中设置。</span></div></div></div>");
         Esp32BaseWeb::endPanel();
-        sendCalibrationStartPanel();
+        sendCalibrationStartPanel(snapshot);
     }
 
     Esp32BaseWeb::sendFooter();

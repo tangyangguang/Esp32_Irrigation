@@ -8,7 +8,9 @@
 namespace Irrigation {
 
 namespace {
+constexpr uint32_t kFlowSampleIntervalMs = 1000;
 constexpr uint32_t kFlowSampleWindowMs = 5000;
+constexpr uint8_t kFlowSampleCapacity = 6;
 
 uint8_t g_zoneId = 0;
 uint32_t g_stepStartedMs = 0;
@@ -16,8 +18,11 @@ uint32_t g_runningEnteredMs = 0;
 uint32_t g_lastPulseMs = 0;
 uint32_t g_lastPulseCount = 0;
 uint32_t g_currentFlowMlPerMin = 0;
-uint32_t g_flowSampleStartedMs = 0;
-uint32_t g_flowSampleStartPulses = 0;
+uint32_t g_flowSampleMs[kFlowSampleCapacity] = {};
+uint32_t g_flowSamplePulses[kFlowSampleCapacity] = {};
+uint8_t g_flowSampleCount = 0;
+uint8_t g_flowSampleNext = 0;
+uint32_t g_lastFlowSampleMs = 0;
 uint32_t g_idleWindowStartedMs = 0;
 uint32_t g_idleWindowStartPulses = 0;
 uint32_t g_lowDeviationStartedMs = 0;
@@ -33,6 +38,64 @@ uint32_t volumeMlFromPulses(uint32_t pulses) {
         return 0;
     }
     return static_cast<uint32_t>((static_cast<uint64_t>(pulses) * 1000ULL) / pulsesPerLiter);
+}
+
+void resetFlowSamples(uint32_t nowMs, uint32_t pulses) {
+    for (uint8_t i = 0; i < kFlowSampleCapacity; ++i) {
+        g_flowSampleMs[i] = 0;
+        g_flowSamplePulses[i] = 0;
+    }
+    g_flowSampleMs[0] = nowMs;
+    g_flowSamplePulses[0] = pulses;
+    g_flowSampleCount = 1;
+    g_flowSampleNext = 1;
+    g_lastFlowSampleMs = nowMs;
+}
+
+void addFlowSample(uint32_t nowMs, uint32_t pulses) {
+    g_flowSampleMs[g_flowSampleNext] = nowMs;
+    g_flowSamplePulses[g_flowSampleNext] = pulses;
+    g_flowSampleNext = static_cast<uint8_t>((g_flowSampleNext + 1U) % kFlowSampleCapacity);
+    if (g_flowSampleCount < kFlowSampleCapacity) {
+        ++g_flowSampleCount;
+    }
+    g_lastFlowSampleMs = nowMs;
+}
+
+bool newestFlowSample(uint32_t& sampleMs, uint32_t& pulses) {
+    if (g_flowSampleCount == 0) {
+        return false;
+    }
+    const uint8_t index = static_cast<uint8_t>((g_flowSampleNext + kFlowSampleCapacity - 1U) % kFlowSampleCapacity);
+    sampleMs = g_flowSampleMs[index];
+    pulses = g_flowSamplePulses[index];
+    return true;
+}
+
+bool oldestWindowFlowSample(uint32_t newestMs, uint32_t& sampleMs, uint32_t& pulses) {
+    if (g_flowSampleCount < 2) {
+        return false;
+    }
+    bool found = false;
+    uint32_t oldestMs = newestMs;
+    uint32_t oldestPulses = 0;
+    for (uint8_t i = 0; i < g_flowSampleCount; ++i) {
+        if (g_flowSampleMs[i] == 0 || g_flowSampleMs[i] > newestMs) {
+            continue;
+        }
+        if (newestMs - g_flowSampleMs[i] <= kFlowSampleWindowMs &&
+            (!found || g_flowSampleMs[i] < oldestMs)) {
+            found = true;
+            oldestMs = g_flowSampleMs[i];
+            oldestPulses = g_flowSamplePulses[i];
+        }
+    }
+    if (!found || oldestMs == newestMs) {
+        return false;
+    }
+    sampleMs = oldestMs;
+    pulses = oldestPulses;
+    return true;
 }
 
 void appendFlowNotice(const char* type, uint32_t currentFlow, uint32_t standardFlow) {
@@ -101,8 +164,7 @@ void FlowSafetyService::beginStep(uint32_t nowMs, uint8_t zoneId) {
     g_lastPulseMs = nowMs;
     g_lastPulseCount = 0;
     g_currentFlowMlPerMin = 0;
-    g_flowSampleStartedMs = nowMs;
-    g_flowSampleStartPulses = 0;
+    resetFlowSamples(nowMs, 0);
     g_idleWindowStartedMs = 0;
     g_idleWindowStartPulses = 0;
     g_lowDeviationStartedMs = 0;
@@ -128,8 +190,7 @@ bool FlowSafetyService::checkRunning(uint32_t nowMs, RunReason& reason) {
         g_runningEnteredMs = nowMs;
         g_lastPulseMs = nowMs;
         g_lastPulseCount = pulses;
-        g_flowSampleStartedMs = nowMs;
-        g_flowSampleStartPulses = pulses;
+        resetFlowSamples(nowMs, pulses);
     }
 
     if (pulses != g_lastPulseCount) {
@@ -174,21 +235,34 @@ void FlowSafetyService::updateFlowEstimate(uint32_t nowMs, uint32_t pulses) {
         return;
     }
 
-    if (g_flowSampleStartedMs == 0) {
-        g_flowSampleStartedMs = nowMs;
-        g_flowSampleStartPulses = pulses;
+    if (g_flowSampleCount == 0) {
+        resetFlowSamples(nowMs, pulses);
         return;
     }
 
-    const uint32_t elapsedMs = nowMs - g_flowSampleStartedMs;
-    if (elapsedMs < kFlowSampleWindowMs) {
+    if (nowMs - g_lastFlowSampleMs < kFlowSampleIntervalMs) {
         return;
     }
 
-    const uint32_t volumeMl = volumeMlFromPulses(pulses - g_flowSampleStartPulses);
+    addFlowSample(nowMs, pulses);
+
+    uint32_t newestMs = 0;
+    uint32_t newestPulses = 0;
+    uint32_t oldestMs = 0;
+    uint32_t oldestPulses = 0;
+    if (!newestFlowSample(newestMs, newestPulses) ||
+        !oldestWindowFlowSample(newestMs, oldestMs, oldestPulses)) {
+        return;
+    }
+
+    const uint32_t elapsedMs = newestMs - oldestMs;
+    if (elapsedMs == 0 || newestPulses < oldestPulses) {
+        g_currentFlowMlPerMin = 0;
+        return;
+    }
+
+    const uint32_t volumeMl = volumeMlFromPulses(newestPulses - oldestPulses);
     g_currentFlowMlPerMin = static_cast<uint32_t>((static_cast<uint64_t>(volumeMl) * 60000ULL) / elapsedMs);
-    g_flowSampleStartedMs = nowMs;
-    g_flowSampleStartPulses = pulses;
 }
 
 void FlowSafetyService::checkFlowDeviation(uint32_t nowMs) {
