@@ -54,9 +54,24 @@ bool ensureHistoryDir() {
            (Esp32BaseFs::mkdir(kHistoryDir) || Esp32BaseFs::exists(kHistoryDir));
 }
 
+bool isWateringHistoryLine(const char* line) {
+    StaticJsonDocument<128> doc;
+    if (deserializeJson(doc, line) != DeserializationError::Ok) {
+        return false;
+    }
+    const char* source = doc["source"] | "";
+    return strcmp(source, "manual") == 0 ||
+           strcmp(source, "plan") == 0 ||
+           strcmp(source, "run_plan_now") == 0;
+}
+
 } // namespace
 
 bool HistoryService::appendRun(const WateringRun& run) {
+    if (run.source == RunSource::Calibration) {
+        setLastError("ok");
+        return true;
+    }
     if (!Esp32BaseFs::isReady()) {
         setLastError("fs_not_ready");
         return false;
@@ -106,32 +121,8 @@ bool HistoryService::readRecent(char* out, size_t len) {
         return false;
     }
     out[0] = '\0';
-
-    if (!Esp32BaseFs::isReady()) {
-        setLastError("fs_not_ready");
-        return false;
-    }
-    if (!Esp32BaseFs::exists(kHistoryPath)) {
-        setLastError("history_missing");
-        return true;
-    }
-
-    const int64_t size = Esp32BaseFs::fileSize(kHistoryPath);
-    if (size <= 0) {
-        setLastError("history_empty");
-        return true;
-    }
-
-    const size_t maxRead = len - 1;
-    const uint32_t offset = size > static_cast<int64_t>(maxRead) ? static_cast<uint32_t>(size - maxRead) : 0;
-    size_t readLen = 0;
-    if (!Esp32BaseFs::readBytesAt(kHistoryPath, offset, reinterpret_cast<uint8_t*>(out), maxRead, &readLen)) {
-        setLastError("history_read_failed");
-        return false;
-    }
-    out[readLen] = '\0';
-    setLastError("ok");
-    return true;
+    uint32_t total = 0;
+    return readPage(1, 20, out, len, total);
 }
 
 bool HistoryService::readPage(uint32_t page, uint32_t perPage, char* out, size_t len, uint32_t& totalOut) {
@@ -169,7 +160,7 @@ bool HistoryService::readPage(uint32_t page, uint32_t perPage, char* out, size_t
 
     const uint32_t firstWanted = (page - 1U) * perPage;
     const uint32_t lastWanted = firstWanted + perPage;
-    uint32_t lineIndexFromNewest = 0;
+    uint32_t includedIndexFromNewest = 0;
     size_t outLen = 0;
     size_t lineLen = 0;
     bool lineOverflow = false;
@@ -183,7 +174,12 @@ bool HistoryService::readPage(uint32_t page, uint32_t perPage, char* out, size_t
         if (!lineOverflow) {
             reverseLine(g_line, lineLen);
             g_line[lineLen] = '\0';
-            if (lineIndexFromNewest >= firstWanted && lineIndexFromNewest < lastWanted) {
+            if (!isWateringHistoryLine(g_line)) {
+                lineLen = 0;
+                lineOverflow = false;
+                return;
+            }
+            if (includedIndexFromNewest >= firstWanted && includedIndexFromNewest < lastWanted) {
                 const size_t needed = lineLen + 1;
                 if (outLen + needed < len) {
                     memcpy(out + outLen, g_line, lineLen);
@@ -195,7 +191,7 @@ bool HistoryService::readPage(uint32_t page, uint32_t perPage, char* out, size_t
         }
 
         ++totalOut;
-        ++lineIndexFromNewest;
+        ++includedIndexFromNewest;
         lineLen = 0;
         lineOverflow = false;
     };

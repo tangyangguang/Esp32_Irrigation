@@ -41,7 +41,7 @@ void sendIrrigationHeadExtra() {
         ".ir-form{display:block;max-width:none;margin:0}.ir-card.ir-form{display:block}.ir-section{margin:0 0 14px;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:13px}.ir-section:last-child{margin-bottom:0}.ir-section-title{font-size:15px;font-weight:800;margin:0 0 2px}.ir-section-note{margin:0 0 12px;color:var(--ir-muted);font-size:12px}"
         ".ir-setting-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}.ir-setting{border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:12px;min-width:0}.ir-setting-title{display:block;font-weight:800;color:var(--ir-ink)}.ir-setting-desc{display:block;margin-top:4px;color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-control{display:flex;align-items:center;justify-content:flex-start;gap:7px;min-width:0;margin-top:10px}.ir-control input[type=number],.ir-control input[type=time],.ir-control input:not([type]),.ir-control input[type=text]{width:100%;max-width:210px}.ir-unit{flex:0 0 auto;color:var(--ir-muted);font-size:12px;font-weight:700;white-space:nowrap}"
         ".ir-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;user-select:none}.ir-toggle input{position:absolute;opacity:0;pointer-events:none}.ir-toggle span{position:relative;display:inline-flex;align-items:center;justify-content:flex-end;width:74px;height:32px;padding:0 10px;border-radius:999px;background:#eef2f4;color:#667085;font-size:12px;font-weight:800;transition:.16s;box-sizing:border-box}.ir-toggle span:before{content:'';position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.24);transition:.16s}.ir-toggle span:after{content:'禁用'}.ir-toggle input:checked+span{justify-content:flex-start;background:#dff4e8;color:#087443}.ir-toggle input:checked+span:before{transform:translateX(42px)}.ir-toggle input:checked+span:after{content:'启用'}"
-        ".ir-choice{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;align-items:stretch;border:1px solid #cbd6de;border-radius:8px;background:#f4f7f8;padding:3px;gap:3px;min-width:176px}.ir-choice label{position:relative;display:flex;align-items:center;justify-content:center;height:30px;padding:0 12px;border-radius:6px;font-size:12px;font-weight:800;line-height:1;color:#667085;cursor:pointer;white-space:nowrap}.ir-choice input{position:absolute;opacity:0;pointer-events:none}.ir-choice label:has(input:checked){background:#fff;color:var(--ir-accent-strong);box-shadow:0 1px 2px rgba(16,24,40,.12)}"
+        ".ir-choice{display:inline-grid;grid-auto-flow:column;grid-auto-columns:1fr;align-items:center;height:40px;box-sizing:border-box;border:1px solid #cbd6de;border-radius:8px;background:#f4f7f8;padding:3px;gap:3px;min-width:176px;vertical-align:middle}.ir-choice label{position:relative;display:flex;align-items:center;justify-content:center;height:32px;box-sizing:border-box;margin:0;padding:0 12px;border-radius:6px;font-size:12px;font-weight:800;line-height:1;color:#667085;cursor:pointer;white-space:nowrap}.ir-choice input{position:absolute;opacity:0;pointer-events:none}.ir-choice label:has(input:checked){background:#fff;color:var(--ir-accent-strong);box-shadow:0 1px 2px rgba(16,24,40,.12)}"
         ".ir-field{display:grid;gap:4px;margin:0 0 10px}.ir-field label{font-weight:800;margin:0}.ir-help{color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-input-unit{display:flex;align-items:center;gap:7px}.ir-input-unit input{flex:1 1 auto;min-width:0}.ir-input-unit .ir-unit{padding-right:2px}"
         ".ir-run-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.ir-run-row{border:1px solid #e4ebef;border-radius:8px;padding:12px;background:#fbfcfd;min-width:0}.ir-run-row b{display:block}.ir-run-row .ir-help{display:block;margin-top:4px}.ir-run-row .ir-input-unit{margin-top:12px}.ir-run-row input[type=number]{max-width:110px}.ir-badge{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;background:var(--ir-soft);color:var(--ir-accent-strong);font-size:12px;font-weight:800}"
         ".ir-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px}.ir-toolbar p{margin:0;color:var(--ir-muted);font-size:13px}.ir-list-main b{display:block}.ir-list-main small,.ir-list-cell small{display:block;color:var(--ir-muted);font-size:12px;margin-top:2px}.ir-list-cell{font-size:13px}.ir-pill{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap;background:#eef2f4;color:#667085}.ir-pill.on{background:#dff4e8;color:#087443}.ir-pill.warn{background:#fff4d6;color:#935b00}.ir-kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ir-kv div{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:10px}.ir-kv b{display:block;font-size:18px}.ir-kv span{display:block;margin-top:2px;color:var(--ir-muted);font-size:12px}"
@@ -187,6 +187,55 @@ const char* runReasonLabelFromString(const char* reason) {
     return "未知原因";
 }
 
+const char* eventLevelLabel(uint8_t level) {
+    switch (level) {
+        case Esp32BaseAppEventLog::LEVEL_INFO: return "信息";
+        case Esp32BaseAppEventLog::LEVEL_WARN: return "警告";
+        case Esp32BaseAppEventLog::LEVEL_ERROR: return "错误";
+    }
+    return "未知";
+}
+
+const char* eventSourceLabel(const char* source) {
+    if (source == nullptr) return "未知";
+    if (strcmp(source, "system") == 0) return "系统";
+    if (strcmp(source, "run") == 0) return "运行";
+    if (strcmp(source, "plan") == 0) return "计划";
+    if (strcmp(source, "calibration") == 0) return "校准";
+    if (strcmp(source, "flow") == 0) return "流量";
+    if (strcmp(source, "zone") == 0) return "水路";
+    return source;
+}
+
+const char* eventTypeLabel(const char* type) {
+    if (type == nullptr) return "未知";
+    if (strcmp(type, "startup") == 0) return "启动";
+    if (strcmp(type, "started") == 0) return "已启动";
+    if (strcmp(type, "finished") == 0) return "已结束";
+    if (strcmp(type, "completed") == 0) return "已完成";
+    if (strcmp(type, "user_stopped") == 0) return "用户停止";
+    if (strcmp(type, "fault_stopped") == 0) return "故障停止";
+    if (strcmp(type, "saved") == 0) return "已保存";
+    if (strcmp(type, "triggered") == 0) return "已触发";
+    if (strcmp(type, "skipped") == 0) return "已跳过";
+    if (strcmp(type, "leak") == 0) return "疑似漏水";
+    if (strcmp(type, "low_flow") == 0) return "低流量";
+    if (strcmp(type, "high_flow") == 0) return "高流量";
+    return type;
+}
+
+const char* eventReasonLabel(const char* reason) {
+    if (reason == nullptr || reason[0] == '\0') return "无";
+    if (strcmp(reason, "boot") == 0) return "开机";
+    if (strcmp(reason, "request") == 0) return "用户请求";
+    if (strcmp(reason, "start_time") == 0) return "启动时间";
+    if (strcmp(reason, "idle_flow") == 0) return "待机流量";
+    if (strcmp(reason, "flow_meter_volume") == 0) return "流量计水量校准";
+    if (strcmp(reason, "zone_standard_flow") == 0) return "水路标准流量校准";
+    const char* runReason = runReasonLabelFromString(reason);
+    return strcmp(runReason, "未知原因") == 0 ? reason : runReason;
+}
+
 const char* calibrationModeName(CalibrationMode mode) {
     switch (mode) {
         case CalibrationMode::None: return "none";
@@ -245,6 +294,60 @@ bool parseU8Param(const char* name, uint8_t minValue, uint8_t maxValue, uint8_t&
     return true;
 }
 
+bool parseFlowRateParam(const char* name, uint32_t minMlPerMin, uint32_t maxMlPerMin, uint32_t fallbackMlPerMin, uint32_t& out) {
+    char value[24];
+    if (!Esp32BaseWeb::getParam(name, value, sizeof(value)) || value[0] == '\0') {
+        out = fallbackMlPerMin;
+        return true;
+    }
+
+    uint32_t wholeLiters = 0;
+    uint32_t fractionalMl = 0;
+    uint8_t fractionalDigits = 0;
+    bool sawDigit = false;
+    bool inFraction = false;
+    for (size_t i = 0; value[i] != '\0'; ++i) {
+        const char c = value[i];
+        if (c == '.') {
+            if (inFraction) {
+                return false;
+            }
+            inFraction = true;
+            continue;
+        }
+        if (c < '0' || c > '9') {
+            return false;
+        }
+        sawDigit = true;
+        if (inFraction) {
+            if (fractionalDigits >= 3) {
+                return false;
+            }
+            fractionalMl = fractionalMl * 10UL + static_cast<uint32_t>(c - '0');
+            ++fractionalDigits;
+        } else {
+            wholeLiters = wholeLiters * 10UL + static_cast<uint32_t>(c - '0');
+            if (wholeLiters > 100000UL) {
+                return false;
+            }
+        }
+    }
+    if (!sawDigit) {
+        return false;
+    }
+    while (fractionalDigits < 3) {
+        fractionalMl *= 10UL;
+        ++fractionalDigits;
+    }
+
+    const uint64_t mlPerMin = static_cast<uint64_t>(wholeLiters) * 1000ULL + fractionalMl;
+    if (mlPerMin < minMlPerMin || mlPerMin > maxMlPerMin) {
+        return false;
+    }
+    out = static_cast<uint32_t>(mlPerMin);
+    return true;
+}
+
 bool parseMinuteParam(const char* name, bool enabled, uint16_t& out) {
     char value[8];
     if (!Esp32BaseWeb::getParam(name, value, sizeof(value)) || value[0] == '\0') {
@@ -279,6 +382,24 @@ void epochToText(uint32_t epoch, char* out, size_t len) {
     if (epoch == 0 || !Esp32BaseTime::formatEpoch(epoch, out, len, "%Y-%m-%d %H:%M")) {
         snprintf(out, len, "无");
     }
+}
+
+void flowRateToText(uint32_t mlPerMin, char* out, size_t len) {
+    const uint32_t whole = mlPerMin / 1000UL;
+    const uint32_t fractional = mlPerMin % 1000UL;
+    if (fractional == 0) {
+        snprintf(out, len, "%lu", static_cast<unsigned long>(whole));
+        return;
+    }
+    char text[24];
+    snprintf(text, sizeof(text), "%lu.%03lu",
+             static_cast<unsigned long>(whole),
+             static_cast<unsigned long>(fractional));
+    size_t n = strlen(text);
+    while (n > 0 && text[n - 1] == '0') {
+        text[--n] = '\0';
+    }
+    snprintf(out, len, "%s", text);
 }
 
 void sendEscapedValue(const char* value) {
@@ -317,6 +438,22 @@ void sendNumberInput(const char* name, uint32_t value, uint32_t minValue, uint32
     Esp32BaseWeb::sendChunk(buf);
 }
 
+void sendFlowRateInput(const char* name, uint32_t mlPerMin, uint32_t minMlPerMin, uint32_t maxMlPerMin) {
+    char value[24];
+    char minValue[24];
+    char maxValue[24];
+    flowRateToText(mlPerMin, value, sizeof(value));
+    flowRateToText(minMlPerMin, minValue, sizeof(minValue));
+    flowRateToText(maxMlPerMin, maxValue, sizeof(maxValue));
+    char buf[192];
+    snprintf(buf, sizeof(buf), "<input type='number' name='%s' min='%s' max='%s' step='0.001' value='%s'>",
+             name,
+             minValue,
+             maxValue,
+             value);
+    Esp32BaseWeb::sendChunk(buf);
+}
+
 void sendSettingToggle(const char* title, const char* desc, const char* name, bool checked) {
     Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>");
     Esp32BaseWeb::sendChunk(title);
@@ -343,6 +480,21 @@ void sendSettingNumber(const char* title,
     Esp32BaseWeb::sendChunk("<span class='ir-unit'>");
     Esp32BaseWeb::sendChunk(unit);
     Esp32BaseWeb::sendChunk("</span></div></div>");
+}
+
+void sendSettingFlowRate(const char* title,
+                         const char* desc,
+                         const char* name,
+                         uint32_t value,
+                         uint32_t minValue,
+                         uint32_t maxValue) {
+    Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>");
+    Esp32BaseWeb::sendChunk(title);
+    Esp32BaseWeb::sendChunk("</span><span class='ir-setting-desc'>");
+    Esp32BaseWeb::sendChunk(desc);
+    Esp32BaseWeb::sendChunk("</span></div><div class='ir-control'>");
+    sendFlowRateInput(name, value, minValue, maxValue);
+    Esp32BaseWeb::sendChunk("<span class='ir-unit'>L/min</span></div></div>");
 }
 
 void sendContactTypeChoice(ContactType type) {
@@ -750,7 +902,7 @@ void handleCalibrationPost() {
     if (strcmp(action, "save_standard") == 0) {
         uint8_t zoneId = 0;
         uint32_t flow = 0;
-        if (!readZoneParam(zoneId) || !parseU32Param("standardFlow", 1, 100000, 0, flow)) {
+        if (!readZoneParam(zoneId) || !parseFlowRateParam("standardFlow", 1, 100000, 0, flow)) {
             Esp32BaseWeb::sendText(400, "标准流量无效");
             return;
         }
@@ -830,7 +982,7 @@ void handleZoneSavePost() {
     }
 
     uint32_t flow = 0;
-    if (!parseU32Param("standardFlow", 0, 100000, zone.standardFlowMlPerMin, flow)) {
+    if (!parseFlowRateParam("standardFlow", 0, 100000, zone.standardFlowMlPerMin, flow)) {
         Esp32BaseWeb::sendText(400, "标准流量无效");
         return;
     }
@@ -1135,8 +1287,8 @@ void handleRunPage() {
     Esp32BaseWeb::sendMetric("运行状态", runStateLabel(status.runState), status.busy ? "正在运行" : "空闲");
     snprintf(value, sizeof(value), "%u", status.activeZoneId);
     Esp32BaseWeb::sendMetric("当前水路", value, status.activeZoneId == 0 ? "无" : "已打开");
-    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(status.currentFlowMlPerMin));
-    Esp32BaseWeb::sendMetric("流量 ml/min", value, "估算值");
+    flowRateToText(status.currentFlowMlPerMin, value, sizeof(value));
+    Esp32BaseWeb::sendMetric("当前流量", value, "L/min 估算值");
     snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(status.currentRunVolumeMl));
     Esp32BaseWeb::sendMetric("累计水量 ml", value, "当前步骤");
     Esp32BaseWeb::endMetricGrid();
@@ -1163,6 +1315,8 @@ void handleZonesPage() {
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
         char buf[256];
+        char flowText[24];
+        flowRateToText(zone.standardFlowMlPerMin, flowText, sizeof(flowText));
         snprintf(buf, sizeof(buf), "<tr><td><span class='ir-table-title'>水路 %u</span><span class='ir-table-note'>", zone.id);
         Esp32BaseWeb::sendChunk(buf);
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
@@ -1170,8 +1324,8 @@ void handleZonesPage() {
         sendEnabledPill(zone.enabled);
         snprintf(buf,
                  sizeof(buf),
-                 "</td><td class='num'>%lu ml/min</td><td class='num'>%u 个</td><td><span class='ir-table-note'>浇水时长在手动任务或计划中设置</span></td><td>",
-                 static_cast<unsigned long>(zone.standardFlowMlPerMin),
+                 "</td><td class='num'>%s L/min</td><td class='num'>%u 个</td><td><span class='ir-table-note'>浇水时长在手动任务或计划中设置</span></td><td>",
+                 flowText,
                  zonePlanUseCount(config, zone.id));
         Esp32BaseWeb::sendChunk(buf);
         snprintf(buf, sizeof(buf), "<a class='btnlink info' href='/irrigation/zones/edit?id=%u'>配置</a>", zone.id);
@@ -1209,7 +1363,7 @@ void handleZoneEditPage() {
     Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>水路名称</span><span class='ir-setting-desc'>用于页面、计划和运行历史展示。</span></div><div class='ir-control'>");
     sendTextInput("name", zone->name, sizeof(zone->name) - 1);
     Esp32BaseWeb::sendChunk("</div></div>");
-    sendSettingNumber("标准流量", "用于低流量和高流量判断，校准后可以自动写入。", "ml/min", "standardFlow", zone->standardFlowMlPerMin, 0, 100000);
+    sendSettingFlowRate("标准流量", "用于低流量和高流量判断，校准后可以自动写入。", "standardFlow", zone->standardFlowMlPerMin, 0, 100000);
     Esp32BaseWeb::sendChunk("</div><div class='actions'><a class='btnlink secondary' href='/irrigation/zones'>返回列表</a><input type='submit' value='保存水路'></div></form>");
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
@@ -1590,9 +1744,11 @@ void sendCalibrationResultPanel(const CalibrationSnapshot& snapshot) {
     if (snapshot.mode == CalibrationMode::FlowMeterVolume) {
         Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_volume'><div class='ir-field'><label>实测水量</label><span class='ir-help'>填写本次实际接到的水量，系统据此计算每升脉冲数。</span><div class='ir-input-unit'><input type='number' name='measuredMl' min='1' max='100000' value='1000'><span class='ir-unit'>ml</span></div></div><div class='actions'><input type='submit' value='保存每升脉冲数'></div></form>");
     } else if (snapshot.mode == CalibrationMode::ZoneStandardFlow) {
-        snprintf(buf, sizeof(buf), "<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_standard'><input type='hidden' name='zone' value='%u'><div class='ir-field'><label>标准流量</label><span class='ir-help'>保存后用于该水路的低流量和高流量判断。</span><div class='ir-input-unit'><input type='number' name='standardFlow' min='1' max='100000' value='%lu'><span class='ir-unit'>ml/min</span></div></div><div class='actions'><input type='submit' value='保存水路标准流量'></div></form>",
+        char flowText[24];
+        flowRateToText(snapshot.suggestedFlowMlPerMin, flowText, sizeof(flowText));
+        snprintf(buf, sizeof(buf), "<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_standard'><input type='hidden' name='zone' value='%u'><div class='ir-field'><label>标准流量</label><span class='ir-help'>保存后用于该水路的低流量和高流量判断。</span><div class='ir-input-unit'><input type='number' name='standardFlow' min='0.001' max='100' step='0.001' value='%s'><span class='ir-unit'>L/min</span></div></div><div class='actions'><input type='submit' value='保存水路标准流量'></div></form>",
                  snapshot.zoneId,
-                 static_cast<unsigned long>(snapshot.suggestedFlowMlPerMin));
+                 flowText);
         Esp32BaseWeb::sendChunk(buf);
         if (snapshot.suggestedFlowMlPerMin == 0) {
             Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "需要手动填写", "需要一次已完成的运行记录和每升脉冲数，才能自动建议标准流量。");
@@ -1637,7 +1793,7 @@ void handleCalibrationPage() {
     } else {
         sendCalibrationResultPanel(snapshot);
         Esp32BaseWeb::beginPanel("校准流程");
-        Esp32BaseWeb::sendChunk("<div class='ir-calib-steps'><div class='ir-calib-step'><span class='ir-step-no'>1</span><div><b>校准流量计</b><span class='ir-help'>运行任意已启用水路，接取实际水量，保存每升脉冲数。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>2</span><div><b>校准水路标准流量</b><span class='ir-help'>每个水路单独运行，保存正常出水时的 ml/min，供异常流量判断使用。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>3</span><div><b>回到水路页复核</b><span class='ir-help'>确认各水路标准流量已写入；浇水时长仍在手动任务或计划中设置。</span></div></div></div>");
+        Esp32BaseWeb::sendChunk("<div class='ir-calib-steps'><div class='ir-calib-step'><span class='ir-step-no'>1</span><div><b>校准流量计</b><span class='ir-help'>运行任意已启用水路，接取实际水量，保存每升脉冲数。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>2</span><div><b>校准水路标准流量</b><span class='ir-help'>每个水路单独运行，保存正常出水时的 L/min，供异常流量判断使用。</span></div></div><div class='ir-calib-step'><span class='ir-step-no'>3</span><div><b>回到水路页复核</b><span class='ir-help'>确认各水路标准流量已写入；浇水时长仍在手动任务或计划中设置。</span></div></div></div>");
         Esp32BaseWeb::endPanel();
         sendCalibrationStartPanel();
     }
@@ -1645,8 +1801,80 @@ void handleCalibrationPage() {
     Esp32BaseWeb::sendFooter();
 }
 
+void eventTimeToText(const Esp32BaseAppEventRecord& event, char* out, size_t len) {
+    if (event.epochSec != 0 && Esp32BaseTime::formatEpoch(event.epochSec, out, len, "%Y-%m-%d %H:%M")) {
+        return;
+    }
+    snprintf(out, len, "启动后 %lus", static_cast<unsigned long>(event.uptimeSec));
+}
+
+void writeEventObjectText(const char* value, size_t maxLen) {
+    char text[64];
+    size_t n = 0;
+    while (n < maxLen && value[n] != '\0' && n < sizeof(text) - 1) {
+        text[n] = value[n];
+        ++n;
+    }
+    text[n] = '\0';
+    if (strcmp(text, "controller") == 0) {
+        Esp32BaseWeb::sendChunk("控制器");
+    } else if (strcmp(text, "run") == 0) {
+        Esp32BaseWeb::sendChunk("浇水任务");
+    } else if (strcmp(text, "zone") == 0) {
+        Esp32BaseWeb::sendChunk("水路");
+    } else if (strcmp(text, "flow") == 0) {
+        Esp32BaseWeb::sendChunk("流量计");
+    } else if (strncmp(text, "plan:", 5) == 0) {
+        Esp32BaseWeb::sendChunk("计划 ");
+        Esp32BaseWeb::writeHtmlEscaped(text + 5);
+    } else if (text[0] == '\0') {
+        Esp32BaseWeb::sendChunk("无");
+    } else {
+        Esp32BaseWeb::writeHtmlEscaped(text);
+    }
+}
+
+void sendEventTableRow(const Esp32BaseAppEventRecord& event, void* user) {
+    bool* any = static_cast<bool*>(user);
+    if (any != nullptr) {
+        *any = true;
+    }
+    char timeText[24];
+    eventTimeToText(event, timeText, sizeof(timeText));
+    char buf[160];
+    snprintf(buf,
+             sizeof(buf),
+             "<tr><td class='num'>%lu</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>",
+             static_cast<unsigned long>(event.id),
+             eventLevelLabel(event.level),
+             eventSourceLabel(event.source),
+             eventTypeLabel(event.type),
+             eventReasonLabel(event.reason));
+    Esp32BaseWeb::sendChunk(buf);
+    writeEventObjectText(event.object, sizeof(event.object));
+    Esp32BaseWeb::sendChunk("</td><td>");
+    Esp32BaseWeb::writeHtmlEscaped(timeText);
+    Esp32BaseWeb::sendChunk("</td></tr>");
+}
+
+void sendEventsTable(uint32_t page, uint32_t perPage, uint32_t total) {
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='ir-data-table'><thead><tr><th class='num'>编号</th><th>级别</th><th>来源</th><th>事件</th><th>原因</th><th>对象</th><th>时间</th></tr></thead><tbody>");
+    bool any = false;
+    const uint32_t offset = (page - 1U) * perPage;
+    if (offset <= 65535UL && perPage <= 65535UL) {
+        Esp32BaseAppEventLog::readLatest(static_cast<uint16_t>(offset), static_cast<uint16_t>(perPage), sendEventTableRow, &any);
+    }
+    if (!any) {
+        Esp32BaseWeb::sendChunk("<tr><td colspan='7'>暂无可显示的事件</td></tr>");
+    }
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+
+    Esp32BaseWeb::Pagination pagination = {"/irrigation/events", "", page, perPage, total};
+    Esp32BaseWeb::sendPagination(pagination);
+}
+
 void sendHistoryTable(char* historyText) {
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table><thead><tr><th>编号</th><th>来源</th><th>结果</th><th>原因</th><th>开始时间</th><th>结束时间</th><th>步骤数</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='ir-data-table'><thead><tr><th class='num'>编号</th><th>来源</th><th>结果</th><th>原因</th><th>开始时间</th><th>结束时间</th><th class='num'>步骤数</th></tr></thead><tbody>");
 
     bool any = false;
     char* save = nullptr;
@@ -1671,7 +1899,7 @@ void sendHistoryTable(char* historyText) {
         char row[448];
         snprintf(row,
                  sizeof(row),
-                 "<tr><td>%lu</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%u</td></tr>",
+                 "<tr><td class='num'>%lu</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td class='num'>%u</td></tr>",
                  static_cast<unsigned long>(doc["id"] | 0),
                  runSourceLabelFromString(doc["source"] | ""),
                  runResultLabelFromString(doc["result"] | ""),
@@ -1690,23 +1918,45 @@ void sendHistoryTable(char* historyText) {
 }
 
 void handleHistoryPage() {
-    Esp32BaseWeb::sendHeader("历史");
-    Esp32BaseWeb::sendPageTitle("历史", "运行记录");
+    Esp32BaseWeb::sendHeader("浇水历史");
+    Esp32BaseWeb::sendPageTitle("浇水历史", "手动浇水和自动计划的运行记录");
     uint32_t page = 1;
     uint32_t perPage = 10;
     readPagingParam("page", 1, 65535, 1, page);
     readPagingParam("per", 10, 50, 10, perPage);
 
-    Esp32BaseWeb::beginPanel("运行记录");
+    Esp32BaseWeb::beginPanel("浇水记录");
     uint32_t total = 0;
     if (!HistoryService::readPage(page, perPage, g_historyViewBuffer, sizeof(g_historyViewBuffer), total)) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "历史不可用", "读取运行历史失败。");
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "历史不可用", "读取浇水历史失败。");
     } else if (total == 0) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "暂无运行历史", "浇水完成、停止或故障后，会在这里显示运行记录。");
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "暂无浇水历史", "手动浇水或自动计划完成、停止、故障后，会在这里显示记录。");
     } else {
         sendHistoryTable(g_historyViewBuffer);
         Esp32BaseWeb::Pagination pagination = {"/irrigation/history", "", page, perPage, total};
         Esp32BaseWeb::sendPagination(pagination);
+    }
+    Esp32BaseWeb::endPanel();
+    Esp32BaseWeb::sendFooter();
+}
+
+void handleEventsPage() {
+    Esp32BaseWeb::sendHeader("事件");
+    Esp32BaseWeb::sendPageTitle("事件", "系统、计划、校准和保护事件");
+    uint32_t page = 1;
+    uint32_t perPage = 10;
+    readPagingParam("page", 1, 65535, 1, page);
+    readPagingParam("per", 10, 50, 10, perPage);
+
+    Esp32BaseAppEventLog::StoreInfo info;
+    const bool ok = Esp32BaseAppEventLog::readStoreInfo(info);
+    Esp32BaseWeb::beginPanel("事件记录");
+    if (!ok) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "事件不可用", Esp32BaseAppEventLog::lastError());
+    } else if (info.validCount == 0) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "暂无事件", "系统运行、计划触发、校准保存或保护动作会记录到这里。");
+    } else {
+        sendEventsTable(page, perPage, info.validCount);
     }
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
@@ -1722,7 +1972,8 @@ void IrrigationWeb::registerRoutes() {
     Esp32BaseWeb::addPage("/irrigation/plans", "计划", handlePlansPage);
     Esp32BaseWeb::addPage("/irrigation/calibration", "校准", handleCalibrationPage);
     Esp32BaseWeb::addPage("/irrigation/settings", "设置", handleSettingsPage);
-    Esp32BaseWeb::addPage("/irrigation/history", "历史", handleHistoryPage);
+    Esp32BaseWeb::addPage("/irrigation/history", "浇水历史", handleHistoryPage);
+    Esp32BaseWeb::addPage("/irrigation/events", "事件", handleEventsPage);
     Esp32BaseWeb::addRoute("/irrigation/run/start", Esp32BaseWeb::METHOD_POST, handleManualStartPost);
     Esp32BaseWeb::addRoute("/irrigation/run/plan-now", Esp32BaseWeb::METHOD_POST, handlePlanNowPost);
     Esp32BaseWeb::addRoute("/irrigation/run/stop", Esp32BaseWeb::METHOD_POST, handleStopPost);
