@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <Esp32Base.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "IrrigationConfig.h"
 
@@ -13,9 +14,19 @@ constexpr const char* kHistoryDir = "/irrigation/history";
 constexpr const char* kHistoryPath = "/irrigation/history/runs.log";
 constexpr size_t kHistoryJsonDocSize = 2048;
 constexpr size_t kHistoryLineSize = 1536;
+constexpr size_t kHistoryReadChunkSize = 256;
 
 char g_lastError[40] = "ok";
 char g_line[kHistoryLineSize];
+uint8_t g_readChunk[kHistoryReadChunkSize];
+
+void reverseLine(char* text, size_t len) {
+    for (size_t i = 0; i < len / 2; ++i) {
+        const char tmp = text[i];
+        text[i] = text[len - 1 - i];
+        text[len - 1 - i] = tmp;
+    }
+}
 
 const char* runSourceName(RunSource source) {
     switch (source) {
@@ -119,6 +130,102 @@ bool HistoryService::readRecent(char* out, size_t len) {
         return false;
     }
     out[readLen] = '\0';
+    setLastError("ok");
+    return true;
+}
+
+bool HistoryService::readPage(uint32_t page, uint32_t perPage, char* out, size_t len, uint32_t& totalOut) {
+    totalOut = 0;
+    if (out == nullptr || len == 0) {
+        setLastError("history_buffer_invalid");
+        return false;
+    }
+    out[0] = '\0';
+
+    if (page == 0) {
+        page = 1;
+    }
+    if (perPage == 0) {
+        perPage = 10;
+    }
+    if (perPage > 50) {
+        perPage = 50;
+    }
+
+    if (!Esp32BaseFs::isReady()) {
+        setLastError("fs_not_ready");
+        return false;
+    }
+    if (!Esp32BaseFs::exists(kHistoryPath)) {
+        setLastError("history_missing");
+        return true;
+    }
+
+    const int64_t size = Esp32BaseFs::fileSize(kHistoryPath);
+    if (size <= 0) {
+        setLastError("history_empty");
+        return true;
+    }
+
+    const uint32_t firstWanted = (page - 1U) * perPage;
+    const uint32_t lastWanted = firstWanted + perPage;
+    uint32_t lineIndexFromNewest = 0;
+    size_t outLen = 0;
+    size_t lineLen = 0;
+    bool lineOverflow = false;
+    uint32_t pos = static_cast<uint32_t>(size);
+
+    auto finishLine = [&]() {
+        if (lineLen == 0 && !lineOverflow) {
+            return;
+        }
+
+        if (!lineOverflow) {
+            reverseLine(g_line, lineLen);
+            g_line[lineLen] = '\0';
+            if (lineIndexFromNewest >= firstWanted && lineIndexFromNewest < lastWanted) {
+                const size_t needed = lineLen + 1;
+                if (outLen + needed < len) {
+                    memcpy(out + outLen, g_line, lineLen);
+                    outLen += lineLen;
+                    out[outLen++] = '\n';
+                    out[outLen] = '\0';
+                }
+            }
+        }
+
+        ++totalOut;
+        ++lineIndexFromNewest;
+        lineLen = 0;
+        lineOverflow = false;
+    };
+
+    while (pos > 0) {
+        const size_t chunkSize = pos > kHistoryReadChunkSize ? kHistoryReadChunkSize : pos;
+        pos -= chunkSize;
+        size_t readLen = 0;
+        if (!Esp32BaseFs::readBytesAt(kHistoryPath, pos, g_readChunk, chunkSize, &readLen)) {
+            setLastError("history_read_failed");
+            return false;
+        }
+        for (size_t n = readLen; n > 0; --n) {
+            const char c = static_cast<char>(g_readChunk[n - 1]);
+            if (c == '\n') {
+                finishLine();
+                continue;
+            }
+            if (c == '\r') {
+                continue;
+            }
+            if (lineLen < sizeof(g_line) - 1) {
+                g_line[lineLen++] = c;
+            } else {
+                lineOverflow = true;
+            }
+        }
+    }
+    finishLine();
+
     setLastError("ok");
     return true;
 }

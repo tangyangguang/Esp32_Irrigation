@@ -5,7 +5,7 @@
 namespace Irrigation {
 
 constexpr uint8_t kMaxZones = 6;
-constexpr uint8_t kDefaultEnabledZones = 1;
+constexpr uint8_t kDefaultEnabledZones = 4;
 constexpr uint8_t kMaxPlans = 8;
 constexpr uint8_t kMaxPlanStartTimes = 4;
 constexpr uint8_t kMaxRunSteps = kMaxZones;

@@ -19,7 +19,7 @@ namespace Irrigation {
 
 namespace {
 
-char g_historyViewBuffer[3072];
+char g_historyViewBuffer[24576];
 
 void sendIrrigationHeadExtra() {
     Esp32BaseWeb::sendChunk(
@@ -43,8 +43,9 @@ void sendIrrigationHeadExtra() {
         ".ir-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;user-select:none}.ir-toggle input{position:absolute;opacity:0;pointer-events:none}.ir-toggle span{position:relative;display:inline-flex;align-items:center;justify-content:flex-end;width:74px;height:32px;padding:0 10px;border-radius:999px;background:#eef2f4;color:#667085;font-size:12px;font-weight:800;transition:.16s;box-sizing:border-box}.ir-toggle span:before{content:'';position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.24);transition:.16s}.ir-toggle span:after{content:'禁用'}.ir-toggle input:checked+span{justify-content:flex-start;background:#dff4e8;color:#087443}.ir-toggle input:checked+span:before{transform:translateX(42px)}.ir-toggle input:checked+span:after{content:'启用'}"
         ".ir-field{display:grid;gap:4px;margin:0 0 10px}.ir-field label{font-weight:800;margin:0}.ir-help{color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-input-unit{display:flex;align-items:center;gap:7px}.ir-input-unit input{flex:1 1 auto;min-width:0}.ir-input-unit .ir-unit{padding-right:2px}"
         ".ir-run-list,.ir-zone-grid,.ir-plan-list{display:grid;gap:12px}.ir-run-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);gap:10px;align-items:center;border:1px solid #e4ebef;border-radius:8px;padding:11px;background:#fbfcfd}.ir-run-row b{display:block}.ir-badge{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;background:var(--ir-soft);color:var(--ir-accent-strong);font-size:12px;font-weight:800}"
+        ".ir-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px}.ir-toolbar p{margin:0;color:var(--ir-muted);font-size:13px}.ir-list{display:grid;gap:8px}.ir-list-row{display:grid;grid-template-columns:minmax(0,1.2fr) repeat(3,minmax(90px,.5fr)) auto;gap:10px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:11px 12px}.ir-list-main b{display:block}.ir-list-main small,.ir-list-cell small{display:block;color:var(--ir-muted);font-size:12px;margin-top:2px}.ir-list-cell{font-size:13px}.ir-pill{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:800;background:#eef2f4;color:#667085}.ir-pill.on{background:#dff4e8;color:#087443}.ir-pill.warn{background:#fff4d6;color:#935b00}.ir-kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ir-kv div{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:10px}.ir-kv b{display:block;font-size:18px}.ir-kv span{display:block;margin-top:2px;color:var(--ir-muted);font-size:12px}"
         ".ir-time-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-time-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:8px}.ir-time-item input[type=time]{width:100%}.ir-zone-duration{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-danger-line{display:flex;justify-content:flex-end;margin-top:8px}"
-        "@media(max-width:820px){.ir-grid,.ir-grid.ir-three,.ir-time-grid,.ir-zone-duration{grid-template-columns:1fr}.ir-setting,.ir-run-row{grid-template-columns:1fr}.ir-control{justify-content:flex-start}.actions{justify-content:flex-start}select{width:100%;min-width:0}}"
+        "@media(max-width:820px){.ir-grid,.ir-grid.ir-three,.ir-time-grid,.ir-zone-duration,.ir-kv{grid-template-columns:1fr}.ir-setting,.ir-run-row,.ir-list-row{grid-template-columns:1fr}.ir-control{justify-content:flex-start}.actions,.ir-toolbar{justify-content:flex-start;align-items:flex-start}.ir-toolbar{flex-direction:column}select{width:100%;min-width:0}}"
         "</style>");
 }
 
@@ -296,7 +297,7 @@ void sendToggleInput(const char* name, bool checked) {
 }
 
 void sendTextInput(const char* name, const char* value, uint8_t maxLength) {
-    char buf[96];
+    char buf[192];
     snprintf(buf, sizeof(buf), "<input name='%s' maxlength='%u' value='", name, maxLength);
     Esp32BaseWeb::sendChunk(buf);
     sendEscapedValue(value);
@@ -353,6 +354,102 @@ void sendSectionEnd() {
     Esp32BaseWeb::sendChunk("</div></div>");
 }
 
+uint32_t maxZoneDurationMinutes();
+
+void sendEnabledPill(bool enabled) {
+    Esp32BaseWeb::sendChunk(enabled ? "<span class='ir-pill on'>启用</span>" : "<span class='ir-pill'>禁用</span>");
+}
+
+uint32_t durationMinutesRounded(uint32_t seconds) {
+    return (seconds + 59UL) / 60UL;
+}
+
+uint8_t planEnabledZoneCount(const IrrigationConfig& config, const WateringPlan& plan) {
+    uint8_t count = 0;
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        if (config.zones[i].enabled && plan.zoneDurationSec[i] > 0) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+uint32_t planTotalDurationSec(const IrrigationConfig& config, const WateringPlan& plan) {
+    uint32_t total = 0;
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        if (config.zones[i].enabled) {
+            total += plan.zoneDurationSec[i];
+        }
+    }
+    return total;
+}
+
+void sendPlanStartSummary(const WateringPlan& plan) {
+    bool any = false;
+    for (uint8_t i = 0; i < kMaxPlanStartTimes; ++i) {
+        if (!plan.startTimes[i].enabled || !isValidMinuteOfDay(plan.startTimes[i].minuteOfDay)) {
+            continue;
+        }
+        if (any) {
+            Esp32BaseWeb::sendChunk(" / ");
+        }
+        char text[8];
+        minuteToText(plan.startTimes[i].minuteOfDay, text, sizeof(text));
+        Esp32BaseWeb::sendChunk(text);
+        any = true;
+    }
+    if (!any) {
+        Esp32BaseWeb::sendChunk("未设置");
+    }
+}
+
+bool readRequestZoneId(uint8_t& zoneId) {
+    return parseU8Param("id", 1, kMaxZones, zoneId);
+}
+
+bool readRequestPlanId(uint8_t& planId) {
+    return parseU8Param("id", 1, kMaxPlans, planId);
+}
+
+bool readPagingParam(const char* name, uint32_t minValue, uint32_t maxValue, uint32_t fallback, uint32_t& out) {
+    return parseU32Param(name, minValue, maxValue, fallback, out);
+}
+
+bool readPlanFieldsFromRequest(WateringPlan& plan) {
+    char value[kPlanNameLength];
+    plan.enabled = parseBoolParam("enabled");
+    if (Esp32BaseWeb::getParam("name", value, sizeof(value))) {
+        snprintf(plan.name, sizeof(plan.name), "%s", value);
+        plan.name[sizeof(plan.name) - 1] = '\0';
+    }
+
+    for (uint8_t i = 0; i < kMaxPlanStartTimes; ++i) {
+        char key[8];
+        snprintf(key, sizeof(key), "se%u", i);
+        const bool enabled = parseBoolParam(key);
+        snprintf(key, sizeof(key), "st%u", i);
+        uint16_t minuteOfDay = kInvalidMinuteOfDay;
+        if (!parseMinuteParam(key, enabled, minuteOfDay)) {
+            Esp32BaseWeb::sendText(400, "启动时间无效");
+            return false;
+        }
+        plan.startTimes[i].enabled = enabled;
+        plan.startTimes[i].minuteOfDay = minuteOfDay;
+    }
+
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        char key[8];
+        snprintf(key, sizeof(key), "z%u", i + 1);
+        uint32_t minutes = 0;
+        if (!parseU32Param(key, 0, maxZoneDurationMinutes(), plan.zoneDurationSec[i] / 60UL, minutes)) {
+            Esp32BaseWeb::sendText(400, "水路时长无效");
+            return false;
+        }
+        plan.zoneDurationSec[i] = minutes * 60UL;
+    }
+    return true;
+}
+
 uint32_t maxZoneDurationMinutes() {
     const uint32_t seconds = ConfigStore::config().valve.maxZoneDurationSec;
     const uint32_t minutes = (seconds + 59UL) / 60UL;
@@ -364,7 +461,6 @@ void sendStatusJson() {
     const WateringRun& run = RunController::currentRun();
 
     Esp32BaseWeb::beginJson(200);
-    Esp32BaseWeb::sendChunk("{");
     Esp32BaseWeb::sendChunk("\"configValid\":");
     Esp32BaseWeb::sendChunk(status.configValid ? "true," : "false,");
     Esp32BaseWeb::sendChunk("\"busy\":");
@@ -391,7 +487,6 @@ void sendStatusJson() {
     snprintf(number, sizeof(number), "%lu,", static_cast<unsigned long>(status.nextRunEpoch));
     Esp32BaseWeb::sendChunk(number);
     sendJsonStringField("reason", runReasonToString(run.reason), false);
-    Esp32BaseWeb::sendChunk("}");
     Esp32BaseWeb::endJson();
 }
 
@@ -401,7 +496,7 @@ void handleStatusApi() {
 
 void handleZonesApi() {
     Esp32BaseWeb::beginJson(200);
-    Esp32BaseWeb::sendChunk("{\"zones\":[");
+    Esp32BaseWeb::sendChunk("\"zones\":[");
     const IrrigationConfig& config = ConfigStore::config();
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
@@ -410,22 +505,21 @@ void handleZonesApi() {
         }
         char buf[96];
         snprintf(buf, sizeof(buf),
-                 "{\"id\":%u,\"enabled\":%s,\"defaultDurationSec\":%lu,\"standardFlowMlPerMin\":%lu,\"name\":\"",
+                 "{\"id\":%u,\"enabled\":%s,\"standardFlowMlPerMin\":%lu,\"name\":\"",
                  zone.id,
                  zone.enabled ? "true" : "false",
-                 static_cast<unsigned long>(zone.defaultDurationSec),
                  static_cast<unsigned long>(zone.standardFlowMlPerMin));
         Esp32BaseWeb::sendChunk(buf);
         Esp32BaseWeb::writeJsonEscaped(zone.name);
         Esp32BaseWeb::sendChunk("\"}");
     }
-    Esp32BaseWeb::sendChunk("]}");
+    Esp32BaseWeb::sendChunk("]");
     Esp32BaseWeb::endJson();
 }
 
 void handlePlansApi() {
     Esp32BaseWeb::beginJson(200);
-    Esp32BaseWeb::sendChunk("{\"plans\":[");
+    Esp32BaseWeb::sendChunk("\"plans\":[");
     const IrrigationConfig& config = ConfigStore::config();
     bool firstPlan = true;
     for (uint8_t i = 0; i < kMaxPlans; ++i) {
@@ -457,7 +551,7 @@ void handlePlansApi() {
         }
         Esp32BaseWeb::sendChunk("]}");
     }
-    Esp32BaseWeb::sendChunk("]}");
+    Esp32BaseWeb::sendChunk("]");
     Esp32BaseWeb::endJson();
 }
 
@@ -472,15 +566,14 @@ void handleHistoryApi() {
 void handleCalibrationApi() {
     const CalibrationSnapshot snapshot = CalibrationService::snapshot();
     Esp32BaseWeb::beginJson(200);
-    Esp32BaseWeb::sendChunk("{");
     sendJsonStringField("mode", calibrationModeName(snapshot.mode));
     Esp32BaseWeb::sendChunk("\"running\":");
     Esp32BaseWeb::sendChunk(snapshot.running ? "true," : "false,");
     Esp32BaseWeb::sendChunk("\"resultReady\":");
     Esp32BaseWeb::sendChunk(snapshot.resultReady ? "true," : "false,");
-    char buf[96];
+    char buf[192];
     snprintf(buf, sizeof(buf),
-             "\"runId\":%lu,\"zoneId\":%u,\"durationSec\":%lu,\"pulses\":%lu,\"computedPulsesPerLiter\":%lu,\"suggestedFlowMlPerMin\":%lu}",
+             "\"runId\":%lu,\"zoneId\":%u,\"durationSec\":%lu,\"pulses\":%lu,\"computedPulsesPerLiter\":%lu,\"suggestedFlowMlPerMin\":%lu",
              static_cast<unsigned long>(snapshot.runId),
              snapshot.zoneId,
              static_cast<unsigned long>(snapshot.durationSec),
@@ -673,13 +766,6 @@ void handleZoneSavePost() {
         zone.name[sizeof(zone.name) - 1] = '\0';
     }
 
-    uint32_t minutes = 0;
-    if (!parseU32Param("defaultMinutes", 0, maxZoneDurationMinutes(), zone.defaultDurationSec / 60UL, minutes)) {
-        Esp32BaseWeb::sendText(400, "默认时长无效");
-        return;
-    }
-    zone.defaultDurationSec = minutes * 60UL;
-
     uint32_t flow = 0;
     if (!parseU32Param("standardFlow", 0, 100000, zone.standardFlowMlPerMin, flow)) {
         Esp32BaseWeb::sendText(400, "标准流量无效");
@@ -699,10 +785,30 @@ void handlePlanCreatePost() {
     if (!Esp32BaseWeb::checkPostAllowed("plan_create")) {
         return;
     }
-    char name[kPlanNameLength] = "新计划";
-    Esp32BaseWeb::getParam("name", name, sizeof(name));
+
+    WateringPlan plan = {};
+    plan.id = 1;
+    plan.used = true;
+    snprintf(plan.name, sizeof(plan.name), "新计划");
+    for (uint8_t i = 0; i < kMaxPlanStartTimes; ++i) {
+        plan.startTimes[i].enabled = false;
+        plan.startTimes[i].minuteOfDay = kInvalidMinuteOfDay;
+    }
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        plan.zoneDurationSec[i] = 0;
+    }
+    if (!readPlanFieldsFromRequest(plan)) {
+        return;
+    }
+
     uint8_t planId = 0;
-    if (!PlanService::createPlan(name, planId)) {
+    if (!PlanService::createPlan(plan.name, planId)) {
+        Esp32BaseWeb::sendText(400, PlanService::lastError());
+        return;
+    }
+    plan.id = planId;
+    if (!PlanService::savePlan(plan)) {
+        PlanService::deletePlan(planId);
         Esp32BaseWeb::sendText(400, PlanService::lastError());
         return;
     }
@@ -730,7 +836,6 @@ void handlePlanSavePost() {
         return;
     }
 
-    char value[32];
     uint8_t planId = 0;
     if (!parseU8Param("id", 1, kMaxPlans, planId)) {
         Esp32BaseWeb::sendText(400, "计划编号无效");
@@ -743,35 +848,8 @@ void handlePlanSavePost() {
     }
 
     WateringPlan plan = *current;
-    plan.enabled = parseBoolParam("enabled");
-    if (Esp32BaseWeb::getParam("name", value, sizeof(value))) {
-        snprintf(plan.name, sizeof(plan.name), "%s", value);
-        plan.name[sizeof(plan.name) - 1] = '\0';
-    }
-
-    for (uint8_t i = 0; i < kMaxPlanStartTimes; ++i) {
-        char key[8];
-        snprintf(key, sizeof(key), "se%u", i);
-        const bool enabled = parseBoolParam(key);
-        snprintf(key, sizeof(key), "st%u", i);
-        uint16_t minuteOfDay = kInvalidMinuteOfDay;
-        if (!parseMinuteParam(key, enabled, minuteOfDay)) {
-            Esp32BaseWeb::sendText(400, "启动时间无效");
-            return;
-        }
-        plan.startTimes[i].enabled = enabled;
-        plan.startTimes[i].minuteOfDay = minuteOfDay;
-    }
-
-    for (uint8_t i = 0; i < kMaxZones; ++i) {
-        char key[8];
-        snprintf(key, sizeof(key), "z%u", i + 1);
-        uint32_t minutes = 0;
-        if (!parseU32Param(key, 0, maxZoneDurationMinutes(), plan.zoneDurationSec[i] / 60UL, minutes)) {
-            Esp32BaseWeb::sendText(400, "水路时长无效");
-            return;
-        }
-        plan.zoneDurationSec[i] = minutes * 60UL;
+    if (!readPlanFieldsFromRequest(plan)) {
+        return;
     }
 
     if (!PlanService::savePlan(plan)) {
@@ -902,7 +980,7 @@ void sendRunPanel() {
         Esp32BaseWeb::sendChunk("</b><span class='ir-help'>本次手动任务会按水路编号顺序执行，填 0 表示跳过。</span></div><div class='ir-input-unit'>");
         char key[8];
         snprintf(key, sizeof(key), "z%u", zone.id);
-        sendNumberInput(key, zone.defaultDurationSec / 60UL, 0, maxMinutes);
+        sendNumberInput(key, 0, 0, maxMinutes);
         Esp32BaseWeb::sendChunk("<span class='ir-unit'>分钟</span></div></div>");
     }
     if (!any) {
@@ -962,14 +1040,20 @@ void handleDashboardPage() {
     epochToText(status.nextRunEpoch, value, sizeof(value));
     Esp32BaseWeb::sendMetric("下次运行", value, status.nextRunEpoch == 0 ? "没有已启用的计划" : "本地时间");
     Esp32BaseWeb::endMetricGrid();
-    Esp32BaseWeb::beginPanel("常用操作");
-    Esp32BaseWeb::sendInfoRowCompactLink("手动浇水", "为已启用水路分别设置时长，然后按顺序浇水。", nullptr, "/irrigation/run", "打开", Esp32BaseWeb::UI_INFO);
-    Esp32BaseWeb::sendInfoRowCompactLink("浇水计划", "每日计划，可启用、禁用，并支持多个启动时间。", nullptr, "/irrigation/plans", "打开", Esp32BaseWeb::UI_INFO);
-    Esp32BaseWeb::sendInfoRowCompactLink("水路配置", "启用实际接线的水路，设置名称和默认时长。", nullptr, "/irrigation/zones", "打开", Esp32BaseWeb::UI_INFO);
-    Esp32BaseWeb::sendInfoRowCompactLink("流量校准", "校准流量计脉冲数和各水路标准流量。", nullptr, "/irrigation/calibration", "打开", Esp32BaseWeb::UI_INFO);
-    Esp32BaseWeb::sendInfoRowCompactLink("系统设置", "配置水源、流量保护和电磁阀驱动参数。", nullptr, "/irrigation/settings", "打开", Esp32BaseWeb::UI_INFO);
-    Esp32BaseWeb::sendInfoRowCompactLink("运行历史", "查看最近浇水记录和停止原因。", nullptr, "/irrigation/history", "打开", Esp32BaseWeb::UI_INFO);
-    Esp32BaseWeb::sendInfoRowCompactLink("状态接口", "查看机器可读的当前状态。", nullptr, "/api/status", "打开", Esp32BaseWeb::UI_INFO);
+    Esp32BaseWeb::beginPanel("当前概览");
+    Esp32BaseWeb::sendChunk("<div class='ir-kv'>");
+    Esp32BaseWeb::sendChunk("<div><b>");
+    Esp32BaseWeb::sendChunk(status.configValid ? "正常" : "异常");
+    Esp32BaseWeb::sendChunk("</b><span>配置状态</span></div><div><b>");
+    Esp32BaseWeb::sendChunk(ConfigStore::config().flow.pulsesPerLiter > 0 ? "已校准" : "未校准");
+    Esp32BaseWeb::sendChunk("</b><span>流量计</span></div><div><b>");
+    Esp32BaseWeb::sendChunk(ConfigStore::config().supply.pumpEnabled ? "启用" : "禁用");
+    Esp32BaseWeb::sendChunk("</b><span>自吸泵联动</span></div><div><b>");
+    Esp32BaseWeb::sendChunk(ConfigStore::config().supply.lowLevelEnabled ? "启用" : "禁用");
+    Esp32BaseWeb::sendChunk("</b><span>低液位保护</span></div></div>");
+    if (ConfigStore::config().flow.pulsesPerLiter == 0) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "流量计未校准", "自动计划执行前需要先设置每升脉冲数。");
+    }
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
@@ -1003,31 +1087,62 @@ void handleRunPage() {
 
 void handleZonesPage() {
     Esp32BaseWeb::sendHeader("水路");
-    Esp32BaseWeb::sendPageTitle("水路", "只启用实际接线的固定水路");
-    Esp32BaseWeb::beginPanel("水路配置");
+    Esp32BaseWeb::sendPageTitle("水路", "固定 6 路输出，启用实际接线的水路");
+    Esp32BaseWeb::beginPanel("水路列表");
 
     const IrrigationConfig& config = ConfigStore::config();
-    const uint32_t maxMinutes = maxZoneDurationMinutes();
-    Esp32BaseWeb::sendChunk("<div class='ir-zone-grid ir-grid'>");
+    Esp32BaseWeb::sendChunk("<div class='ir-list'>");
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
-        char buf[512];
-        snprintf(buf, sizeof(buf), "<form class='ir-card ir-form' method='post' action='/irrigation/zones/save'><input type='hidden' name='id' value='%u'>", zone.id);
+        char buf[256];
+        snprintf(buf, sizeof(buf), "<div class='ir-list-row'><div class='ir-list-main'><b>水路 %u ", zone.id);
         Esp32BaseWeb::sendChunk(buf);
-        snprintf(buf, sizeof(buf), "<div class='ir-card-head'><div><div class='ir-card-title'>水路 %u</div><p class='ir-card-note'>固定输出端口，只启用实际接线的水路。</p></div>", zone.id);
+        Esp32BaseWeb::writeHtmlEscaped(zone.name);
+        Esp32BaseWeb::sendChunk("</b><small>固定输出端口，水路时长在手动浇水或计划中设置。</small></div><div class='ir-list-cell'>");
+        sendEnabledPill(zone.enabled);
+        Esp32BaseWeb::sendChunk("</div><div class='ir-list-cell'><b>");
+        snprintf(buf, sizeof(buf), "%lu", static_cast<unsigned long>(zone.standardFlowMlPerMin));
         Esp32BaseWeb::sendChunk(buf);
-        sendToggleInput("enabled", zone.enabled);
-        Esp32BaseWeb::sendChunk("</div>");
-        Esp32BaseWeb::sendChunk("<div class='ir-field'><label>名称</label><span class='ir-help'>用于页面、计划和运行历史展示。</span>");
-        sendTextInput("name", zone.name, sizeof(zone.name) - 1);
-        Esp32BaseWeb::sendChunk("</div><div class='ir-field'><label>默认时长</label><span class='ir-help'>手动浇水页面默认带出的时长，自动计划可单独设置。</span><div class='ir-input-unit'>");
-        sendNumberInput("defaultMinutes", zone.defaultDurationSec / 60UL, 0, maxMinutes);
-        Esp32BaseWeb::sendChunk("<span class='ir-unit'>分钟</span></div></div><div class='ir-field'><label>标准流量</label><span class='ir-help'>用于低流量和高流量判断，校准后会自动写入。</span><div class='ir-input-unit'>");
-        sendNumberInput("standardFlow", zone.standardFlowMlPerMin, 0, 100000);
-        Esp32BaseWeb::sendChunk("<span class='ir-unit'>ml/min</span></div></div><div class='actions'><input type='submit' value='保存水路'></div></form>");
+        Esp32BaseWeb::sendChunk("</b><small>ml/min 标准流量</small></div><div class='ir-list-cell'><b>");
+        snprintf(buf, sizeof(buf), "%u", zone.valveIndex + 1);
+        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::sendChunk("</b><small>固定输出序号</small></div>");
+        snprintf(buf, sizeof(buf), "<a class='btnlink info' href='/irrigation/zones/edit?id=%u'>配置</a></div>", zone.id);
+        Esp32BaseWeb::sendChunk(buf);
     }
     Esp32BaseWeb::sendChunk("</div>");
 
+    Esp32BaseWeb::endPanel();
+    Esp32BaseWeb::sendFooter();
+}
+
+void handleZoneEditPage() {
+    uint8_t zoneId = 0;
+    if (!readRequestZoneId(zoneId)) {
+        Esp32BaseWeb::sendText(400, "水路编号无效");
+        return;
+    }
+    const ZoneConfig* zone = ZoneService::find(zoneId);
+    if (zone == nullptr) {
+        Esp32BaseWeb::sendText(404, ZoneService::lastError());
+        return;
+    }
+
+    char title[32];
+    snprintf(title, sizeof(title), "水路 %u", zone->id);
+    Esp32BaseWeb::sendHeader(title);
+    Esp32BaseWeb::sendPageTitle(title, "配置水路基础信息");
+    Esp32BaseWeb::beginPanel("水路配置");
+    char buf[128];
+    snprintf(buf, sizeof(buf), "<form class='ir-form' method='post' action='/irrigation/zones/save'><input type='hidden' name='id' value='%u'>", zone->id);
+    Esp32BaseWeb::sendChunk(buf);
+    Esp32BaseWeb::sendChunk("<div class='ir-setting-list'>");
+    sendSettingToggle("启用水路", "只有启用的水路才会出现在手动浇水和计划配置中。", "enabled", zone->enabled);
+    Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>水路名称</span><span class='ir-setting-desc'>用于页面、计划和运行历史展示。</span></div><div class='ir-control'>");
+    sendTextInput("name", zone->name, sizeof(zone->name) - 1);
+    Esp32BaseWeb::sendChunk("</div></div>");
+    sendSettingNumber("标准流量", "用于低流量和高流量判断，校准后可以自动写入。", "ml/min", "standardFlow", zone->standardFlowMlPerMin, 0, 100000);
+    Esp32BaseWeb::sendChunk("</div><div class='actions'><a class='btnlink secondary' href='/irrigation/zones'>返回列表</a><input type='submit' value='保存水路'></div></form>");
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
@@ -1076,18 +1191,37 @@ void sendPlanZoneDurationFields(const WateringPlan& plan) {
     Esp32BaseWeb::sendChunk("</div></div>");
 }
 
+void sendPlanEditForm(const WateringPlan& plan, const char* action, bool isCreate) {
+    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='");
+    Esp32BaseWeb::sendChunk(action);
+    Esp32BaseWeb::sendChunk("'>");
+    if (!isCreate) {
+        char id[64];
+        snprintf(id, sizeof(id), "<input type='hidden' name='id' value='%u'>", plan.id);
+        Esp32BaseWeb::sendChunk(id);
+    }
+
+    Esp32BaseWeb::sendChunk("<div class='ir-setting-list'>");
+    sendSettingToggle("启用计划", "启用后按每日启动时间自动执行，也可以在运行页立即执行。", "enabled", plan.enabled);
+    Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>计划名称</span><span class='ir-setting-desc'>用于区分不同季节、上午/下午或不同浇水策略。</span></div><div class='ir-control'>");
+    sendTextInput("name", plan.name, sizeof(plan.name) - 1);
+    Esp32BaseWeb::sendChunk("</div></div><div class='ir-setting'><div><span class='ir-setting-title'>重复方式</span><span class='ir-setting-desc'>当前产品只支持每日计划，不做复杂重复策略。</span></div><div class='ir-control'><span class='ir-pill on'>每日</span></div></div></div>");
+    sendPlanStartFields(plan);
+    sendPlanZoneDurationFields(plan);
+    Esp32BaseWeb::sendChunk("<div class='actions'>");
+    Esp32BaseWeb::sendChunk("<a class='btnlink secondary' href='/irrigation/plans'>返回列表</a>");
+    Esp32BaseWeb::sendChunk(isCreate ? "<input type='submit' value='创建计划'>" : "<input type='submit' value='保存计划'>");
+    Esp32BaseWeb::sendChunk("</div></form>");
+}
+
 void handlePlansPage() {
     Esp32BaseWeb::sendHeader("计划");
     Esp32BaseWeb::sendPageTitle("计划", "每日计划，最多 8 个计划，每个计划最多 4 个启动时间");
 
-    Esp32BaseWeb::beginPanel("新建计划");
-    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/plans/create'><div class='ir-field'><label>计划名称</label><span class='ir-help'>创建后默认不启用，确认启动时间和水路时长后再打开。</span>");
-    sendTextInput("name", "新计划", kPlanNameLength - 1);
-    Esp32BaseWeb::sendChunk("</div><div class='actions'><input type='submit' value='创建未启用计划'></div></form>");
-    Esp32BaseWeb::endPanel();
-
     const IrrigationConfig& config = ConfigStore::config();
-    Esp32BaseWeb::sendChunk("<div class='ir-plan-list'>");
+    Esp32BaseWeb::beginPanel("计划列表");
+    Esp32BaseWeb::sendChunk("<div class='ir-toolbar'><p>计划只支持每日重复；启动时间和各水路时长在计划详情中配置。</p><a class='btnlink info' href='/irrigation/plans/new'>创建计划</a></div>");
+    Esp32BaseWeb::sendChunk("<div class='ir-list'>");
     bool anyPlan = false;
     for (uint8_t i = 0; i < kMaxPlans; ++i) {
         const WateringPlan& plan = config.plans[i];
@@ -1095,30 +1229,76 @@ void handlePlansPage() {
             continue;
         }
         anyPlan = true;
-        Esp32BaseWeb::sendChunk("<section class='panel'>");
-        char buf[512];
-        snprintf(buf, sizeof(buf), "<form class='ir-form' method='post' action='/irrigation/plans/save'><input type='hidden' name='id' value='%u'><div class='ir-card-head'><div><div class='ir-card-title'>",
-                 plan.id);
-        Esp32BaseWeb::sendChunk(buf);
+        char buf[256];
+        Esp32BaseWeb::sendChunk("<div class='ir-list-row'><div class='ir-list-main'><b>");
         Esp32BaseWeb::writeHtmlEscaped(plan.name);
-        Esp32BaseWeb::sendChunk("</div><p class='ir-card-note'>每日计划，可启用、禁用，也可在运行页立即执行。</p></div>");
-        sendToggleInput("enabled", plan.enabled);
-        Esp32BaseWeb::sendChunk("</div><div class='ir-field'><label>名称</label><span class='ir-help'>用于区分不同季节、上午/下午或不同浇水策略。</span>");
-        sendTextInput("name", plan.name, sizeof(plan.name) - 1);
-        Esp32BaseWeb::sendChunk("</div>");
-        sendPlanStartFields(plan);
-        sendPlanZoneDurationFields(plan);
-        Esp32BaseWeb::sendChunk("<div class='actions'><input type='submit' value='保存计划'></div></form>");
-        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/plans/delete' onsubmit=\"return confirm('确认删除这个计划？')\"><input type='hidden' name='id' value='%u'><div class='ir-danger-line'><input class='danger' type='submit' value='删除计划'></div></form>",
-                 plan.id);
+        Esp32BaseWeb::sendChunk("</b><small>每日计划，");
+        sendPlanStartSummary(plan);
+        Esp32BaseWeb::sendChunk("</small></div><div class='ir-list-cell'>");
+        sendEnabledPill(plan.enabled);
+        Esp32BaseWeb::sendChunk("</div><div class='ir-list-cell'><b>");
+        snprintf(buf, sizeof(buf), "%u", planEnabledZoneCount(config, plan));
         Esp32BaseWeb::sendChunk(buf);
-        Esp32BaseWeb::sendChunk("</section>");
+        Esp32BaseWeb::sendChunk("</b><small>参与水路</small></div><div class='ir-list-cell'><b>");
+        snprintf(buf, sizeof(buf), "%lu", static_cast<unsigned long>(durationMinutesRounded(planTotalDurationSec(config, plan))));
+        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::sendChunk("</b><small>分钟总时长</small></div>");
+        snprintf(buf, sizeof(buf), "<a class='btnlink info' href='/irrigation/plans/edit?id=%u'>配置</a></div>", plan.id);
+        Esp32BaseWeb::sendChunk(buf);
     }
     if (!anyPlan) {
-        Esp32BaseWeb::sendChunk("<div class='ir-empty'>还没有计划。先创建一个计划，再配置启动时间和各水路时长。</div>");
+        Esp32BaseWeb::sendChunk("<div class='ir-empty'>暂无计划。创建计划后，再配置每日启动时间和各水路时长。</div>");
     }
     Esp32BaseWeb::sendChunk("</div>");
+    Esp32BaseWeb::endPanel();
 
+    Esp32BaseWeb::sendFooter();
+}
+
+void handlePlanNewPage() {
+    WateringPlan plan = {};
+    plan.id = 0;
+    plan.used = true;
+    plan.enabled = false;
+    snprintf(plan.name, sizeof(plan.name), "新计划");
+    for (uint8_t i = 0; i < kMaxPlanStartTimes; ++i) {
+        plan.startTimes[i].enabled = i == 0;
+        plan.startTimes[i].minuteOfDay = i == 0 ? 7U * 60U : kInvalidMinuteOfDay;
+    }
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        plan.zoneDurationSec[i] = 0;
+    }
+
+    Esp32BaseWeb::sendHeader("创建计划");
+    Esp32BaseWeb::sendPageTitle("创建计划", "每日启动时间和各水路时长");
+    Esp32BaseWeb::beginPanel("计划信息");
+    sendPlanEditForm(plan, "/irrigation/plans/create", true);
+    Esp32BaseWeb::endPanel();
+    Esp32BaseWeb::sendFooter();
+}
+
+void handlePlanEditPage() {
+    uint8_t planId = 0;
+    if (!readRequestPlanId(planId)) {
+        Esp32BaseWeb::sendText(400, "计划编号无效");
+        return;
+    }
+    const WateringPlan* plan = PlanService::find(planId);
+    if (plan == nullptr) {
+        Esp32BaseWeb::sendText(404, PlanService::lastError());
+        return;
+    }
+
+    Esp32BaseWeb::sendHeader(plan->name);
+    Esp32BaseWeb::sendPageTitle(plan->name, "每日启动时间和各水路时长");
+    Esp32BaseWeb::beginPanel("计划信息");
+    sendPlanEditForm(*plan, "/irrigation/plans/save", false);
+    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/plans/delete' onsubmit=\"return confirm('确认删除这个计划？')\"><input type='hidden' name='id' value='");
+    char id[8];
+    snprintf(id, sizeof(id), "%u", plan->id);
+    Esp32BaseWeb::sendChunk(id);
+    Esp32BaseWeb::sendChunk("'><div class='ir-danger-line'><input class='danger' type='submit' value='删除计划'></div></form>");
+    Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
 
@@ -1392,14 +1572,22 @@ void sendHistoryTable(char* historyText) {
 
 void handleHistoryPage() {
     Esp32BaseWeb::sendHeader("历史");
-    Esp32BaseWeb::sendPageTitle("历史", "最近运行记录");
-    Esp32BaseWeb::beginPanel("最近运行");
-    if (!HistoryService::readRecent(g_historyViewBuffer, sizeof(g_historyViewBuffer))) {
+    Esp32BaseWeb::sendPageTitle("历史", "运行记录");
+    uint32_t page = 1;
+    uint32_t perPage = 10;
+    readPagingParam("page", 1, 65535, 1, page);
+    readPagingParam("per", 10, 50, 10, perPage);
+
+    Esp32BaseWeb::beginPanel("运行记录");
+    uint32_t total = 0;
+    if (!HistoryService::readPage(page, perPage, g_historyViewBuffer, sizeof(g_historyViewBuffer), total)) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "历史不可用", "读取运行历史失败。");
-    } else if (g_historyViewBuffer[0] == '\0') {
+    } else if (total == 0) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "暂无运行历史", "浇水完成、停止或故障后，会在这里显示运行记录。");
     } else {
         sendHistoryTable(g_historyViewBuffer);
+        Esp32BaseWeb::Pagination pagination = {"/irrigation/history", "", page, perPage, total};
+        Esp32BaseWeb::sendPagination(pagination);
     }
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
@@ -1419,7 +1607,10 @@ void IrrigationWeb::registerRoutes() {
     Esp32BaseWeb::addRoute("/irrigation/run/start", Esp32BaseWeb::METHOD_POST, handleManualStartPost);
     Esp32BaseWeb::addRoute("/irrigation/run/plan-now", Esp32BaseWeb::METHOD_POST, handlePlanNowPost);
     Esp32BaseWeb::addRoute("/irrigation/run/stop", Esp32BaseWeb::METHOD_POST, handleStopPost);
+    Esp32BaseWeb::addRoute("/irrigation/zones/edit", Esp32BaseWeb::METHOD_GET, handleZoneEditPage);
     Esp32BaseWeb::addRoute("/irrigation/zones/save", Esp32BaseWeb::METHOD_POST, handleZoneSavePost);
+    Esp32BaseWeb::addRoute("/irrigation/plans/new", Esp32BaseWeb::METHOD_GET, handlePlanNewPage);
+    Esp32BaseWeb::addRoute("/irrigation/plans/edit", Esp32BaseWeb::METHOD_GET, handlePlanEditPage);
     Esp32BaseWeb::addRoute("/irrigation/plans/create", Esp32BaseWeb::METHOD_POST, handlePlanCreatePost);
     Esp32BaseWeb::addRoute("/irrigation/plans/save", Esp32BaseWeb::METHOD_POST, handlePlanSavePost);
     Esp32BaseWeb::addRoute("/irrigation/plans/delete", Esp32BaseWeb::METHOD_POST, handlePlanDeletePost);

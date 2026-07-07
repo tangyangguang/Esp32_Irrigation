@@ -64,6 +64,32 @@ bool normalizeLegacyEnglishNames(IrrigationConfig& config) {
     return changed;
 }
 
+bool migrateOldDefaultEnabledZones(IrrigationConfig& config) {
+    bool oldDefaultPattern = true;
+    char expectedName[16];
+
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        const ZoneConfig& zone = config.zones[i];
+        snprintf(expectedName, sizeof(expectedName), "水路 %u", static_cast<unsigned>(zone.id));
+        if (zone.enabled != (i == 0) ||
+            strcmp(zone.name, expectedName) != 0 ||
+            zone.defaultDurationSec != 0 ||
+            zone.standardFlowMlPerMin != 0) {
+            oldDefaultPattern = false;
+            break;
+        }
+    }
+
+    if (!oldDefaultPattern) {
+        return false;
+    }
+
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        config.zones[i].enabled = i < kDefaultEnabledZones;
+    }
+    return true;
+}
+
 const char* contactTypeToString(ContactType type) {
     return type == ContactType::NormallyClosed ? "normally_closed" : "normally_open";
 }
@@ -375,10 +401,15 @@ bool ConfigStore::begin() {
             ESP32BASE_LOG_W("config_store", "default_config_save_failed error=%s", g_lastError);
         }
         g_loadedFromDefaults = true;
-    } else if (normalizeLegacyEnglishNames(g_config)) {
-        ESP32BASE_LOG_I("config_store", "legacy_english_names_localized");
+    } else {
+        const bool namesChanged = normalizeLegacyEnglishNames(g_config);
+        const bool zonesChanged = migrateOldDefaultEnabledZones(g_config);
+        if (!namesChanged && !zonesChanged) {
+            return g_configValid;
+        }
+        ESP32BASE_LOG_I("config_store", "config_normalized");
         if (!save(g_config)) {
-            ESP32BASE_LOG_W("config_store", "localized_config_save_failed error=%s", g_lastError);
+            ESP32BASE_LOG_W("config_store", "normalized_config_save_failed error=%s", g_lastError);
         }
     }
 
