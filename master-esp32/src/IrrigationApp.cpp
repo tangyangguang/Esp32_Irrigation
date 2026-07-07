@@ -56,6 +56,7 @@ void setupBeforeBase() {
     Irrigation::BoardHardware::begin(config.valve, config.supply);
     Irrigation::IrrigationWeb::registerRoutes();
 
+    Esp32BaseWeb::setDefaultAuth("admin", "admin");
     Esp32BaseWeb::setDeviceName("Smart Irrigation");
     Esp32BaseWeb::setHomePath("/esp32base");
     Esp32BaseWeb::setHomeMode(Esp32BaseWeb::HOME_COMBINED);
