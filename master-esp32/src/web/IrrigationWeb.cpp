@@ -48,7 +48,8 @@ void sendIrrigationHeadExtra() {
         ".ir-data-table{width:100%;border-collapse:separate;border-spacing:0}.ir-data-table th,.ir-data-table td{padding:11px 12px;border-bottom:1px solid #e4ebef;vertical-align:middle;text-align:left}.ir-data-table th{font-size:12px;background:#f8fafb;color:var(--ir-muted);white-space:nowrap}.ir-data-table tbody tr:last-child td{border-bottom:0}.ir-data-table tbody tr:hover td{background:#fbfcfd}.ir-data-table .num{text-align:right;font-variant-numeric:tabular-nums}.ir-table-title{font-weight:800;color:var(--ir-ink)}.ir-table-note{display:block;margin-top:3px;color:var(--ir-muted);font-size:12px}.ir-compact-list{display:flex;flex-wrap:wrap;gap:5px}.ir-compact-item{display:inline-flex;align-items:center;min-height:22px;padding:0 7px;border-radius:6px;background:#eef6f3;color:#236052;font-size:12px;font-weight:700;white-space:nowrap}"
         ".ir-time-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-time-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:8px}.ir-time-item input[type=time]{width:100%}.ir-zone-duration{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px}.ir-zone-duration .ir-field{border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:10px;margin:0}.ir-zone-duration input[type=number]{max-width:100px}.ir-danger-line{display:flex;justify-content:flex-end;margin-top:8px}"
         ".ir-calib-flow{display:grid;grid-template-columns:minmax(0,.9fr) minmax(0,1.1fr);gap:12px}.ir-calib-card{border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:13px}.ir-calib-card h3{margin:0 0 4px;font-size:15px}.ir-calib-card p{margin:0 0 12px;color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-calib-steps{display:grid;gap:8px}.ir-calib-step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:9px;align-items:start}.ir-step-no{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--ir-soft);color:var(--ir-accent-strong);font-size:12px;font-weight:900}.ir-calib-result{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-bottom:12px}.ir-calib-result div{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:10px}.ir-calib-result b{display:block;font-size:18px}.ir-calib-result span{display:block;margin-top:2px;color:var(--ir-muted);font-size:12px}"
-        "@media(max-width:820px){.ir-grid,.ir-grid.ir-three,.ir-time-grid,.ir-zone-duration,.ir-kv,.ir-setting-list,.ir-run-list,.ir-calib-flow,.ir-calib-result{grid-template-columns:1fr}.actions,.ir-toolbar{justify-content:flex-start;align-items:flex-start}.ir-toolbar{flex-direction:column}select{width:100%;min-width:0}.tablewrap{overflow-x:auto}.ir-data-table{min-width:680px}}"
+        ".ir-status-panel{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:start}.ir-status-title{font-size:17px;font-weight:850;margin:0 0 4px}.ir-status-note{margin:0;color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-status-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}.ir-status-grid div{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:10px}.ir-status-grid b{display:block;font-size:18px}.ir-status-grid span{display:block;margin-top:2px;color:var(--ir-muted);font-size:12px}.ir-plan-now{display:grid;grid-template-columns:minmax(240px,.75fr) minmax(0,1.25fr);gap:12px;align-items:start}.ir-plan-now .ir-field{margin:0}.ir-plan-preview{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:12px;min-width:0}.ir-plan-preview[hidden]{display:none}.ir-plan-preview h3{font-size:15px;margin:0 0 4px}.ir-plan-preview p{margin:0 0 9px;color:var(--ir-muted);font-size:12px}.ir-plan-summary{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}.ir-zone-seq{display:grid;gap:6px}.ir-zone-seq div{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;border:1px solid #e4ebef;border-radius:7px;background:#fff;padding:8px}.ir-event-summary{min-width:220px}.ir-event-values{display:flex;flex-wrap:wrap;gap:4px}.ir-detail-section{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:12px;margin:0 0 12px}.ir-detail-section h2{font-size:15px;margin:0 0 10px}.ir-detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-detail-row{border:1px solid #e4ebef;border-radius:7px;background:#fff;padding:9px;min-width:0}.ir-detail-row span{display:block;color:var(--ir-muted);font-size:12px;margin-bottom:3px}.ir-detail-row b{display:block;font-size:13px;overflow-wrap:anywhere}.ir-detail-row.full{grid-column:1/-1}"
+        "@media(max-width:820px){.ir-grid,.ir-grid.ir-three,.ir-time-grid,.ir-zone-duration,.ir-kv,.ir-setting-list,.ir-run-list,.ir-calib-flow,.ir-calib-result,.ir-status-panel,.ir-status-grid,.ir-plan-now,.ir-detail-grid{grid-template-columns:1fr}.actions,.ir-toolbar{justify-content:flex-start;align-items:flex-start}.ir-toolbar{flex-direction:column}select{width:100%;min-width:0}.tablewrap{overflow-x:auto}.ir-data-table{min-width:680px}}"
         "</style>");
 }
 
@@ -97,6 +98,17 @@ const char* runResultName(RunResult result) {
         case RunResult::Skipped: return "skipped";
     }
     return "unknown";
+}
+
+const char* runResultLabel(RunResult result) {
+    switch (result) {
+        case RunResult::None: return "无";
+        case RunResult::Completed: return "已完成";
+        case RunResult::UserStopped: return "用户停止";
+        case RunResult::FaultStopped: return "故障停止";
+        case RunResult::Skipped: return "已跳过";
+    }
+    return "未知";
 }
 
 const char* runReasonLabel(RunReason reason) {
@@ -532,6 +544,53 @@ uint32_t msToSecondsRounded(uint32_t milliseconds) {
     return (milliseconds + 999UL) / 1000UL;
 }
 
+const char* runSourceLabel(RunSource source) {
+    switch (source) {
+        case RunSource::Manual: return "手动浇水";
+        case RunSource::Plan: return "自动计划";
+        case RunSource::RunPlanNow: return "立即执行计划";
+        case RunSource::Calibration: return "校准";
+    }
+    return "未知";
+}
+
+const ZoneConfig* findZoneById(const IrrigationConfig& config, uint8_t zoneId) {
+    const uint8_t index = zoneIndexFromId(zoneId);
+    if (index >= kMaxZones) {
+        return nullptr;
+    }
+    return &config.zones[index];
+}
+
+const char* zoneNameById(const IrrigationConfig& config, uint8_t zoneId) {
+    const ZoneConfig* zone = findZoneById(config, zoneId);
+    return zone != nullptr ? zone->name : "未知水路";
+}
+
+const char* planNameById(const IrrigationConfig& config, uint8_t planId) {
+    for (uint8_t i = 0; i < kMaxPlans; ++i) {
+        const WateringPlan& plan = config.plans[i];
+        if (plan.used && plan.id == planId) {
+            return plan.name;
+        }
+    }
+    return "未知计划";
+}
+
+void durationToText(uint32_t seconds, char* out, size_t len) {
+    const uint32_t minutes = seconds / 60UL;
+    const uint32_t remainSec = seconds % 60UL;
+    if (minutes > 0 && remainSec > 0) {
+        snprintf(out, len, "%lu 分 %lu 秒",
+                 static_cast<unsigned long>(minutes),
+                 static_cast<unsigned long>(remainSec));
+    } else if (minutes > 0) {
+        snprintf(out, len, "%lu 分钟", static_cast<unsigned long>(minutes));
+    } else {
+        snprintf(out, len, "%lu 秒", static_cast<unsigned long>(remainSec));
+    }
+}
+
 uint8_t planEnabledZoneCount(const IrrigationConfig& config, const WateringPlan& plan) {
     uint8_t count = 0;
     for (uint8_t i = 0; i < kMaxZones; ++i) {
@@ -614,6 +673,29 @@ void sendPlanZoneSummary(const IrrigationConfig& config, const WateringPlan& pla
     }
     if (!any) {
         Esp32BaseWeb::sendChunk("<span class='ir-table-note'>未配置有效水路时长</span>");
+    }
+    Esp32BaseWeb::sendChunk("</div>");
+}
+
+void sendPlanStepList(const IrrigationConfig& config, const WateringPlan& plan) {
+    bool any = false;
+    Esp32BaseWeb::sendChunk("<div class='ir-zone-seq'>");
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        const ZoneConfig& zone = config.zones[i];
+        if (!zone.enabled || plan.zoneDurationSec[i] == 0) {
+            continue;
+        }
+        any = true;
+        char duration[24];
+        durationToText(plan.zoneDurationSec[i], duration, sizeof(duration));
+        Esp32BaseWeb::sendChunk("<div><span>");
+        Esp32BaseWeb::writeHtmlEscaped(zone.name);
+        Esp32BaseWeb::sendChunk("</span><b>");
+        Esp32BaseWeb::writeHtmlEscaped(duration);
+        Esp32BaseWeb::sendChunk("</b></div>");
+    }
+    if (!any) {
+        Esp32BaseWeb::sendChunk("<div><span>没有有效水路</span><b>不会执行</b></div>");
     }
     Esp32BaseWeb::sendChunk("</div>");
 }
@@ -1219,7 +1301,7 @@ void sendPlanNowPanel() {
     bool hasPlan = false;
     const bool flowReady = config.flow.pulsesPerLiter > 0;
     Esp32BaseWeb::beginPanel("立即执行计划");
-    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/run/plan-now'><div class='ir-field'><label>选择计划</label><span class='ir-help'>立即按所选计划的水路时长顺序执行，不等待计划启动时间。</span><select name='plan'>");
+    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/run/plan-now'><div class='ir-plan-now'><div class='ir-card'><div class='ir-field'><label>选择计划</label><span class='ir-help'>立即按所选计划的水路时长顺序执行，不等待计划启动时间。</span><select id='ir-plan-now-select' name='plan'>");
     for (uint8_t i = 0; i < kMaxPlans; ++i) {
         const WateringPlan& plan = config.plans[i];
         if (!plan.used || !plan.enabled) {
@@ -1236,7 +1318,37 @@ void sendPlanNowPanel() {
     if (!hasPlan || !flowReady) {
         Esp32BaseWeb::sendChunk(" disabled");
     }
-    Esp32BaseWeb::sendChunk("></div></form>");
+    Esp32BaseWeb::sendChunk("></div></div><div>");
+    bool firstPreview = true;
+    for (uint8_t i = 0; i < kMaxPlans; ++i) {
+        const WateringPlan& plan = config.plans[i];
+        if (!plan.used || !plan.enabled) {
+            continue;
+        }
+        char buf[192];
+        snprintf(buf, sizeof(buf), "<div class='ir-plan-preview' data-plan-preview='%u'%s><h3>",
+                 plan.id,
+                 firstPreview ? "" : " hidden");
+        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::writeHtmlEscaped(plan.name);
+        Esp32BaseWeb::sendChunk("</h3><p>只预览本计划内容，不能在运行页修改。</p><div class='ir-plan-summary'><span class='ir-pill on'>每日</span><span class='ir-pill'>");
+        sendPlanStartSummary(plan);
+        Esp32BaseWeb::sendChunk("</span>");
+        snprintf(buf, sizeof(buf), "<span class='ir-pill'>%u 个水路</span><span class='ir-pill'>%lu 分钟</span></div>",
+                 planEnabledZoneCount(config, plan),
+                 static_cast<unsigned long>(durationMinutesRounded(planTotalDurationSec(config, plan))));
+        Esp32BaseWeb::sendChunk(buf);
+        sendPlanStepList(config, plan);
+        Esp32BaseWeb::sendChunk("</div>");
+        firstPreview = false;
+    }
+    if (!hasPlan) {
+        Esp32BaseWeb::sendChunk("<div class='ir-empty'>没有已启用的计划。</div>");
+    }
+    Esp32BaseWeb::sendChunk("</div></div></form>");
+    if (hasPlan) {
+        Esp32BaseWeb::sendChunk("<script>(function(){var s=document.getElementById('ir-plan-now-select');if(!s)return;function u(){document.querySelectorAll('[data-plan-preview]').forEach(function(c){c.hidden=c.getAttribute('data-plan-preview')!==s.value;});}s.addEventListener('change',u);u();})();</script>");
+    }
     if (!hasPlan) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "没有已启用的计划", "先启用一个计划，才能使用立即执行。");
     } else if (!flowReady) {
@@ -1245,28 +1357,107 @@ void sendPlanNowPanel() {
     Esp32BaseWeb::endPanel();
 }
 
+void sendRunStatusPanel(const char* title, bool includeStop) {
+    const StatusSnapshot status = RunController::statusSnapshot();
+    const IrrigationConfig& config = ConfigStore::config();
+    const WateringRun& run = RunController::currentRun();
+    char flow[24];
+    char volume[24];
+    flowRateToText(status.currentFlowMlPerMin, flow, sizeof(flow));
+    snprintf(volume, sizeof(volume), "%lu ml", static_cast<unsigned long>(status.currentRunVolumeMl));
+
+    Esp32BaseWeb::beginPanel(title);
+    Esp32BaseWeb::sendChunk("<div class='ir-status-panel'><div><p class='ir-status-title'>");
+    Esp32BaseWeb::sendChunk(status.busy ? runStateLabel(status.runState) : "空闲");
+    Esp32BaseWeb::sendChunk("</p><p class='ir-status-note'>");
+    if (status.busy) {
+        Esp32BaseWeb::sendChunk(runSourceLabel(run.source));
+        if (run.planId > 0) {
+            Esp32BaseWeb::sendChunk(" · ");
+            Esp32BaseWeb::writeHtmlEscaped(planNameById(config, run.planId));
+        }
+    } else {
+        Esp32BaseWeb::sendChunk("当前没有正在执行的浇水任务。");
+    }
+    Esp32BaseWeb::sendChunk("</p></div>");
+    if (includeStop && status.busy) {
+        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/run/stop'><input class='danger' type='submit' value='停止浇水'></form>");
+    }
+    Esp32BaseWeb::sendChunk("</div><div class='ir-status-grid'>");
+
+    char value[48];
+    if (status.busy && run.currentStep < run.stepCount) {
+        snprintf(value, sizeof(value), "%u / %u",
+                 static_cast<unsigned>(run.currentStep + 1U),
+                 static_cast<unsigned>(run.stepCount));
+    } else {
+        snprintf(value, sizeof(value), "无");
+    }
+    Esp32BaseWeb::sendChunk("<div><b>");
+    Esp32BaseWeb::writeHtmlEscaped(value);
+    Esp32BaseWeb::sendChunk("</b><span>步骤进度</span></div><div><b>");
+    if (status.activeZoneId > 0) {
+        Esp32BaseWeb::writeHtmlEscaped(zoneNameById(config, status.activeZoneId));
+    } else {
+        Esp32BaseWeb::sendChunk("无");
+    }
+    Esp32BaseWeb::sendChunk("</b><span>当前水路</span></div><div><b>");
+    Esp32BaseWeb::writeHtmlEscaped(flow);
+    Esp32BaseWeb::sendChunk("</b><span>当前流量 L/min</span></div><div><b>");
+    Esp32BaseWeb::writeHtmlEscaped(volume);
+    Esp32BaseWeb::sendChunk("</b><span>当前步骤累计水量</span></div></div>");
+    Esp32BaseWeb::endPanel();
+}
+
+void sendLastWateringSummary() {
+    uint32_t total = 0;
+    if (!HistoryService::readPage(1, 1, g_historyViewBuffer, sizeof(g_historyViewBuffer), total) || total == 0) {
+        Esp32BaseWeb::sendChunk("<div><b>无</b><span>最近浇水</span></div>");
+        return;
+    }
+    char* line = g_historyViewBuffer;
+    while (*line == ' ' || *line == '\r' || *line == '\n' || *line == '\t') {
+        ++line;
+    }
+    StaticJsonDocument<1536> doc;
+    if (deserializeJson(doc, line) != DeserializationError::Ok) {
+        Esp32BaseWeb::sendChunk("<div><b>不可用</b><span>最近浇水</span></div>");
+        return;
+    }
+    char finished[24];
+    epochToText(doc["finishedAt"] | 0, finished, sizeof(finished));
+    Esp32BaseWeb::sendChunk("<div><b>");
+    Esp32BaseWeb::sendChunk(runResultLabelFromString(doc["result"] | ""));
+    Esp32BaseWeb::sendChunk("</b><span>");
+    Esp32BaseWeb::writeHtmlEscaped(finished);
+    Esp32BaseWeb::sendChunk("</span></div>");
+}
+
 void handleDashboardPage() {
     const StatusSnapshot status = RunController::statusSnapshot();
     char value[32];
 
     Esp32BaseWeb::sendHeader("智能浇水");
     Esp32BaseWeb::sendPageTitle("智能浇水", "本地 12V 六路浇水控制器");
+
+    if (status.busy) {
+        sendRunStatusPanel("正在运行", true);
+    }
+
     Esp32BaseWeb::beginMetricGrid();
     Esp32BaseWeb::sendMetric("运行状态", runStateLabel(status.runState), status.busy ? "正在运行" : "空闲");
-    snprintf(value, sizeof(value), "%u / %u", status.enabledZoneCount, kMaxZones);
-    Esp32BaseWeb::sendMetric("已启用水路", value, "硬件最多 6 路");
-    snprintf(value, sizeof(value), "%u / %u", status.enabledPlanCount, kMaxPlans);
-    Esp32BaseWeb::sendMetric("已启用计划", value, "每日计划");
     epochToText(status.nextRunEpoch, value, sizeof(value));
     Esp32BaseWeb::sendMetric("下次运行", value, status.nextRunEpoch == 0 ? "没有已启用的计划" : "本地时间");
+    Esp32BaseWeb::sendMetric("流量计", ConfigStore::config().flow.pulsesPerLiter > 0 ? "已校准" : "未校准", "自动计划依赖");
+    Esp32BaseWeb::sendMetric("供水方式", ConfigStore::config().supply.pumpEnabled ? "外部自吸泵" : "有压水源", ConfigStore::config().supply.lowLevelEnabled ? "缺水保护启用" : "缺水保护禁用");
     Esp32BaseWeb::endMetricGrid();
-    Esp32BaseWeb::beginPanel("当前概览");
+
+    Esp32BaseWeb::beginPanel("系统健康");
     Esp32BaseWeb::sendChunk("<div class='ir-kv'>");
+    sendLastWateringSummary();
     Esp32BaseWeb::sendChunk("<div><b>");
     Esp32BaseWeb::sendChunk(status.configValid ? "正常" : "异常");
     Esp32BaseWeb::sendChunk("</b><span>配置状态</span></div><div><b>");
-    Esp32BaseWeb::sendChunk(ConfigStore::config().flow.pulsesPerLiter > 0 ? "已校准" : "未校准");
-    Esp32BaseWeb::sendChunk("</b><span>流量计</span></div><div><b>");
     Esp32BaseWeb::sendChunk(ConfigStore::config().supply.pumpEnabled ? "启用" : "禁用");
     Esp32BaseWeb::sendChunk("</b><span>外部自吸泵供水</span></div><div><b>");
     Esp32BaseWeb::sendChunk(ConfigStore::config().supply.lowLevelEnabled ? "启用" : "禁用");
@@ -1282,21 +1473,8 @@ void handleRunPage() {
     const StatusSnapshot status = RunController::statusSnapshot();
     Esp32BaseWeb::sendHeader("运行");
     Esp32BaseWeb::sendPageTitle("运行", "手动顺序浇水和立即执行计划");
-    char value[32];
-    Esp32BaseWeb::beginMetricGrid();
-    Esp32BaseWeb::sendMetric("运行状态", runStateLabel(status.runState), status.busy ? "正在运行" : "空闲");
-    snprintf(value, sizeof(value), "%u", status.activeZoneId);
-    Esp32BaseWeb::sendMetric("当前水路", value, status.activeZoneId == 0 ? "无" : "已打开");
-    flowRateToText(status.currentFlowMlPerMin, value, sizeof(value));
-    Esp32BaseWeb::sendMetric("当前流量", value, "L/min 估算值");
-    snprintf(value, sizeof(value), "%lu", static_cast<unsigned long>(status.currentRunVolumeMl));
-    Esp32BaseWeb::sendMetric("累计水量 ml", value, "当前步骤");
-    Esp32BaseWeb::endMetricGrid();
     if (status.busy) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "正在运行", runStateLabel(status.runState));
-        Esp32BaseWeb::beginPanel("停止运行");
-        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/run/stop'><div class='actions'><input class='danger' type='submit' value='停止浇水'></div></form>");
-        Esp32BaseWeb::endPanel();
+        sendRunStatusPanel("当前运行", true);
     } else {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_OK, "空闲", "当前没有正在执行的浇水任务。");
     }
@@ -1834,6 +2012,33 @@ void writeEventObjectText(const char* value, size_t maxLen) {
     }
 }
 
+void sendEventValues(const Esp32BaseAppEventRecord& event) {
+    bool any = false;
+    Esp32BaseWeb::sendChunk("<div class='ir-event-values'>");
+    if (event.valueMask & Esp32BaseAppEventLog::VALUE1) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "<span class='ir-compact-item'>v1 %ld</span>", static_cast<long>(event.value1));
+        Esp32BaseWeb::sendChunk(buf);
+        any = true;
+    }
+    if (event.valueMask & Esp32BaseAppEventLog::VALUE2) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "<span class='ir-compact-item'>v2 %ld</span>", static_cast<long>(event.value2));
+        Esp32BaseWeb::sendChunk(buf);
+        any = true;
+    }
+    if (event.valueMask & Esp32BaseAppEventLog::VALUE3) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "<span class='ir-compact-item'>v3 %ld</span>", static_cast<long>(event.value3));
+        Esp32BaseWeb::sendChunk(buf);
+        any = true;
+    }
+    if (!any) {
+        Esp32BaseWeb::sendChunk("<span class='ir-table-note'>无</span>");
+    }
+    Esp32BaseWeb::sendChunk("</div>");
+}
+
 void sendEventTableRow(const Esp32BaseAppEventRecord& event, void* user) {
     bool* any = static_cast<bool*>(user);
     if (any != nullptr) {
@@ -1841,10 +2046,10 @@ void sendEventTableRow(const Esp32BaseAppEventRecord& event, void* user) {
     }
     char timeText[24];
     eventTimeToText(event, timeText, sizeof(timeText));
-    char buf[160];
+    char buf[256];
     snprintf(buf,
              sizeof(buf),
-             "<tr><td class='num'>%lu</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>",
+             "<tr><td class='num'>%lu</td><td>%s</td><td><div class='ir-event-summary'><b>%s</b><span class='ir-table-note'>%s · %s</span></div></td><td>",
              static_cast<unsigned long>(event.id),
              eventLevelLabel(event.level),
              eventSourceLabel(event.source),
@@ -1853,12 +2058,181 @@ void sendEventTableRow(const Esp32BaseAppEventRecord& event, void* user) {
     Esp32BaseWeb::sendChunk(buf);
     writeEventObjectText(event.object, sizeof(event.object));
     Esp32BaseWeb::sendChunk("</td><td>");
-    Esp32BaseWeb::writeHtmlEscaped(timeText);
-    Esp32BaseWeb::sendChunk("</td></tr>");
+    sendEventValues(event);
+    snprintf(buf, sizeof(buf), "</td><td>%s</td><td><a class='btnlink info' href='/irrigation/events/detail?id=%lu'>详情</a></td></tr>",
+             timeText,
+             static_cast<unsigned long>(event.id));
+    Esp32BaseWeb::sendChunk(buf);
+}
+
+const char* boolLabel(bool value) {
+    return value ? "是" : "否";
+}
+
+void sendDetailTextRow(const char* name, const char* value, bool full = false) {
+    Esp32BaseWeb::sendChunk(full ? "<div class='ir-detail-row full'><span>" : "<div class='ir-detail-row'><span>");
+    Esp32BaseWeb::sendChunk(name);
+    Esp32BaseWeb::sendChunk("</span><b>");
+    Esp32BaseWeb::writeHtmlEscaped(value != nullptr && value[0] != '\0' ? value : "无");
+    Esp32BaseWeb::sendChunk("</b></div>");
+}
+
+void sendDetailUintRow(const char* name, uint32_t value) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lu", static_cast<unsigned long>(value));
+    sendDetailTextRow(name, buf);
+}
+
+void sendDetailIntRow(const char* name, int32_t value) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%ld", static_cast<long>(value));
+    sendDetailTextRow(name, buf);
+}
+
+void sendDetailHexRow(const char* name, uint32_t value) {
+    char buf[32];
+    snprintf(buf, sizeof(buf), "0x%08lX", static_cast<unsigned long>(value));
+    sendDetailTextRow(name, buf);
+}
+
+void sendDetailBoolRow(const char* name, bool value) {
+    sendDetailTextRow(name, boolLabel(value));
+}
+
+struct EventFindState {
+    uint32_t id;
+    bool found;
+    Esp32BaseAppEventLog::StoreRecord item;
+};
+
+void findEventStoreRecord(const Esp32BaseAppEventLog::StoreRecord& item, void* user) {
+    EventFindState* state = static_cast<EventFindState*>(user);
+    if (state == nullptr || state->found) {
+        return;
+    }
+    if (item.record.id == state->id) {
+        state->item = item;
+        state->found = true;
+    }
+}
+
+void sendEventDetailSectionStart(const char* title) {
+    Esp32BaseWeb::sendChunk("<div class='ir-detail-section'><h2>");
+    Esp32BaseWeb::sendChunk(title);
+    Esp32BaseWeb::sendChunk("</h2><div class='ir-detail-grid'>");
+}
+
+void sendEventDetailSectionEnd() {
+    Esp32BaseWeb::sendChunk("</div></div>");
+}
+
+void sendEventTextDetailRow(const char* name, const char* value, size_t maxLen, bool full = false) {
+    char text[80];
+    size_t n = 0;
+    while (n < maxLen && value[n] != '\0' && n < sizeof(text) - 1) {
+        text[n] = value[n];
+        ++n;
+    }
+    text[n] = '\0';
+    sendDetailTextRow(name, text, full);
+}
+
+void sendEventDetail(const Esp32BaseAppEventLog::StoreRecord& item) {
+    const Esp32BaseAppEventRecord& event = item.record;
+    char timeText[32];
+    eventTimeToText(event, timeText, sizeof(timeText));
+    char levelText[32];
+    snprintf(levelText, sizeof(levelText), "%s (%u)", eventLevelLabel(event.level), static_cast<unsigned>(event.level));
+    char sourceText[80];
+    snprintf(sourceText, sizeof(sourceText), "%s", eventSourceLabel(event.source));
+    char typeText[80];
+    snprintf(typeText, sizeof(typeText), "%s", eventTypeLabel(event.type));
+    char reasonText[80];
+    snprintf(reasonText, sizeof(reasonText), "%s", eventReasonLabel(event.reason));
+
+    sendEventDetailSectionStart("基本信息");
+    sendDetailUintRow("事件 ID", event.id);
+    sendDetailTextRow("级别", levelText);
+    sendDetailTextRow("来源", sourceText);
+    sendDetailTextRow("事件类型", typeText);
+    sendDetailTextRow("原因", reasonText);
+    Esp32BaseWeb::sendChunk("<div class='ir-detail-row'><span>对象</span><b>");
+    writeEventObjectText(event.object, sizeof(event.object));
+    Esp32BaseWeb::sendChunk("</b></div>");
+    sendDetailUintRow("代码 code", event.code);
+    sendEventTextDetailRow("文本 text", event.text, sizeof(event.text), true);
+    sendEventDetailSectionEnd();
+
+    sendEventDetailSectionStart("时间信息");
+    sendDetailTextRow("显示时间", timeText);
+    sendDetailUintRow("epochSec", event.epochSec);
+    sendDetailUintRow("bootId", event.bootId);
+    sendDetailUintRow("uptimeSec", event.uptimeSec);
+    sendEventDetailSectionEnd();
+
+    sendEventDetailSectionStart("数值信息");
+    sendDetailIntRow("value1", event.value1);
+    sendDetailIntRow("value2", event.value2);
+    sendDetailIntRow("value3", event.value3);
+    sendDetailUintRow("valueMask", event.valueMask);
+    sendEventDetailSectionEnd();
+
+    sendEventDetailSectionStart("原始字段");
+    sendDetailHexRow("magic", event.magic);
+    sendEventTextDetailRow("source", event.source, sizeof(event.source));
+    sendEventTextDetailRow("type", event.type, sizeof(event.type));
+    sendEventTextDetailRow("reason", event.reason, sizeof(event.reason));
+    sendEventTextDetailRow("object", event.object, sizeof(event.object), true);
+    sendDetailUintRow("flags", event.flags);
+    sendDetailUintRow("reserved", event.reserved);
+    sendDetailUintRow("crc16", event.crc16);
+    sendEventDetailSectionEnd();
+
+    sendEventDetailSectionStart("存储信息");
+    sendDetailUintRow("slot", item.slot);
+    sendDetailUintRow("index", item.index);
+    sendDetailUintRow("offset", item.offset);
+    sendDetailTextRow("状态", Esp32BaseAppEventLog::storeRecordStatusName(item.status));
+    sendDetailUintRow("storedCrc16", item.storedCrc16);
+    sendDetailUintRow("calculatedCrc16", item.calculatedCrc16);
+    sendDetailBoolRow("readOk", item.readOk);
+    sendDetailBoolRow("magicOk", item.magicOk);
+    sendDetailBoolRow("levelOk", item.levelOk);
+    sendDetailBoolRow("crcOk", item.crcOk);
+    sendDetailBoolRow("committed", item.committed);
+    sendEventDetailSectionEnd();
+}
+
+void handleEventDetailPage() {
+    uint32_t id = 0;
+    if (!parseU32Param("id", 1, 1000000000UL, 0, id)) {
+        Esp32BaseWeb::sendText(400, "事件编号无效");
+        return;
+    }
+    Esp32BaseAppEventLog::StoreInfo info;
+    if (!Esp32BaseAppEventLog::readStoreInfo(info)) {
+        Esp32BaseWeb::sendText(500, Esp32BaseAppEventLog::lastError());
+        return;
+    }
+    EventFindState state = {};
+    state.id = id;
+    Esp32BaseAppEventLog::readStoreRecords(0, info.count, findEventStoreRecord, &state);
+    if (!state.found) {
+        Esp32BaseWeb::sendText(404, "事件不存在");
+        return;
+    }
+
+    Esp32BaseWeb::sendHeader("事件详情");
+    Esp32BaseWeb::sendPageTitle("事件详情", "事件记录的完整字段");
+    Esp32BaseWeb::beginPanel("事件记录");
+    sendEventDetail(state.item);
+    Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink secondary' href='/irrigation/events'>返回事件</a></div>");
+    Esp32BaseWeb::endPanel();
+    Esp32BaseWeb::sendFooter();
 }
 
 void sendEventsTable(uint32_t page, uint32_t perPage, uint32_t total) {
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='ir-data-table'><thead><tr><th class='num'>编号</th><th>级别</th><th>来源</th><th>事件</th><th>原因</th><th>对象</th><th>时间</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='ir-data-table'><thead><tr><th class='num'>编号</th><th>级别</th><th>事件摘要</th><th>对象</th><th>关键数值</th><th>时间</th><th>操作</th></tr></thead><tbody>");
     bool any = false;
     const uint32_t offset = (page - 1U) * perPage;
     if (offset <= 65535UL && perPage <= 65535UL) {
@@ -1974,6 +2348,7 @@ void IrrigationWeb::registerRoutes() {
     Esp32BaseWeb::addPage("/irrigation/settings", "设置", handleSettingsPage);
     Esp32BaseWeb::addPage("/irrigation/history", "浇水历史", handleHistoryPage);
     Esp32BaseWeb::addPage("/irrigation/events", "事件", handleEventsPage);
+    Esp32BaseWeb::addRoute("/irrigation/events/detail", Esp32BaseWeb::METHOD_GET, handleEventDetailPage);
     Esp32BaseWeb::addRoute("/irrigation/run/start", Esp32BaseWeb::METHOD_POST, handleManualStartPost);
     Esp32BaseWeb::addRoute("/irrigation/run/plan-now", Esp32BaseWeb::METHOD_POST, handlePlanNowPost);
     Esp32BaseWeb::addRoute("/irrigation/run/stop", Esp32BaseWeb::METHOD_POST, handleStopPost);
