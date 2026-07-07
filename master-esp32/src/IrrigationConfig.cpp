@@ -90,7 +90,7 @@ void applyDefaultConfig(IrrigationConfig& config) {
     config.version = kConfigVersion;
 
     config.supply.pumpEnabled = false;
-    config.supply.pumpStartDelayMs = 1000;
+    config.supply.pumpStartDelayMs = 0;
     config.supply.pumpStopDelayMs = 1000;
     config.supply.lowLevelEnabled = false;
     config.supply.lowLevelContactType = ContactType::NormallyOpen;
@@ -105,7 +105,7 @@ void applyDefaultConfig(IrrigationConfig& config) {
     config.flow.highFlowPercent = 200;
     config.flow.lowHighFlowConfirmSec = 20;
 
-    config.valve.pullInMs = 300;
+    config.valve.pullInMs = 5000;
     config.valve.holdPercent = 60;
     config.valve.maxZoneDurationSec = 120UL * 60UL;
 

@@ -89,6 +89,22 @@ bool migrateOldDefaultEnabledZones(IrrigationConfig& config) {
     return true;
 }
 
+bool normalizeCurrentSettingDefaults(IrrigationConfig& config) {
+    bool changed = false;
+
+    if (config.supply.pumpStartDelayMs != 0) {
+        config.supply.pumpStartDelayMs = 0;
+        changed = true;
+    }
+
+    if (config.valve.pullInMs == 300) {
+        config.valve.pullInMs = 5000;
+        changed = true;
+    }
+
+    return changed;
+}
+
 const char* contactTypeToString(ContactType type) {
     return type == ContactType::NormallyClosed ? "normally_closed" : "normally_open";
 }
@@ -405,7 +421,8 @@ bool ConfigStore::begin() {
         }
         const bool namesChanged = normalizeLegacyEnglishNames(g_config);
         const bool zonesChanged = migrateOldDefaultEnabledZones(g_config);
-        if (!versionChanged && !namesChanged && !zonesChanged) {
+        const bool settingsChanged = normalizeCurrentSettingDefaults(g_config);
+        if (!versionChanged && !namesChanged && !zonesChanged && !settingsChanged) {
             return g_configValid;
         }
         ESP32BASE_LOG_I("config_store", "config_normalized");

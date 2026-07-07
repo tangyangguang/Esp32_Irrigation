@@ -154,13 +154,11 @@ void RunController::handle(uint32_t nowMs) {
 
         case RunState::PumpSignalOn:
             BoardHardware::setPumpSignal(true);
-            enterState(RunState::PumpStartDelay, nowMs);
+            enterState(RunState::FlowGrace, nowMs);
             return;
 
         case RunState::PumpStartDelay:
-            if (elapsed(nowMs, g_run.stateEnteredMs) >= ConfigStore::config().supply.pumpStartDelayMs) {
-                enterState(RunState::FlowGrace, nowMs);
-            }
+            enterState(RunState::FlowGrace, nowMs);
             return;
 
         case RunState::FlowGrace:

@@ -41,6 +41,7 @@ void sendIrrigationHeadExtra() {
         ".ir-form{display:block;max-width:none;margin:0}.ir-card.ir-form{display:block}.ir-section{margin:0 0 14px;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:13px}.ir-section:last-child{margin-bottom:0}.ir-section-title{font-size:15px;font-weight:800;margin:0 0 2px}.ir-section-note{margin:0 0 12px;color:var(--ir-muted);font-size:12px}"
         ".ir-setting-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}.ir-setting{border:1px solid #e4ebef;border-radius:8px;background:#fff;padding:12px;min-width:0}.ir-setting-title{display:block;font-weight:800;color:var(--ir-ink)}.ir-setting-desc{display:block;margin-top:4px;color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-control{display:flex;align-items:center;justify-content:flex-start;gap:7px;min-width:0;margin-top:10px}.ir-control input[type=number],.ir-control input[type=time],.ir-control input:not([type]),.ir-control input[type=text]{width:100%;max-width:210px}.ir-unit{flex:0 0 auto;color:var(--ir-muted);font-size:12px;font-weight:700;white-space:nowrap}"
         ".ir-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;user-select:none}.ir-toggle input{position:absolute;opacity:0;pointer-events:none}.ir-toggle span{position:relative;display:inline-flex;align-items:center;justify-content:flex-end;width:74px;height:32px;padding:0 10px;border-radius:999px;background:#eef2f4;color:#667085;font-size:12px;font-weight:800;transition:.16s;box-sizing:border-box}.ir-toggle span:before{content:'';position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.24);transition:.16s}.ir-toggle span:after{content:'禁用'}.ir-toggle input:checked+span{justify-content:flex-start;background:#dff4e8;color:#087443}.ir-toggle input:checked+span:before{transform:translateX(42px)}.ir-toggle input:checked+span:after{content:'启用'}"
+        ".ir-choice{display:inline-flex;border:1px solid #cbd6de;border-radius:8px;background:#f4f7f8;padding:3px;gap:3px}.ir-choice label{position:relative;display:inline-flex;align-items:center;min-height:28px;padding:0 10px;border-radius:6px;font-size:12px;font-weight:800;color:#667085;cursor:pointer}.ir-choice input{position:absolute;opacity:0;pointer-events:none}.ir-choice label:has(input:checked){background:#fff;color:var(--ir-accent-strong);box-shadow:0 1px 2px rgba(16,24,40,.12)}"
         ".ir-field{display:grid;gap:4px;margin:0 0 10px}.ir-field label{font-weight:800;margin:0}.ir-help{color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-input-unit{display:flex;align-items:center;gap:7px}.ir-input-unit input{flex:1 1 auto;min-width:0}.ir-input-unit .ir-unit{padding-right:2px}"
         ".ir-run-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}.ir-run-row{border:1px solid #e4ebef;border-radius:8px;padding:12px;background:#fbfcfd;min-width:0}.ir-run-row b{display:block}.ir-run-row .ir-help{display:block;margin-top:4px}.ir-run-row .ir-input-unit{margin-top:12px}.ir-run-row input[type=number]{max-width:110px}.ir-badge{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;background:var(--ir-soft);color:var(--ir-accent-strong);font-size:12px;font-weight:800}"
         ".ir-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 0 10px}.ir-toolbar p{margin:0;color:var(--ir-muted);font-size:13px}.ir-list{display:grid;gap:8px}.ir-list-row{display:grid;grid-template-columns:minmax(0,1.2fr) repeat(3,minmax(90px,.5fr)) auto;gap:10px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:11px 12px}.ir-zone-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px}.ir-zone-row{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:12px;min-width:0}.ir-zone-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ir-zone-meta{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}.ir-list-main b{display:block}.ir-list-main small,.ir-list-cell small{display:block;color:var(--ir-muted);font-size:12px;margin-top:2px}.ir-list-cell{font-size:13px}.ir-pill{display:inline-flex;align-items:center;min-height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:800;white-space:nowrap;background:#eef2f4;color:#667085}.ir-pill.on{background:#dff4e8;color:#087443}.ir-pill.warn{background:#fff4d6;color:#935b00}.ir-kv{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.ir-kv div{border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:10px}.ir-kv b{display:block;font-size:18px}.ir-kv span{display:block;margin-top:2px;color:var(--ir-muted);font-size:12px}"
@@ -73,7 +74,7 @@ const char* runStateLabel(RunState state) {
         case RunState::Precheck: return "运行前检查";
         case RunState::OpenValve: return "打开水路";
         case RunState::PumpSignalOn: return "启动自吸泵信号";
-        case RunState::PumpStartDelay: return "自吸泵启动延时";
+        case RunState::PumpStartDelay: return "启动稳定时间";
         case RunState::FlowGrace: return "等待流量稳定";
         case RunState::Running: return "浇水中";
         case RunState::PumpSignalOff: return "关闭自吸泵信号";
@@ -342,6 +343,15 @@ void sendSettingNumber(const char* title,
     Esp32BaseWeb::sendChunk("</span></div></div>");
 }
 
+void sendContactTypeChoice(ContactType type) {
+    Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>低液位触点类型</span><span class='ir-setting-desc'>按实际缺水传感器接线选择：常开 NO 或常闭 NC。</span></div><div class='ir-control'><div class='ir-choice'>");
+    Esp32BaseWeb::sendChunk("<label><input type='radio' name='lowLevelContactType' value='normally_open'");
+    sendChecked(type == ContactType::NormallyOpen);
+    Esp32BaseWeb::sendChunk(">常开 NO</label><label><input type='radio' name='lowLevelContactType' value='normally_closed'");
+    sendChecked(type == ContactType::NormallyClosed);
+    Esp32BaseWeb::sendChunk(">常闭 NC</label></div></div></div>");
+}
+
 void sendSectionStart(const char* title, const char* note) {
     Esp32BaseWeb::sendChunk("<div class='ir-section'><h3 class='ir-section-title'>");
     Esp32BaseWeb::sendChunk(title);
@@ -362,6 +372,10 @@ void sendEnabledPill(bool enabled) {
 
 uint32_t durationMinutesRounded(uint32_t seconds) {
     return (seconds + 59UL) / 60UL;
+}
+
+uint32_t msToSecondsRounded(uint32_t milliseconds) {
+    return (milliseconds + 999UL) / 1000UL;
 }
 
 uint8_t planEnabledZoneCount(const IrrigationConfig& config, const WateringPlan& plan) {
@@ -872,26 +886,27 @@ void handleSettingsSavePost() {
     IrrigationConfig next = ConfigStore::config();
     next.supply.pumpEnabled = parseBoolParam("pumpEnabled");
     next.supply.lowLevelEnabled = parseBoolParam("lowLevelEnabled");
-    next.supply.lowLevelContactType = parseBoolParam("lowLevelNormallyClosed") ? ContactType::NormallyClosed : ContactType::NormallyOpen;
+    char contactType[24];
+    if (Esp32BaseWeb::getParam("lowLevelContactType", contactType, sizeof(contactType)) &&
+        strcmp(contactType, "normally_closed") == 0) {
+        next.supply.lowLevelContactType = ContactType::NormallyClosed;
+    } else {
+        next.supply.lowLevelContactType = ContactType::NormallyOpen;
+    }
+    next.supply.pumpStartDelayMs = 0;
 
     uint32_t value = 0;
-    if (!parseU32Param("pumpStartDelayMs", 0, 10000, next.supply.pumpStartDelayMs, value)) {
-        Esp32BaseWeb::sendText(400, "自吸泵启动延时无效");
+    if (!parseU32Param("pumpStopDelaySec", 0, 10, msToSecondsRounded(next.supply.pumpStopDelayMs), value)) {
+        Esp32BaseWeb::sendText(400, "停泵后关阀延时无效");
         return;
     }
-    next.supply.pumpStartDelayMs = value;
+    next.supply.pumpStopDelayMs = value * 1000UL;
 
-    if (!parseU32Param("pumpStopDelayMs", 0, 10000, next.supply.pumpStopDelayMs, value)) {
-        Esp32BaseWeb::sendText(400, "自吸泵停止延时无效");
-        return;
-    }
-    next.supply.pumpStopDelayMs = value;
-
-    if (!parseU32Param("lowLevelDebounceMs", 0, 10000, next.supply.lowLevelDebounceMs, value)) {
+    if (!parseU32Param("lowLevelDebounceSec", 0, 10, msToSecondsRounded(next.supply.lowLevelDebounceMs), value)) {
         Esp32BaseWeb::sendText(400, "低液位消抖时间无效");
         return;
     }
-    next.supply.lowLevelDebounceMs = value;
+    next.supply.lowLevelDebounceMs = value * 1000UL;
 
     if (!parseU32Param("pulsesPerLiter", 0, 100000, next.flow.pulsesPerLiter, value)) {
         Esp32BaseWeb::sendText(400, "每升脉冲数无效");
@@ -900,7 +915,7 @@ void handleSettingsSavePost() {
     next.flow.pulsesPerLiter = value;
 
     if (!parseU32Param("startupGraceSec", 0, 120, next.flow.startupGraceSec, value)) {
-        Esp32BaseWeb::sendText(400, "启动流量宽限时间无效");
+        Esp32BaseWeb::sendText(400, "启动稳定时间无效");
         return;
     }
     next.flow.startupGraceSec = value;
@@ -935,11 +950,17 @@ void handleSettingsSavePost() {
     }
     next.flow.highFlowPercent = static_cast<uint16_t>(value);
 
-    if (!parseU32Param("pullInMs", 50, 3000, next.valve.pullInMs, value)) {
+    if (!parseU32Param("lowHighFlowConfirmSec", 1, 600, next.flow.lowHighFlowConfirmSec, value)) {
+        Esp32BaseWeb::sendText(400, "异常流量确认时间无效");
+        return;
+    }
+    next.flow.lowHighFlowConfirmSec = value;
+
+    if (!parseU32Param("pullInSec", 1, 60, msToSecondsRounded(next.valve.pullInMs), value)) {
         Esp32BaseWeb::sendText(400, "电磁阀吸合时间无效");
         return;
     }
-    next.valve.pullInMs = value;
+    next.valve.pullInMs = value * 1000UL;
 
     if (!parseU32Param("holdPercent", 1, 100, next.valve.holdPercent, value)) {
         Esp32BaseWeb::sendText(400, "电磁阀保持占空比无效");
@@ -1046,7 +1067,7 @@ void handleDashboardPage() {
     Esp32BaseWeb::sendChunk(ConfigStore::config().flow.pulsesPerLiter > 0 ? "已校准" : "未校准");
     Esp32BaseWeb::sendChunk("</b><span>流量计</span></div><div><b>");
     Esp32BaseWeb::sendChunk(ConfigStore::config().supply.pumpEnabled ? "启用" : "禁用");
-    Esp32BaseWeb::sendChunk("</b><span>自吸泵联动</span></div><div><b>");
+    Esp32BaseWeb::sendChunk("</b><span>外部自吸泵供水</span></div><div><b>");
     Esp32BaseWeb::sendChunk(ConfigStore::config().supply.lowLevelEnabled ? "启用" : "禁用");
     Esp32BaseWeb::sendChunk("</b><span>低液位保护</span></div></div>");
     if (ConfigStore::config().flow.pulsesPerLiter == 0) {
@@ -1306,40 +1327,30 @@ void handleSettingsPage() {
     Esp32BaseWeb::beginPanel("全局设置");
     Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/settings/save'>");
 
-    sendSectionStart("水源与自吸泵", "自吸泵是可选能力；低液位保护只在启用自吸泵时参与防干抽。");
-    sendSettingToggle("自吸泵联动",
-                      "启用后，浇水运行时输出干接点控制信号给外部自吸泵继电器模块。",
+    sendSectionStart("供水方式与缺水保护", "默认按有压水源工作；启用外部自吸泵供水时，低液位保护才参与防干抽。");
+    sendSettingToggle("使用外部自吸泵供水",
+                      "启用后，浇水时输出干接点控制信号给外部自吸泵继电器模块；禁用时仅打开水路阀，适用于已有水压的水源。",
                       "pumpEnabled",
                       config.supply.pumpEnabled);
-    sendSettingNumber("自吸泵启动延时",
-                      "打开水路和自吸泵控制信号后，等待水压建立再进入流量判断。",
-                      "ms",
-                      "pumpStartDelayMs",
-                      config.supply.pumpStartDelayMs,
+    sendSettingNumber("停泵后关阀延时",
+                      "仅外部自吸泵供水时生效。先关闭自吸泵控制信号，水路阀继续打开这段时间后再关闭。",
+                      "秒",
+                      "pumpStopDelaySec",
+                      msToSecondsRounded(config.supply.pumpStopDelayMs),
                       0,
-                      10000);
-    sendSettingNumber("自吸泵停止延时",
-                      "浇水结束时保留的停止缓冲时间，用于降低频繁切换带来的冲击。",
-                      "ms",
-                      "pumpStopDelayMs",
-                      config.supply.pumpStopDelayMs,
-                      0,
-                      10000);
-    sendSettingToggle("低液位保护",
-                      "启用后，当低液位输入触发时停止自吸泵，避免水箱缺水干抽。",
+                      10);
+    sendSettingToggle("自吸泵缺水保护",
+                      "仅外部自吸泵供水时生效。检测到水箱缺水时，禁止启动或停止正在运行的自吸泵。",
                       "lowLevelEnabled",
                       config.supply.lowLevelEnabled);
-    sendSettingToggle("低液位触点类型",
-                      "启用表示常闭触点，禁用表示常开触点；按实际缺水传感器接线选择。",
-                      "lowLevelNormallyClosed",
-                      config.supply.lowLevelContactType == ContactType::NormallyClosed);
+    sendContactTypeChoice(config.supply.lowLevelContactType);
     sendSettingNumber("低液位消抖时间",
-                      "输入信号需要持续稳定这么久才会被认为有效，避免触点抖动误触发。",
-                      "ms",
-                      "lowLevelDebounceMs",
-                      config.supply.lowLevelDebounceMs,
+                      "缺水输入需要持续稳定这么久才会生效，避免触点抖动导致误停。",
+                      "秒",
+                      "lowLevelDebounceSec",
+                      msToSecondsRounded(config.supply.lowLevelDebounceMs),
                       0,
-                      10000);
+                      10);
     sendSectionEnd();
 
     sendSectionStart("流量检测", "流量计为必配输入，用于校准、无流量保护、漏水检测和异常流量判断。");
@@ -1350,15 +1361,15 @@ void handleSettingsPage() {
                       config.flow.pulsesPerLiter,
                       0,
                       100000);
-    sendSettingNumber("启动流量宽限时间",
-                      "水路刚打开后暂不判断无流量，给管路充水和流量稳定留出时间。",
+    sendSettingNumber("启动稳定时间",
+                      "打开水路后等待水压和流量计脉冲稳定；这段时间内不触发无流量、低流量或高流量判断。",
                       "秒",
                       "startupGraceSec",
                       config.flow.startupGraceSec,
                       0,
                       120);
     sendSettingNumber("无流量确认时间",
-                      "超过宽限期后，连续这么久没有有效流量才停止运行。",
+                      "启动稳定时间结束后，如果连续这么久没有流量计脉冲，就停止本次浇水。",
                       "秒",
                       "noFlowConfirmSec",
                       config.flow.noFlowConfirmSec,
@@ -1379,31 +1390,38 @@ void handleSettingsPage() {
                       1,
                       1000);
     sendSettingNumber("低流量阈值",
-                      "运行流量低于水路标准流量的该比例时，判定为低流量异常。",
+                      "运行流量低于水路标准流量的该比例，并持续达到确认时间后，记录低流量提示，不自动停机。",
                       "%",
                       "lowFlowPercent",
                       config.flow.lowFlowPercent,
                       1,
                       100);
     sendSettingNumber("高流量阈值",
-                      "运行流量高于水路标准流量的该比例时，判定为高流量异常。",
+                      "运行流量高于水路标准流量的该比例，并持续达到确认时间后，记录高流量提示，不自动停机。",
                       "%",
                       "highFlowPercent",
                       config.flow.highFlowPercent,
                       100,
                       1000);
+    sendSettingNumber("异常流量确认时间",
+                      "低流量或高流量需要连续持续这么久，才记录异常提示。",
+                      "秒",
+                      "lowHighFlowConfirmSec",
+                      config.flow.lowHighFlowConfirmSec,
+                      1,
+                      600);
     sendSectionEnd();
 
     sendSectionStart("电磁阀驱动", "6 路 12V DC 电磁阀为固定输出，驱动参数影响吸合可靠性和发热。");
-    sendSettingNumber("电磁阀吸合时间",
-                      "打开电磁阀时全功率吸合的持续时间，过短可能打不开，过长会增加发热。",
-                      "ms",
-                      "pullInMs",
-                      config.valve.pullInMs,
-                      50,
-                      3000);
-    sendSettingNumber("电磁阀保持占空比",
-                      "电磁阀吸合后使用的保持功率比例，用于降低线圈发热。",
+    sendSettingNumber("全功率吸合时间",
+                      "打开电磁阀时先 100% 输出这段时间，确保阀可靠吸合；之后切换到保持占空比。",
+                      "秒",
+                      "pullInSec",
+                      msToSecondsRounded(config.valve.pullInMs),
+                      1,
+                      60);
+    sendSettingNumber("保持占空比",
+                      "吸合时间结束后，用该占空比维持电磁阀打开，降低线圈发热。",
                       "%",
                       "holdPercent",
                       config.valve.holdPercent,
