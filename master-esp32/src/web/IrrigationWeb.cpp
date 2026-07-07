@@ -21,6 +21,33 @@ namespace {
 
 char g_historyViewBuffer[3072];
 
+void sendIrrigationHeadExtra() {
+    Esp32BaseWeb::sendChunk(
+        "<style>"
+        ":root{--ir-accent:#0f7b61;--ir-accent-strong:#08634e;--ir-soft:#edf7f3;--ir-ink:#1d2935;--ir-muted:#637083;--ir-line:#d9e2e7;--ir-bg:#f5f7f8;--ir-card:#fff}"
+        "body{background:var(--ir-bg);color:var(--ir-ink)}"
+        ".topbar{border-bottom:1px solid #dce5e8;background:rgba(255,255,255,.94);backdrop-filter:blur(10px)}"
+        "nav a{border-radius:7px;font-weight:650}nav a.active{background:var(--ir-soft);color:var(--ir-accent-strong)}nav a.brand{font-size:0}nav a.brand:after{content:'首页';font-size:14px}"
+        ".page{max-width:1180px}.pagehead{border:1px solid var(--ir-line);background:linear-gradient(135deg,#fff 0%,#f4faf7 100%);border-radius:8px;padding:16px 18px;box-shadow:0 1px 2px rgba(16,24,40,.04)}"
+        ".pagehead h1{font-size:22px;letter-spacing:0}.pagehead p{font-size:13px;color:var(--ir-muted)}"
+        ".panel{border:1px solid var(--ir-line);border-radius:8px;background:var(--ir-card);box-shadow:0 1px 2px rgba(16,24,40,.04)}"
+        ".panel h2{font-size:16px;margin-bottom:10px}.metrics{gap:10px}.metric{border:1px solid var(--ir-line);border-radius:8px;background:#fff;padding:12px}.metric b{font-size:20px}"
+        ".actions{gap:8px;justify-content:flex-end}button,input[type=submit],input[type=button],.btnlink{border-radius:7px;font-weight:700;min-height:34px;padding:0 14px}"
+        "input:not([type]),input[type=text],input[type=number],input[type=time],select{border:1px solid #cbd6de;border-radius:7px;background:#fff;color:var(--ir-ink);min-height:36px;padding:6px 9px;box-sizing:border-box}"
+        "input[type=number]{font-variant-numeric:tabular-nums}select{min-width:180px}.tablewrap{border:1px solid var(--ir-line);border-radius:8px;background:#fff}table{font-size:13px}th{color:var(--ir-muted);font-weight:700}"
+        ".ir-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.ir-grid.ir-three{grid-template-columns:repeat(3,minmax(0,1fr))}"
+        ".ir-card{border:1px solid var(--ir-line);border-radius:8px;background:#fff;padding:13px;min-width:0}.ir-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.ir-card-title{font-size:15px;font-weight:800;color:var(--ir-ink)}.ir-card-note{margin:3px 0 0;color:var(--ir-muted);font-size:12px;line-height:1.45}"
+        ".ir-empty{border:1px dashed #cbd6de;border-radius:8px;background:#fbfcfd;color:var(--ir-muted);padding:14px;text-align:center}"
+        ".ir-form{display:block;max-width:none;margin:0}.ir-card.ir-form{display:block}.ir-section{margin:0 0 14px}.ir-section:last-child{margin-bottom:0}.ir-section-title{font-size:15px;font-weight:800;margin:0 0 2px}.ir-section-note{margin:0 0 8px;color:var(--ir-muted);font-size:12px}"
+        ".ir-setting-list{display:grid;gap:8px}.ir-setting{display:grid;grid-template-columns:minmax(0,1fr) minmax(190px,260px);gap:12px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:11px 12px}.ir-setting-title{display:block;font-weight:800;color:var(--ir-ink)}.ir-setting-desc{display:block;margin-top:3px;color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-control{display:flex;align-items:center;justify-content:flex-end;gap:7px;min-width:0}.ir-control input[type=number],.ir-control input[type=time],.ir-control input:not([type]),.ir-control input[type=text]{width:100%}.ir-unit{flex:0 0 auto;color:var(--ir-muted);font-size:12px;font-weight:700;white-space:nowrap}"
+        ".ir-toggle{position:relative;display:inline-flex;align-items:center;cursor:pointer;user-select:none}.ir-toggle input{position:absolute;opacity:0;pointer-events:none}.ir-toggle span{position:relative;display:inline-flex;align-items:center;justify-content:flex-end;width:74px;height:32px;padding:0 10px;border-radius:999px;background:#eef2f4;color:#667085;font-size:12px;font-weight:800;transition:.16s;box-sizing:border-box}.ir-toggle span:before{content:'';position:absolute;left:4px;top:4px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(16,24,40,.24);transition:.16s}.ir-toggle span:after{content:'禁用'}.ir-toggle input:checked+span{justify-content:flex-start;background:#dff4e8;color:#087443}.ir-toggle input:checked+span:before{transform:translateX(42px)}.ir-toggle input:checked+span:after{content:'启用'}"
+        ".ir-field{display:grid;gap:4px;margin:0 0 10px}.ir-field label{font-weight:800;margin:0}.ir-help{color:var(--ir-muted);font-size:12px;line-height:1.45}.ir-input-unit{display:flex;align-items:center;gap:7px}.ir-input-unit input{flex:1 1 auto;min-width:0}.ir-input-unit .ir-unit{padding-right:2px}"
+        ".ir-run-list,.ir-zone-grid,.ir-plan-list{display:grid;gap:12px}.ir-run-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);gap:10px;align-items:center;border:1px solid #e4ebef;border-radius:8px;padding:11px;background:#fbfcfd}.ir-run-row b{display:block}.ir-badge{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border-radius:999px;background:var(--ir-soft);color:var(--ir-accent-strong);font-size:12px;font-weight:800}"
+        ".ir-time-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-time-item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:center;border:1px solid #e4ebef;border-radius:8px;background:#fbfcfd;padding:8px}.ir-time-item input[type=time]{width:100%}.ir-zone-duration{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.ir-danger-line{display:flex;justify-content:flex-end;margin-top:8px}"
+        "@media(max-width:820px){.ir-grid,.ir-grid.ir-three,.ir-time-grid,.ir-zone-duration{grid-template-columns:1fr}.ir-setting,.ir-run-row{grid-template-columns:1fr}.ir-control{justify-content:flex-start}.actions{justify-content:flex-start}select{width:100%;min-width:0}}"
+        "</style>");
+}
+
 const char* runStateName(RunState state) {
     switch (state) {
         case RunState::Idle: return "idle";
@@ -258,6 +285,72 @@ void sendChecked(bool checked) {
     if (checked) {
         Esp32BaseWeb::sendChunk(" checked");
     }
+}
+
+void sendToggleInput(const char* name, bool checked) {
+    Esp32BaseWeb::sendChunk("<label class='ir-toggle'><input type='checkbox' name='");
+    Esp32BaseWeb::sendChunk(name);
+    Esp32BaseWeb::sendChunk("' value='1'");
+    sendChecked(checked);
+    Esp32BaseWeb::sendChunk("><span></span></label>");
+}
+
+void sendTextInput(const char* name, const char* value, uint8_t maxLength) {
+    char buf[96];
+    snprintf(buf, sizeof(buf), "<input name='%s' maxlength='%u' value='", name, maxLength);
+    Esp32BaseWeb::sendChunk(buf);
+    sendEscapedValue(value);
+    Esp32BaseWeb::sendChunk("'>");
+}
+
+void sendNumberInput(const char* name, uint32_t value, uint32_t minValue, uint32_t maxValue) {
+    char buf[128];
+    snprintf(buf, sizeof(buf), "<input type='number' name='%s' min='%lu' max='%lu' value='%lu'>",
+             name,
+             static_cast<unsigned long>(minValue),
+             static_cast<unsigned long>(maxValue),
+             static_cast<unsigned long>(value));
+    Esp32BaseWeb::sendChunk(buf);
+}
+
+void sendSettingToggle(const char* title, const char* desc, const char* name, bool checked) {
+    Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>");
+    Esp32BaseWeb::sendChunk(title);
+    Esp32BaseWeb::sendChunk("</span><span class='ir-setting-desc'>");
+    Esp32BaseWeb::sendChunk(desc);
+    Esp32BaseWeb::sendChunk("</span></div><div class='ir-control'>");
+    sendToggleInput(name, checked);
+    Esp32BaseWeb::sendChunk("</div></div>");
+}
+
+void sendSettingNumber(const char* title,
+                       const char* desc,
+                       const char* unit,
+                       const char* name,
+                       uint32_t value,
+                       uint32_t minValue,
+                       uint32_t maxValue) {
+    Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>");
+    Esp32BaseWeb::sendChunk(title);
+    Esp32BaseWeb::sendChunk("</span><span class='ir-setting-desc'>");
+    Esp32BaseWeb::sendChunk(desc);
+    Esp32BaseWeb::sendChunk("</span></div><div class='ir-control'>");
+    sendNumberInput(name, value, minValue, maxValue);
+    Esp32BaseWeb::sendChunk("<span class='ir-unit'>");
+    Esp32BaseWeb::sendChunk(unit);
+    Esp32BaseWeb::sendChunk("</span></div></div>");
+}
+
+void sendSectionStart(const char* title, const char* note) {
+    Esp32BaseWeb::sendChunk("<div class='ir-section'><h3 class='ir-section-title'>");
+    Esp32BaseWeb::sendChunk(title);
+    Esp32BaseWeb::sendChunk("</h3><p class='ir-section-note'>");
+    Esp32BaseWeb::sendChunk(note);
+    Esp32BaseWeb::sendChunk("</p><div class='ir-setting-list'>");
+}
+
+void sendSectionEnd() {
+    Esp32BaseWeb::sendChunk("</div></div>");
 }
 
 uint32_t maxZoneDurationMinutes() {
@@ -792,24 +885,34 @@ void handleSettingsSavePost() {
 
 void sendRunPanel() {
     Esp32BaseWeb::beginPanel("手动浇水");
-    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/run/start'><table><thead><tr><th>水路</th><th>状态</th><th>时长（分钟）</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/run/start'><div class='ir-run-list'>");
     const IrrigationConfig& config = ConfigStore::config();
     const uint32_t maxMinutes = maxZoneDurationMinutes();
+    bool any = false;
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
         if (!zone.enabled) {
             continue;
         }
-        char row[192];
-        snprintf(row, sizeof(row),
-                 "<tr><td>水路 %u</td><td>已启用</td><td><input name='z%u' type='number' min='0' max='%lu' value='%lu'></td></tr>",
-                 zone.id,
-                 zone.id,
-                 static_cast<unsigned long>(maxMinutes),
-                 static_cast<unsigned long>(zone.defaultDurationSec / 60UL));
+        any = true;
+        char row[224];
+        snprintf(row, sizeof(row), "<div class='ir-run-row'><div><b>水路 %u ", zone.id);
         Esp32BaseWeb::sendChunk(row);
+        Esp32BaseWeb::writeHtmlEscaped(zone.name);
+        Esp32BaseWeb::sendChunk("</b><span class='ir-help'>本次手动任务会按水路编号顺序执行，填 0 表示跳过。</span></div><div class='ir-input-unit'>");
+        char key[8];
+        snprintf(key, sizeof(key), "z%u", zone.id);
+        sendNumberInput(key, zone.defaultDurationSec / 60UL, 0, maxMinutes);
+        Esp32BaseWeb::sendChunk("<span class='ir-unit'>分钟</span></div></div>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table><div class='actions'><input type='submit' value='启动手动浇水'></div></form>");
+    if (!any) {
+        Esp32BaseWeb::sendChunk("<div class='ir-empty'>还没有启用水路，请先到水路页面启用实际接线的水路。</div>");
+    }
+    Esp32BaseWeb::sendChunk("</div><div class='actions'><input type='submit' value='启动手动浇水'");
+    if (!any) {
+        Esp32BaseWeb::sendChunk(" disabled");
+    }
+    Esp32BaseWeb::sendChunk("></div></form>");
     Esp32BaseWeb::endPanel();
 }
 
@@ -818,7 +921,7 @@ void sendPlanNowPanel() {
     bool hasPlan = false;
     const bool flowReady = config.flow.pulsesPerLiter > 0;
     Esp32BaseWeb::beginPanel("立即执行计划");
-    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/run/plan-now'><select name='plan'>");
+    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/run/plan-now'><div class='ir-field'><label>选择计划</label><span class='ir-help'>立即按所选计划的水路时长顺序执行，不等待计划启动时间。</span><select name='plan'>");
     for (uint8_t i = 0; i < kMaxPlans; ++i) {
         const WateringPlan& plan = config.plans[i];
         if (!plan.used || !plan.enabled) {
@@ -831,7 +934,7 @@ void sendPlanNowPanel() {
         Esp32BaseWeb::writeHtmlEscaped(plan.name);
         Esp32BaseWeb::sendChunk("</option>");
     }
-    Esp32BaseWeb::sendChunk("</select><div class='actions'><input type='submit' value='立即执行所选计划'");
+    Esp32BaseWeb::sendChunk("</select></div><div class='actions'><input type='submit' value='立即执行所选计划'");
     if (!hasPlan || !flowReady) {
         Esp32BaseWeb::sendChunk(" disabled");
     }
@@ -905,63 +1008,72 @@ void handleZonesPage() {
 
     const IrrigationConfig& config = ConfigStore::config();
     const uint32_t maxMinutes = maxZoneDurationMinutes();
+    Esp32BaseWeb::sendChunk("<div class='ir-zone-grid ir-grid'>");
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
         char buf[512];
-        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/zones/save'><input type='hidden' name='id' value='%u'><table><tbody><tr><td>水路编号</td><td>%u</td></tr><tr><td>名称</td><td><input name='name' maxlength='23' value='",
-                 zone.id, zone.id);
+        snprintf(buf, sizeof(buf), "<form class='ir-card ir-form' method='post' action='/irrigation/zones/save'><input type='hidden' name='id' value='%u'>", zone.id);
         Esp32BaseWeb::sendChunk(buf);
-        sendEscapedValue(zone.name);
-        snprintf(buf, sizeof(buf), "'></td></tr><tr><td>启用</td><td><input type='checkbox' name='enabled' value='1'%s></td></tr><tr><td>默认时长（分钟）</td><td><input type='number' min='0' max='%lu' name='defaultMinutes' value='%lu'></td></tr><tr><td>标准流量（ml/min）</td><td><input type='number' min='0' max='100000' name='standardFlow' value='%lu'></td></tr></tbody></table><div class='actions'><input type='submit' value='保存水路'></div></form>",
-                 zone.enabled ? " checked" : "",
-                 static_cast<unsigned long>(maxMinutes),
-                 static_cast<unsigned long>(zone.defaultDurationSec / 60UL),
-                 static_cast<unsigned long>(zone.standardFlowMlPerMin));
+        snprintf(buf, sizeof(buf), "<div class='ir-card-head'><div><div class='ir-card-title'>水路 %u</div><p class='ir-card-note'>固定输出端口，只启用实际接线的水路。</p></div>", zone.id);
         Esp32BaseWeb::sendChunk(buf);
+        sendToggleInput("enabled", zone.enabled);
+        Esp32BaseWeb::sendChunk("</div>");
+        Esp32BaseWeb::sendChunk("<div class='ir-field'><label>名称</label><span class='ir-help'>用于页面、计划和运行历史展示。</span>");
+        sendTextInput("name", zone.name, sizeof(zone.name) - 1);
+        Esp32BaseWeb::sendChunk("</div><div class='ir-field'><label>默认时长</label><span class='ir-help'>手动浇水页面默认带出的时长，自动计划可单独设置。</span><div class='ir-input-unit'>");
+        sendNumberInput("defaultMinutes", zone.defaultDurationSec / 60UL, 0, maxMinutes);
+        Esp32BaseWeb::sendChunk("<span class='ir-unit'>分钟</span></div></div><div class='ir-field'><label>标准流量</label><span class='ir-help'>用于低流量和高流量判断，校准后会自动写入。</span><div class='ir-input-unit'>");
+        sendNumberInput("standardFlow", zone.standardFlowMlPerMin, 0, 100000);
+        Esp32BaseWeb::sendChunk("<span class='ir-unit'>ml/min</span></div></div><div class='actions'><input type='submit' value='保存水路'></div></form>");
     }
+    Esp32BaseWeb::sendChunk("</div>");
 
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendFooter();
 }
 
 void sendPlanStartFields(const WateringPlan& plan) {
-    Esp32BaseWeb::sendChunk("<fieldset><legend>启动时间</legend>");
+    Esp32BaseWeb::sendChunk("<div class='ir-section'><h3 class='ir-section-title'>启动时间</h3><p class='ir-section-note'>同一个计划可设置多个每日启动时间，水路时长保持一致。</p><div class='ir-time-grid'>");
     for (uint8_t i = 0; i < kMaxPlanStartTimes; ++i) {
         char timeText[8];
         minuteToText(plan.startTimes[i].minuteOfDay, timeText, sizeof(timeText));
-        char buf[192];
-        snprintf(buf, sizeof(buf), "<label><input type='checkbox' name='se%u' value='1'%s> 时间 %u</label> <input type='time' name='st%u' value='",
-                 i,
-                 plan.startTimes[i].enabled ? " checked" : "",
-                 i + 1,
-                 i);
+        char buf[96];
+        Esp32BaseWeb::sendChunk("<div class='ir-time-item'>");
+        snprintf(buf, sizeof(buf), "se%u", i);
+        sendToggleInput(buf, plan.startTimes[i].enabled);
+        snprintf(buf, sizeof(buf), "<div class='ir-field'><label>时间 %u</label><input type='time' name='st%u' value='", i + 1, i);
         Esp32BaseWeb::sendChunk(buf);
         Esp32BaseWeb::sendChunk(timeText);
-        Esp32BaseWeb::sendChunk("'><br>");
+        Esp32BaseWeb::sendChunk("'></div></div>");
     }
-    Esp32BaseWeb::sendChunk("</fieldset>");
+    Esp32BaseWeb::sendChunk("</div></div>");
 }
 
 void sendPlanZoneDurationFields(const WateringPlan& plan) {
-    Esp32BaseWeb::sendChunk("<fieldset><legend>已启用水路时长</legend><table><thead><tr><th>水路</th><th>时长（分钟）</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='ir-section'><h3 class='ir-section-title'>已启用水路时长</h3><p class='ir-section-note'>每个启用水路填写本计划执行时长，填 0 表示该计划跳过该水路。</p><div class='ir-zone-duration'>");
     const IrrigationConfig& config = ConfigStore::config();
     const uint32_t maxMinutes = maxZoneDurationMinutes();
+    bool any = false;
     for (uint8_t i = 0; i < kMaxZones; ++i) {
         const ZoneConfig& zone = config.zones[i];
         if (!zone.enabled) {
             continue;
         }
-        char buf[160];
-        snprintf(buf, sizeof(buf), "<tr><td>水路 %u ", zone.id);
+        any = true;
+        char buf[128];
+        snprintf(buf, sizeof(buf), "<div class='ir-field'><label>水路 %u ", zone.id);
         Esp32BaseWeb::sendChunk(buf);
         Esp32BaseWeb::writeHtmlEscaped(zone.name);
-        snprintf(buf, sizeof(buf), "</td><td><input type='number' min='0' max='%lu' name='z%u' value='%lu'></td></tr>",
-                 static_cast<unsigned long>(maxMinutes),
-                 zone.id,
-                 static_cast<unsigned long>(plan.zoneDurationSec[i] / 60UL));
-        Esp32BaseWeb::sendChunk(buf);
+        Esp32BaseWeb::sendChunk("</label><div class='ir-input-unit'>");
+        char key[8];
+        snprintf(key, sizeof(key), "z%u", zone.id);
+        sendNumberInput(key, plan.zoneDurationSec[i] / 60UL, 0, maxMinutes);
+        Esp32BaseWeb::sendChunk("<span class='ir-unit'>分钟</span></div></div>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></fieldset>");
+    if (!any) {
+        Esp32BaseWeb::sendChunk("<div class='ir-empty'>还没有启用水路，计划保存后也不会执行有效浇水步骤。</div>");
+    }
+    Esp32BaseWeb::sendChunk("</div></div>");
 }
 
 void handlePlansPage() {
@@ -969,44 +1081,45 @@ void handlePlansPage() {
     Esp32BaseWeb::sendPageTitle("计划", "每日计划，最多 8 个计划，每个计划最多 4 个启动时间");
 
     Esp32BaseWeb::beginPanel("新建计划");
-    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/plans/create'><input name='name' maxlength='31' value='新计划'><div class='actions'><input type='submit' value='创建未启用计划'></div></form>");
+    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/plans/create'><div class='ir-field'><label>计划名称</label><span class='ir-help'>创建后默认不启用，确认启动时间和水路时长后再打开。</span>");
+    sendTextInput("name", "新计划", kPlanNameLength - 1);
+    Esp32BaseWeb::sendChunk("</div><div class='actions'><input type='submit' value='创建未启用计划'></div></form>");
     Esp32BaseWeb::endPanel();
 
     const IrrigationConfig& config = ConfigStore::config();
+    Esp32BaseWeb::sendChunk("<div class='ir-plan-list'>");
+    bool anyPlan = false;
     for (uint8_t i = 0; i < kMaxPlans; ++i) {
         const WateringPlan& plan = config.plans[i];
         if (!plan.used) {
             continue;
         }
-        Esp32BaseWeb::beginPanel(plan.name);
-        char buf[160];
-        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/plans/save'><input type='hidden' name='id' value='%u'><label>名称</label><input name='name' maxlength='31' value='",
+        anyPlan = true;
+        Esp32BaseWeb::sendChunk("<section class='panel'>");
+        char buf[512];
+        snprintf(buf, sizeof(buf), "<form class='ir-form' method='post' action='/irrigation/plans/save'><input type='hidden' name='id' value='%u'><div class='ir-card-head'><div><div class='ir-card-title'>",
                  plan.id);
         Esp32BaseWeb::sendChunk(buf);
-        sendEscapedValue(plan.name);
-        Esp32BaseWeb::sendChunk("'><label><input type='checkbox' name='enabled' value='1'");
-        sendChecked(plan.enabled);
-        Esp32BaseWeb::sendChunk("> 启用每日计划和立即执行</label>");
+        Esp32BaseWeb::writeHtmlEscaped(plan.name);
+        Esp32BaseWeb::sendChunk("</div><p class='ir-card-note'>每日计划，可启用、禁用，也可在运行页立即执行。</p></div>");
+        sendToggleInput("enabled", plan.enabled);
+        Esp32BaseWeb::sendChunk("</div><div class='ir-field'><label>名称</label><span class='ir-help'>用于区分不同季节、上午/下午或不同浇水策略。</span>");
+        sendTextInput("name", plan.name, sizeof(plan.name) - 1);
+        Esp32BaseWeb::sendChunk("</div>");
         sendPlanStartFields(plan);
         sendPlanZoneDurationFields(plan);
         Esp32BaseWeb::sendChunk("<div class='actions'><input type='submit' value='保存计划'></div></form>");
-        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/plans/delete' onsubmit=\"return confirm('确认删除这个计划？')\"><input type='hidden' name='id' value='%u'><div class='actions'><input class='danger' type='submit' value='删除计划'></div></form>",
+        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/plans/delete' onsubmit=\"return confirm('确认删除这个计划？')\"><input type='hidden' name='id' value='%u'><div class='ir-danger-line'><input class='danger' type='submit' value='删除计划'></div></form>",
                  plan.id);
         Esp32BaseWeb::sendChunk(buf);
-        Esp32BaseWeb::endPanel();
+        Esp32BaseWeb::sendChunk("</section>");
     }
+    if (!anyPlan) {
+        Esp32BaseWeb::sendChunk("<div class='ir-empty'>还没有计划。先创建一个计划，再配置启动时间和各水路时长。</div>");
+    }
+    Esp32BaseWeb::sendChunk("</div>");
 
     Esp32BaseWeb::sendFooter();
-}
-
-void sendNumberInput(const char* name, uint32_t value, uint32_t minValue, uint32_t maxValue) {
-    char buf[128];
-    snprintf(buf, sizeof(buf), "<input type='number' name='%s' min='%lu' max='%lu' value='%lu'>",
-             name,
-             static_cast<unsigned long>(minValue),
-             static_cast<unsigned long>(maxValue),
-             static_cast<unsigned long>(value));
-    Esp32BaseWeb::sendChunk(buf);
 }
 
 void handleSettingsPage() {
@@ -1018,46 +1131,121 @@ void handleSettingsPage() {
     }
 
     Esp32BaseWeb::beginPanel("全局设置");
-    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/settings/save'><table><tbody>");
+    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/settings/save'>");
 
-    Esp32BaseWeb::sendChunk("<tr><td>启用自吸泵控制信号</td><td><input type='checkbox' name='pumpEnabled' value='1'");
-    sendChecked(config.supply.pumpEnabled);
-    Esp32BaseWeb::sendChunk("></td></tr>");
-    Esp32BaseWeb::sendChunk("<tr><td>自吸泵启动延时（ms）</td><td>");
-    sendNumberInput("pumpStartDelayMs", config.supply.pumpStartDelayMs, 0, 10000);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>自吸泵停止延时（ms）</td><td>");
-    sendNumberInput("pumpStopDelayMs", config.supply.pumpStopDelayMs, 0, 10000);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>启用低液位传感器</td><td><input type='checkbox' name='lowLevelEnabled' value='1'");
-    sendChecked(config.supply.lowLevelEnabled);
-    Esp32BaseWeb::sendChunk("></td></tr><tr><td>低液位常闭触点</td><td><input type='checkbox' name='lowLevelNormallyClosed' value='1'");
-    sendChecked(config.supply.lowLevelContactType == ContactType::NormallyClosed);
-    Esp32BaseWeb::sendChunk("></td></tr><tr><td>低液位消抖时间（ms）</td><td>");
-    sendNumberInput("lowLevelDebounceMs", config.supply.lowLevelDebounceMs, 0, 10000);
+    sendSectionStart("水源与自吸泵", "自吸泵是可选能力；低液位保护只在启用自吸泵时参与防干抽。");
+    sendSettingToggle("自吸泵联动",
+                      "启用后，浇水运行时输出干接点控制信号给外部自吸泵继电器模块。",
+                      "pumpEnabled",
+                      config.supply.pumpEnabled);
+    sendSettingNumber("自吸泵启动延时",
+                      "打开水路和自吸泵控制信号后，等待水压建立再进入流量判断。",
+                      "ms",
+                      "pumpStartDelayMs",
+                      config.supply.pumpStartDelayMs,
+                      0,
+                      10000);
+    sendSettingNumber("自吸泵停止延时",
+                      "浇水结束时保留的停止缓冲时间，用于降低频繁切换带来的冲击。",
+                      "ms",
+                      "pumpStopDelayMs",
+                      config.supply.pumpStopDelayMs,
+                      0,
+                      10000);
+    sendSettingToggle("低液位保护",
+                      "启用后，当低液位输入触发时停止自吸泵，避免水箱缺水干抽。",
+                      "lowLevelEnabled",
+                      config.supply.lowLevelEnabled);
+    sendSettingToggle("低液位触点类型",
+                      "启用表示常闭触点，禁用表示常开触点；按实际缺水传感器接线选择。",
+                      "lowLevelNormallyClosed",
+                      config.supply.lowLevelContactType == ContactType::NormallyClosed);
+    sendSettingNumber("低液位消抖时间",
+                      "输入信号需要持续稳定这么久才会被认为有效，避免触点抖动误触发。",
+                      "ms",
+                      "lowLevelDebounceMs",
+                      config.supply.lowLevelDebounceMs,
+                      0,
+                      10000);
+    sendSectionEnd();
 
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>流量计每升脉冲数</td><td>");
-    sendNumberInput("pulsesPerLiter", config.flow.pulsesPerLiter, 0, 100000);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>启动流量宽限时间（秒）</td><td>");
-    sendNumberInput("startupGraceSec", config.flow.startupGraceSec, 0, 120);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>无流量确认时间（秒）</td><td>");
-    sendNumberInput("noFlowConfirmSec", config.flow.noFlowConfirmSec, 1, 600);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>待机漏水检测窗口（秒）</td><td>");
-    sendNumberInput("leakWindowSec", config.flow.leakWindowSec, 1, 600);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>待机漏水脉冲阈值</td><td>");
-    sendNumberInput("leakPulseThreshold", config.flow.leakPulseThreshold, 1, 1000);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>低流量百分比</td><td>");
-    sendNumberInput("lowFlowPercent", config.flow.lowFlowPercent, 1, 100);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>高流量百分比</td><td>");
-    sendNumberInput("highFlowPercent", config.flow.highFlowPercent, 100, 1000);
+    sendSectionStart("流量检测", "流量计为必配输入，用于校准、无流量保护、漏水检测和异常流量判断。");
+    sendSettingNumber("流量计每升脉冲数",
+                      "流量计每流过 1 升水产生的脉冲数量；未校准时自动计划不能执行。",
+                      "脉冲/L",
+                      "pulsesPerLiter",
+                      config.flow.pulsesPerLiter,
+                      0,
+                      100000);
+    sendSettingNumber("启动流量宽限时间",
+                      "水路刚打开后暂不判断无流量，给管路充水和流量稳定留出时间。",
+                      "秒",
+                      "startupGraceSec",
+                      config.flow.startupGraceSec,
+                      0,
+                      120);
+    sendSettingNumber("无流量确认时间",
+                      "超过宽限期后，连续这么久没有有效流量才停止运行。",
+                      "秒",
+                      "noFlowConfirmSec",
+                      config.flow.noFlowConfirmSec,
+                      1,
+                      600);
+    sendSettingNumber("待机漏水检测窗口",
+                      "系统空闲时累计流量脉冲的观察窗口，用于发现疑似漏水。",
+                      "秒",
+                      "leakWindowSec",
+                      config.flow.leakWindowSec,
+                      1,
+                      600);
+    sendSettingNumber("待机漏水脉冲阈值",
+                      "空闲观察窗口内达到该脉冲数，即认为存在异常流动。",
+                      "脉冲",
+                      "leakPulseThreshold",
+                      config.flow.leakPulseThreshold,
+                      1,
+                      1000);
+    sendSettingNumber("低流量阈值",
+                      "运行流量低于水路标准流量的该比例时，判定为低流量异常。",
+                      "%",
+                      "lowFlowPercent",
+                      config.flow.lowFlowPercent,
+                      1,
+                      100);
+    sendSettingNumber("高流量阈值",
+                      "运行流量高于水路标准流量的该比例时，判定为高流量异常。",
+                      "%",
+                      "highFlowPercent",
+                      config.flow.highFlowPercent,
+                      100,
+                      1000);
+    sendSectionEnd();
 
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>电磁阀吸合时间（ms）</td><td>");
-    sendNumberInput("pullInMs", config.valve.pullInMs, 50, 3000);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>电磁阀保持占空比（%）</td><td>");
-    sendNumberInput("holdPercent", config.valve.holdPercent, 1, 100);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>单路最大时长（分钟）</td><td>");
-    sendNumberInput("maxZoneDurationMin", config.valve.maxZoneDurationSec / 60UL, 1, 360);
-    Esp32BaseWeb::sendChunk("</td></tr>");
+    sendSectionStart("电磁阀驱动", "6 路 12V DC 电磁阀为固定输出，驱动参数影响吸合可靠性和发热。");
+    sendSettingNumber("电磁阀吸合时间",
+                      "打开电磁阀时全功率吸合的持续时间，过短可能打不开，过长会增加发热。",
+                      "ms",
+                      "pullInMs",
+                      config.valve.pullInMs,
+                      50,
+                      3000);
+    sendSettingNumber("电磁阀保持占空比",
+                      "电磁阀吸合后使用的保持功率比例，用于降低线圈发热。",
+                      "%",
+                      "holdPercent",
+                      config.valve.holdPercent,
+                      1,
+                      100);
+    sendSettingNumber("单路最大时长",
+                      "任何手动任务或计划中，单个水路允许设置的最大运行时间。",
+                      "分钟",
+                      "maxZoneDurationMin",
+                      config.valve.maxZoneDurationSec / 60UL,
+                      1,
+                      360);
+    sendSectionEnd();
 
-    Esp32BaseWeb::sendChunk("</tbody></table><div class='actions'><input type='submit' value='保存设置'");
+    Esp32BaseWeb::sendChunk("<div class='actions'><input type='submit' value='保存设置'");
     if (RunController::busy()) {
         Esp32BaseWeb::sendChunk(" disabled");
     }
@@ -1088,13 +1276,13 @@ void sendEnabledZoneSelect(uint8_t selectedZoneId) {
 
 void sendCalibrationStartForm(const char* title, const char* action, uint32_t defaultMinutes) {
     Esp32BaseWeb::beginPanel(title);
-    Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='");
+    Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='");
     Esp32BaseWeb::sendChunk(action);
-    Esp32BaseWeb::sendChunk("'><table><tbody><tr><td>水路</td><td>");
+    Esp32BaseWeb::sendChunk("'><div class='ir-grid'><div class='ir-field'><label>水路</label><span class='ir-help'>选择一个已启用水路进行校准。</span>");
     sendEnabledZoneSelect(1);
-    Esp32BaseWeb::sendChunk("</td></tr><tr><td>时长（分钟）</td><td>");
+    Esp32BaseWeb::sendChunk("</div><div class='ir-field'><label>运行时长</label><span class='ir-help'>校准会打开所选水路并累计流量计脉冲。</span><div class='ir-input-unit'>");
     sendNumberInput("durationMin", defaultMinutes, 1, maxZoneDurationMinutes());
-    Esp32BaseWeb::sendChunk("</td></tr></tbody></table><div class='actions'><input type='submit' value='启动校准'></div></form>");
+    Esp32BaseWeb::sendChunk("<span class='ir-unit'>分钟</span></div></div></div><div class='actions'><input type='submit' value='启动校准'></div></form>");
     Esp32BaseWeb::endPanel();
 }
 
@@ -1103,18 +1291,18 @@ void sendCalibrationResultPanel(const CalibrationSnapshot& snapshot) {
         return;
     }
 
-    char buf[192];
+    char buf[768];
     Esp32BaseWeb::beginPanel("校准结果");
-    snprintf(buf, sizeof(buf), "<table><tbody><tr><td>模式</td><td>%s</td></tr><tr><td>水路</td><td>%u</td></tr><tr><td>脉冲数</td><td>%lu</td></tr></tbody></table>",
+    snprintf(buf, sizeof(buf), "<div class='ir-grid ir-three'><div class='ir-card'><div class='ir-card-title'>模式</div><p class='ir-card-note'>%s</p></div><div class='ir-card'><div class='ir-card-title'>水路</div><p class='ir-card-note'>%u</p></div><div class='ir-card'><div class='ir-card-title'>脉冲数</div><p class='ir-card-note'>%lu</p></div></div>",
              calibrationModeLabel(snapshot.mode),
              snapshot.zoneId,
              static_cast<unsigned long>(snapshot.pulses));
     Esp32BaseWeb::sendChunk(buf);
 
     if (snapshot.mode == CalibrationMode::FlowMeterVolume) {
-        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_volume'><label>实测水量（ml）</label><input type='number' name='measuredMl' min='1' max='100000' value='1000'><div class='actions'><input type='submit' value='保存每升脉冲数'></div></form>");
+        Esp32BaseWeb::sendChunk("<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_volume'><div class='ir-field'><label>实测水量</label><span class='ir-help'>填写本次实际接到的水量，系统据此计算每升脉冲数。</span><div class='ir-input-unit'><input type='number' name='measuredMl' min='1' max='100000' value='1000'><span class='ir-unit'>ml</span></div></div><div class='actions'><input type='submit' value='保存每升脉冲数'></div></form>");
     } else if (snapshot.mode == CalibrationMode::ZoneStandardFlow) {
-        snprintf(buf, sizeof(buf), "<form method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_standard'><input type='hidden' name='zone' value='%u'><label>标准流量（ml/min）</label><input type='number' name='standardFlow' min='1' max='100000' value='%lu'><div class='actions'><input type='submit' value='保存水路标准流量'></div></form>",
+        snprintf(buf, sizeof(buf), "<form class='ir-form' method='post' action='/irrigation/calibration/action'><input type='hidden' name='action' value='save_standard'><input type='hidden' name='zone' value='%u'><div class='ir-field'><label>标准流量</label><span class='ir-help'>保存后用于该水路的低流量和高流量判断。</span><div class='ir-input-unit'><input type='number' name='standardFlow' min='1' max='100000' value='%lu'><span class='ir-unit'>ml/min</span></div></div><div class='actions'><input type='submit' value='保存水路标准流量'></div></form>",
                  snapshot.zoneId,
                  static_cast<unsigned long>(snapshot.suggestedFlowMlPerMin));
         Esp32BaseWeb::sendChunk(buf);
@@ -1220,7 +1408,8 @@ void handleHistoryPage() {
 } // namespace
 
 void IrrigationWeb::registerRoutes() {
-    Esp32BaseWeb::addPage("/irrigation", "智能浇水", handleDashboardPage);
+    Esp32BaseWeb::setHeadExtraCallback(sendIrrigationHeadExtra);
+    Esp32BaseWeb::addPage("/irrigation", "首页", handleDashboardPage);
     Esp32BaseWeb::addPage("/irrigation/run", "运行", handleRunPage);
     Esp32BaseWeb::addPage("/irrigation/zones", "水路", handleZonesPage);
     Esp32BaseWeb::addPage("/irrigation/plans", "计划", handlePlansPage);
@@ -1242,7 +1431,7 @@ void IrrigationWeb::registerRoutes() {
     Esp32BaseWeb::addApi("/api/plans", handlePlansApi);
     Esp32BaseWeb::addApi("/api/calibration", handleCalibrationApi);
     Esp32BaseWeb::addApi("/api/history", handleHistoryApi);
-    Esp32BaseWeb::addNavItem("/irrigation", "智能浇水");
+    Esp32BaseWeb::addNavItem("/irrigation", "首页");
 }
 
 } // namespace Irrigation
