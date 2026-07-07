@@ -2,6 +2,8 @@
 
 #include <ArduinoJson.h>
 #include <Esp32Base.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "IrrigationConfig.h"
 
@@ -32,6 +34,34 @@ void copyString(char* target, size_t targetSize, const char* value) {
     }
     snprintf(target, targetSize, "%s", value != nullptr ? value : "");
     target[targetSize - 1] = '\0';
+}
+
+bool normalizeLegacyEnglishNames(IrrigationConfig& config) {
+    bool changed = false;
+    char legacy[16];
+    char localized[16];
+
+    for (uint8_t i = 0; i < kMaxZones; ++i) {
+        ZoneConfig& zone = config.zones[i];
+        snprintf(legacy, sizeof(legacy), "Zone %u", static_cast<unsigned>(zone.id));
+        if (strcmp(zone.name, legacy) == 0) {
+            snprintf(localized, sizeof(localized), "水路 %u", static_cast<unsigned>(zone.id));
+            copyString(zone.name, sizeof(zone.name), localized);
+            changed = true;
+        }
+    }
+
+    for (uint8_t i = 0; i < kMaxPlans; ++i) {
+        WateringPlan& plan = config.plans[i];
+        snprintf(legacy, sizeof(legacy), "Plan %u", static_cast<unsigned>(plan.id));
+        if (strcmp(plan.name, legacy) == 0) {
+            snprintf(localized, sizeof(localized), "计划 %u", static_cast<unsigned>(plan.id));
+            copyString(plan.name, sizeof(plan.name), localized);
+            changed = true;
+        }
+    }
+
+    return changed;
 }
 
 const char* contactTypeToString(ContactType type) {
@@ -345,6 +375,11 @@ bool ConfigStore::begin() {
             ESP32BASE_LOG_W("config_store", "default_config_save_failed error=%s", g_lastError);
         }
         g_loadedFromDefaults = true;
+    } else if (normalizeLegacyEnglishNames(g_config)) {
+        ESP32BASE_LOG_I("config_store", "legacy_english_names_localized");
+        if (!save(g_config)) {
+            ESP32BASE_LOG_W("config_store", "localized_config_save_failed error=%s", g_lastError);
+        }
     }
 
     return g_configValid;

@@ -19,7 +19,7 @@ void clearPlan(WateringPlan& plan, uint8_t id) {
     plan.id = id;
     plan.used = false;
     plan.enabled = false;
-    setName(plan.name, sizeof(plan.name), "Plan", id);
+    setName(plan.name, sizeof(plan.name), "计划", id);
 
     for (uint8_t i = 0; i < kMaxPlanStartTimes; ++i) {
         plan.startTimes[i].enabled = false;
@@ -119,7 +119,7 @@ void applyDefaultConfig(IrrigationConfig& config) {
         ZoneConfig& zone = config.zones[i];
         zone.id = i + 1;
         zone.enabled = i < kDefaultEnabledZones;
-        setName(zone.name, sizeof(zone.name), "Zone", zone.id);
+        setName(zone.name, sizeof(zone.name), "水路", zone.id);
         zone.defaultDurationSec = 0;
         zone.standardFlowMlPerMin = 0;
         zone.valveIndex = i;

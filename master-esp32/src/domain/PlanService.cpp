@@ -14,7 +14,7 @@ void copyPlanName(char* target, size_t targetSize, const char* value, uint8_t pl
     if (value != nullptr && value[0] != '\0') {
         snprintf(target, targetSize, "%s", value);
     } else {
-        snprintf(target, targetSize, "Plan %u", static_cast<unsigned>(planId));
+        snprintf(target, targetSize, "计划 %u", static_cast<unsigned>(planId));
     }
     target[targetSize - 1] = '\0';
 }

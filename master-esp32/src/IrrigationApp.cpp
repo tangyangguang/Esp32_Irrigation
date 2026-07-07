@@ -57,10 +57,17 @@ void setupBeforeBase() {
     Irrigation::IrrigationWeb::registerRoutes();
 
     Esp32BaseWeb::setDefaultAuth("admin", "admin");
-    Esp32BaseWeb::setDeviceName("Smart Irrigation");
-    Esp32BaseWeb::setHomePath("/esp32base");
-    Esp32BaseWeb::setHomeMode(Esp32BaseWeb::HOME_COMBINED);
+    Esp32BaseWeb::setDeviceName("智能浇水控制器");
+    Esp32BaseWeb::setHomePath("/irrigation");
+    Esp32BaseWeb::setHomeMode(Esp32BaseWeb::HOME_APP);
     Esp32BaseWeb::setSystemNavMode(Esp32BaseWeb::SYSTEM_NAV_SECTION);
+    Esp32BaseWeb::setFooterBarMode(Esp32BaseWeb::FOOTER_BAR_OFF);
+    Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_HOME, "状态");
+    Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_LOGS, "系统日志");
+    Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_APP_EVENTS, "应用事件");
+    Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_TOOLS, "系统");
+    Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_AUTH, "认证");
+    Esp32BaseAppConfig::setTitle("应用配置");
 }
 
 void setupAfterBase() {

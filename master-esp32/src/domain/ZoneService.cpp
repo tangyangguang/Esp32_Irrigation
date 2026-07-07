@@ -11,7 +11,7 @@ namespace {
 char g_lastError[40] = "ok";
 
 void copyZoneName(char* target, size_t targetSize, const char* value) {
-    snprintf(target, targetSize, "%s", value != nullptr && value[0] != '\0' ? value : "Zone");
+    snprintf(target, targetSize, "%s", value != nullptr && value[0] != '\0' ? value : "水路");
     target[targetSize - 1] = '\0';
 }
 } // namespace
@@ -98,4 +98,3 @@ void ZoneService::setLastError(const char* error) {
 }
 
 } // namespace Irrigation
-
