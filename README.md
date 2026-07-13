@@ -1,13 +1,16 @@
 # ESP32 Irrigation
 
-本仓库当前只维护新版 12V 智能浇水控制器方案。
-
-旧工程、旧文档和旧固件已归档到 `上一版/V6/`，只作为历史参考，不作为当前设计依据。
+本仓库维护单板 12V DC 智能浇水控制器。
 
 当前有效依据：
 
-- 硬件：`pcb/BOM_Board1_Schematic1_2026-07-06.xlsx`
-- 网表：`pcb/Netlist_Schematic1_2026-07-06.tel`
-- 方案：`docs/当前方案/`
+- 硬件：`pcb_irrigation/BOM_Board1_Schematic1_2026-07-11.xlsx`
+- 网表：`pcb_irrigation/Netlist_Schematic1_2026-07-11.tel`
+- 产品与软件方案：`docs/当前方案/`
+- ESP32 固件工程：`master-esp32/`
 
-当前系统是单板 12V DC 浇水控制器，不包含 RS485、分站、多水源并行和主阀。
+构建固件：
+
+```bash
+pio run -d master-esp32
+```
