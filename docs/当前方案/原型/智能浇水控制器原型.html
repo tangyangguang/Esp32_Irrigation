@@ -851,7 +851,7 @@
               <div class="form-grid">
                 <div class="field"><label for="knownVolume">实测水量</label><input id="knownVolume" type="number" value="10"></div>
                 <div class="field"><label for="pulseCount">采集脉冲</label><input id="pulseCount" type="number" value="4500"></div>
-                <div class="field"><label for="ppl">每升脉冲</label><input id="ppl" type="number" value="450"></div>
+                <div class="field"><label for="ppl">每升脉冲</label><input id="ppl" type="number" value="250"></div>
                 <div class="field"><label for="noFlow">无流量停机</label><input id="noFlow" type="number" value="30"></div>
               </div>
               <div class="actions" style="margin-top:14px">
@@ -886,9 +886,8 @@
               <div class="form-grid">
                 <div class="field full"><span class="field-label">自吸泵启动信号</span><label class="switch"><input id="pumpEnabled" type="checkbox"><span class="track"></span>启用 DRY_OUT1</label></div>
                 <div class="field"><label for="pumpDelay">泵启动延时</label><input id="pumpDelay" type="number" value="500"></div>
-                <div class="field"><label for="lowDebounce">低液位去抖</label><input id="lowDebounce" type="number" value="300"></div>
-                <div class="field full"><span class="field-label">缺水保护</span><label class="switch"><input id="lowEnabled" type="checkbox"><span class="track"></span>启用 LOW_IN2</label></div>
-                <div class="field"><label for="lowContact">触点类型</label><select id="lowContact"><option>常闭</option><option>常开</option></select></div>
+                <div class="field"><label for="lowFlowAction">低流量动作</label><select id="lowFlowAction"><option>提示</option><option>提示并停机</option></select></div>
+                <div class="field"><label for="highFlowAction">过流量动作</label><select id="highFlowAction"><option>提示</option><option>提示并停机</option></select></div>
               </div>
               <div class="actions" style="margin-top:14px"><button class="btn" data-toast="供水设置已保存"><svg class="icon"><use href="#i-save"></use></svg>保存</button></div>
             </div>
@@ -921,7 +920,7 @@
       dashboard: ["总览", "今天 15:42 · RTC 已同步"],
       run: ["运行", "手动浇水和计划立即执行"],
       plans: ["计划", "最多 8 个 · 每天 · 最多 4 个启动时间"],
-      zones: ["Zone", "最多 6 个 · 默认启用 4 个"],
+      zones: ["Zone", "固定 6 个 · 默认全部启用"],
       calibration: ["校准", "流量计和 Zone 标准流量"],
       history: ["历史", "浇水、异常、配置和校准记录"],
       settings: ["设置", "供水、保护和阀驱动参数"]

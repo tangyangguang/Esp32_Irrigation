@@ -414,7 +414,7 @@
       <div class="summary-strip">
         <div class="metric"><b>6</b><span>路 12V DC Zone电磁阀</span></div>
         <div class="metric"><b>1</b><span>路必配流量计固定输入</span></div>
-        <div class="metric"><b>1</b><span>路可选低液位干接点输入</span></div>
+        <div class="metric"><b>1</b><span>路硬件预留信号输入</span></div>
         <div class="metric"><b>1</b><span>路可选自吸泵干接点控制输出</span></div>
       </div>
     </section>
@@ -438,9 +438,9 @@
           <p>流量计固定接入，必须存在。用于脉冲计数、无流量保护、用水量估算和校准。</p>
         </article>
         <article class="card">
-          <span class="tag optional">可选</span>
-          <h3>低液位 / 缺水传感器</h3>
-          <p>固定干接点输入。可启用或禁用，启用后可配置常开或常闭，只在自吸泵启用时参与防干抽保护。</p>
+          <span class="tag fixed">预留</span>
+          <h3>预留信号输入</h3>
+          <p>PCB 保留 1 路额外输入电路，但当前软件不读取、不显示、不配置，不作为产品功能。</p>
         </article>
         <article class="card">
           <span class="tag optional">可选</span>
@@ -474,7 +474,7 @@
           <tr>
             <td>手动浇水</td>
             <td>给每一路要浇的Zone设置时长，点击启动后按顺序浇水。</td>
-            <td>设备忙、Zone停用、参数无效，或自吸泵启用且低液位有效时不启动。</td>
+            <td>设备忙、Zone停用或参数无效时不启动。</td>
           </tr>
           <tr>
             <td>自动计划</td>
@@ -493,13 +493,8 @@
           </tr>
           <tr>
             <td>流量保护</td>
-            <td>无流量停机，待机漏水提示，低/过流量第一阶段只提示。</td>
-            <td>低/过流量不做可配置停机策略，避免流量方案过度设计。</td>
-          </tr>
-          <tr>
-            <td>低液位保护</td>
-            <td>只在自吸泵启用时生效，用于防止自吸泵干抽。</td>
-            <td>自吸泵未启用时，低液位即使配置启用也不影响浇水流程。</td>
+            <td>无流量停机，待机漏水提示，低/过流量默认提示。</td>
+            <td>低流量和过流量可分别配置为提示并停机。</td>
           </tr>
           <tr>
             <td>自吸泵控制</td>
@@ -509,7 +504,7 @@
           <tr>
             <td>校准</td>
             <td>接水量校准流量计每升脉冲数，稳定流量校准Zone标准流量。</td>
-            <td>校准也是一次受保护的Zone运行，不绕过无流量规则；低液位只在自吸泵启用时参与。</td>
+            <td>校准也是一次受保护的Zone运行，不绕过无流量规则。</td>
           </tr>
           <tr>
             <td>历史记录</td>
@@ -543,10 +538,8 @@
           <h3>供水配置</h3>
           <ul>
             <li>自吸泵控制：启用或禁用。</li>
-            <li>低液位传感器：启用或禁用，只在自吸泵启用时生效。</li>
-            <li>低液位触点类型：常开或常闭。</li>
-            <li>低液位去抖时间。</li>
-            <li>流量计每升脉冲数。</li>
+            <li>流量计每升脉冲数，默认 250。</li>
+            <li>低流量动作和过流量动作。</li>
           </ul>
         </article>
         <article class="card">
@@ -570,7 +563,7 @@
         </article>
       </div>
       <p class="note" style="margin-top:14px;">
-        流量计、低液位输入、自吸泵输出都是固定硬件位置，不再给用户选择输入口或输出口。
+        流量计和自吸泵输出都是固定硬件位置，不再给用户选择输入口或输出口。预留信号输入不进入软件配置。
       </p>
     </section>
 
@@ -580,7 +573,7 @@
         <div class="step">
           <div class="num">1</div>
           <h3>启动检查</h3>
-          <p>检查设备空闲、Zone启用、时长有效、必要参数；自吸泵和低液位都启用时检查缺水状态。</p>
+          <p>检查设备空闲、Zone启用、时长有效和必要参数。</p>
         </div>
         <div class="step">
           <div class="num">2</div>
@@ -595,7 +588,7 @@
         <div class="step">
           <div class="num">4</div>
           <h3>运行监测</h3>
-          <p>统计流量脉冲，判断无流量、低流量、过流量；自吸泵启用时再判断低液位。</p>
+          <p>统计流量脉冲，判断无流量、低流量和过流量。</p>
         </div>
         <div class="step">
           <div class="num">5</div>
@@ -626,7 +619,7 @@
         <article class="card">
           <span class="tag no">不做</span>
           <h3>输入输出映射</h3>
-          <p>流量计、低液位、自吸泵和 6 路阀都是固定位置，不提供自由映射页面。</p>
+          <p>流量计、自吸泵和 6 路阀都是固定位置，不提供自由映射页面。</p>
         </article>
         <article class="card">
           <span class="tag no">不做</span>
@@ -647,7 +640,7 @@
         <div class="check"><div class="box"></div><span>确认电源和阀均为 12V DC。</span></div>
         <div class="check"><div class="box"></div><span>确认 6 路阀全部作为浇水Zone，不做主阀。</span></div>
         <div class="check"><div class="box"></div><span>确认流量计必配，固定输入，不提供启用/禁用和输入选择。</span></div>
-        <div class="check"><div class="box"></div><span>确认低液位是可选干接点输入，可配置常开或常闭，且只在自吸泵启用时生效。</span></div>
+        <div class="check"><div class="box"></div><span>确认预留信号输入不进入当前软件功能。</span></div>
         <div class="check"><div class="box"></div><span>确认自吸泵是可选干接点输出，只控制外部继电器模块信号。</span></div>
         <div class="check"><div class="box"></div><span>确认手动浇水是给多个Zone设置时长后顺序执行，也可以选择已启用自动计划立即执行。</span></div>
         <div class="check"><div class="box"></div><span>确认自动计划最多 8 个，只支持每天策略，禁用计划不触发。</span></div>
@@ -658,7 +651,7 @@
     </section>
 
     <footer>
-      当前依据：`docs/当前方案/` 与 `pcb/` 下 2026-07-06 的 BOM / 网表。旧 V6 资料只作为需求背景，不作为当前设计依据。
+      当前依据：`docs/当前方案/` 与 `pcb_irrigation/` 下 2026-07-11 的 BOM / 网表。旧 V6 资料只作为需求背景，不作为当前设计依据。
     </footer>
   </main>
 </body>
