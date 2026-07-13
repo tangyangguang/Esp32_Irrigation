@@ -1,5 +1,7 @@
 #pragma once
 
+#include "IrrigationConfigStore.h"
+
 class IrrigationApp {
 public:
     static IrrigationApp& instance();
@@ -17,4 +19,5 @@ private:
     bool started_ = false;
     bool baseReady_ = false;
     bool businessReady_ = false;
+    IrrigationConfigStore configStore_;
 };

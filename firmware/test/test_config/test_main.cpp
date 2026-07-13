@@ -1,9 +1,11 @@
 #include <unity.h>
 
 #include <cstdio>
+#include <string>
 
 #include "irrigation/BoardPins.h"
 #include "irrigation/IrrigationConfig.h"
+#include "irrigation/IrrigationConfigJson.h"
 
 namespace {
 
@@ -78,6 +80,50 @@ void test_confirmed_parameter_ranges_are_validated() {
     TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
 }
 
+void test_flow_coefficient_decimal_conversion_is_exact() {
+    uint32_t value = 0;
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parsePulsesPerLiter("250.37", value));
+    TEST_ASSERT_EQUAL_UINT32(25037, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parsePulsesPerLiter("250.3", value));
+    TEST_ASSERT_EQUAL_UINT32(25030, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parsePulsesPerLiter("0.01", value));
+    TEST_ASSERT_EQUAL_UINT32(1, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parsePulsesPerLiter("100000.00", value));
+    TEST_ASSERT_EQUAL_UINT32(10000000, value);
+
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parsePulsesPerLiter("0", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parsePulsesPerLiter("250.375", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parsePulsesPerLiter("100000.01", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parsePulsesPerLiter(" 250.00", value));
+
+    char text[16];
+    TEST_ASSERT_TRUE(IrrigationConfigRules::formatPulsesPerLiter(25037, text, sizeof(text)));
+    TEST_ASSERT_EQUAL_STRING("250.37", text);
+}
+
+void test_config_json_round_trip_is_exact_and_strict() {
+    IrrigationConfig original = IrrigationConfigRules::createDefault();
+    original.flowMeter.pulsesPerLiterX100 = 25037;
+    original.plans[0].configured = true;
+    std::snprintf(original.plans[0].name.data(), original.plans[0].name.size(), "%s", "日常浇水");
+    original.plans[0].zoneDurationMinutes[0] = 15;
+
+    std::string json;
+    TEST_ASSERT_TRUE(IrrigationConfigJson::encode(original, json));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"pulses_per_liter_x100\":25037"));
+
+    IrrigationConfig decoded{};
+    TEST_ASSERT_TRUE(IrrigationConfigJson::decode(json.data(), json.size(), decoded));
+    std::string encodedAgain;
+    TEST_ASSERT_TRUE(IrrigationConfigJson::encode(decoded, encodedAgain));
+    TEST_ASSERT_EQUAL_STRING(json.c_str(), encodedAgain.c_str());
+
+    const std::size_t field = json.find("\"revision\":1,");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, field);
+    json.erase(field, std::string("\"revision\":1,").size());
+    TEST_ASSERT_FALSE(IrrigationConfigJson::decode(json.data(), json.size(), decoded));
+}
+
 void test_checkpoint_zero_is_valid_and_invalid_ranges_are_rejected() {
     IrrigationConfig config = IrrigationConfigRules::createDefault();
     config.timeSafety.aliveCheckpointHours = 0;
@@ -100,5 +146,7 @@ int main(int, char**) {
     RUN_TEST(test_checkpoint_zero_is_valid_and_invalid_ranges_are_rejected);
     RUN_TEST(test_names_and_cross_field_rules_are_validated);
     RUN_TEST(test_confirmed_parameter_ranges_are_validated);
+    RUN_TEST(test_flow_coefficient_decimal_conversion_is_exact);
+    RUN_TEST(test_config_json_round_trip_is_exact_and_strict);
     return UNITY_END();
 }

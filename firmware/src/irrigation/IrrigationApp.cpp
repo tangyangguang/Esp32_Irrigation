@@ -6,7 +6,6 @@
 
 #include "BoardHardware.h"
 #include "BoardPins.h"
-#include "IrrigationConfig.h"
 
 namespace {
 
@@ -46,14 +45,20 @@ bool IrrigationApp::begin() {
         return false;
     }
 
-    const IrrigationConfig defaults = IrrigationConfigRules::createDefault();
-    if (!IrrigationConfigRules::validate(defaults)) {
+    if (!configStore_.begin()) {
         hardware.safeShutdown();
         return false;
     }
 
-    // Persistent configuration and recovery are the next implementation layer.
-    // Until that layer has loaded a valid configuration, no watering command is ready.
+    const IrrigationConfig* config = configStore_.current();
+    if (!config ||
+        (config->valveDrive.pwmFrequencyHz != 20000U &&
+         !hardware.configureValvePwmFrequency(config->valveDrive.pwmFrequencyHz))) {
+        hardware.safeShutdown();
+        return false;
+    }
+
+    // Watering commands become ready after the controller layer is implemented.
     businessReady_ = false;
     return true;
 }

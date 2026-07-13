@@ -217,3 +217,66 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
     }
     return true;
 }
+
+bool IrrigationConfigRules::parsePulsesPerLiter(const char* text, uint32_t& valueX100) {
+    if (!text || *text == '\0') {
+        return false;
+    }
+
+    uint64_t whole = 0;
+    std::size_t index = 0;
+    std::size_t wholeDigits = 0;
+    while (text[index] >= '0' && text[index] <= '9') {
+        whole = whole * 10U + static_cast<uint8_t>(text[index] - '0');
+        if (whole > 100000U) {
+            return false;
+        }
+        ++index;
+        ++wholeDigits;
+    }
+    if (wholeDigits == 0) {
+        return false;
+    }
+
+    uint32_t fraction = 0;
+    std::size_t fractionDigits = 0;
+    if (text[index] == '.') {
+        ++index;
+        while (text[index] >= '0' && text[index] <= '9') {
+            if (fractionDigits >= 2) {
+                return false;
+            }
+            fraction = fraction * 10U + static_cast<uint8_t>(text[index] - '0');
+            ++index;
+            ++fractionDigits;
+        }
+        if (fractionDigits == 0) {
+            return false;
+        }
+    }
+    if (text[index] != '\0') {
+        return false;
+    }
+    if (fractionDigits == 1) {
+        fraction *= 10U;
+    }
+
+    const uint64_t scaled = whole * 100U + fraction;
+    if (scaled < 1U || scaled > 10000000U) {
+        return false;
+    }
+    valueX100 = static_cast<uint32_t>(scaled);
+    return true;
+}
+
+bool IrrigationConfigRules::formatPulsesPerLiter(uint32_t valueX100, char* out, std::size_t outSize) {
+    if (!out || outSize == 0 || valueX100 < 1U || valueX100 > 10000000U) {
+        return false;
+    }
+    const int written = std::snprintf(out,
+                                      outSize,
+                                      "%lu.%02lu",
+                                      static_cast<unsigned long>(valueX100 / 100U),
+                                      static_cast<unsigned long>(valueX100 % 100U));
+    return written > 0 && static_cast<std::size_t>(written) < outSize;
+}
