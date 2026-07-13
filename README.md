@@ -7,10 +7,10 @@
 - 硬件：`pcb_irrigation/BOM_Board1_Schematic1_2026-07-11.xlsx`
 - 网表：`pcb_irrigation/Netlist_Schematic1_2026-07-11.tel`
 - 产品与软件方案：`docs/当前方案/`
-- ESP32 固件工程：`master-esp32/`
+- ESP32 固件工程：`firmware/`
 
 构建固件：
 
 ```bash
-pio run -d master-esp32
+pio run -d firmware
 ```

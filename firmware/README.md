@@ -9,5 +9,5 @@
 构建：
 
 ```bash
-pio run -d master-esp32
+pio run -d firmware
 ```
