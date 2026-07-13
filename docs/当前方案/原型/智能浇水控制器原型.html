@@ -852,7 +852,7 @@
                 <div class="field"><label for="knownVolume">实测水量</label><input id="knownVolume" type="number" value="10"></div>
                 <div class="field"><label for="pulseCount">采集脉冲</label><input id="pulseCount" type="number" value="4500"></div>
                 <div class="field"><label for="ppl">每升脉冲</label><input id="ppl" type="number" value="250"></div>
-                <div class="field"><label for="noFlow">无流量停机</label><input id="noFlow" type="number" value="30"></div>
+                <div class="field"><label for="sampleLimit">最长采集</label><input id="sampleLimit" type="number" value="10"></div>
               </div>
               <div class="actions" style="margin-top:14px">
                 <button class="btn" data-toast="校准参数已保存"><svg class="icon"><use href="#i-save"></use></svg>保存</button>
@@ -886,8 +886,8 @@
               <div class="form-grid">
                 <div class="field full"><span class="field-label">自吸泵启动信号</span><label class="switch"><input id="pumpEnabled" type="checkbox"><span class="track"></span>启用 DRY_OUT1</label></div>
                 <div class="field"><label for="pumpDelay">泵启动延时</label><input id="pumpDelay" type="number" value="500"></div>
-                <div class="field"><label for="lowFlowAction">低流量动作</label><select id="lowFlowAction"><option>提示</option><option>提示并停机</option></select></div>
-                <div class="field"><label for="highFlowAction">过流量动作</label><select id="highFlowAction"><option>提示</option><option>提示并停机</option></select></div>
+                <div class="field"><label for="lowFlowAction">低流量动作</label><select id="lowFlowAction"><option>提示</option><option>提示并停止当前水路</option></select></div>
+                <div class="field"><label for="highFlowAction">过流量动作</label><select id="highFlowAction"><option>提示</option><option>提示并停止当前水路</option></select></div>
               </div>
               <div class="actions" style="margin-top:14px"><button class="btn" data-toast="供水设置已保存"><svg class="icon"><use href="#i-save"></use></svg>保存</button></div>
             </div>
@@ -897,7 +897,7 @@
                 <div class="field"><label for="pullMs">吸合时间</label><input id="pullMs" type="number" value="300"></div>
                 <div class="field"><label for="holdDuty">维持 PWM</label><input id="holdDuty" type="number" value="60"></div>
                 <div class="field"><label for="leakFlow">待机漏水阈值</label><input id="leakFlow" type="number" value="0.4"></div>
-                <div class="field"><label for="historyDays">历史保留</label><input id="historyDays" type="number" value="180"></div>
+                <div class="field"><label for="historyEvents">历史事件</label><input id="historyEvents" type="number" value="1000"></div>
               </div>
               <div class="actions" style="margin-top:14px"><button class="btn" data-toast="阀驱动参数已保存"><svg class="icon"><use href="#i-save"></use></svg>保存</button></div>
             </div>
