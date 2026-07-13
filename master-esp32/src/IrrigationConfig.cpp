@@ -92,9 +92,6 @@ void applyDefaultConfig(IrrigationConfig& config) {
     config.supply.pumpEnabled = false;
     config.supply.pumpStartDelayMs = 0;
     config.supply.pumpStopDelayMs = 1000;
-    config.supply.lowLevelEnabled = false;
-    config.supply.lowLevelContactType = ContactType::NormallyOpen;
-    config.supply.lowLevelDebounceMs = 1000;
 
     config.flow.pulsesPerLiter = 0;
     config.flow.startupGraceSec = 10;
@@ -261,8 +258,6 @@ const char* runReasonToString(RunReason reason) {
             return "time_invalid";
         case RunReason::NoFlow:
             return "no_flow";
-        case RunReason::LowLevel:
-            return "low_level";
         case RunReason::RebootRecoveredSafe:
             return "reboot_recovered_safe";
     }

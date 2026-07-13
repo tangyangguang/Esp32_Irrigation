@@ -129,7 +129,6 @@ const char* runReasonLabel(RunReason reason) {
         case RunReason::FlowNotCalibrated: return "流量计未校准";
         case RunReason::TimeInvalid: return "系统时间无效";
         case RunReason::NoFlow: return "未检测到流量";
-        case RunReason::LowLevel: return "低液位保护";
         case RunReason::RebootRecoveredSafe: return "重启后安全恢复";
     }
     return "未知原因";
@@ -195,7 +194,6 @@ const char* runReasonLabelFromString(const char* reason) {
     if (strcmp(reason, "flow_not_calibrated") == 0) return "流量计未校准";
     if (strcmp(reason, "time_invalid") == 0) return "系统时间无效";
     if (strcmp(reason, "no_flow") == 0) return "未检测到流量";
-    if (strcmp(reason, "low_level") == 0) return "低液位保护";
     if (strcmp(reason, "reboot_recovered_safe") == 0) return "重启后安全恢复";
     return "未知原因";
 }
@@ -518,14 +516,7 @@ void sendSettingFlowRate(const char* title,
     Esp32BaseWeb::sendChunk("<span class='ir-unit'>L/min</span></div></div>");
 }
 
-void sendContactTypeChoice(ContactType type) {
-    Esp32BaseWeb::sendChunk("<div class='ir-setting'><div><span class='ir-setting-title'>低液位触点类型</span><span class='ir-setting-desc'>按实际缺水传感器接线选择：常开 NO 或常闭 NC。</span></div><div class='ir-control'><div class='ir-choice'>");
-    Esp32BaseWeb::sendChunk("<label><input type='radio' name='lowLevelContactType' value='normally_open'");
-    sendChecked(type == ContactType::NormallyOpen);
-    Esp32BaseWeb::sendChunk(">常开 NO</label><label><input type='radio' name='lowLevelContactType' value='normally_closed'");
-    sendChecked(type == ContactType::NormallyClosed);
-    Esp32BaseWeb::sendChunk(">常闭 NC</label></div></div></div>");
-}
+
 
 void sendSectionStart(const char* title, const char* note) {
     Esp32BaseWeb::sendChunk("<div class='ir-section'><h3 class='ir-section-title'>");
@@ -1296,14 +1287,6 @@ void handleSettingsSavePost() {
 
     IrrigationConfig next = ConfigStore::config();
     next.supply.pumpEnabled = parseBoolParam("pumpEnabled");
-    next.supply.lowLevelEnabled = parseBoolParam("lowLevelEnabled");
-    char contactType[24];
-    if (Esp32BaseWeb::getParam("lowLevelContactType", contactType, sizeof(contactType)) &&
-        strcmp(contactType, "normally_closed") == 0) {
-        next.supply.lowLevelContactType = ContactType::NormallyClosed;
-    } else {
-        next.supply.lowLevelContactType = ContactType::NormallyOpen;
-    }
     next.supply.pumpStartDelayMs = 0;
 
     uint32_t value = 0;
@@ -1312,12 +1295,6 @@ void handleSettingsSavePost() {
         return;
     }
     next.supply.pumpStopDelayMs = value * 1000UL;
-
-    if (!parseU32Param("lowLevelDebounceSec", 0, 10, msToSecondsRounded(next.supply.lowLevelDebounceMs), value)) {
-        Esp32BaseWeb::sendText(400, "低液位消抖时间无效");
-        return;
-    }
-    next.supply.lowLevelDebounceMs = value * 1000UL;
 
     if (!parseU32Param("pulsesPerLiter", 0, 100000, next.flow.pulsesPerLiter, value)) {
         Esp32BaseWeb::sendText(400, "每升脉冲数无效");
@@ -1577,7 +1554,7 @@ void handleDashboardPage() {
     epochToText(status.nextRunEpoch, value, sizeof(value));
     Esp32BaseWeb::sendMetric("下次运行", value, status.nextRunEpoch == 0 ? "没有已启用的计划" : "本地时间");
     Esp32BaseWeb::sendMetric("流量计", ConfigStore::config().flow.pulsesPerLiter > 0 ? "已校准" : "未校准", "自动计划依赖");
-    Esp32BaseWeb::sendMetric("供水方式", ConfigStore::config().supply.pumpEnabled ? "外部自吸泵" : "有压水源", ConfigStore::config().supply.lowLevelEnabled ? "缺水保护启用" : "缺水保护禁用");
+    Esp32BaseWeb::sendMetric("供水方式", ConfigStore::config().supply.pumpEnabled ? "外部自吸泵" : "有压水源");
     Esp32BaseWeb::endMetricGrid();
 
     Esp32BaseWeb::beginPanel("系统健康");
@@ -1587,9 +1564,7 @@ void handleDashboardPage() {
     Esp32BaseWeb::sendChunk(status.configValid ? "正常" : "异常");
     Esp32BaseWeb::sendChunk("</b><span>配置状态</span></div><div><b>");
     Esp32BaseWeb::sendChunk(ConfigStore::config().supply.pumpEnabled ? "启用" : "禁用");
-    Esp32BaseWeb::sendChunk("</b><span>外部自吸泵供水</span></div><div><b>");
-    Esp32BaseWeb::sendChunk(ConfigStore::config().supply.lowLevelEnabled ? "启用" : "禁用");
-    Esp32BaseWeb::sendChunk("</b><span>低液位保护</span></div></div>");
+    Esp32BaseWeb::sendChunk("</b><span>外部自吸泵供水</span></div></div>");
     if (ConfigStore::config().flow.pulsesPerLiter == 0) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "流量计未校准", "自动计划执行前需要先设置每升脉冲数。");
     }
@@ -1856,18 +1831,7 @@ void handleSettingsPage() {
                       msToSecondsRounded(config.supply.pumpStopDelayMs),
                       0,
                       10);
-    sendSettingToggle("自吸泵缺水保护",
-                      "仅外部自吸泵供水时生效。检测到水箱缺水时，禁止启动或停止正在运行的自吸泵。",
-                      "lowLevelEnabled",
-                      config.supply.lowLevelEnabled);
-    sendContactTypeChoice(config.supply.lowLevelContactType);
-    sendSettingNumber("低液位消抖时间",
-                      "缺水输入需要持续稳定这么久才会生效，避免触点抖动导致误停。",
-                      "秒",
-                      "lowLevelDebounceSec",
-                      msToSecondsRounded(config.supply.lowLevelDebounceMs),
-                      0,
-                      10);
+
     sendSectionEnd();
 
     sendSectionStart("流量检测", "流量计为必配输入，用于校准、无流量保护、漏水检测和异常流量判断。");

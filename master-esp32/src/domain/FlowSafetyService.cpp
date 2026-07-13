@@ -175,14 +175,11 @@ void FlowSafetyService::beginStep(uint32_t nowMs, uint8_t zoneId) {
     g_leakReported = false;
 }
 
-bool FlowSafetyService::checkFlowGrace(uint32_t nowMs, RunReason& reason) {
-    return checkLowLevel(nowMs, reason);
+bool FlowSafetyService::checkFlowGrace(uint32_t nowMs, RunReason&amp; reason) {
+    return false;
 }
 
-bool FlowSafetyService::checkRunning(uint32_t nowMs, RunReason& reason) {
-    if (checkLowLevel(nowMs, reason)) {
-        return true;
-    }
+bool FlowSafetyService::checkRunning(uint32_t nowMs, RunReason&amp; reason) {
 
     const uint32_t pulses = BoardHardware::flowPulseCount();
     if (!g_runningObserved) {
@@ -219,14 +216,6 @@ uint32_t FlowSafetyService::currentFlowMlPerMin() {
 
 uint32_t FlowSafetyService::currentStepVolumeMl() {
     return volumeMlFromPulses(BoardHardware::flowPulseCount());
-}
-
-bool FlowSafetyService::checkLowLevel(uint32_t nowMs, RunReason& reason) {
-    if (BoardHardware::lowLevelActive(nowMs)) {
-        reason = RunReason::LowLevel;
-        return true;
-    }
-    return false;
 }
 
 void FlowSafetyService::updateFlowEstimate(uint32_t nowMs, uint32_t pulses) {

@@ -17,7 +17,6 @@ public:
     static uint32_t currentStepVolumeMl();
 
 private:
-    static bool checkLowLevel(uint32_t nowMs, RunReason& reason);
     static void updateFlowEstimate(uint32_t nowMs, uint32_t pulses);
     static void checkFlowDeviation(uint32_t nowMs);
 };

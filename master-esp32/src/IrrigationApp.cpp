@@ -81,10 +81,9 @@ void setupAfterBase() {
     Irrigation::CalibrationService::begin();
     Irrigation::Scheduler::begin();
     appendStartupEvent();
-    ESP32BASE_LOG_I("irrigation", "base_ready valves=%u flow_pin=%u low_level_pin=%u pump_pin=%u",
+    ESP32BASE_LOG_I("irrigation", "base_ready valves=%u flow_pin=%u pump_pin=%u",
                     IrrigationPins::kValveCount,
                     IrrigationPins::kFlowPulse,
-                    IrrigationPins::kLowLevel,
                     IrrigationPins::kPumpDryOut);
 }
 

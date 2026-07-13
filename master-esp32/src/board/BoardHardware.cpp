@@ -25,9 +25,6 @@ SupplyConfig g_supplyConfig;
 ValveRuntime g_valves[kMaxZones];
 bool g_started = false;
 bool g_pumpSignal = false;
-bool g_lowLevelStable = false;
-bool g_lowLevelLastRaw = false;
-uint32_t g_lowLevelLastChangeMs = 0;
 uint32_t g_lastSnapshotPulses = 0;
 volatile uint32_t g_flowPulseCount = 0;
 
@@ -54,13 +51,6 @@ void disableDriverIfIdle() {
     }
 }
 
-bool rawLowLevelByContact(bool pinHigh) {
-    if (g_supplyConfig.lowLevelContactType == ContactType::NormallyClosed) {
-        return pinHigh;
-    }
-    return !pinHigh;
-}
-
 } // namespace
 
 void IRAM_ATTR BoardHardware::onFlowPulse() {
@@ -80,7 +70,6 @@ void BoardHardware::begin(const ValveConfig& valveConfig, const SupplyConfig& su
     }
 
     pinMode(IrrigationPins::kFlowPulse, INPUT);
-    pinMode(IrrigationPins::kLowLevel, INPUT_PULLUP);
     pinMode(IrrigationPins::kRtcInterrupt, INPUT_PULLUP);
     pinMode(IrrigationPins::kButton1, INPUT);
     pinMode(IrrigationPins::kButton2, INPUT);
@@ -91,16 +80,11 @@ void BoardHardware::begin(const ValveConfig& valveConfig, const SupplyConfig& su
     resetFlowCounter();
     attachInterrupt(digitalPinToInterrupt(IrrigationPins::kFlowPulse), BoardHardware::onFlowPulse, RISING);
 
-    const bool raw = lowLevelRawActive();
-    g_lowLevelStable = raw;
-    g_lowLevelLastRaw = raw;
-    g_lowLevelLastChangeMs = millis();
     g_started = true;
 
-    ESP32BASE_LOG_I("irrigation_hw", "board_ready valves=%u flow_pin=%u low_level_pin=%u pump_pin=%u",
+    ESP32BASE_LOG_I("irrigation_hw", "board_ready valves=%u flow_pin=%u pump_pin=%u",
                     kMaxZones,
                     IrrigationPins::kFlowPulse,
-                    IrrigationPins::kLowLevel,
                     IrrigationPins::kPumpDryOut);
 }
 
@@ -129,8 +113,6 @@ void BoardHardware::handle(uint32_t nowMs) {
             valve.holding = true;
         }
     }
-
-    lowLevelActive(nowMs);
 }
 
 void BoardHardware::safeOff() {
@@ -201,29 +183,6 @@ void BoardHardware::setPumpSignal(bool enabled) {
 
 bool BoardHardware::pumpSignalActive() {
     return g_pumpSignal;
-}
-
-bool BoardHardware::lowLevelRawActive() {
-    const bool pinHigh = digitalRead(IrrigationPins::kLowLevel) == HIGH;
-    return rawLowLevelByContact(pinHigh);
-}
-
-bool BoardHardware::lowLevelActive(uint32_t nowMs) {
-    if (!g_supplyConfig.pumpEnabled || !g_supplyConfig.lowLevelEnabled) {
-        return false;
-    }
-
-    const bool raw = lowLevelRawActive();
-    if (raw != g_lowLevelLastRaw) {
-        g_lowLevelLastRaw = raw;
-        g_lowLevelLastChangeMs = nowMs;
-    }
-
-    if (nowMs - g_lowLevelLastChangeMs >= g_supplyConfig.lowLevelDebounceMs) {
-        g_lowLevelStable = raw;
-    }
-
-    return g_lowLevelStable;
 }
 
 BoardHardware::FlowSnapshot BoardHardware::flowSnapshot(uint32_t nowMs) {

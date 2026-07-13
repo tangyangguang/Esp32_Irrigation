@@ -105,17 +105,6 @@ bool normalizeCurrentSettingDefaults(IrrigationConfig& config) {
     return changed;
 }
 
-const char* contactTypeToString(ContactType type) {
-    return type == ContactType::NormallyClosed ? "normally_closed" : "normally_open";
-}
-
-ContactType contactTypeFromString(const char* value) {
-    if (value != nullptr && strcmp(value, "normally_closed") == 0) {
-        return ContactType::NormallyClosed;
-    }
-    return ContactType::NormallyOpen;
-}
-
 uint32_t readU32(JsonVariantConst value, uint32_t fallback) {
     return value.is<uint32_t>() ? value.as<uint32_t>() : fallback;
 }
@@ -137,9 +126,6 @@ void writeSupply(JsonObject data, const SupplyConfig& supply) {
     obj["pumpEnabled"] = supply.pumpEnabled;
     obj["pumpStartDelayMs"] = supply.pumpStartDelayMs;
     obj["pumpStopDelayMs"] = supply.pumpStopDelayMs;
-    obj["lowLevelEnabled"] = supply.lowLevelEnabled;
-    obj["lowLevelContactType"] = contactTypeToString(supply.lowLevelContactType);
-    obj["lowLevelDebounceMs"] = supply.lowLevelDebounceMs;
 }
 
 void writeFlow(JsonObject data, const FlowConfig& flow) {
@@ -223,9 +209,6 @@ void readSupply(JsonObjectConst data, SupplyConfig& supply) {
     supply.pumpEnabled = readBool(obj["pumpEnabled"], supply.pumpEnabled);
     supply.pumpStartDelayMs = readU32(obj["pumpStartDelayMs"], supply.pumpStartDelayMs);
     supply.pumpStopDelayMs = readU32(obj["pumpStopDelayMs"], supply.pumpStopDelayMs);
-    supply.lowLevelEnabled = readBool(obj["lowLevelEnabled"], supply.lowLevelEnabled);
-    supply.lowLevelContactType = contactTypeFromString(obj["lowLevelContactType"] | contactTypeToString(supply.lowLevelContactType));
-    supply.lowLevelDebounceMs = readU32(obj["lowLevelDebounceMs"], supply.lowLevelDebounceMs);
 }
 
 void readFlow(JsonObjectConst data, FlowConfig& flow) {

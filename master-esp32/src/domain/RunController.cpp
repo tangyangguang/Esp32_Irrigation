@@ -132,10 +132,6 @@ void RunController::handle(uint32_t nowMs) {
                 finish(RunResult::Skipped, RunReason::NoEffectiveStep, nowMs);
                 return;
             }
-            if (BoardHardware::lowLevelActive(nowMs)) {
-                finish(RunResult::Skipped, RunReason::LowLevel, nowMs);
-                return;
-            }
             enterState(RunState::OpenValve, nowMs);
             return;
 

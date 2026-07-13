@@ -28,9 +28,6 @@ public:
     static void setPumpSignal(bool enabled);
     static bool pumpSignalActive();
 
-    static bool lowLevelRawActive();
-    static bool lowLevelActive(uint32_t nowMs);
-
     static FlowSnapshot flowSnapshot(uint32_t nowMs);
     static uint32_t flowPulseCount();
     static void resetFlowCounter();

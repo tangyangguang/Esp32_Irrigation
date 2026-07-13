@@ -17,7 +17,6 @@ constexpr uint8_t kValvePwm[kValveCount] = {
 
 constexpr uint8_t kDriverShutdown = 19; // DRV_SD, HIGH disables valve driver.
 constexpr uint8_t kFlowPulse = 17;      // PULSE_IN1, mandatory flow meter input.
-constexpr uint8_t kLowLevel = 16;       // LOW_IN2, optional dry-contact input.
 constexpr uint8_t kPumpDryOut = 18;     // DRY_OUT1, optional dry-contact control signal.
 constexpr uint8_t kRtcInterrupt = 4;    // IO4_INT, DS3231 INT/SQW.
 constexpr uint8_t kI2cSda = 21;

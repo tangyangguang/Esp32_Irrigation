@@ -15,11 +15,6 @@ constexpr uint8_t kPlanNameLength = 32;
 constexpr uint16_t kMinutesPerDay = 1440;
 constexpr uint16_t kInvalidMinuteOfDay = 0xFFFF;
 
-enum class ContactType : uint8_t {
-    NormallyOpen = 0,
-    NormallyClosed = 1,
-};
-
 enum class RunSource : uint8_t {
     Manual = 0,
     Plan = 1,
@@ -66,7 +61,6 @@ enum class RunReason : uint16_t {
     FlowNotCalibrated,
     TimeInvalid,
     NoFlow,
-    LowLevel,
     RebootRecoveredSafe,
 };
 
@@ -116,9 +110,6 @@ struct SupplyConfig {
     bool pumpEnabled;
     uint32_t pumpStartDelayMs;
     uint32_t pumpStopDelayMs;
-    bool lowLevelEnabled;
-    ContactType lowLevelContactType;
-    uint32_t lowLevelDebounceMs;
 };
 
 struct FlowConfig {
