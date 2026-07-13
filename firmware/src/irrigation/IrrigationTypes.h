@@ -78,3 +78,62 @@ struct IrrigationConfig {
     std::array<ZoneConfig, BoardPins::kZoneCount> zones;
     std::array<WateringPlan, kWateringPlanCount> plans;
 };
+
+enum class WateringSource : uint8_t {
+    ManualZones = 0,
+    ManualPlan = 1,
+    AutomaticPlan = 2,
+};
+
+enum class WateringState : uint8_t {
+    Idle = 0,
+    StartingZone,
+    WaitingForFlow,
+    WateringZone,
+    StoppingZone,
+};
+
+enum class WateringResult : uint8_t {
+    None = 0,
+    Completed,
+    Stopped,
+    Failed,
+};
+
+enum class WateringStopReason : uint8_t {
+    None = 0,
+    Completed,
+    UserStopped,
+    FlowStartTimeout,
+    NoFlowTimeout,
+    HardwareFailure,
+};
+
+enum class WateringStartResult : uint8_t {
+    Started = 0,
+    Busy,
+    InvalidRequest,
+    HardwareFailure,
+};
+
+struct WateringStep {
+    uint8_t zoneId;
+    uint32_t targetDurationSec;
+};
+
+struct WateringRequest {
+    WateringSource source;
+    uint8_t planId;
+    uint8_t stepCount;
+    std::array<WateringStep, BoardPins::kZoneCount> steps;
+};
+
+struct WateringStatus {
+    bool active;
+    WateringState state;
+    uint8_t activeZoneId;
+    uint8_t currentStepIndex;
+    bool flowEstablished;
+    WateringResult lastResult;
+    WateringStopReason lastStopReason;
+};

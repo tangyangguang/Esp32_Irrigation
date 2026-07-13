@@ -1,6 +1,7 @@
 #pragma once
 
 #include "IrrigationConfigStore.h"
+#include "WateringController.h"
 
 class IrrigationApp {
 public:
@@ -13,11 +14,12 @@ public:
     bool businessReady() const;
 
 private:
-    IrrigationApp() = default;
+    IrrigationApp();
     void advanceBusiness();
 
     bool started_ = false;
     bool baseReady_ = false;
     bool businessReady_ = false;
     IrrigationConfigStore configStore_;
+    WateringController wateringController_;
 };

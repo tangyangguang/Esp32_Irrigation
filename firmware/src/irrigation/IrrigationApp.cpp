@@ -14,6 +14,8 @@ constexpr const char* kFirmwareVersion = "0.1.0";
 
 }  // namespace
 
+IrrigationApp::IrrigationApp() : wateringController_(BoardHardware::instance()) {}
+
 IrrigationApp& IrrigationApp::instance() {
     static IrrigationApp app;
     return app;
@@ -82,5 +84,5 @@ bool IrrigationApp::businessReady() const {
 }
 
 void IrrigationApp::advanceBusiness() {
-    // Business state machines are added here one confirmed layer at a time.
+    wateringController_.handle(millis());
 }

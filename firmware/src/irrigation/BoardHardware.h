@@ -2,23 +2,25 @@
 
 #include <cstdint>
 
-class BoardHardware {
+#include "WateringHardware.h"
+
+class BoardHardware final : public WateringHardware {
 public:
     static BoardHardware& instance();
 
     bool begin(uint32_t pwmFrequencyHz);
-    void safeShutdown();
+    void safeShutdown() override;
 
     bool configureValvePwmFrequency(uint32_t frequencyHz);
-    bool openValve(uint8_t zoneId, uint8_t dutyPercent = 100);
-    bool setActiveValveDuty(uint8_t dutyPercent);
-    void closeValves();
-    bool setPumpSignal(bool active);
+    bool openValve(uint8_t zoneId, uint8_t dutyPercent = 100) override;
+    bool setActiveValveDuty(uint8_t dutyPercent) override;
+    void closeValves() override;
+    bool setPumpSignal(bool active) override;
 
     bool initialized() const;
     uint8_t activeZoneId() const;
     bool pumpSignalActive() const;
-    uint32_t flowPulseCount() const;
+    uint32_t flowPulseCount() const override;
 
 private:
     BoardHardware() = default;
