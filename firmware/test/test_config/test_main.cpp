@@ -60,6 +60,10 @@ void test_names_and_cross_field_rules_are_validated() {
     config = IrrigationConfigRules::createDefault();
     std::snprintf(config.zones[0].name.data(), config.zones[0].name.size(), "%s", " 区域");
     TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
+
+    config = IrrigationConfigRules::createDefault();
+    std::snprintf(config.zones[0].name.data(), config.zones[0].name.size(), "%s", "区域\n1");
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
 }
 
 void test_confirmed_parameter_ranges_are_validated() {

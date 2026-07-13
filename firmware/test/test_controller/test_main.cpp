@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <climits>
+
 #include "irrigation/IrrigationConfig.h"
 #include "irrigation/WateringController.h"
 
@@ -98,6 +100,25 @@ void test_gravity_watering_completes_and_applies_hold_duty() {
     TEST_ASSERT_EQUAL(static_cast<int>(WateringResult::Completed), static_cast<int>(status.lastResult));
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed), static_cast<int>(status.lastStopReason));
     TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
+
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringResult::Completed), static_cast<int>(summary->result));
+    TEST_ASSERT_TRUE(summary->anyFlowEstablished);
+    TEST_ASSERT_EQUAL_UINT8(1, summary->zoneCount);
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
+                      static_cast<int>(summary->zones[0].result));
+    TEST_ASSERT_EQUAL_UINT32(5, summary->zones[0].actualWateringSec);
+    TEST_ASSERT_EQUAL_UINT32(2, summary->zones[0].pulseCount);
+    TEST_ASSERT_EQUAL_UINT32(8, summary->zones[0].estimatedWaterMl);
+    TEST_ASSERT_FALSE(summary->zones[0].waterEstimateCapped);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::PreviousResultPending),
+                      static_cast<int>(controller.start(requestFor(1, 1), config, 6000)));
+    controller.clearFinishedSession();
+    TEST_ASSERT_NULL(controller.finishedSession());
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(requestFor(1, 1), config, 6000)));
 }
 
 void test_flow_start_timeout_stops_immediately() {
@@ -114,6 +135,12 @@ void test_flow_start_timeout_stops_immediately() {
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::FlowStartTimeout),
                       static_cast<int>(status.lastStopReason));
     TEST_ASSERT_EQUAL_UINT8(1, hardware.safeShutdownCalls);
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_FALSE(summary->anyFlowEstablished);
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Failed),
+                      static_cast<int>(summary->zones[0].result));
+    TEST_ASSERT_EQUAL_UINT32(0, summary->zones[0].actualWateringSec);
 }
 
 void test_running_no_flow_timeout_stops_immediately() {
@@ -151,6 +178,24 @@ void test_user_stop_with_pump_waits_before_closing_valve() {
     TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::UserStopped),
                       static_cast<int>(controller.status().lastStopReason));
+}
+
+void test_stop_delay_still_transitions_valve_to_hold_duty() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.pump.enabled = true;
+    config.pump.stopToValveCloseDelayMs = 5000;
+
+    controller.start(requestFor(1, 60), config, 0);
+    TEST_ASSERT_TRUE(controller.stop(100));
+    controller.handle(2999);
+    TEST_ASSERT_EQUAL_UINT8(100, hardware.duty);
+    controller.handle(3000);
+    TEST_ASSERT_EQUAL_UINT8(75, hardware.duty);
+    TEST_ASSERT_EQUAL_UINT8(1, hardware.activeZone);
+    controller.handle(5100);
+    TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
 }
 
 void test_pump_watering_completes_with_start_and_stop_delays() {
@@ -199,6 +244,49 @@ void test_multiple_zones_run_in_order() {
     controller.handle(2002);
     TEST_ASSERT_FALSE(controller.status().active);
     TEST_ASSERT_EQUAL_UINT8(2, hardware.openCalls);
+
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL_UINT8(2, summary->zoneCount);
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
+                      static_cast<int>(summary->zones[0].result));
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
+                      static_cast<int>(summary->zones[1].result));
+}
+
+void test_stopped_session_keeps_unstarted_zones_explicit() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 60);
+    request.stepCount = 2;
+    request.steps[1] = {2, 60};
+
+    controller.start(request, config, 0);
+    establishFlow(controller, hardware, 0);
+    ++hardware.pulses;
+    TEST_ASSERT_TRUE(controller.stop(2001));
+
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringResult::Stopped), static_cast<int>(summary->result));
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Stopped),
+                      static_cast<int>(summary->zones[0].result));
+    TEST_ASSERT_EQUAL_UINT32(2, summary->zones[0].actualWateringSec);
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::NotStarted),
+                      static_cast<int>(summary->zones[1].result));
+}
+
+void test_water_estimate_uses_exact_fixed_point_arithmetic() {
+    uint32_t waterMl = 0;
+    TEST_ASSERT_TRUE(FlowMonitor::estimateWaterMilliliters(250, 25000, waterMl));
+    TEST_ASSERT_EQUAL_UINT32(1000, waterMl);
+    TEST_ASSERT_TRUE(FlowMonitor::estimateWaterMilliliters(1, 25000, waterMl));
+    TEST_ASSERT_EQUAL_UINT32(4, waterMl);
+    TEST_ASSERT_FALSE(FlowMonitor::estimateWaterMilliliters(1, 0, waterMl));
+    TEST_ASSERT_EQUAL_UINT32(0, waterMl);
+    TEST_ASSERT_FALSE(FlowMonitor::estimateWaterMilliliters(UINT32_MAX, 1, waterMl));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, waterMl);
 }
 
 void test_invalid_request_and_hardware_failure_are_rejected_safely() {
@@ -207,6 +295,11 @@ void test_invalid_request_and_hardware_failure_are_rejected_safely() {
     IrrigationConfig config = IrrigationConfigRules::createDefault();
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::InvalidRequest),
                       static_cast<int>(controller.start(requestFor(3, 60), config, 0)));
+
+    WateringRequest invalidPurpose = requestFor(1, 60);
+    invalidPurpose.purpose = static_cast<WateringPurpose>(99);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::InvalidRequest),
+                      static_cast<int>(controller.start(invalidPurpose, config, 0)));
 
     hardware.failOpen = true;
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::HardwareFailure),
@@ -241,8 +334,11 @@ int main(int, char**) {
     RUN_TEST(test_flow_start_timeout_stops_immediately);
     RUN_TEST(test_running_no_flow_timeout_stops_immediately);
     RUN_TEST(test_user_stop_with_pump_waits_before_closing_valve);
+    RUN_TEST(test_stop_delay_still_transitions_valve_to_hold_duty);
     RUN_TEST(test_pump_watering_completes_with_start_and_stop_delays);
     RUN_TEST(test_multiple_zones_run_in_order);
+    RUN_TEST(test_stopped_session_keeps_unstarted_zones_explicit);
+    RUN_TEST(test_water_estimate_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_invalid_request_and_hardware_failure_are_rejected_safely);
     RUN_TEST(test_timers_work_across_millis_wraparound);
     return UNITY_END();

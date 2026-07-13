@@ -68,7 +68,9 @@ bool isValidName(const std::array<char, N>& value, bool allowEmpty) {
         if ((sequenceLength == 3 && codePoint < 0x800) ||
             (sequenceLength == 4 && codePoint < 0x10000) ||
             (codePoint >= 0xD800 && codePoint <= 0xDFFF) ||
-            codePoint > 0x10FFFF) {
+            codePoint > 0x10FFFF ||
+            codePoint < 0x20 ||
+            codePoint == 0x7F) {
             return false;
         }
 

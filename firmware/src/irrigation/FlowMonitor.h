@@ -11,6 +11,10 @@ public:
     bool flowStartTimedOut(uint32_t nowMs, uint16_t timeoutSec) const;
     bool noFlowTimedOut(uint32_t nowMs, uint16_t timeoutSec) const;
 
+    static bool estimateWaterMilliliters(uint32_t pulseCount,
+                                         uint32_t pulsesPerLiterX100,
+                                         uint32_t& waterMl);
+
 private:
     uint32_t waitStartedMs_ = 0;
     uint32_t lastPulseObservedMs_ = 0;

@@ -85,6 +85,12 @@ enum class WateringSource : uint8_t {
     AutomaticPlan = 2,
 };
 
+enum class WateringPurpose : uint8_t {
+    Normal = 0,
+    FlowCalibration,
+    ZoneFlowLearning,
+};
+
 enum class WateringState : uint8_t {
     Idle = 0,
     StartingZone,
@@ -112,8 +118,16 @@ enum class WateringStopReason : uint8_t {
 enum class WateringStartResult : uint8_t {
     Started = 0,
     Busy,
+    PreviousResultPending,
     InvalidRequest,
     HardwareFailure,
+};
+
+enum class ZoneWateringResult : uint8_t {
+    NotStarted = 0,
+    Completed,
+    Stopped,
+    Failed,
 };
 
 struct WateringStep {
@@ -123,6 +137,7 @@ struct WateringStep {
 
 struct WateringRequest {
     WateringSource source;
+    WateringPurpose purpose;
     uint8_t planId;
     uint8_t stepCount;
     std::array<WateringStep, BoardPins::kZoneCount> steps;
@@ -136,4 +151,26 @@ struct WateringStatus {
     bool flowEstablished;
     WateringResult lastResult;
     WateringStopReason lastStopReason;
+};
+
+struct ZoneWateringSummary {
+    uint8_t zoneId;
+    ZoneWateringResult result;
+    uint32_t plannedDurationSec;
+    uint32_t actualWateringSec;
+    uint32_t pulseCount;
+    uint32_t estimatedWaterMl;
+    bool waterEstimateCapped;
+};
+
+struct WateringSessionSummary {
+    WateringSource source;
+    WateringPurpose purpose;
+    uint8_t planId;
+    uint8_t zoneCount;
+    uint32_t elapsedSec;
+    WateringResult result;
+    WateringStopReason stopReason;
+    bool anyFlowEstablished;
+    std::array<ZoneWateringSummary, BoardPins::kZoneCount> zones;
 };
