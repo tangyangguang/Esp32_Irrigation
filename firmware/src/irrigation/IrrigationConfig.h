@@ -2,8 +2,8 @@
 
 #include "IrrigationTypes.h"
 
-class IrrigationConfigDefaults {
+class IrrigationConfigRules {
 public:
-    static IrrigationConfig create();
+    static IrrigationConfig createDefault();
     static bool validate(const IrrigationConfig& config);
 };

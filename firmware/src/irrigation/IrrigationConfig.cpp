@@ -4,6 +4,13 @@
 
 namespace {
 
+constexpr std::size_t kMaxNameCharacters = 20;
+constexpr std::size_t kMaxNameBytes = 63;
+
+bool inRange(uint32_t value, uint32_t minimum, uint32_t maximum) {
+    return value >= minimum && value <= maximum;
+}
+
 template <std::size_t N>
 void setText(std::array<char, N>& target, const char* value) {
     std::snprintf(target.data(), target.size(), "%s", value);
@@ -19,16 +26,78 @@ bool isTerminated(const std::array<char, N>& value) {
     return false;
 }
 
+template <std::size_t N>
+bool isValidName(const std::array<char, N>& value, bool allowEmpty) {
+    if (!isTerminated(value)) {
+        return false;
+    }
+
+    const auto* bytes = reinterpret_cast<const uint8_t*>(value.data());
+    std::size_t byteCount = 0;
+    std::size_t characterCount = 0;
+    while (byteCount < N && bytes[byteCount] != 0) {
+        const uint8_t first = bytes[byteCount];
+        std::size_t sequenceLength = 0;
+        uint32_t codePoint = 0;
+        if (first <= 0x7F) {
+            sequenceLength = 1;
+            codePoint = first;
+        } else if (first >= 0xC2 && first <= 0xDF) {
+            sequenceLength = 2;
+            codePoint = first & 0x1F;
+        } else if (first >= 0xE0 && first <= 0xEF) {
+            sequenceLength = 3;
+            codePoint = first & 0x0F;
+        } else if (first >= 0xF0 && first <= 0xF4) {
+            sequenceLength = 4;
+            codePoint = first & 0x07;
+        } else {
+            return false;
+        }
+
+        if (byteCount + sequenceLength > N - 1) {
+            return false;
+        }
+        for (std::size_t offset = 1; offset < sequenceLength; ++offset) {
+            const uint8_t next = bytes[byteCount + offset];
+            if ((next & 0xC0) != 0x80) {
+                return false;
+            }
+            codePoint = (codePoint << 6) | (next & 0x3F);
+        }
+        if ((sequenceLength == 3 && codePoint < 0x800) ||
+            (sequenceLength == 4 && codePoint < 0x10000) ||
+            (codePoint >= 0xD800 && codePoint <= 0xDFFF) ||
+            codePoint > 0x10FFFF) {
+            return false;
+        }
+
+        byteCount += sequenceLength;
+        ++characterCount;
+    }
+
+    if ((!allowEmpty && characterCount == 0) ||
+        characterCount > kMaxNameCharacters ||
+        byteCount > kMaxNameBytes) {
+        return false;
+    }
+    return value[0] != ' ' && (byteCount == 0 || value[byteCount - 1] != ' ');
+}
+
+bool isValidFlowAction(FlowAlertAction action) {
+    return action == FlowAlertAction::AlertOnly || action == FlowAlertAction::StopWatering;
+}
+
 }  // namespace
 
-IrrigationConfig IrrigationConfigDefaults::create() {
+IrrigationConfig IrrigationConfigRules::createDefault() {
     IrrigationConfig config{};
     config.schemaVersion = kIrrigationConfigSchemaVersion;
     config.revision = 1;
 
     config.valveDrive = {3000, 20000, 75};
     config.pump = {false, 0, 1000};
-    config.flowMeter = {250};
+    config.flowMeter = {25000};
     config.flowProtection = {
         20,
         10,
@@ -65,23 +134,28 @@ IrrigationConfig IrrigationConfigDefaults::create() {
     return config;
 }
 
-bool IrrigationConfigDefaults::validate(const IrrigationConfig& config) {
+bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
     if (config.schemaVersion != kIrrigationConfigSchemaVersion || config.revision == 0) {
         return false;
     }
-    if (config.valveDrive.pullInTimeMs == 0 ||
-        config.valveDrive.pwmFrequencyHz < 1000 ||
-        config.valveDrive.pwmFrequencyHz > 25000 ||
-        config.valveDrive.holdDutyPercent == 0 ||
-        config.valveDrive.holdDutyPercent > 100) {
+    if (!inRange(config.valveDrive.pullInTimeMs, 100, 10000) ||
+        !inRange(config.valveDrive.pwmFrequencyHz, 1000, 25000) ||
+        !inRange(config.valveDrive.holdDutyPercent, 1, 100)) {
         return false;
     }
-    if (config.flowMeter.pulsesPerLiter == 0 ||
-        config.flowProtection.flowStartTimeoutSec == 0 ||
-        config.flowProtection.noFlowTimeoutSec == 0 ||
-        config.flowProtection.unexpectedFlowWindowSec == 0 ||
+    if (!inRange(config.pump.startDelayMs, 0, 60000) ||
+        !inRange(config.pump.stopToValveCloseDelayMs, 0, 10000) ||
+        !inRange(config.flowMeter.pulsesPerLiterX100, 1, 10000000) ||
+        !inRange(config.flowProtection.flowStartTimeoutSec, 1, 120) ||
+        !inRange(config.flowProtection.noFlowTimeoutSec, 1, 60) ||
+        !inRange(config.flowProtection.unexpectedFlowDelaySec, 0, 300) ||
+        !inRange(config.flowProtection.unexpectedFlowWindowSec, 1, 300) ||
         config.flowProtection.unexpectedFlowPulseCount == 0 ||
-        config.flowProtection.lowFlowPercent >= config.flowProtection.highFlowPercent) {
+        !inRange(config.flowProtection.flowDeviationConfirmSec, 1, 300) ||
+        !inRange(config.flowProtection.lowFlowPercent, 1, 99) ||
+        !inRange(config.flowProtection.highFlowPercent, 101, 1000) ||
+        !isValidFlowAction(config.flowProtection.lowFlowAction) ||
+        !isValidFlowAction(config.flowProtection.highFlowAction)) {
         return false;
     }
     if (config.timeSafety.rtcRollbackThresholdMinutes < 1 ||
@@ -92,24 +166,53 @@ bool IrrigationConfigDefaults::validate(const IrrigationConfig& config) {
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         const ZoneConfig& zone = config.zones[index];
-        if (zone.id != index + 1 || !isTerminated(zone.name)) {
+        if (zone.id != index + 1 || !isValidName(zone.name, false)) {
             return false;
         }
     }
+    std::array<uint16_t, kWateringPlanCount * kPlanStartTimeCount> scheduledMinutes{};
+    std::size_t scheduledMinuteCount = 0;
     for (std::size_t index = 0; index < config.plans.size(); ++index) {
         const WateringPlan& plan = config.plans[index];
-        if (plan.id != index + 1 || !isTerminated(plan.name)) {
+        if (plan.id != index + 1 ||
+            !isValidName(plan.name, !plan.configured) ||
+            (!plan.configured && plan.scheduleEnabled)) {
             return false;
         }
+        bool hasStartTime = false;
         for (const uint16_t minute : plan.startMinutes) {
             if (minute != kUnusedStartMinute && minute >= 24U * 60U) {
                 return false;
             }
+            if (minute != kUnusedStartMinute) {
+                hasStartTime = true;
+                if (plan.scheduleEnabled) {
+                    for (std::size_t used = 0; used < scheduledMinuteCount; ++used) {
+                        if (scheduledMinutes[used] == minute) {
+                            return false;
+                        }
+                    }
+                    scheduledMinutes[scheduledMinuteCount++] = minute;
+                }
+            }
         }
-        for (const uint16_t duration : plan.zoneDurationMinutes) {
+        bool hasAnyDuration = false;
+        bool hasEnabledZoneDuration = false;
+        for (std::size_t zoneIndex = 0; zoneIndex < plan.zoneDurationMinutes.size(); ++zoneIndex) {
+            const uint16_t duration = plan.zoneDurationMinutes[zoneIndex];
             if (duration > 120) {
                 return false;
             }
+            if (duration > 0) {
+                hasAnyDuration = true;
+                hasEnabledZoneDuration = hasEnabledZoneDuration || config.zones[zoneIndex].enabled;
+            }
+        }
+        if (plan.configured && !hasAnyDuration) {
+            return false;
+        }
+        if (plan.scheduleEnabled && (!hasStartTime || !hasEnabledZoneDuration)) {
+            return false;
         }
     }
     return true;

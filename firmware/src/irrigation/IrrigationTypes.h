@@ -10,7 +10,7 @@ constexpr uint32_t kIrrigationConfigSchemaVersion = 1;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
 constexpr uint16_t kUnusedStartMinute = 0xFFFF;
-constexpr std::size_t kObjectNameCapacity = 32;
+constexpr std::size_t kObjectNameCapacity = 64;
 
 enum class FlowAlertAction : uint8_t {
     AlertOnly = 0,
@@ -30,7 +30,7 @@ struct PumpConfig {
 };
 
 struct FlowMeterConfig {
-    uint32_t pulsesPerLiter;
+    uint32_t pulsesPerLiterX100;
 };
 
 struct FlowProtectionConfig {

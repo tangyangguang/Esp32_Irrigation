@@ -13,7 +13,7 @@ public:
     bool openValve(uint8_t zoneId, uint8_t dutyPercent = 100);
     bool setActiveValveDuty(uint8_t dutyPercent);
     void closeValves();
-    void setPumpSignal(bool active);
+    bool setPumpSignal(bool active);
 
     bool initialized() const;
     uint8_t activeZoneId() const;
@@ -31,5 +31,4 @@ private:
     bool initialized_ = false;
     bool pumpSignalActive_ = false;
     uint8_t activeZoneId_ = 0;
-    uint32_t pwmFrequencyHz_ = 0;
 };

@@ -46,8 +46,8 @@ bool IrrigationApp::begin() {
         return false;
     }
 
-    const IrrigationConfig defaults = IrrigationConfigDefaults::create();
-    if (!IrrigationConfigDefaults::validate(defaults)) {
+    const IrrigationConfig defaults = IrrigationConfigRules::createDefault();
+    if (!IrrigationConfigRules::validate(defaults)) {
         hardware.safeShutdown();
         return false;
     }
@@ -66,7 +66,6 @@ void IrrigationApp::handle() {
 
     advanceBusiness();
     Esp32Base::handle();
-    advanceBusiness();
 }
 
 bool IrrigationApp::baseReady() const {

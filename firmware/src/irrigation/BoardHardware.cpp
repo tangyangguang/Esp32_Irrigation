@@ -35,9 +35,12 @@ bool BoardHardware::begin(uint32_t pwmFrequencyHz) {
     initialized_ = false;
     activeZoneId_ = 0;
     pumpSignalActive_ = false;
-    pwmFrequencyHz_ = 0;
+    if (pwmFrequencyHz < 1000 || pwmFrequencyHz > 25000) {
+        safeShutdown();
+        return false;
+    }
 
-    bool pwmReady = pwmFrequencyHz >= 1000 && pwmFrequencyHz <= 25000;
+    bool pwmReady = true;
     for (uint8_t channel = 0; channel < kPwmChannelCount; ++channel) {
         if (ledcSetup(channel, pwmFrequencyHz, kPwmResolutionBits) == 0) {
             pwmReady = false;
@@ -54,7 +57,6 @@ bool BoardHardware::begin(uint32_t pwmFrequencyHz) {
     if (!pwmReady) {
         return false;
     }
-    pwmFrequencyHz_ = pwmFrequencyHz;
     initialized_ = true;
     return true;
 }
@@ -81,8 +83,8 @@ bool BoardHardware::configureValvePwmFrequency(uint32_t frequencyHz) {
         }
         ledcWrite(channel, 0);
     }
-    if (success) {
-        pwmFrequencyHz_ = frequencyHz;
+    if (!success) {
+        initialized_ = false;
     }
     return success;
 }
@@ -113,12 +115,13 @@ void BoardHardware::closeValves() {
     activeZoneId_ = 0;
 }
 
-void BoardHardware::setPumpSignal(bool active) {
-    if (!initialized_ && active) {
-        return;
+bool BoardHardware::setPumpSignal(bool active) {
+    if (active && (!initialized_ || activeZoneId_ == 0)) {
+        return false;
     }
     digitalWrite(BoardPins::kPumpSignalPin, active ? LOW : HIGH);
     pumpSignalActive_ = active;
+    return true;
 }
 
 bool BoardHardware::initialized() const {
