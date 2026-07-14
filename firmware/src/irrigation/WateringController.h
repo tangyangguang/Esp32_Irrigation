@@ -14,6 +14,7 @@ public:
                               const IrrigationConfig& config,
                               uint32_t nowMs);
     bool stop(uint32_t nowMs);
+    bool abortForMaintenance(uint32_t nowMs);
     void handle(uint32_t nowMs);
     WateringStatus status() const;
     const WateringSessionSummary* finishedSession() const;

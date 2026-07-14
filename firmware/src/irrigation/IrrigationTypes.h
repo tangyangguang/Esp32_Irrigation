@@ -113,10 +113,12 @@ enum class WateringStopReason : uint8_t {
     FlowStartTimeout,
     NoFlowTimeout,
     HardwareFailure,
+    MaintenanceInterrupted,
 };
 
 enum class WateringStartResult : uint8_t {
     Started = 0,
+    NotReady,
     Busy,
     PreviousResultPending,
     InvalidRequest,

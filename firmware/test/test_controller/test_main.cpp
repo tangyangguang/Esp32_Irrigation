@@ -326,6 +326,29 @@ void test_timers_work_across_millis_wraparound() {
                       static_cast<int>(controller.status().lastResult));
 }
 
+void test_maintenance_abort_immediately_closes_outputs_and_keeps_result() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+
+    controller.start(requestFor(1, 60), config, 0);
+    establishFlow(controller, hardware, 0);
+    ++hardware.pulses;
+    TEST_ASSERT_TRUE(controller.abortForMaintenance(2001));
+    TEST_ASSERT_FALSE(controller.status().active);
+    TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
+    TEST_ASSERT_FALSE(hardware.pump);
+
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringResult::Failed), static_cast<int>(summary->result));
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::MaintenanceInterrupted),
+                      static_cast<int>(summary->stopReason));
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Failed),
+                      static_cast<int>(summary->zones[0].result));
+    TEST_ASSERT_EQUAL_UINT32(2, summary->zones[0].actualWateringSec);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -341,5 +364,6 @@ int main(int, char**) {
     RUN_TEST(test_water_estimate_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_invalid_request_and_hardware_failure_are_rejected_safely);
     RUN_TEST(test_timers_work_across_millis_wraparound);
+    RUN_TEST(test_maintenance_abort_immediately_closes_outputs_and_keeps_result);
     return UNITY_END();
 }

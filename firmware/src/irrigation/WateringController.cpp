@@ -76,6 +76,14 @@ bool WateringController::stop(uint32_t nowMs) {
     return true;
 }
 
+bool WateringController::abortForMaintenance(uint32_t nowMs) {
+    if (!active_) {
+        return false;
+    }
+    finishSession(WateringStopReason::MaintenanceInterrupted, nowMs);
+    return true;
+}
+
 void WateringController::handle(uint32_t nowMs) {
     if (!active_) {
         return;
