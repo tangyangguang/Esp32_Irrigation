@@ -59,12 +59,58 @@ bool IrrigationEvents::appendRecordStorageFault(
     return Esp32BaseAppEvents::append(event);
 }
 
+bool IrrigationEvents::appendSchedulerEvent(uint32_t eventCode,
+                                            ReasonCode reason,
+                                            uint8_t planId,
+                                            int32_t value,
+                                            Esp32BaseAppEvents::Level level) {
+    Esp32BaseAppEvents::EventInput event;
+    event.eventCode = eventCode;
+    event.reasonCode = static_cast<uint32_t>(reason);
+    event.objectId = planId;
+    event.value1 = value;
+    event.level = level;
+    return Esp32BaseAppEvents::append(event);
+}
+
+bool IrrigationEvents::appendFlowDeviationEvents(const WateringSessionSummary& summary) {
+    bool success = true;
+    for (uint8_t index = 0; index < summary.zoneCount && index < summary.zones.size(); ++index) {
+        const ZoneWateringSummary& zone = summary.zones[index];
+        if (zone.lowFlowDetected && summary.stopReason != WateringStopReason::LowFlow) {
+            Esp32BaseAppEvents::EventInput event;
+            event.eventCode = static_cast<uint32_t>(EventCode::FlowDeviationDetected);
+            event.reasonCode = static_cast<uint32_t>(ReasonCode::LowFlow);
+            event.objectId = zone.zoneId;
+            event.value1 = static_cast<int32_t>(zone.actualWateringSec);
+            event.level = Esp32BaseAppEvents::Level::Warning;
+            success = Esp32BaseAppEvents::append(event) && success;
+        }
+        if (zone.highFlowDetected && summary.stopReason != WateringStopReason::HighFlow) {
+            Esp32BaseAppEvents::EventInput event;
+            event.eventCode = static_cast<uint32_t>(EventCode::FlowDeviationDetected);
+            event.reasonCode = static_cast<uint32_t>(ReasonCode::HighFlow);
+            event.objectId = zone.zoneId;
+            event.value1 = static_cast<int32_t>(zone.actualWateringSec);
+            event.level = Esp32BaseAppEvents::Level::Warning;
+            success = Esp32BaseAppEvents::append(event) && success;
+        }
+    }
+    return success;
+}
+
 IrrigationEvents::ReasonCode IrrigationEvents::wateringReason(WateringStopReason reason) {
     switch (reason) {
         case WateringStopReason::FlowStartTimeout:
             return ReasonCode::FlowStartTimeout;
         case WateringStopReason::NoFlowTimeout:
             return ReasonCode::NoFlowTimeout;
+        case WateringStopReason::LowFlow:
+            return ReasonCode::LowFlow;
+        case WateringStopReason::HighFlow:
+            return ReasonCode::HighFlow;
+        case WateringStopReason::LearningTimeout:
+            return ReasonCode::LearningTimeout;
         case WateringStopReason::HardwareFailure:
             return ReasonCode::HardwareFailure;
         case WateringStopReason::MaintenanceInterrupted:

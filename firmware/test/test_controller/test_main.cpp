@@ -289,6 +289,99 @@ void test_water_estimate_uses_exact_fixed_point_arithmetic() {
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, waterMl);
 }
 
+void test_rate_window_uses_fixed_point_arithmetic() {
+    FlowMonitor monitor;
+    monitor.beginRateWindow(1000, 10);
+    FlowMonitor::RateSample sample{};
+    TEST_ASSERT_FALSE(monitor.takeRateSample(5999, 35, 25000, sample));
+    TEST_ASSERT_TRUE(monitor.takeRateSample(6000, 35, 25000, sample));
+    TEST_ASSERT_EQUAL_UINT32(1200, sample.flowMlPerMinute);
+    TEST_ASSERT_EQUAL_UINT32(25, sample.pulseCount);
+    TEST_ASSERT_EQUAL_UINT32(5000, sample.windowMs);
+}
+
+void test_persistent_low_flow_alert_can_stop_watering() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.zones[0].learnedFlowMlPerMinute = 2000;
+    config.flowProtection.flowDeviationConfirmSec = 20;
+    config.flowProtection.lowFlowAction = FlowAlertAction::StopWatering;
+    controller.start(requestFor(1, 60), config, 0);
+    establishFlow(controller, hardware, 0);
+
+    for (uint32_t second = 5; second <= 25; second += 5) {
+        hardware.pulses += 10;
+        controller.handle(second * 1000U + 1U);
+    }
+    TEST_ASSERT_FALSE(controller.status().active);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::LowFlow),
+                      static_cast<int>(controller.status().lastStopReason));
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_TRUE(summary->zones[0].lowFlowDetected);
+    TEST_ASSERT_FALSE(summary->zones[0].highFlowDetected);
+}
+
+void test_unlearned_zone_does_not_enable_flow_deviation_protection() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.flowProtection.flowDeviationConfirmSec = 1;
+    config.flowProtection.lowFlowAction = FlowAlertAction::StopWatering;
+    controller.start(requestFor(1, 60), config, 0);
+    establishFlow(controller, hardware, 0);
+    for (uint32_t second = 5; second <= 25; second += 5) {
+        ++hardware.pulses;
+        controller.handle(second * 1000U + 1U);
+    }
+    TEST_ASSERT_TRUE(controller.status().active);
+    TEST_ASSERT_TRUE(controller.stop(26001));
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_FALSE(summary->zones[0].lowFlowDetected);
+}
+
+void test_zone_flow_learning_completes_after_five_stable_windows() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 600);
+    request.purpose = WateringPurpose::ZoneFlowLearning;
+    controller.start(request, config, 0);
+    establishFlow(controller, hardware, 0);
+    for (uint32_t second = 5; second <= 25; second += 5) {
+        hardware.pulses += 21;
+        controller.handle(second * 1000U + 1U);
+    }
+    TEST_ASSERT_FALSE(controller.status().active);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
+                      static_cast<int>(controller.status().lastStopReason));
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL_UINT32(1008, summary->zones[0].suggestedFlowMlPerMinute);
+}
+
+void test_zone_flow_learning_stops_at_ten_minute_limit_when_unstable() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 600);
+    request.purpose = WateringPurpose::ZoneFlowLearning;
+    controller.start(request, config, 0);
+    establishFlow(controller, hardware, 0);
+    for (uint32_t second = 5; second <= 600; second += 5) {
+        hardware.pulses += (second / 5U) % 2U == 0 ? 40U : 10U;
+        controller.handle(second * 1000U + 1U);
+    }
+    TEST_ASSERT_FALSE(controller.status().active);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::LearningTimeout),
+                      static_cast<int>(controller.status().lastStopReason));
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL_UINT32(0, summary->zones[0].suggestedFlowMlPerMinute);
+}
+
 void test_invalid_request_and_hardware_failure_are_rejected_safely() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
@@ -362,6 +455,11 @@ int main(int, char**) {
     RUN_TEST(test_multiple_zones_run_in_order);
     RUN_TEST(test_stopped_session_keeps_unstarted_zones_explicit);
     RUN_TEST(test_water_estimate_uses_exact_fixed_point_arithmetic);
+    RUN_TEST(test_rate_window_uses_fixed_point_arithmetic);
+    RUN_TEST(test_persistent_low_flow_alert_can_stop_watering);
+    RUN_TEST(test_unlearned_zone_does_not_enable_flow_deviation_protection);
+    RUN_TEST(test_zone_flow_learning_completes_after_five_stable_windows);
+    RUN_TEST(test_zone_flow_learning_stops_at_ten_minute_limit_when_unstable);
     RUN_TEST(test_invalid_request_and_hardware_failure_are_rejected_safely);
     RUN_TEST(test_timers_work_across_millis_wraparound);
     RUN_TEST(test_maintenance_abort_immediately_closes_outputs_and_keeps_result);

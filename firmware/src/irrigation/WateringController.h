@@ -28,6 +28,7 @@ private:
     void enterStoppingZone(uint32_t nowMs, bool stopSession, WateringStopReason reason);
     void finalizeCurrentZone(ZoneWateringResult result, uint32_t nowMs);
     void finishSession(WateringStopReason reason, uint32_t nowMs);
+    bool checkFlowRate(uint32_t nowMs);
 
     WateringHardware& hardware_;
     WateringRequest request_{};
@@ -35,6 +36,8 @@ private:
     PumpConfig pump_{};
     FlowMeterConfig flowMeter_{};
     FlowProtectionConfig flowProtection_{};
+    std::array<uint32_t, BoardPins::kZoneCount> learnedFlowMlPerMinute_{};
+    std::array<uint32_t, 5> learningRateSamples_{};
     FlowMonitor flowMonitor_;
     WateringState state_ = WateringState::Idle;
     WateringResult lastResult_ = WateringResult::None;
@@ -48,7 +51,10 @@ private:
     uint32_t zoneStartedPulseCount_ = 0;
     uint32_t wateringStartedMs_ = 0;
     uint32_t wateringEndedMs_ = 0;
+    uint32_t lowFlowStartedMs_ = 0;
+    uint32_t highFlowStartedMs_ = 0;
     uint8_t currentStepIndex_ = 0;
+    uint8_t learningRateSampleCount_ = 0;
     bool active_ = false;
     bool valveHolding_ = false;
     bool currentZoneStarted_ = false;
@@ -56,4 +62,6 @@ private:
     bool wateringEndCaptured_ = false;
     bool stopSessionAfterValveClose_ = false;
     bool finishedSessionReady_ = false;
+    bool lowFlowTiming_ = false;
+    bool highFlowTiming_ = false;
 };

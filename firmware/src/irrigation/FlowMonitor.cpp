@@ -37,6 +37,32 @@ bool FlowMonitor::noFlowTimedOut(uint32_t nowMs, uint16_t timeoutSec) const {
     return flowEstablished_ && elapsed(nowMs, lastPulseObservedMs_, static_cast<uint32_t>(timeoutSec) * 1000U);
 }
 
+void FlowMonitor::beginRateWindow(uint32_t nowMs, uint32_t pulseCount) {
+    rateWindowStartedMs_ = nowMs;
+    rateWindowStartedPulseCount_ = pulseCount;
+}
+
+bool FlowMonitor::takeRateSample(uint32_t nowMs,
+                                 uint32_t pulseCount,
+                                 uint32_t pulsesPerLiterX100,
+                                 RateSample& sample) {
+    constexpr uint32_t kRateWindowMs = 5000U;
+    const uint32_t windowMs = nowMs - rateWindowStartedMs_;
+    if (windowMs < kRateWindowMs || pulsesPerLiterX100 == 0) {
+        return false;
+    }
+    const uint32_t pulses = pulseCount - rateWindowStartedPulseCount_;
+    const uint64_t numerator = static_cast<uint64_t>(pulses) * 100000ULL * 60000ULL;
+    const uint64_t denominator = static_cast<uint64_t>(pulsesPerLiterX100) * windowMs;
+    const uint64_t rounded = (numerator + denominator / 2U) / denominator;
+    sample.flowMlPerMinute = rounded > UINT32_MAX ? UINT32_MAX
+                                                  : static_cast<uint32_t>(rounded);
+    sample.pulseCount = pulses;
+    sample.windowMs = windowMs;
+    beginRateWindow(nowMs, pulseCount);
+    return true;
+}
+
 bool FlowMonitor::estimateWaterMilliliters(uint32_t pulseCount,
                                            uint32_t pulsesPerLiterX100,
                                            uint32_t& waterMl) {

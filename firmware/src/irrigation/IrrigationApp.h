@@ -2,8 +2,12 @@
 
 #include "IrrigationConfigStore.h"
 #include "IrrigationEvents.h"
+#include "FlowCalibrationService.h"
 #include "WateringRecordStore.h"
+#include "WateringScheduler.h"
+#include "WateringSchedulerStore.h"
 #include "WateringController.h"
+#include "UnexpectedFlowMonitor.h"
 
 class IrrigationApp {
 public:
@@ -28,12 +32,41 @@ public:
     bool readWateringRecordStoreStatus(Esp32BaseRecordStore::StoreStatus& status) const;
     bool recordStorageFault() const;
     bool eventStorageFault() const;
+    bool schedulerStorageFault() const;
+    bool unexpectedFlowAlarm() const;
+    AutomaticWateringState automaticWateringState() const;
+    WateringScheduler::TimeState schedulerTimeState() const;
+    bool pauseAutomaticWateringIndefinitely();
+    bool pauseAutomaticWateringUntil(uint32_t resumeAtEpoch);
+    bool resumeAutomaticWatering();
+    WateringStartResult startFlowCalibration(uint8_t zoneId,
+                                             uint16_t maximumDurationMinutes);
+    bool submitFlowCalibrationMeasurement(uint32_t measuredWaterMl);
+    bool saveFlowCalibration(uint32_t expectedConfigRevision);
+    void resetFlowCalibration();
+    const FlowCalibrationService& flowCalibration() const;
+    WateringStartResult startZoneFlowLearning(uint8_t zoneId);
+    bool saveLearnedZoneFlow(uint32_t expectedConfigRevision);
+    uint8_t pendingLearnedZoneId() const;
+    uint32_t pendingLearnedFlowMlPerMinute() const;
+    void discardLearnedZoneFlow();
+    const IrrigationConfig* configuration() const;
 
 private:
     IrrigationApp();
     void advanceBusiness();
     void consumeFinishedWatering();
     void reportRecordStorageFault(IrrigationEvents::ReasonCode operation);
+    static WateringStartResult startScheduledWatering(const WateringRequest& request,
+                                                      void* user);
+    static void handleSchedulerEvent(WateringScheduler::Event event,
+                                     uint8_t planId,
+                                     int32_t value,
+                                     void* user);
+    void reportSchedulerEvent(WateringScheduler::Event event,
+                              uint8_t planId,
+                              int32_t value);
+    void resetUnexpectedFlowMonitor(uint32_t nowMs);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
 
@@ -43,8 +76,15 @@ private:
     bool wateringStartTimeValid_ = false;
     bool recordStorageFault_ = false;
     bool eventStorageFault_ = false;
+    bool schedulerStorageFault_ = false;
+    uint8_t pendingLearnedZoneId_ = 0;
+    uint32_t pendingLearnedFlowMlPerMinute_ = 0;
     IrrigationConfigStore configStore_;
+    FlowCalibrationService flowCalibrationService_;
     WateringController wateringController_;
     WateringRecordStore wateringRecordStore_;
+    WateringSchedulerStore wateringSchedulerStore_;
+    WateringScheduler wateringScheduler_;
+    UnexpectedFlowMonitor unexpectedFlowMonitor_;
     Esp32BaseRecordStore::RecordStartTime wateringStartTime_{};
 };

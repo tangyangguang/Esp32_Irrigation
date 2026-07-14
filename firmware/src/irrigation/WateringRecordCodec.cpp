@@ -137,6 +137,8 @@ bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
         ZoneWateringRecord& target = payload.zones[BoardPins::zoneIndex(source.zoneId)];
         target.result = source.result;
         target.flags = source.waterEstimateCapped ? kZoneFlagWaterEstimateCapped : 0;
+        target.flags |= source.lowFlowDetected ? kZoneFlagLowFlow : 0;
+        target.flags |= source.highFlowDetected ? kZoneFlagHighFlow : 0;
         target.plannedDurationSec = static_cast<uint16_t>(source.plannedDurationSec);
         target.actualWateringSec = static_cast<uint16_t>(source.actualWateringSec);
         target.pulseCount = source.pulseCount;

@@ -16,6 +16,7 @@ WateringSessionSummary exampleSummary() {
     summary.anyFlowEstablished = true;
     summary.zones[0] = {1, ZoneWateringResult::Completed, 60, 60, 15000, 60000, false};
     summary.zones[1] = {3, ZoneWateringResult::Stopped, 120, 40, 10000, UINT32_MAX, true};
+    summary.zones[0].lowFlowDetected = true;
     return summary;
 }
 
@@ -39,6 +40,8 @@ void test_fixed_payload_round_trip_preserves_business_fields() {
     TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
                       static_cast<int>(decoded.zones[0].result));
+    TEST_ASSERT_EQUAL_UINT8(WateringRecordCodec::kZoneFlagLowFlow,
+                            decoded.zones[0].flags);
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::NotStarted),
                       static_cast<int>(decoded.zones[1].result));
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Stopped),

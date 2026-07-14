@@ -8,6 +8,7 @@
 #include "irrigation/IrrigationEvents.h"
 #include "irrigation/WateringRecordCodec.h"
 #include "irrigation/WateringRecordStore.h"
+#include "irrigation/WateringSchedulerStore.h"
 
 namespace {
 
@@ -249,6 +250,43 @@ void test_irrigation_event_mapping_and_latest_read() {
     removeTestStore(g_damageStore);
 }
 
+void test_scheduler_state_nvs_round_trip_and_corruption_detection() {
+    WateringSchedulerStore store;
+    TEST_ASSERT_TRUE(store.clear());
+    WateringSchedulerPersistentState state{};
+    TEST_ASSERT_EQUAL(static_cast<int>(SchedulerStorageLoadResult::Missing),
+                      static_cast<int>(store.load(state)));
+
+    state.mode = AutomaticWateringMode::PausedUntil;
+    state.resumeAtEpoch = 1767200400UL;
+    state.currentLocalDay = 20454;
+    state.currentProcessedMask = 0x80000001UL;
+    state.previousLocalDay = 20453;
+    state.previousProcessedMask = 0x00000002UL;
+    TEST_ASSERT_TRUE(store.save(state));
+
+    WateringSchedulerPersistentState loaded{};
+    TEST_ASSERT_EQUAL(static_cast<int>(SchedulerStorageLoadResult::Loaded),
+                      static_cast<int>(store.load(loaded)));
+    TEST_ASSERT_EQUAL(static_cast<int>(state.mode), static_cast<int>(loaded.mode));
+    TEST_ASSERT_EQUAL_UINT32(state.resumeAtEpoch, loaded.resumeAtEpoch);
+    TEST_ASSERT_EQUAL_UINT32(state.currentLocalDay, loaded.currentLocalDay);
+    TEST_ASSERT_EQUAL_UINT32(state.currentProcessedMask, loaded.currentProcessedMask);
+    TEST_ASSERT_EQUAL_UINT32(state.previousLocalDay, loaded.previousLocalDay);
+    TEST_ASSERT_EQUAL_UINT32(state.previousProcessedMask, loaded.previousProcessedMask);
+
+    uint8_t damaged[WateringSchedulerStateCodec::kEncodedSize]{};
+    TEST_ASSERT_TRUE(WateringSchedulerStateCodec::encode(state, damaged, sizeof(damaged)));
+    damaged[12] ^= 0x01;
+    TEST_ASSERT_TRUE(Esp32BaseConfig::setBlob("irrigation",
+                                             "sched_state",
+                                             damaged,
+                                             sizeof(damaged)));
+    TEST_ASSERT_EQUAL(static_cast<int>(SchedulerStorageLoadResult::Invalid),
+                      static_cast<int>(store.load(loaded)));
+    TEST_ASSERT_TRUE(store.clear());
+}
+
 }  // namespace
 
 void setup() {
@@ -261,6 +299,7 @@ void setup() {
     RUN_TEST(test_small_store_rotates_oldest_complete_segments);
     RUN_TEST(test_crc_damage_is_reported_and_not_returned);
     RUN_TEST(test_irrigation_event_mapping_and_latest_read);
+    RUN_TEST(test_scheduler_state_nvs_round_trip_and_corruption_detection);
     UNITY_END();
 }
 

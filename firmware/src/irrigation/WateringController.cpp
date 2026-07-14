@@ -28,6 +28,7 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     pump_ = config.pump;
     flowMeter_ = config.flowMeter;
     flowProtection_ = config.flowProtection;
+    learnedFlowMlPerMinute_.fill(0);
     currentStepIndex_ = 0;
     lastResult_ = WateringResult::None;
     lastStopReason_ = WateringStopReason::None;
@@ -43,6 +44,9 @@ WateringStartResult WateringController::start(const WateringRequest& request,
         sessionSummary_.zones[index].zoneId = request.steps[index].zoneId;
         sessionSummary_.zones[index].result = ZoneWateringResult::NotStarted;
         sessionSummary_.zones[index].plannedDurationSec = request.steps[index].targetDurationSec;
+        learnedFlowMlPerMinute_[index] =
+            config.zones[BoardPins::zoneIndex(request.steps[index].zoneId)]
+                .learnedFlowMlPerMinute;
     }
     sessionStartedMs_ = nowMs;
     active_ = true;
@@ -108,6 +112,7 @@ void WateringController::handle(uint32_t nowMs) {
                 state_ = WateringState::WateringZone;
                 stateStartedMs_ = nowMs;
                 wateringStartedMs_ = nowMs;
+                flowMonitor_.beginRateWindow(nowMs, hardware_.flowPulseCount());
             } else if (flowMonitor_.flowStartTimedOut(nowMs, flowProtection_.flowStartTimeoutSec)) {
                 finishSession(WateringStopReason::FlowStartTimeout, nowMs);
             }
@@ -119,9 +124,16 @@ void WateringController::handle(uint32_t nowMs) {
                 finishSession(WateringStopReason::NoFlowTimeout, nowMs);
                 break;
             }
+            if (!checkFlowRate(nowMs)) {
+                break;
+            }
             const WateringStep& step = request_.steps[currentStepIndex_];
             if (elapsed(nowMs, stateStartedMs_, step.targetDurationSec * 1000U)) {
-                finishCurrentZone(nowMs);
+                if (request_.purpose == WateringPurpose::ZoneFlowLearning) {
+                    finishSession(WateringStopReason::LearningTimeout, nowMs);
+                } else {
+                    finishCurrentZone(nowMs);
+                }
             }
             break;
         }
@@ -205,6 +217,10 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
     currentZoneStarted_ = false;
     currentZoneFinalized_ = false;
     wateringEndCaptured_ = false;
+    lowFlowTiming_ = false;
+    highFlowTiming_ = false;
+    learningRateSampleCount_ = 0;
+    learningRateSamples_.fill(0);
     if (!hardware_.openValve(step.zoneId, 100)) {
         return false;
     }
@@ -310,4 +326,91 @@ void WateringController::finishSession(WateringStopReason reason, uint32_t nowMs
     sessionSummary_.stopReason = reason;
     sessionSummary_.elapsedSec = static_cast<uint32_t>(nowMs - sessionStartedMs_) / 1000U;
     finishedSessionReady_ = true;
+}
+
+bool WateringController::checkFlowRate(uint32_t nowMs) {
+    const bool learning = request_.purpose == WateringPurpose::ZoneFlowLearning;
+    const bool deviationCheck = request_.purpose == WateringPurpose::Normal &&
+                                learnedFlowMlPerMinute_[currentStepIndex_] != 0;
+    if (!learning && !deviationCheck) {
+        return true;
+    }
+    FlowMonitor::RateSample sample{};
+    if (!flowMonitor_.takeRateSample(nowMs,
+                                     hardware_.flowPulseCount(),
+                                     flowMeter_.pulsesPerLiterX100,
+                                     sample)) {
+        return true;
+    }
+
+    ZoneWateringSummary& zone = sessionSummary_.zones[currentStepIndex_];
+    if (learning) {
+        if (learningRateSampleCount_ < learningRateSamples_.size()) {
+            learningRateSamples_[learningRateSampleCount_++] = sample.flowMlPerMinute;
+        } else {
+            for (std::size_t index = 1; index < learningRateSamples_.size(); ++index) {
+                learningRateSamples_[index - 1] = learningRateSamples_[index];
+            }
+            learningRateSamples_.back() = sample.flowMlPerMinute;
+        }
+        if (learningRateSampleCount_ == learningRateSamples_.size()) {
+            uint32_t minimum = UINT32_MAX;
+            uint32_t maximum = 0;
+            uint64_t total = 0;
+            for (const uint32_t rate : learningRateSamples_) {
+                minimum = rate < minimum ? rate : minimum;
+                maximum = rate > maximum ? rate : maximum;
+                total += rate;
+            }
+            const uint32_t average = static_cast<uint32_t>(
+                (total + learningRateSamples_.size() / 2U) / learningRateSamples_.size());
+            if (average != 0 &&
+                static_cast<uint64_t>(maximum - minimum) * 100U <=
+                    static_cast<uint64_t>(average) * 10U) {
+                zone.suggestedFlowMlPerMinute = average;
+                finishSession(WateringStopReason::Completed, nowMs);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    const uint64_t learned = learnedFlowMlPerMinute_[currentStepIndex_];
+    const bool low = static_cast<uint64_t>(sample.flowMlPerMinute) * 100U <
+                     learned * flowProtection_.lowFlowPercent;
+    const bool high = static_cast<uint64_t>(sample.flowMlPerMinute) * 100U >
+                      learned * flowProtection_.highFlowPercent;
+    const uint32_t confirmMs = static_cast<uint32_t>(
+        flowProtection_.flowDeviationConfirmSec) * 1000U;
+
+    if (low && !zone.lowFlowDetected) {
+        if (!lowFlowTiming_) {
+            lowFlowTiming_ = true;
+            lowFlowStartedMs_ = nowMs;
+        } else if (elapsed(nowMs, lowFlowStartedMs_, confirmMs)) {
+            zone.lowFlowDetected = true;
+            if (flowProtection_.lowFlowAction == FlowAlertAction::StopWatering) {
+                finishSession(WateringStopReason::LowFlow, nowMs);
+                return false;
+            }
+        }
+    } else if (!low) {
+        lowFlowTiming_ = false;
+    }
+
+    if (high && !zone.highFlowDetected) {
+        if (!highFlowTiming_) {
+            highFlowTiming_ = true;
+            highFlowStartedMs_ = nowMs;
+        } else if (elapsed(nowMs, highFlowStartedMs_, confirmMs)) {
+            zone.highFlowDetected = true;
+            if (flowProtection_.highFlowAction == FlowAlertAction::StopWatering) {
+                finishSession(WateringStopReason::HighFlow, nowMs);
+                return false;
+            }
+        }
+    } else if (!high) {
+        highFlowTiming_ = false;
+    }
+    return true;
 }

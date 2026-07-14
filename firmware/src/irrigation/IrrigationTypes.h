@@ -112,6 +112,9 @@ enum class WateringStopReason : uint8_t {
     UserStopped,
     FlowStartTimeout,
     NoFlowTimeout,
+    LowFlow,
+    HighFlow,
+    LearningTimeout,
     HardwareFailure,
     MaintenanceInterrupted,
 };
@@ -123,6 +126,17 @@ enum class WateringStartResult : uint8_t {
     PreviousResultPending,
     InvalidRequest,
     HardwareFailure,
+};
+
+enum class AutomaticWateringMode : uint8_t {
+    Enabled = 0,
+    PausedIndefinitely,
+    PausedUntil,
+};
+
+struct AutomaticWateringState {
+    AutomaticWateringMode mode;
+    uint32_t resumeAtEpoch;
 };
 
 enum class ZoneWateringResult : uint8_t {
@@ -163,6 +177,9 @@ struct ZoneWateringSummary {
     uint32_t pulseCount;
     uint32_t estimatedWaterMl;
     bool waterEstimateCapped;
+    bool lowFlowDetected;
+    bool highFlowDetected;
+    uint32_t suggestedFlowMlPerMinute;
 };
 
 struct WateringSessionSummary {
