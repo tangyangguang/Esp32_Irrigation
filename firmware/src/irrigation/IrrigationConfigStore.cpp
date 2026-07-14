@@ -114,6 +114,19 @@ bool IrrigationConfigStore::save(const IrrigationConfig& proposed, uint32_t expe
     return true;
 }
 
+bool IrrigationConfigStore::applyRuntimeParameters(const IrrigationConfig& source) {
+    if (!ready_) return false;
+    IrrigationConfig next = config_;
+    next.valveDrive = source.valveDrive;
+    next.pump = source.pump;
+    next.flowMeter = source.flowMeter;
+    next.flowProtection = source.flowProtection;
+    next.timeSafety = source.timeSafety;
+    if (!IrrigationConfigRules::validate(next)) return false;
+    config_ = next;
+    return true;
+}
+
 bool IrrigationConfigStore::ready() const {
     return ready_;
 }

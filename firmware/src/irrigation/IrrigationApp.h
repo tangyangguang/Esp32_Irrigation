@@ -2,6 +2,7 @@
 
 #include "IrrigationConfigStore.h"
 #include "IrrigationEvents.h"
+#include "IrrigationParameterConfig.h"
 #include "FlowCalibrationService.h"
 #include "DeviceAliveCheckpoint.h"
 #include "WateringRecordStore.h"
@@ -48,7 +49,6 @@ public:
     WateringStartResult startFlowCalibration(uint8_t zoneId,
                                              uint16_t maximumDurationMinutes);
     bool submitFlowCalibrationMeasurement(uint32_t measuredWaterMl);
-    bool saveFlowCalibration(uint32_t expectedConfigRevision);
     void resetFlowCalibration();
     const FlowCalibrationService& flowCalibration() const;
     WateringStartResult startZoneFlowLearning(uint8_t zoneId);
@@ -77,6 +77,9 @@ private:
                               int32_t value);
     void resetUnexpectedFlowMonitor(uint32_t nowMs);
     void applyPendingHardwareConfiguration();
+    void handleParameterConfigSaved();
+    bool applyStoredParameterConfig();
+    static void parameterConfigSaved(void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
 
@@ -90,6 +93,7 @@ private:
     bool pendingPwmReconfigure_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
     uint32_t pendingLearnedFlowMlPerMinute_ = 0;
+    IrrigationConfig parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
     FlowCalibrationService flowCalibrationService_;
     DeviceAliveCheckpoint aliveCheckpoint_;

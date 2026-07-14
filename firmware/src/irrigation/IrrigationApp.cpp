@@ -13,7 +13,7 @@
 namespace {
 
 constexpr const char* kFirmwareName = "esp32-irrigation";
-constexpr const char* kFirmwareVersion = "0.4.0";
+constexpr const char* kFirmwareVersion = "0.5.0";
 constexpr const char* kDefaultWebUser = "admin";
 constexpr const char* kDefaultWebPassword = "admin";
 
@@ -69,7 +69,8 @@ bool IrrigationApp::begin() {
     Esp32BaseRtc::configure(Wire);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
-    if (!IrrigationWeb::registerRoutes(*this)) {
+    if (!IrrigationParameterConfig::registerFields(parameterConfigSaved, this) ||
+        !IrrigationWeb::registerRoutes(*this)) {
         hardware.safeShutdown();
         return false;
     }
@@ -81,6 +82,11 @@ bool IrrigationApp::begin() {
     }
 
     if (!configStore_.begin()) {
+        hardware.safeShutdown();
+        return false;
+    }
+
+    if (!applyStoredParameterConfig()) {
         hardware.safeShutdown();
         return false;
     }
@@ -333,32 +339,6 @@ bool IrrigationApp::submitFlowCalibrationMeasurement(uint32_t measuredWaterMl) {
     return businessReady_ && flowCalibrationService_.addPendingMeasurement(measuredWaterMl);
 }
 
-bool IrrigationApp::saveFlowCalibration(uint32_t expectedConfigRevision) {
-    const uint32_t coefficient = flowCalibrationService_.combinedPulsesPerLiterX100();
-    const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.status().active || !current || coefficient == 0) {
-        return false;
-    }
-    IrrigationConfig next = *current;
-    next.flowMeter.pulsesPerLiterX100 = coefficient;
-    if (!configStore_.save(next, expectedConfigRevision)) {
-        return false;
-    }
-    wateringScheduler_.rebaseTimeCheck();
-    if (!IrrigationEvents::appendSchedulerEvent(
-            static_cast<uint32_t>(IrrigationEvents::EventCode::FlowCalibrationSaved),
-            IrrigationEvents::ReasonCode::CalibrationCoefficientSaved,
-            0,
-            coefficient > static_cast<uint32_t>(INT32_MAX)
-                ? INT32_MAX
-                : static_cast<int32_t>(coefficient),
-            Esp32BaseAppEvents::Level::Info)) {
-        eventStorageFault_ = true;
-    }
-    flowCalibrationService_.clear();
-    return true;
-}
-
 void IrrigationApp::resetFlowCalibration() {
     if (!wateringController_.status().active) {
         flowCalibrationService_.clear();
@@ -575,6 +555,53 @@ void IrrigationApp::applyPendingHardwareConfiguration() {
     pendingPwmReconfigure_ = false;
 }
 
+void IrrigationApp::parameterConfigSaved(void* user) {
+    if (user) static_cast<IrrigationApp*>(user)->handleParameterConfigSaved();
+}
+
+bool IrrigationApp::applyStoredParameterConfig() {
+    const IrrigationConfig* current = configStore_.current();
+    if (!current) return false;
+    parameterConfigScratch_ = *current;
+    return IrrigationParameterConfig::applyStored(parameterConfigScratch_) &&
+           configStore_.applyRuntimeParameters(parameterConfigScratch_);
+}
+
+void IrrigationApp::handleParameterConfigSaved() {
+    const IrrigationConfig* current = configStore_.current();
+    if (!current) return;
+    parameterConfigScratch_ = *current;
+    if (!IrrigationParameterConfig::applyStored(parameterConfigScratch_)) {
+        businessReady_ = false;
+        BoardHardware::instance().safeShutdown();
+        return;
+    }
+    const bool frequencyChanged = parameterConfigScratch_.valveDrive.pwmFrequencyHz !=
+                                  current->valveDrive.pwmFrequencyHz;
+    const bool active = wateringController_.status().active;
+    if (frequencyChanged && !active &&
+        !BoardHardware::instance().configureValvePwmFrequency(
+            parameterConfigScratch_.valveDrive.pwmFrequencyHz)) {
+        businessReady_ = false;
+        BoardHardware::instance().safeShutdown();
+        return;
+    }
+    if (!configStore_.applyRuntimeParameters(parameterConfigScratch_)) {
+        businessReady_ = false;
+        BoardHardware::instance().safeShutdown();
+        return;
+    }
+    pendingPwmReconfigure_ = frequencyChanged && active;
+    wateringScheduler_.rebaseTimeCheck();
+    if (!active) resetUnexpectedFlowMonitor(millis());
+    if (!IrrigationEvents::appendSchedulerEvent(
+            static_cast<uint32_t>(IrrigationEvents::EventCode::ConfigurationChanged),
+            IrrigationEvents::ReasonCode::ConfigurationSaved,
+            0, 0, Esp32BaseAppEvents::Level::Info)) {
+        eventStorageFault_ = true;
+    }
+}
+
 void IrrigationApp::resetUnexpectedFlowMonitor(uint32_t nowMs) {
     const IrrigationConfig* config = configStore_.current();
     if (!config) {
@@ -679,7 +706,8 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
         return;
     }
 
-    const bool configReady = configStore_.begin();
+    bool configReady = configStore_.begin();
+    if (configReady) configReady = applyStoredParameterConfig();
     const IrrigationConfig* config = configStore_.current();
     const bool pwmReady = configReady && config &&
                           hardware.configureValvePwmFrequency(
