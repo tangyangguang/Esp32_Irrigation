@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "irrigation/DeviceAliveCheckpoint.h"
 #include "irrigation/IrrigationEvents.h"
 #include "irrigation/WateringRecordCodec.h"
 #include "irrigation/WateringRecordStore.h"
@@ -287,6 +288,31 @@ void test_scheduler_state_nvs_round_trip_and_corruption_detection() {
     TEST_ASSERT_TRUE(store.clear());
 }
 
+void test_alive_checkpoint_waits_for_quiet_interval_and_persists() {
+    TEST_ASSERT_TRUE(Esp32BaseConfig::clearNamespace("irrigation"));
+    DeviceAliveCheckpoint checkpoint;
+    TEST_ASSERT_TRUE(checkpoint.begin());
+    Esp32BaseTime::Snapshot now{};
+    now.synced = true;
+    now.source = Esp32BaseTime::SOURCE_NTP;
+    now.epochSec = 1767200000UL;
+    checkpoint.handle(now, 1, false, 10);
+    TEST_ASSERT_EQUAL_UINT32(0, checkpoint.lastKnownAliveEpoch());
+    now.epochSec += 3500U;
+    checkpoint.handle(now, 1, false, 11);
+    now.epochSec += 3599U;
+    checkpoint.handle(now, 1, false, 11);
+    TEST_ASSERT_EQUAL_UINT32(0, checkpoint.lastKnownAliveEpoch());
+    ++now.epochSec;
+    checkpoint.handle(now, 1, false, 11);
+    TEST_ASSERT_EQUAL_UINT32(now.epochSec, checkpoint.lastKnownAliveEpoch());
+
+    DeviceAliveCheckpoint reloaded;
+    TEST_ASSERT_TRUE(reloaded.begin());
+    TEST_ASSERT_EQUAL_UINT32(now.epochSec, reloaded.lastKnownAliveEpoch());
+    TEST_ASSERT_TRUE(Esp32BaseConfig::clearNamespace("irrigation"));
+}
+
 }  // namespace
 
 void setup() {
@@ -300,6 +326,7 @@ void setup() {
     RUN_TEST(test_crc_damage_is_reported_and_not_returned);
     RUN_TEST(test_irrigation_event_mapping_and_latest_read);
     RUN_TEST(test_scheduler_state_nvs_round_trip_and_corruption_detection);
+    RUN_TEST(test_alive_checkpoint_waits_for_quiet_interval_and_persists);
     UNITY_END();
 }
 

@@ -8,13 +8,36 @@
 
 #include "BoardHardware.h"
 #include "BoardPins.h"
+#include "IrrigationWeb.h"
 
 namespace {
 
 constexpr const char* kFirmwareName = "esp32-irrigation";
-constexpr const char* kFirmwareVersion = "0.3.0";
+constexpr const char* kFirmwareVersion = "0.4.0";
 constexpr const char* kDefaultWebUser = "admin";
 constexpr const char* kDefaultWebPassword = "admin";
+
+struct LatestTrustedEpoch {
+    uint32_t value = 0;
+};
+
+void collectWateringEpoch(const StoredWateringRecord& record, void* user) {
+    auto* latest = static_cast<LatestTrustedEpoch*>(user);
+    uint32_t epoch = 0;
+    if (latest && Esp32BaseRecordStore::resolveCompletedEpoch(record.timing, epoch) &&
+        epoch > latest->value) {
+        latest->value = epoch;
+    }
+}
+
+void collectEventEpoch(const Esp32BaseAppEvents::EventRecord& event, void* user) {
+    auto* latest = static_cast<LatestTrustedEpoch*>(user);
+    uint32_t epoch = 0;
+    if (latest && Esp32BaseRecordStore::resolveCompletedEpoch(event.timing, epoch) &&
+        epoch > latest->value) {
+        latest->value = epoch;
+    }
+}
 
 }  // namespace
 
@@ -46,6 +69,10 @@ bool IrrigationApp::begin() {
     Esp32BaseRtc::configure(Wire);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
+    if (!IrrigationWeb::registerRoutes(*this)) {
+        hardware.safeShutdown();
+        return false;
+    }
 
     baseReady_ = Esp32Base::begin();
     if (!baseReady_) {
@@ -92,6 +119,12 @@ bool IrrigationApp::begin() {
     if (schedulerStorageFault_) {
         ESP32BASE_LOG_E("irrigation", "watering_scheduler_store_unavailable");
     }
+    aliveCheckpoint_.begin();
+    LatestTrustedEpoch latestTrusted;
+    latestTrusted.value = aliveCheckpoint_.lastKnownAliveEpoch();
+    wateringRecordStore_.readLatest(0, 1, collectWateringEpoch, &latestTrusted);
+    Esp32BaseAppEvents::readLatest(0, 1, collectEventEpoch, &latestTrusted);
+    wateringScheduler_.setTrustedEpochBaseline(latestTrusted.value);
 
     businessReady_ = true;
     resetUnexpectedFlowMonitor(millis());
@@ -145,6 +178,55 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
     return result;
 }
 
+WateringStartResult IrrigationApp::startWateringPlan(uint8_t planId) {
+    const IrrigationConfig* config = configStore_.current();
+    if (!config || planId == 0 || planId > config->plans.size()) {
+        return WateringStartResult::InvalidRequest;
+    }
+    const WateringPlan& plan = config->plans[planId - 1U];
+    if (!plan.configured) {
+        return WateringStartResult::InvalidRequest;
+    }
+    WateringRequest request{};
+    request.source = WateringSource::ManualPlan;
+    request.purpose = WateringPurpose::Normal;
+    request.planId = planId;
+    for (uint8_t index = 0; index < config->zones.size(); ++index) {
+        if (!config->zones[index].enabled || plan.zoneDurationMinutes[index] == 0) {
+            continue;
+        }
+        request.steps[request.stepCount++] = {
+            config->zones[index].id,
+            static_cast<uint32_t>(plan.zoneDurationMinutes[index]) * 60U,
+        };
+    }
+    return startWatering(request);
+}
+
+WateringStartResult IrrigationApp::startManualWatering(
+    const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes) {
+    const IrrigationConfig* config = configStore_.current();
+    if (!config) {
+        return WateringStartResult::NotReady;
+    }
+    WateringRequest request{};
+    request.source = WateringSource::ManualZones;
+    request.purpose = WateringPurpose::Normal;
+    for (uint8_t index = 0; index < config->zones.size(); ++index) {
+        if (zoneDurationMinutes[index] == 0) {
+            continue;
+        }
+        if (!config->zones[index].enabled || zoneDurationMinutes[index] > 120) {
+            return WateringStartResult::InvalidRequest;
+        }
+        request.steps[request.stepCount++] = {
+            config->zones[index].id,
+            static_cast<uint32_t>(zoneDurationMinutes[index]) * 60U,
+        };
+    }
+    return startWatering(request);
+}
+
 bool IrrigationApp::stopWatering() {
     return businessReady_ && wateringController_.stop(millis());
 }
@@ -194,6 +276,14 @@ bool IrrigationApp::eventStorageFault() const {
 
 bool IrrigationApp::schedulerStorageFault() const {
     return schedulerStorageFault_;
+}
+
+bool IrrigationApp::checkpointStorageFault() const {
+    return aliveCheckpoint_.storageFault();
+}
+
+uint32_t IrrigationApp::lastKnownAliveEpoch() const {
+    return aliveCheckpoint_.lastKnownAliveEpoch();
 }
 
 bool IrrigationApp::unexpectedFlowAlarm() const {
@@ -338,7 +428,56 @@ const IrrigationConfig* IrrigationApp::configuration() const {
     return configStore_.current();
 }
 
+bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
+                                      uint32_t expectedRevision) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || !current) {
+        return false;
+    }
+    BoardHardware& hardware = BoardHardware::instance();
+    const bool active = wateringController_.status().active;
+    const bool frequencyChanged = proposed.valveDrive.pwmFrequencyHz !=
+                                  current->valveDrive.pwmFrequencyHz;
+    bool hardwareChanged = false;
+    if (frequencyChanged && !active) {
+        if (!hardware.configureValvePwmFrequency(proposed.valveDrive.pwmFrequencyHz)) {
+            return false;
+        }
+        hardwareChanged = true;
+    }
+    const uint32_t previousFrequency = current->valveDrive.pwmFrequencyHz;
+    if (!configStore_.save(proposed, expectedRevision)) {
+        if (hardwareChanged && !hardware.configureValvePwmFrequency(previousFrequency)) {
+            businessReady_ = false;
+            hardware.safeShutdown();
+        }
+        return false;
+    }
+    pendingPwmReconfigure_ = frequencyChanged && active;
+    wateringScheduler_.rebaseTimeCheck();
+    if (!active) {
+        resetUnexpectedFlowMonitor(millis());
+    }
+    if (!IrrigationEvents::appendSchedulerEvent(
+            static_cast<uint32_t>(IrrigationEvents::EventCode::ConfigurationChanged),
+            IrrigationEvents::ReasonCode::ConfigurationSaved,
+            0,
+            static_cast<int32_t>(configStore_.current()->revision),
+            Esp32BaseAppEvents::Level::Info)) {
+        eventStorageFault_ = true;
+    }
+    return true;
+}
+
+const char* IrrigationApp::configurationError() const {
+    return configStore_.lastError();
+}
+
 void IrrigationApp::advanceBusiness() {
+    if (!businessReady_) {
+        BoardHardware::instance().safeShutdown();
+        return;
+    }
     const uint32_t nowMs = millis();
     wateringController_.handle(nowMs);
     consumeFinishedWatering();
@@ -358,12 +497,26 @@ void IrrigationApp::advanceBusiness() {
             eventStorageFault_ = true;
         }
     }
-    if (config && wateringScheduler_.storageReady()) {
+    if (config) {
         const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
-        wateringScheduler_.handle(*config,
-                                  now.synced,
-                                  now.source == Esp32BaseTime::SOURCE_NTP,
-                                  now.epochSec);
+        if (wateringScheduler_.storageReady()) {
+            wateringScheduler_.handle(*config,
+                                      now.synced,
+                                      now.source == Esp32BaseTime::SOURCE_NTP,
+                                      now.epochSec);
+        }
+        Esp32BaseRecordStore::StoreStatus recordStatus{};
+        Esp32BaseAppEvents::EventStoreStatus eventStatus{};
+        if (wateringRecordStore_.readStatus(recordStatus) &&
+            Esp32BaseAppEvents::readStatus(eventStatus)) {
+            const uint64_t activitySequence =
+                (static_cast<uint64_t>(recordStatus.nextRecordId) << 32U) |
+                eventStatus.storage.nextRecordId;
+            aliveCheckpoint_.handle(now,
+                                    config->timeSafety.aliveCheckpointHours,
+                                    wateringController_.status().active,
+                                    activitySequence);
+        }
     }
 }
 
@@ -402,9 +555,24 @@ void IrrigationApp::consumeFinishedWatering() {
         eventStorageFault_ = true;
     }
     resetUnexpectedFlowMonitor(millis());
+    applyPendingHardwareConfiguration();
     wateringController_.clearFinishedSession();
     wateringStartTime_ = {};
     wateringStartTimeValid_ = false;
+}
+
+void IrrigationApp::applyPendingHardwareConfiguration() {
+    if (!pendingPwmReconfigure_ || wateringController_.status().active) {
+        return;
+    }
+    const IrrigationConfig* config = configStore_.current();
+    if (!config || !BoardHardware::instance().configureValvePwmFrequency(
+                       config->valveDrive.pwmFrequencyHz)) {
+        businessReady_ = false;
+        BoardHardware::instance().safeShutdown();
+        return;
+    }
+    pendingPwmReconfigure_ = false;
 }
 
 void IrrigationApp::resetUnexpectedFlowMonitor(uint32_t nowMs) {
@@ -522,6 +690,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     if (!schedulerReady) {
         wateringScheduler_.disable();
     }
+    const bool checkpointReady = aliveCheckpoint_.begin();
     schedulerStorageFault_ = !schedulerReady;
     const bool recordsReady = wateringRecordStore_.reload();
     eventStorageFault_ = !Esp32BaseAppEvents::isReady();
@@ -538,8 +707,9 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
         hardware.safeShutdown();
     }
     ESP32BASE_LOG_W("irrigation",
-                    "after_format_reinitialized business_ready=%s records_ready=%s scheduler_ready=%s",
+                    "after_format_reinitialized business_ready=%s records_ready=%s scheduler_ready=%s checkpoint_ready=%s",
                     businessReady_ ? "yes" : "no",
                     recordsReady ? "yes" : "no",
-                    schedulerReady ? "yes" : "no");
+                    schedulerReady ? "yes" : "no",
+                    checkpointReady ? "yes" : "no");
 }

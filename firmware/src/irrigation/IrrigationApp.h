@@ -3,6 +3,7 @@
 #include "IrrigationConfigStore.h"
 #include "IrrigationEvents.h"
 #include "FlowCalibrationService.h"
+#include "DeviceAliveCheckpoint.h"
 #include "WateringRecordStore.h"
 #include "WateringScheduler.h"
 #include "WateringSchedulerStore.h"
@@ -19,6 +20,9 @@ public:
     bool baseReady() const;
     bool businessReady() const;
     WateringStartResult startWatering(const WateringRequest& request);
+    WateringStartResult startWateringPlan(uint8_t planId);
+    WateringStartResult startManualWatering(
+        const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes);
     bool stopWatering();
     WateringStatus wateringStatus() const;
     bool readLatestWateringRecords(uint32_t offset,
@@ -33,6 +37,8 @@ public:
     bool recordStorageFault() const;
     bool eventStorageFault() const;
     bool schedulerStorageFault() const;
+    bool checkpointStorageFault() const;
+    uint32_t lastKnownAliveEpoch() const;
     bool unexpectedFlowAlarm() const;
     AutomaticWateringState automaticWateringState() const;
     WateringScheduler::TimeState schedulerTimeState() const;
@@ -51,6 +57,9 @@ public:
     uint32_t pendingLearnedFlowMlPerMinute() const;
     void discardLearnedZoneFlow();
     const IrrigationConfig* configuration() const;
+    bool saveConfiguration(const IrrigationConfig& proposed,
+                           uint32_t expectedRevision);
+    const char* configurationError() const;
 
 private:
     IrrigationApp();
@@ -67,6 +76,7 @@ private:
                               uint8_t planId,
                               int32_t value);
     void resetUnexpectedFlowMonitor(uint32_t nowMs);
+    void applyPendingHardwareConfiguration();
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
 
@@ -77,10 +87,12 @@ private:
     bool recordStorageFault_ = false;
     bool eventStorageFault_ = false;
     bool schedulerStorageFault_ = false;
+    bool pendingPwmReconfigure_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
     uint32_t pendingLearnedFlowMlPerMinute_ = 0;
     IrrigationConfigStore configStore_;
     FlowCalibrationService flowCalibrationService_;
+    DeviceAliveCheckpoint aliveCheckpoint_;
     WateringController wateringController_;
     WateringRecordStore wateringRecordStore_;
     WateringSchedulerStore wateringSchedulerStore_;

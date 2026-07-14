@@ -143,6 +143,13 @@ bool WateringScheduler::resumeManually() {
     return true;
 }
 
+void WateringScheduler::setTrustedEpochBaseline(uint32_t epochSec) {
+    if (epochSec > maximumTrustedEpoch_) {
+        maximumTrustedEpoch_ = epochSec;
+    }
+    rebaseTimeCheck();
+}
+
 void WateringScheduler::rebaseTimeCheck() {
     minuteInitialized_ = false;
 }

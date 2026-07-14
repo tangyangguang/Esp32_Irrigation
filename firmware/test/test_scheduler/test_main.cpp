@@ -191,6 +191,23 @@ void test_time_jump_and_rtc_rollback_rebase_without_running() {
     TEST_ASSERT_EQUAL_UINT32(0, callbacks.startCount);
 }
 
+void test_persisted_trusted_epoch_detects_rollback_after_restart() {
+    FakeStorage storage;
+    CallbackState callbacks;
+    WateringScheduler scheduler;
+    initialize(scheduler, storage, callbacks);
+    IrrigationConfig config = scheduledConfig(10);
+
+    scheduler.setTrustedEpochBaseline(kLocalMidnight + 1200U);
+    scheduler.handle(config, true, false, kLocalMidnight + 600U);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringScheduler::TimeState::RtcRollback),
+                      static_cast<int>(scheduler.timeState()));
+
+    scheduler.handle(config, true, true, kLocalMidnight + 660U);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringScheduler::TimeState::Ready),
+                      static_cast<int>(scheduler.timeState()));
+}
+
 void test_persist_failure_prevents_automatic_start() {
     FakeStorage storage;
     CallbackState callbacks;
@@ -215,6 +232,7 @@ int main(int, char**) {
     RUN_TEST(test_busy_is_reported_and_still_marked_processed);
     RUN_TEST(test_pause_modes_skip_or_resume_without_immediate_manual_run);
     RUN_TEST(test_time_jump_and_rtc_rollback_rebase_without_running);
+    RUN_TEST(test_persisted_trusted_epoch_detects_rollback_after_restart);
     RUN_TEST(test_persist_failure_prevents_automatic_start);
     return UNITY_END();
 }

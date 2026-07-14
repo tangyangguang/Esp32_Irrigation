@@ -17,6 +17,7 @@ public:
         UnexpectedFlowDetected = 1006,
         FlowCalibrationSaved = 1007,
         ZoneFlowLearned = 1008,
+        ConfigurationChanged = 1009,
         WateringRecordStorageFault = 1101,
         SchedulerStorageFault = 1102,
     };
@@ -45,6 +46,7 @@ public:
         RtcRollback = 231,
         CalibrationCoefficientSaved = 301,
         ZoneFlowLearned = 302,
+        ConfigurationSaved = 401,
     };
 
     static constexpr uint16_t kFlagValue1Capped = 1U << 0U;

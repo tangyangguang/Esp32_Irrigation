@@ -62,6 +62,7 @@ public:
     bool pauseIndefinitely();
     bool pauseUntil(uint32_t resumeAtEpoch, bool timeTrusted, uint32_t currentEpoch);
     bool resumeManually();
+    void setTrustedEpochBaseline(uint32_t epochSec);
     void rebaseTimeCheck();
     void disable();
 
