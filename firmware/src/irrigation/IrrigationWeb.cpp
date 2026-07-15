@@ -87,7 +87,11 @@ bool savePlanFromRequest() {
         plan = {};
         plan.id = static_cast<uint8_t>(planId);
         plan.startMinutes.fill(kUnusedStartMinute);
-        return g_app->saveConfiguration(next, revision);
+        return g_app->saveConfiguration(
+            next,
+            revision,
+            IrrigationEvents::ConfigurationChange::PlanDeleted,
+            static_cast<uint8_t>(planId));
     }
     if (!actionIs("save")) {
         return false;
@@ -96,6 +100,7 @@ bool savePlanFromRequest() {
     if (!getParam("name", name, sizeof(name))) {
         return false;
     }
+    const bool creating = !plan.configured;
     plan.configured = true;
     plan.scheduleEnabled = Esp32BaseWeb::hasParam("schedule_enabled");
     std::snprintf(plan.name.data(), plan.name.size(), "%s", name);
@@ -121,7 +126,12 @@ bool savePlanFromRequest() {
         }
         plan.zoneDurationMinutes[index] = static_cast<uint16_t>(duration);
     }
-    return g_app->saveConfiguration(next, revision);
+    return g_app->saveConfiguration(
+        next,
+        revision,
+        creating ? IrrigationEvents::ConfigurationChange::PlanCreated
+                 : IrrigationEvents::ConfigurationChange::PlanUpdated,
+        static_cast<uint8_t>(planId));
 }
 
 bool saveZoneFromRequest() {
@@ -143,7 +153,10 @@ bool saveZoneFromRequest() {
             learnedFlow, zone.learnedFlowMlPerMinute)) {
         return false;
     }
-    return g_app->saveConfiguration(next, revision);
+    return g_app->saveConfiguration(next,
+                                    revision,
+                                    IrrigationEvents::ConfigurationChange::ZoneUpdated,
+                                    static_cast<uint8_t>(zoneId));
 }
 
 bool actionIs(const char* expected) {
@@ -587,6 +600,159 @@ void csvRecord(const StoredWateringRecord& record, void*) {
     Esp32BaseWeb::sendChunk(line);
 }
 
+struct EventFilter {
+    uint8_t level = 0;
+    int8_t category = -1;
+    char query[64]{};
+};
+
+struct EventRowsContext {
+    const EventFilter* filter;
+    uint32_t offset;
+    uint32_t limit;
+    uint32_t matched;
+    uint32_t emitted;
+};
+
+const char* eventToneClass(Esp32BaseAppEvents::Level level) {
+    switch (level) {
+        case Esp32BaseAppEvents::Level::Warning: return "warn";
+        case Esp32BaseAppEvents::Level::Error: return "danger";
+        case Esp32BaseAppEvents::Level::Info:
+        default: return "info";
+    }
+}
+
+void sendEventTime(const Esp32BaseRecordStore::RecordTiming& timing) {
+    uint32_t epoch = 0;
+    char text[32]{};
+    if (Esp32BaseRecordStore::resolveCompletedEpoch(timing, epoch) &&
+        Esp32BaseTime::formatEpoch(epoch, text, sizeof(text), "%Y-%m-%d %H:%M:%S")) {
+        Esp32BaseWeb::sendChunk(text);
+        return;
+    }
+    Esp32BaseWeb::sendChunk("设备启动后 ");
+    sendUnsigned(timing.completedUptimeSec);
+    Esp32BaseWeb::sendChunk(" 秒");
+}
+
+bool eventMatches(const Esp32BaseAppEvents::EventRecord& event,
+                  const EventFilter& filter) {
+    if (filter.level != 0 && static_cast<uint8_t>(event.level) != filter.level) return false;
+    return filter.category < 0 ||
+           static_cast<uint8_t>(IrrigationEvents::category(event)) ==
+               static_cast<uint8_t>(filter.category);
+}
+
+void sendEventDetailDialog(const Esp32BaseAppEvents::EventRecord& event,
+                           const char* dialogId) {
+    char title[96]{};
+    char summary[160]{};
+    IrrigationEvents::formatTitle(event, title, sizeof(title));
+    IrrigationEvents::formatSummary(event, summary, sizeof(summary));
+    Esp32BaseWeb::sendChunk("<dialog id='");
+    Esp32BaseWeb::sendChunk(dialogId);
+    Esp32BaseWeb::sendChunk("' class='panel eb-modal event-detail' data-eb-light-dismiss='1'><div class='event-detail-head'><div><span class='tag ");
+    Esp32BaseWeb::sendChunk(eventToneClass(event.level));
+    Esp32BaseWeb::sendChunk("'>");
+    Esp32BaseWeb::sendChunk(IrrigationEvents::levelName(event.level));
+    Esp32BaseWeb::sendChunk("</span><h2>");
+    Esp32BaseWeb::sendChunk(title);
+    Esp32BaseWeb::sendChunk("</h2></div><button type='button' class='secondary compact' onclick='this.closest(\"dialog\").close()'>关闭</button></div><p class='event-detail-summary'>");
+    Esp32BaseWeb::sendChunk(summary);
+    Esp32BaseWeb::sendChunk("</p><div class='event-detail-grid'><div><b>时间</b><span>");
+    sendEventTime(event.timing);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>分类</b><span>");
+    Esp32BaseWeb::sendChunk(IrrigationEvents::categoryName(IrrigationEvents::category(event)));
+    Esp32BaseWeb::sendChunk("</span></div><div><b>记录编号</b><span>#");
+    sendUnsigned(event.recordId);
+    Esp32BaseWeb::sendChunk("</span></div>");
+    const IrrigationEvents::EventCode eventCode =
+        static_cast<IrrigationEvents::EventCode>(event.eventCode);
+    if (eventCode == IrrigationEvents::EventCode::WateringStoppedAbnormally ||
+        eventCode == IrrigationEvents::EventCode::FlowDeviation) {
+        Esp32BaseWeb::sendChunk("<div><b>检测脉冲</b><span>");
+        sendUnsigned(event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1));
+        Esp32BaseWeb::sendChunk(" 个</span></div><div><b>实际时间</b><span>");
+        sendUnsigned(event.value2 < 0 ? 0 : static_cast<uint32_t>(event.value2));
+        Esp32BaseWeb::sendChunk(" 秒</span></div>");
+    } else if (eventCode == IrrigationEvents::EventCode::ClosedValveFlow) {
+        Esp32BaseWeb::sendChunk("<div><b>窗口脉冲</b><span>");
+        sendUnsigned(event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1));
+        Esp32BaseWeb::sendChunk(" 个</span></div><div><b>检测窗口</b><span>");
+        sendUnsigned(event.value2 < 0 ? 0 : static_cast<uint32_t>(event.value2));
+        Esp32BaseWeb::sendChunk(" 秒</span></div>");
+    } else if (eventCode == IrrigationEvents::EventCode::FlowCalibrationSaved) {
+        const uint32_t coefficient = event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1);
+        char coefficientText[24]{};
+        std::snprintf(coefficientText, sizeof(coefficientText), "%lu.%02lu P/L",
+                      static_cast<unsigned long>(coefficient / 100U),
+                      static_cast<unsigned long>(coefficient % 100U));
+        Esp32BaseWeb::sendChunk("<div><b>稳态流量系数</b><span>");
+        Esp32BaseWeb::sendChunk(coefficientText);
+        Esp32BaseWeb::sendChunk("</span></div>");
+    } else if (eventCode == IrrigationEvents::EventCode::ZoneFlowSaved) {
+        char flow[20]{};
+        IrrigationConfigRules::formatLitersPerMinute(
+            event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1), flow, sizeof(flow));
+        Esp32BaseWeb::sendChunk("<div><b>参考流量</b><span>");
+        Esp32BaseWeb::sendChunk(flow);
+        Esp32BaseWeb::sendChunk(" L/min</span></div>");
+    }
+    Esp32BaseWeb::sendChunk("</div><details class='event-technical'><summary>技术信息</summary><div class='event-detail-grid'><div><b>事件码</b><span>");
+    sendUnsigned(event.eventCode);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>原因码</b><span>");
+    sendUnsigned(event.reasonCode);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>对象 ID</b><span>");
+    sendUnsigned(event.objectId);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>数值 1</b><span>");
+    char signedValue[20];
+    std::snprintf(signedValue, sizeof(signedValue), "%ld", static_cast<long>(event.value1));
+    Esp32BaseWeb::sendChunk(signedValue);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>数值 2</b><span>");
+    std::snprintf(signedValue, sizeof(signedValue), "%ld", static_cast<long>(event.value2));
+    Esp32BaseWeb::sendChunk(signedValue);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>标记</b><span>");
+    sendUnsigned(event.flags);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>条件 ID</b><span>");
+    sendUnsigned(event.conditionId);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>启动编号</b><span>");
+    sendUnsigned(event.timing.completedBootId);
+    Esp32BaseWeb::sendChunk("</span></div></div></details><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>关闭</button></div></dialog>");
+}
+
+void sendEventRow(const Esp32BaseAppEvents::EventRecord& event, void* user) {
+    EventRowsContext* context = static_cast<EventRowsContext*>(user);
+    if (!context || !context->filter || !eventMatches(event, *context->filter)) return;
+    const uint32_t index = context->matched++;
+    if (index < context->offset || context->emitted >= context->limit) return;
+    ++context->emitted;
+    char title[96]{};
+    char summary[160]{};
+    char dialogId[28]{};
+    IrrigationEvents::formatTitle(event, title, sizeof(title));
+    IrrigationEvents::formatSummary(event, summary, sizeof(summary));
+    std::snprintf(dialogId, sizeof(dialogId), "event-detail-%lu",
+                  static_cast<unsigned long>(event.recordId));
+    Esp32BaseWeb::sendChunk("<tr><td data-label='时间' class='event-time'>");
+    sendEventTime(event.timing);
+    Esp32BaseWeb::sendChunk("</td><td data-label='等级'><span class='tag ");
+    Esp32BaseWeb::sendChunk(eventToneClass(event.level));
+    Esp32BaseWeb::sendChunk("'>");
+    Esp32BaseWeb::sendChunk(IrrigationEvents::levelName(event.level));
+    Esp32BaseWeb::sendChunk("</span></td><td data-label='事件'><b>");
+    Esp32BaseWeb::sendChunk(title);
+    Esp32BaseWeb::sendChunk("</b><small>");
+    Esp32BaseWeb::sendChunk(summary);
+    Esp32BaseWeb::sendChunk("</small></td><td data-label='分类'>");
+    Esp32BaseWeb::sendChunk(IrrigationEvents::categoryName(IrrigationEvents::category(event)));
+    Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='event-action'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('");
+    Esp32BaseWeb::sendChunk(dialogId);
+    Esp32BaseWeb::sendChunk("').showModal()\">查看详情</button>");
+    sendEventDetailDialog(event, dialogId);
+    Esp32BaseWeb::sendChunk("</td></tr>");
+}
+
 }  // namespace
 
 bool IrrigationWeb::registerRoutes(IrrigationApp& app) {
@@ -598,6 +764,7 @@ bool IrrigationWeb::registerRoutes(IrrigationApp& app) {
            Esp32BaseWeb::addPage("/irrigation/plans", "计划", plans) &&
            Esp32BaseWeb::addPage("/irrigation/zones", "水路", zones) &&
            Esp32BaseWeb::addPage("/irrigation/records", "记录", records) &&
+           Esp32BaseWeb::addPage("/irrigation/events", "事件", events) &&
            Esp32BaseWeb::addPage("/irrigation/settings", "设置", settings) &&
            Esp32BaseWeb::addRoute("/irrigation", Esp32BaseWeb::METHOD_POST, overview) &&
            Esp32BaseWeb::addRoute("/irrigation/plans", Esp32BaseWeb::METHOD_POST, plans) &&
@@ -709,8 +876,8 @@ void IrrigationWeb::overview() {
     }
     if (g_app->unexpectedFlowAlarm()) {
         heroTone = " danger";
-        heroTitle = "检测到非计划水流";
-        heroDescription = "所有水路关闭时仍检测到水流，请检查阀门和管路是否漏水。";
+        heroTitle = "关阀后水流异常";
+        heroDescription = "所有阀门关闭后仍检测到水流，请检查阀门和管路。";
         heroHref = "/irrigation/zones";
         heroAction = "查看水路设置";
     } else if (g_app->schedulerStorageFault()) {
@@ -1877,6 +2044,105 @@ void IrrigationWeb::records() {
                                      "记录可能已经轮换或被清空。");
         }
     }
+    endPage();
+}
+
+void IrrigationWeb::events() {
+    if (!beginPage("事件", "记录设备的重要操作、报警和异常")) return;
+    Esp32BaseWeb::sendChunk(
+        R"HTML(<style>
+.event-filter{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:12px}.event-filter label{display:grid;gap:4px;color:var(--eb-muted);font-size:12px}.event-filter select{min-width:150px}.event-table{width:100%;min-width:760px;border-collapse:collapse;font-size:13px}.event-table th,.event-table td{padding:10px 8px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:middle}.event-table th{color:var(--eb-muted);font-weight:650;white-space:nowrap}.event-table tbody tr:last-child td{border-bottom:0}.event-table tbody tr:hover{background:var(--eb-soft)}.event-table td>b,.event-table td>small{display:block}.event-table td>small{margin-top:2px;color:var(--eb-muted)}.event-time{min-width:12em;white-space:nowrap}.event-action{width:1%;white-space:nowrap}.event-empty{padding:24px!important;text-align:center!important;color:var(--eb-muted)}.event-detail{width:min(720px,calc(100vw - 28px))}.event-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.event-detail-head h2{margin:7px 0 0;font-size:20px}.event-detail-summary{margin:14px 0;padding:12px;border-radius:8px;background:var(--eb-soft)}.event-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}.event-detail-grid b{display:block;color:var(--eb-muted);font-size:11px}.event-detail-grid span{display:block;margin-top:2px;overflow-wrap:anywhere}.event-technical{margin-top:16px;padding-top:12px;border-top:1px solid var(--eb-line)}.event-technical summary{cursor:pointer;color:var(--eb-muted);font-size:13px}.event-technical[open] summary{margin-bottom:12px}
+@media(max-width:760px){.event-filter{display:grid;grid-template-columns:1fr 1fr}.event-filter label,.event-filter select,.event-filter .btnlink{width:100%}.event-table{display:block;min-width:0}.event-table thead{display:none}.event-table tbody{display:grid;gap:9px}.event-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}.event-table tbody tr:hover{background:#fff}.event-table td{display:grid;grid-template-columns:6em minmax(0,1fr);gap:8px;padding:4px 0;border:0;white-space:normal}.event-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:650}.event-table .event-action{display:flex;justify-content:flex-end;width:auto;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}.event-table .event-action::before{display:none}.event-table .event-action>.btnlink{width:100%;min-height:34px}.event-empty{display:block!important}.event-empty::before{display:none}.event-detail{width:calc(100vw - 20px);padding:12px!important}.event-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:440px){.event-filter{grid-template-columns:1fr}.event-detail-grid{grid-template-columns:1fr}.event-detail-head h2{font-size:18px}}
+</style>)HTML");
+
+    EventFilter filter{};
+    char value[20]{};
+    if (getParam("level", value, sizeof(value))) {
+        if (std::strcmp(value, "info") == 0) filter.level = static_cast<uint8_t>(Esp32BaseAppEvents::Level::Info);
+        else if (std::strcmp(value, "warning") == 0) filter.level = static_cast<uint8_t>(Esp32BaseAppEvents::Level::Warning);
+        else if (std::strcmp(value, "error") == 0) filter.level = static_cast<uint8_t>(Esp32BaseAppEvents::Level::Error);
+    }
+    if (getParam("category", value, sizeof(value))) {
+        if (std::strcmp(value, "watering") == 0) filter.category = static_cast<int8_t>(IrrigationEvents::Category::WateringAndFlow);
+        else if (std::strcmp(value, "automatic") == 0) filter.category = static_cast<int8_t>(IrrigationEvents::Category::AutomaticWatering);
+        else if (std::strcmp(value, "settings") == 0) filter.category = static_cast<int8_t>(IrrigationEvents::Category::SettingsAndCalibration);
+        else if (std::strcmp(value, "time") == 0) filter.category = static_cast<int8_t>(IrrigationEvents::Category::TimeAndStorage);
+    }
+    const char* levelQuery = filter.level == static_cast<uint8_t>(Esp32BaseAppEvents::Level::Info) ? "info" :
+                             filter.level == static_cast<uint8_t>(Esp32BaseAppEvents::Level::Warning) ? "warning" :
+                             filter.level == static_cast<uint8_t>(Esp32BaseAppEvents::Level::Error) ? "error" : "";
+    const char* categoryQuery = filter.category == static_cast<int8_t>(IrrigationEvents::Category::WateringAndFlow) ? "watering" :
+                                filter.category == static_cast<int8_t>(IrrigationEvents::Category::AutomaticWatering) ? "automatic" :
+                                filter.category == static_cast<int8_t>(IrrigationEvents::Category::SettingsAndCalibration) ? "settings" :
+                                filter.category == static_cast<int8_t>(IrrigationEvents::Category::TimeAndStorage) ? "time" : "";
+    if (levelQuery[0] && categoryQuery[0]) std::snprintf(filter.query, sizeof(filter.query), "level=%s&category=%s", levelQuery, categoryQuery);
+    else if (levelQuery[0]) std::snprintf(filter.query, sizeof(filter.query), "level=%s", levelQuery);
+    else if (categoryQuery[0]) std::snprintf(filter.query, sizeof(filter.query), "category=%s", categoryQuery);
+
+    uint32_t page = 1;
+    if (getParam("page", value, sizeof(value))) parseUint(value, 1, UINT32_MAX, page);
+    Esp32BaseAppEvents::AppEventsStatus status{};
+    const bool statusReady = g_app->readEventStatus(status) && status.eventStore.ready;
+    if (!statusReady) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,
+                                 "事件暂时无法读取",
+                                 "请在系统状态中检查事件存储。");
+        endPage();
+        return;
+    }
+    if (!status.conditionStateLoaded || status.conditionStateSavePending) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,
+                                 "事件状态保存异常",
+                                 "持续问题仍会显示当前状态，但新的发生或恢复可能无法保存。");
+    }
+
+    Esp32BaseWeb::beginPanel("事件记录");
+    Esp32BaseWeb::sendChunk("<form class='event-filter' method='get' action='/irrigation/events'><label>等级<select name='level'><option value=''>全部等级</option><option value='info'");
+    if (filter.level == static_cast<uint8_t>(Esp32BaseAppEvents::Level::Info)) Esp32BaseWeb::sendChunk(" selected");
+    Esp32BaseWeb::sendChunk(">信息</option><option value='warning'");
+    if (filter.level == static_cast<uint8_t>(Esp32BaseAppEvents::Level::Warning)) Esp32BaseWeb::sendChunk(" selected");
+    Esp32BaseWeb::sendChunk(">警告</option><option value='error'");
+    if (filter.level == static_cast<uint8_t>(Esp32BaseAppEvents::Level::Error)) Esp32BaseWeb::sendChunk(" selected");
+    Esp32BaseWeb::sendChunk(">错误</option></select></label><label>分类<select name='category'><option value=''>全部分类</option><option value='watering'");
+    if (filter.category == static_cast<int8_t>(IrrigationEvents::Category::WateringAndFlow)) Esp32BaseWeb::sendChunk(" selected");
+    Esp32BaseWeb::sendChunk(">浇水与流量</option><option value='automatic'");
+    if (filter.category == static_cast<int8_t>(IrrigationEvents::Category::AutomaticWatering)) Esp32BaseWeb::sendChunk(" selected");
+    Esp32BaseWeb::sendChunk(">自动计划</option><option value='settings'");
+    if (filter.category == static_cast<int8_t>(IrrigationEvents::Category::SettingsAndCalibration)) Esp32BaseWeb::sendChunk(" selected");
+    Esp32BaseWeb::sendChunk(">设置与校准</option><option value='time'");
+    if (filter.category == static_cast<int8_t>(IrrigationEvents::Category::TimeAndStorage)) Esp32BaseWeb::sendChunk(" selected");
+    Esp32BaseWeb::sendChunk(">时间与存储</option></select></label><input type='submit' value='筛选'><a class='btnlink secondary' href='/irrigation/events'>重置</a></form><div class='tablewrap'><table class='event-table'><thead><tr><th>时间</th><th>等级</th><th>事件</th><th>分类</th><th>操作</th></tr></thead><tbody>");
+
+    EventRowsContext context{&filter, (page - 1U) * 20U, 20U, 0, 0};
+    const bool readOk = status.eventStore.recordCount == 0 ||
+                        g_app->readLatestEvents(0,
+                                                status.eventStore.recordCount,
+                                                sendEventRow,
+                                                &context);
+    if (readOk && context.emitted == 0) {
+        Esp32BaseWeb::sendChunk("<tr><td class='event-empty' colspan='5'>");
+        Esp32BaseWeb::sendChunk(status.eventStore.recordCount == 0
+                                    ? "还没有事件记录。"
+                                    : "当前筛选条件下没有事件。"
+                               );
+        Esp32BaseWeb::sendChunk("</td></tr>");
+    }
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    if (!readOk) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,
+                                 "本页事件读取失败",
+                                 "请刷新页面；如果问题持续，请检查事件存储状态。");
+    } else if (context.matched != 0) {
+        Esp32BaseWeb::Pagination pagination{};
+        pagination.path = "/irrigation/events";
+        pagination.query = filter.query;
+        pagination.page = page;
+        pagination.perPage = 20;
+        pagination.total = context.matched;
+        Esp32BaseWeb::sendPagination(pagination);
+    }
+    Esp32BaseWeb::endPanel();
     endPage();
 }
 

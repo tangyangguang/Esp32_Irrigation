@@ -68,6 +68,7 @@ bool IrrigationApp::begin() {
     Esp32Base::setFirmwareInfo(kFirmwareName, kFirmwareVersion);
     Esp32BaseRtc::configure(Wire);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
+    Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_APP_EVENTS, "原始事件");
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
     if (!IrrigationParameterConfig::registerFields(parameterConfigSaved, this) ||
         !IrrigationWeb::registerRoutes(*this)) {
@@ -80,7 +81,6 @@ bool IrrigationApp::begin() {
         hardware.safeShutdown();
         return false;
     }
-
     if (!configStore_.begin()) {
         hardware.safeShutdown();
         return false;
@@ -107,14 +107,12 @@ bool IrrigationApp::begin() {
                           wateringRecordStore_.state() !=
                               Esp32BaseRecordStore::StoreState::Ready;
     if (!storeReady) {
-        reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreBegin);
         ESP32BASE_LOG_E("irrigation",
                         "watering_record_store_begin_failed state=%s error=%s",
                         Esp32BaseRecordStore::storeStateName(wateringRecordStore_.state()),
                         wateringRecordStore_.lastErrorReason());
     }
     if (!storeRegistered) {
-        reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreRegistration);
         ESP32BASE_LOG_E("irrigation", "watering_record_store_registration_failed");
     }
     if (storeReady) {
@@ -129,8 +127,8 @@ bool IrrigationApp::begin() {
                         static_cast<unsigned long>(status.maximumStoreBytes));
     }
 
-    wateringScheduler_.setCallbacks(startScheduledWatering, handleSchedulerEvent, this);
     schedulerStorageFault_ = !wateringScheduler_.begin(wateringSchedulerStore_);
+    wateringScheduler_.setCallbacks(startScheduledWatering, handleSchedulerEvent, this);
     if (schedulerStorageFault_) {
         ESP32BASE_LOG_E("irrigation", "watering_scheduler_store_unavailable");
     }
@@ -145,7 +143,7 @@ bool IrrigationApp::begin() {
     resetUnexpectedFlowMonitor(millis());
     ESP32BASE_LOG_I("irrigation", "business_ready records_fault=%s events_fault=%s scheduler_fault=%s",
                     recordStorageFault_ ? "yes" : "no",
-                    eventStorageFault_ ? "yes" : "no",
+                    Esp32BaseAppEvents::isEventStoreReady() ? "no" : "yes",
                     schedulerStorageFault_ ? "yes" : "no");
     return true;
 }
@@ -247,12 +245,23 @@ bool IrrigationApp::readWateringRecordStoreStatus(
     return wateringRecordStore_.readStatus(status);
 }
 
+bool IrrigationApp::readLatestEvents(uint32_t offset,
+                                     uint32_t limit,
+                                     IrrigationEvents::ReadCallback callback,
+                                     void* user) const {
+    return events_.readLatest(offset, limit, callback, user);
+}
+
+bool IrrigationApp::readEventStatus(Esp32BaseAppEvents::AppEventsStatus& status) const {
+    return events_.readStatus(status);
+}
+
 bool IrrigationApp::recordStorageFault() const {
     return recordStorageFault_;
 }
 
 bool IrrigationApp::eventStorageFault() const {
-    return eventStorageFault_;
+    return events_.storageFault();
 }
 
 bool IrrigationApp::schedulerStorageFault() const {
@@ -381,22 +390,14 @@ bool IrrigationApp::saveFlowCalibrationParameters(
             parameters.calibrationSteadyFlowMlPerMinute) {
         return true;
     }
-    if (!IrrigationParameterConfig::saveFlowCalibrationParameters(parameters) ||
-        !applyStoredParameterConfig()) {
+    const bool parametersSaved =
+        IrrigationParameterConfig::saveFlowCalibrationParameters(parameters);
+    if (!parametersSaved || !applyStoredParameterConfig()) {
         return false;
     }
     wateringScheduler_.rebaseTimeCheck();
     resetUnexpectedFlowMonitor(millis());
-    if (!IrrigationEvents::appendSchedulerEvent(
-            static_cast<uint32_t>(IrrigationEvents::EventCode::FlowCalibrationSaved),
-            IrrigationEvents::ReasonCode::CalibrationParametersSaved,
-            0,
-            parameters.pulsesPerLiterX100 > static_cast<uint32_t>(INT32_MAX)
-                ? INT32_MAX
-                : static_cast<int32_t>(parameters.pulsesPerLiterX100),
-            Esp32BaseAppEvents::Level::Info)) {
-        eventStorageFault_ = true;
-    }
+    events_.recordFlowCalibrationSaved(parameters.pulsesPerLiterX100);
     return true;
 }
 
@@ -436,16 +437,7 @@ bool IrrigationApp::saveLearnedZoneFlow(uint32_t expectedConfigRevision) {
         return false;
     }
     wateringScheduler_.rebaseTimeCheck();
-    if (!IrrigationEvents::appendSchedulerEvent(
-            static_cast<uint32_t>(IrrigationEvents::EventCode::ZoneFlowLearned),
-            IrrigationEvents::ReasonCode::ZoneFlowLearned,
-            pendingLearnedZoneId_,
-            pendingLearnedFlowMlPerMinute_ > static_cast<uint32_t>(INT32_MAX)
-                ? INT32_MAX
-                : static_cast<int32_t>(pendingLearnedFlowMlPerMinute_),
-            Esp32BaseAppEvents::Level::Info)) {
-        eventStorageFault_ = true;
-    }
+    events_.recordZoneFlowSaved(pendingLearnedZoneId_, pendingLearnedFlowMlPerMinute_);
     discardLearnedZoneFlow();
     return true;
 }
@@ -470,7 +462,9 @@ const IrrigationConfig* IrrigationApp::configuration() const {
 }
 
 bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
-                                      uint32_t expectedRevision) {
+                                      uint32_t expectedRevision,
+                                      IrrigationEvents::ConfigurationChange change,
+                                      uint8_t objectId) {
     const IrrigationConfig* current = configStore_.current();
     if (!businessReady_ || !current) {
         return false;
@@ -499,14 +493,7 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
     if (!active) {
         resetUnexpectedFlowMonitor(millis());
     }
-    if (!IrrigationEvents::appendSchedulerEvent(
-            static_cast<uint32_t>(IrrigationEvents::EventCode::ConfigurationChanged),
-            IrrigationEvents::ReasonCode::ConfigurationSaved,
-            0,
-            static_cast<int32_t>(configStore_.current()->revision),
-            Esp32BaseAppEvents::Level::Info)) {
-        eventStorageFault_ = true;
-    }
+    events_.recordConfigurationChanged(change, objectId);
     return true;
 }
 
@@ -520,23 +507,17 @@ void IrrigationApp::advanceBusiness() {
         return;
     }
     const uint32_t nowMs = millis();
+    if (!eventConditionsInitialized_) {
+        events_.syncStorageStatus();
+        refreshRtcCondition(nowMs, true);
+        eventConditionsInitialized_ = true;
+    }
+    refreshRtcCondition(nowMs, false);
     wateringController_.handle(nowMs);
     consumeFinishedWatering();
     const IrrigationConfig* config = configStore_.current();
     if (config && !wateringController_.status().active) {
-        const UnexpectedFlowMonitor::Update update = unexpectedFlowMonitor_.observe(
-            nowMs, BoardHardware::instance().flowPulseCount());
-        if (update == UnexpectedFlowMonitor::Update::AlarmRaised &&
-            !IrrigationEvents::appendSchedulerEvent(
-                static_cast<uint32_t>(IrrigationEvents::EventCode::UnexpectedFlowDetected),
-                IrrigationEvents::ReasonCode::UnexpectedFlow,
-                0,
-                unexpectedFlowMonitor_.observedPulseCount() > static_cast<uint32_t>(INT32_MAX)
-                    ? INT32_MAX
-                    : static_cast<int32_t>(unexpectedFlowMonitor_.observedPulseCount()),
-                Esp32BaseAppEvents::Level::Warning)) {
-            eventStorageFault_ = true;
-        }
+        unexpectedFlowMonitor_.observe(nowMs, BoardHardware::instance().flowPulseCount());
     }
     if (config) {
         const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
@@ -546,6 +527,7 @@ void IrrigationApp::advanceBusiness() {
                                       now.source == Esp32BaseTime::SOURCE_NTP,
                                       now.epochSec);
         }
+        observeEventConditions(nowMs, now);
         Esp32BaseRecordStore::StoreStatus recordStatus{};
         Esp32BaseAppEvents::AppEventsStatus eventStatus{};
         if (wateringRecordStore_.readStatus(recordStatus) &&
@@ -580,21 +562,19 @@ void IrrigationApp::consumeFinishedWatering() {
         if (!wateringStartTimeValid_ ||
             !wateringRecordStore_.appendCompleted(wateringStartTime_, *summary)) {
             recordStorageFault_ = true;
-            reportRecordStorageFault(wateringStartTimeValid_
-                                         ? IrrigationEvents::ReasonCode::RecordAppendFailed
-                                         : IrrigationEvents::ReasonCode::RecordStartTimeUnavailable);
+            events_.recordWateringRecordSaveFailed(
+                wateringStartTimeValid_ ? IrrigationEvents::ReasonCode::RecordAppendFailed
+                                        : IrrigationEvents::ReasonCode::RecordStartTimeUnavailable,
+                wateringRecordStore_.state(),
+                wateringRecordStore_.lastError());
         } else {
             recordStorageFault_ = wateringRecordStore_.state() !=
                                   Esp32BaseRecordStore::StoreState::Ready;
         }
     }
 
-    if (!IrrigationEvents::appendAbnormalWateringStop(*summary)) {
-        eventStorageFault_ = true;
-    }
-    if (!IrrigationEvents::appendFlowDeviationEvents(*summary)) {
-        eventStorageFault_ = true;
-    }
+    events_.recordAbnormalWateringStop(*summary);
+    events_.recordFlowDeviationEvents(*summary);
     resetUnexpectedFlowMonitor(millis());
     applyPendingHardwareConfiguration();
     wateringController_.clearFinishedSession();
@@ -660,12 +640,8 @@ void IrrigationApp::handleParameterConfigSaved() {
     pendingPwmReconfigure_ = frequencyChanged && active;
     wateringScheduler_.rebaseTimeCheck();
     if (!active) resetUnexpectedFlowMonitor(millis());
-    if (!IrrigationEvents::appendSchedulerEvent(
-            static_cast<uint32_t>(IrrigationEvents::EventCode::ConfigurationChanged),
-            IrrigationEvents::ReasonCode::ConfigurationSaved,
-            0, 0, Esp32BaseAppEvents::Level::Info)) {
-        eventStorageFault_ = true;
-    }
+    events_.recordConfigurationChanged(
+        IrrigationEvents::ConfigurationChange::SystemParametersUpdated);
 }
 
 void IrrigationApp::resetUnexpectedFlowMonitor(uint32_t nowMs) {
@@ -679,14 +655,49 @@ void IrrigationApp::resetUnexpectedFlowMonitor(uint32_t nowMs) {
         config->flowProtection.unexpectedFlowDelaySec,
         config->flowProtection.unexpectedFlowWindowSec,
         config->flowProtection.unexpectedFlowPulseCount);
+    events_.observeClosedValveFlow(Esp32BaseAppEvents::ObservedConditionState::Unknown,
+                                   0,
+                                   config->flowProtection.unexpectedFlowWindowSec);
 }
 
-void IrrigationApp::reportRecordStorageFault(IrrigationEvents::ReasonCode operation) {
-    if (!IrrigationEvents::appendRecordStorageFault(operation,
-                                                    wateringRecordStore_.state(),
-                                                    wateringRecordStore_.lastError())) {
-        eventStorageFault_ = true;
+void IrrigationApp::refreshRtcCondition(uint32_t nowMs, bool force) {
+    constexpr uint32_t kRtcRefreshIntervalMs = 60000U;
+    if (!force && rtcObservationInitialized_ &&
+        static_cast<uint32_t>(nowMs - lastRtcRefreshMs_) < kRtcRefreshIntervalMs) {
+        return;
     }
+    if (rtcObservationInitialized_) Esp32BaseRtc::refresh();
+    rtcObservationInitialized_ = true;
+    lastRtcRefreshMs_ = nowMs;
+    events_.observeRtcAvailability(Esp32BaseRtc::isAvailable(),
+                                   static_cast<uint8_t>(Esp32BaseRtc::status()));
+}
+
+void IrrigationApp::observeEventConditions(uint32_t nowMs,
+                                           const Esp32BaseTime::Snapshot& now) {
+    events_.observeTrustedTime(now.synced);
+    Esp32BaseAppEvents::ObservedConditionState rollbackState =
+        Esp32BaseAppEvents::ObservedConditionState::Unknown;
+    if (wateringScheduler_.timeState() == WateringScheduler::TimeState::Ready) {
+        rollbackState = Esp32BaseAppEvents::ObservedConditionState::Inactive;
+    } else if (wateringScheduler_.timeState() == WateringScheduler::TimeState::RtcRollback) {
+        rollbackState = Esp32BaseAppEvents::ObservedConditionState::Active;
+    }
+    events_.observeRtcRollback(rollbackState);
+
+    const IrrigationConfig* config = configStore_.current();
+    Esp32BaseAppEvents::ObservedConditionState flowState =
+        Esp32BaseAppEvents::ObservedConditionState::Unknown;
+    if (config && !wateringController_.status().active &&
+        unexpectedFlowMonitor_.observationReady(nowMs)) {
+        flowState = unexpectedFlowMonitor_.alarmActive()
+                        ? Esp32BaseAppEvents::ObservedConditionState::Active
+                        : Esp32BaseAppEvents::ObservedConditionState::Inactive;
+    }
+    events_.observeClosedValveFlow(
+        flowState,
+        unexpectedFlowMonitor_.observedPulseCount(),
+        config ? config->flowProtection.unexpectedFlowWindowSec : 0);
 }
 
 WateringStartResult IrrigationApp::startScheduledWatering(const WateringRequest& request,
@@ -706,51 +717,31 @@ void IrrigationApp::handleSchedulerEvent(WateringScheduler::Event event,
 
 void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
                                          uint8_t planId,
-                                         int32_t value) {
-    IrrigationEvents::EventCode eventCode = IrrigationEvents::EventCode::AutomaticWateringStateChanged;
-    IrrigationEvents::ReasonCode reason = IrrigationEvents::ReasonCode::PausedIndefinitely;
-    Esp32BaseAppEvents::Level level = Esp32BaseAppEvents::Level::Info;
+                                         int32_t) {
     switch (event) {
         case WateringScheduler::Event::PausedIndefinitely:
-            reason = IrrigationEvents::ReasonCode::PausedIndefinitely;
+            events_.recordAutomaticWateringPaused(true, 0);
             break;
         case WateringScheduler::Event::PausedUntil:
-            reason = IrrigationEvents::ReasonCode::PausedUntil;
+            events_.recordAutomaticWateringPaused(
+                false, wateringScheduler_.automaticState().resumeAtEpoch);
             break;
         case WateringScheduler::Event::ResumedManually:
-            reason = IrrigationEvents::ReasonCode::ResumedManually;
+            events_.recordAutomaticWateringResumed(false);
             break;
         case WateringScheduler::Event::ResumedAutomatically:
-            reason = IrrigationEvents::ReasonCode::ResumedAutomatically;
+            events_.recordAutomaticWateringResumed(true);
             break;
         case WateringScheduler::Event::PlanSkippedBusy:
-            eventCode = IrrigationEvents::EventCode::AutomaticPlanSkipped;
-            reason = IrrigationEvents::ReasonCode::PlanBusy;
-            level = Esp32BaseAppEvents::Level::Warning;
+            events_.recordAutomaticPlanSkipped(planId, true);
             break;
         case WateringScheduler::Event::PlanStartRejected:
-            eventCode = IrrigationEvents::EventCode::AutomaticPlanSkipped;
-            reason = IrrigationEvents::ReasonCode::PlanStartRejected;
-            level = Esp32BaseAppEvents::Level::Warning;
+            events_.recordAutomaticPlanSkipped(planId, false);
             break;
         case WateringScheduler::Event::StorageFault:
             schedulerStorageFault_ = true;
-            eventCode = IrrigationEvents::EventCode::SchedulerStorageFault;
-            reason = IrrigationEvents::ReasonCode::SchedulerStateStorage;
-            level = Esp32BaseAppEvents::Level::Error;
+            events_.recordSchedulerStateSaveFailed();
             break;
-        case WateringScheduler::Event::RtcRollbackDetected:
-            eventCode = IrrigationEvents::EventCode::RtcRollbackDetected;
-            reason = IrrigationEvents::ReasonCode::RtcRollback;
-            level = Esp32BaseAppEvents::Level::Warning;
-            break;
-    }
-    if (!IrrigationEvents::appendSchedulerEvent(static_cast<uint32_t>(eventCode),
-                                                reason,
-                                                planId,
-                                                value,
-                                                level)) {
-        eventStorageFault_ = true;
     }
 }
 
@@ -768,7 +759,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
 
     if (!result.mountSuccess) {
         recordStorageFault_ = true;
-        eventStorageFault_ = true;
+        events_.syncStorageStatus();
         return;
     }
 
@@ -779,7 +770,9 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
                           hardware.configureValvePwmFrequency(
                               config->valveDrive.pwmFrequencyHz);
     const bool schedulerCleared = wateringSchedulerStore_.clear();
+    wateringScheduler_.setCallbacks(nullptr, nullptr, nullptr);
     const bool schedulerLoaded = wateringScheduler_.begin(wateringSchedulerStore_);
+    wateringScheduler_.setCallbacks(startScheduledWatering, handleSchedulerEvent, this);
     const bool schedulerReady = schedulerCleared && schedulerLoaded;
     if (!schedulerReady) {
         wateringScheduler_.disable();
@@ -792,11 +785,8 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
                               result.businessRecordStoresReloadSuccess &&
                               recordStatusReady &&
                               recordStatus.state == Esp32BaseRecordStore::StoreState::Ready;
-    eventStorageFault_ = !Esp32BaseAppEvents::isEventStoreReady();
+    events_.syncStorageStatus();
     recordStorageFault_ = !recordsReady;
-    if (!recordsReady) {
-        reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreAfterFormat);
-    }
     businessReady_ = configReady && pwmReady;
     if (businessReady_) {
         resetUnexpectedFlowMonitor(millis());

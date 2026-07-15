@@ -34,6 +34,11 @@ public:
         uint32_t recordId,
         StoredWateringRecord& record);
     bool readWateringRecordStoreStatus(Esp32BaseRecordStore::StoreStatus& status) const;
+    bool readLatestEvents(uint32_t offset,
+                          uint32_t limit,
+                          IrrigationEvents::ReadCallback callback,
+                          void* user = nullptr) const;
+    bool readEventStatus(Esp32BaseAppEvents::AppEventsStatus& status) const;
     bool recordStorageFault() const;
     bool eventStorageFault() const;
     bool schedulerStorageFault() const;
@@ -63,14 +68,15 @@ public:
     void discardLearnedZoneFlow();
     const IrrigationConfig* configuration() const;
     bool saveConfiguration(const IrrigationConfig& proposed,
-                           uint32_t expectedRevision);
+                           uint32_t expectedRevision,
+                           IrrigationEvents::ConfigurationChange change,
+                           uint8_t objectId = 0);
     const char* configurationError() const;
 
 private:
     IrrigationApp();
     void advanceBusiness();
     void consumeFinishedWatering();
-    void reportRecordStorageFault(IrrigationEvents::ReasonCode operation);
     static WateringStartResult startScheduledWatering(const WateringRequest& request,
                                                       void* user);
     static void handleSchedulerEvent(WateringScheduler::Event event,
@@ -81,6 +87,8 @@ private:
                               uint8_t planId,
                               int32_t value);
     void resetUnexpectedFlowMonitor(uint32_t nowMs);
+    void observeEventConditions(uint32_t nowMs, const Esp32BaseTime::Snapshot& now);
+    void refreshRtcCondition(uint32_t nowMs, bool force);
     void applyPendingHardwareConfiguration();
     void handleParameterConfigSaved();
     bool applyStoredParameterConfig();
@@ -95,19 +103,22 @@ private:
     bool wateringStartTimeValid_ = false;
     bool recordStorageFault_ = false;
     bool wateringRecordStoreRegistered_ = false;
-    bool eventStorageFault_ = false;
     bool schedulerStorageFault_ = false;
     bool pendingPwmReconfigure_ = false;
+    bool rtcObservationInitialized_ = false;
+    bool eventConditionsInitialized_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
     uint32_t pendingLearnedFlowMlPerMinute_ = 0;
     IrrigationConfig parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
     FlowCalibrationService flowCalibrationService_;
     DeviceAliveCheckpoint aliveCheckpoint_;
+    IrrigationEvents events_;
     WateringController wateringController_;
     WateringRecordStore wateringRecordStore_;
     WateringSchedulerStore wateringSchedulerStore_;
     WateringScheduler wateringScheduler_;
     UnexpectedFlowMonitor unexpectedFlowMonitor_;
     Esp32BaseRecordStore::RecordStartTime wateringStartTime_{};
+    uint32_t lastRtcRefreshMs_ = 0;
 };

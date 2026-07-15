@@ -8,6 +8,7 @@ void UnexpectedFlowMonitor::begin(uint32_t nowMs,
                                   uint16_t windowSec,
                                   uint16_t pulseThreshold) {
     delayStartedMs_ = nowMs;
+    monitoringStartedMs_ = nowMs;
     lastPulseCount_ = pulseCount;
     delaySec_ = delaySec;
     windowSec_ = windowSec >= 1 && windowSec <= 300 ? windowSec : 1;
@@ -65,12 +66,20 @@ bool UnexpectedFlowMonitor::alarmActive() const {
     return alarmActive_;
 }
 
+bool UnexpectedFlowMonitor::observationReady(uint32_t nowMs) const {
+    return monitoring_ &&
+           (alarmActive_ ||
+            static_cast<uint32_t>(nowMs - monitoringStartedMs_) >=
+                static_cast<uint32_t>(windowSec_) * 1000U);
+}
+
 uint32_t UnexpectedFlowMonitor::observedPulseCount() const {
     return rollingPulseCount_;
 }
 
 void UnexpectedFlowMonitor::activate(uint32_t nowMs, uint32_t pulseCount) {
     monitoring_ = true;
+    monitoringStartedMs_ = nowMs;
     lastPulseCount_ = pulseCount;
     currentSecond_ = nowMs / 1000U;
     rollingPulseCount_ = 0;

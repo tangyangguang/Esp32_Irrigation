@@ -120,8 +120,8 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* use
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationVariation, "稳态允许波动", defaults.calibrationStability.allowedVariationPercent, 1, 30, 1, "%", "窗口脉冲速率最大与最小值的允许波动，范围 1%～30%。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kFlowStart, "流量建立超时", defaults.flowProtection.flowStartTimeoutSec, 1, 120, 1, "s", "开始出水后未检测到脉冲的最长等待时间，范围 1～120 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kNoFlow, "运行无流量超时", defaults.flowProtection.noFlowTimeoutSec, 1, 60, 1, "s", "浇水过程中连续无脉冲多久后停机，范围 1～60 s。", false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakDelay, "关阀后检测延时", defaults.flowProtection.unexpectedFlowDelaySec, 0, 300, 1, "s", "全部关闭后延迟多久开始检测非计划流量，范围 0～300 s。", false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakWindow, "检测窗口", defaults.flowProtection.unexpectedFlowWindowSec, 1, 300, 1, "s", "统计非计划流量脉冲的时间窗口，范围 1～300 s。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakDelay, "关阀后检测延时", defaults.flowProtection.unexpectedFlowDelaySec, 0, 300, 1, "s", "全部关闭后延迟多久开始检测关阀后水流，范围 0～300 s。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakWindow, "检测窗口", defaults.flowProtection.unexpectedFlowWindowSec, 1, 300, 1, "s", "统计关阀后水流脉冲的时间窗口，范围 1～300 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakPulses, "脉冲报警阈值", defaults.flowProtection.unexpectedFlowPulseCount, 1, 65535, 1, "pulse", "检测窗口内达到该脉冲数时报警，范围 1～65535。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kDeviation, "偏差确认时间", defaults.flowProtection.flowDeviationConfirmSec, 1, 300, 1, "s", "低流量或高流量持续多久才确认异常，范围 1～300 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kLowPercent, "低流量阈值", defaults.flowProtection.lowFlowPercent, 1, 99, 1, "%", "低于已学习基准流量的该百分比时判为偏低，范围 1%～99%。", false, nullptr}) &&

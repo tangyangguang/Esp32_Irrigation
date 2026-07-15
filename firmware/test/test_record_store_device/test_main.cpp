@@ -207,6 +207,8 @@ struct EventCapture {
     int32_t value1 = 0;
     int32_t value2 = 0;
     Esp32BaseAppEvents::Level level = Esp32BaseAppEvents::Level::Info;
+    Esp32BaseAppEvents::EventKind eventKind = Esp32BaseAppEvents::EventKind::Discrete;
+    uint8_t conditionId = 0;
 };
 
 void captureEvent(const Esp32BaseAppEvents::EventRecord& event, void* user) {
@@ -218,11 +220,17 @@ void captureEvent(const Esp32BaseAppEvents::EventRecord& event, void* user) {
         capture->value1 = event.value1;
         capture->value2 = event.value2;
         capture->level = event.level;
+        capture->eventKind = event.eventKind;
+        capture->conditionId = event.conditionId;
     }
 }
 
 void test_irrigation_event_mapping_and_latest_read() {
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::clearEventHistory());
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::forgetAllConditionStates());
+    IrrigationEvents events;
     WateringSessionSummary summary{};
+    summary.purpose = WateringPurpose::Normal;
     summary.result = WateringResult::Failed;
     summary.stopReason = WateringStopReason::NoFlowTimeout;
     summary.zoneCount = 1;
@@ -230,7 +238,8 @@ void test_irrigation_event_mapping_and_latest_read() {
     summary.zones[0].result = ZoneWateringResult::Failed;
     summary.zones[0].pulseCount = 37;
     summary.zones[0].actualWateringSec = 18;
-    TEST_ASSERT_TRUE(IrrigationEvents::appendAbnormalWateringStop(summary));
+    events.syncStorageStatus();
+    events.recordAbnormalWateringStop(summary);
 
     EventCapture capture;
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(0, 1, captureEvent, &capture));
@@ -243,8 +252,57 @@ void test_irrigation_event_mapping_and_latest_read() {
     TEST_ASSERT_EQUAL_UINT32(2, capture.objectId);
     TEST_ASSERT_EQUAL_INT32(37, capture.value1);
     TEST_ASSERT_EQUAL_INT32(18, capture.value2);
-    TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::Level::Warning),
+    TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::Level::Error),
                       static_cast<int>(capture.level));
+
+    const uint32_t afterWateringEvent = Esp32BaseAppEvents::eventCount();
+    summary.purpose = WateringPurpose::FlowCalibration;
+    events.recordAbnormalWateringStop(summary);
+    TEST_ASSERT_EQUAL_UINT32(afterWateringEvent, Esp32BaseAppEvents::eventCount());
+
+    events.observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState::Active);
+    const uint32_t afterActivation = Esp32BaseAppEvents::eventCount();
+    TEST_ASSERT_EQUAL_UINT32(afterWateringEvent + 1U, afterActivation);
+    events.observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState::Active);
+    TEST_ASSERT_EQUAL_UINT32(afterActivation, Esp32BaseAppEvents::eventCount());
+    events.observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState::Inactive);
+    TEST_ASSERT_EQUAL_UINT32(afterActivation + 1U, Esp32BaseAppEvents::eventCount());
+
+    EventCapture recoveredEvent;
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(0, 1, captureEvent, &recoveredEvent));
+    TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::EventKind::ConditionRecovered),
+                      static_cast<int>(recoveredEvent.eventKind));
+    TEST_ASSERT_EQUAL_UINT8(3, recoveredEvent.conditionId);
+    char title[64]{};
+    Esp32BaseAppEvents::EventRecord presentation{};
+    presentation.eventCode = recoveredEvent.eventCode;
+    presentation.eventKind = recoveredEvent.eventKind;
+    IrrigationEvents::formatTitle(presentation, title, sizeof(title));
+    TEST_ASSERT_EQUAL_STRING("设备时间已恢复正常", title);
+
+    constexpr uint32_t eventCodes[] = {1001, 1002, 1003, 1004, 1005, 1006, 1007,
+                                       1008, 1009, 1101, 1102, 1103, 1104};
+    for (const uint32_t eventCode : eventCodes) {
+        Esp32BaseAppEvents::EventRecord sample{};
+        sample.eventCode = eventCode;
+        sample.objectId = 1;
+        sample.reasonCode = eventCode == 1001 ? 1U :
+                            eventCode == 1002 ? 201U :
+                            eventCode == 1003 ? 211U :
+                            eventCode == 1005 ? 5U :
+                            eventCode == 1009 ? 405U : 0U;
+        char sampleTitle[96]{};
+        char sampleSummary[160]{};
+        IrrigationEvents::formatTitle(sample, sampleTitle, sizeof(sampleTitle));
+        IrrigationEvents::formatSummary(sample, sampleSummary, sizeof(sampleSummary));
+        TEST_ASSERT_NOT_EQUAL(0, sampleTitle[0]);
+        TEST_ASSERT_NOT_EQUAL(0, sampleSummary[0]);
+        TEST_ASSERT_NOT_EQUAL(0, std::strcmp("未知事件", sampleTitle));
+        TEST_ASSERT_NOT_EQUAL(0, std::strcmp("没有可用的业务说明。", sampleSummary));
+    }
+
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::clearEventHistory());
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::forgetAllConditionStates());
 
     removeTestStore(g_mainStore);
     removeTestStore(g_rotationStore);

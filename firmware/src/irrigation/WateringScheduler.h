@@ -67,7 +67,6 @@ public:
         PlanSkippedBusy,
         PlanStartRejected,
         StorageFault,
-        RtcRollbackDetected,
     };
 
     using StartCallback = WateringStartResult (*)(const WateringRequest& request, void* user);

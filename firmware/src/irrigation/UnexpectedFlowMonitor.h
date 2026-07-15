@@ -18,6 +18,7 @@ public:
                uint16_t pulseThreshold);
     Update observe(uint32_t nowMs, uint32_t pulseCount);
     bool alarmActive() const;
+    bool observationReady(uint32_t nowMs) const;
     uint32_t observedPulseCount() const;
 
 private:
@@ -29,6 +30,7 @@ private:
     std::array<uint32_t, kBucketCount> bucketSeconds_{};
     std::array<uint32_t, kBucketCount> bucketPulses_{};
     uint32_t delayStartedMs_ = 0;
+    uint32_t monitoringStartedMs_ = 0;
     uint32_t lastPulseCount_ = 0;
     uint32_t currentSecond_ = 0;
     uint32_t rollingPulseCount_ = 0;

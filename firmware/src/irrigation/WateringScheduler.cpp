@@ -53,10 +53,6 @@ void WateringScheduler::handle(const IrrigationConfig& config,
         config.timeSafety.rtcRollbackThresholdMinutes) * 60U;
     if (!timeFromNtp && maximumTrustedEpoch_ != 0 &&
         epochSec + rollbackSec < maximumTrustedEpoch_) {
-        if (timeState_ != TimeState::RtcRollback) {
-            emit(Event::RtcRollbackDetected, 0,
-                 static_cast<int32_t>((maximumTrustedEpoch_ - epochSec) / 60U));
-        }
         timeState_ = TimeState::RtcRollback;
         minuteInitialized_ = false;
         return;

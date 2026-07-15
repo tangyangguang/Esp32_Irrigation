@@ -35,24 +35,9 @@ bool IrrigationConfigStore::begin() {
         return false;
     }
 
-    constexpr std::array<const char*, 3> paths = {kConfigPath, kTempPath, kBackupPath};
     bool anyFileExists = false;
-    bool foundValid = false;
     std::size_t bestPath = 0;
-    IrrigationConfig best{};
-    for (std::size_t index = 0; index < paths.size(); ++index) {
-        if (!Esp32BaseFs::exists(paths[index])) {
-            continue;
-        }
-        anyFileExists = true;
-        IrrigationConfig candidate{};
-        if (readConfig(paths[index], candidate) &&
-            (!foundValid || candidate.revision > best.revision)) {
-            foundValid = true;
-            bestPath = index;
-            best = candidate;
-        }
-    }
+    const bool foundValid = loadBestConfig(anyFileExists, bestPath);
 
     if (!foundValid) {
         if (anyFileExists) {
@@ -60,29 +45,48 @@ bool IrrigationConfigStore::begin() {
             lastError_ = "no_valid_config_copy";
             return false;
         }
-        best = IrrigationConfigRules::createDefault();
-        if (!writeConfig(best)) {
+        config_ = IrrigationConfigRules::createDefault();
+        if (!writeConfig(config_)) {
             loadResult_ = LoadResult::WriteFailed;
             lastError_ = "default_config_write_failed";
             return false;
         }
-        config_ = best;
         ready_ = true;
         loadResult_ = LoadResult::CreatedDefault;
         lastError_ = "none";
         return true;
     }
 
-    if (bestPath != 0 && !writeConfig(best)) {
+    if (bestPath != 0 && !writeConfig(config_)) {
         loadResult_ = LoadResult::WriteFailed;
         lastError_ = "config_recovery_write_failed";
         return false;
     }
-    config_ = best;
     ready_ = true;
     loadResult_ = LoadResult::Loaded;
     lastError_ = "none";
     return true;
+}
+
+bool IrrigationConfigStore::loadBestConfig(bool& anyFileExists,
+                                           std::size_t& bestPath) {
+    constexpr std::array<const char*, 3> paths = {kConfigPath, kTempPath, kBackupPath};
+    anyFileExists = false;
+    bestPath = 0;
+    bool foundValid = false;
+    IrrigationConfig candidate{};
+    for (std::size_t index = 0; index < paths.size(); ++index) {
+        if (!Esp32BaseFs::exists(paths[index])) continue;
+        anyFileExists = true;
+        candidate = {};
+        if (readConfig(paths[index], candidate) &&
+            (!foundValid || candidate.revision > config_.revision)) {
+            foundValid = true;
+            bestPath = index;
+            config_ = candidate;
+        }
+    }
+    return foundValid;
 }
 
 bool IrrigationConfigStore::save(const IrrigationConfig& proposed, uint32_t expectedRevision) {

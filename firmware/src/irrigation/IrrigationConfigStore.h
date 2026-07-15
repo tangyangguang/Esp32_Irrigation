@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "IrrigationTypes.h"
@@ -25,6 +26,7 @@ public:
     const char* lastError() const;
 
 private:
+    bool loadBestConfig(bool& anyFileExists, std::size_t& bestPath);
     bool readConfig(const char* path, IrrigationConfig& config) const;
     bool writeConfig(const IrrigationConfig& config);
     static bool ensureDirectory(const char* path);
