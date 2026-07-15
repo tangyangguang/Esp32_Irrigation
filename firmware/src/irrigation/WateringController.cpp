@@ -321,6 +321,11 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
     calibrationStopMs_ = 0;
     calibrationStopPulseCount_ = 0;
     calibrationStopCaptured_ = false;
+    if (request_.purpose == WateringPurpose::FlowCalibration) {
+        calibrationDetector_.begin(nowMs,
+                                   zoneStartedPulseCount_,
+                                   calibrationStability_);
+    }
     learningRateSampleCount_ = 0;
     learningRateSamples_.fill(0);
     flowHistoryStart_ = 0;
@@ -467,7 +472,7 @@ void WateringController::fillCalibrationMetrics(ZoneWateringSummary& zone,
             ? detectorConfig.allowedVariationPercent
             : calibrationStability_.allowedVariationPercent;
     zone.calibrationCollectedWindows = calibrationDetector_.collectedWindowCount();
-    zone.calibrationPulseRateX100 = calibrationDetector_.latestRateX100();
+    zone.calibrationLatestPulseRateX100 = calibrationDetector_.latestRateX100();
     if (flowMonitor_.flowEstablished()) {
         zone.calibrationFlowEstablishedMs = calibrationFlowEstablishedMs_ - valveOpenedMs_;
     }

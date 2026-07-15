@@ -24,6 +24,7 @@ public:
     const CalibrationStabilityConfig& config() const;
 
 private:
+    uint32_t toleranceForRate(uint32_t rateX100) const;
     void appendWindow(uint32_t startedMs,
                       uint32_t startedPulseCount,
                       uint32_t rateX100);

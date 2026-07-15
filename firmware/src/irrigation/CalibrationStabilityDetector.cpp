@@ -42,18 +42,7 @@ void CalibrationStabilityDetector::observe(uint32_t nowMs, uint32_t pulseCount) 
         const uint32_t difference = rateX100 > stableAverageRateX100_
                                         ? rateX100 - stableAverageRateX100_
                                         : stableAverageRateX100_ - rateX100;
-        const uint32_t percentToleranceX100 = static_cast<uint32_t>(
-            (static_cast<uint64_t>(stableAverageRateX100_) *
-                 config_.allowedVariationPercent +
-             50U) /
-            100U);
-        const uint32_t onePulseToleranceX100 =
-            (100U + static_cast<uint32_t>(config_.windowSec) - 1U) /
-            static_cast<uint32_t>(config_.windowSec);
-        const uint32_t tolerance = percentToleranceX100 > onePulseToleranceX100
-                                       ? percentToleranceX100
-                                       : onePulseToleranceX100;
-        if (rateX100 == 0 || difference > tolerance) {
+        if (rateX100 == 0 || difference > toleranceForRate(stableAverageRateX100_)) {
             steadyLaterUnstable_ = true;
         }
         return;
@@ -84,6 +73,18 @@ uint8_t CalibrationStabilityDetector::collectedWindowCount() const {
 }
 const CalibrationStabilityConfig& CalibrationStabilityDetector::config() const {
     return config_;
+}
+
+uint32_t CalibrationStabilityDetector::toleranceForRate(uint32_t rateX100) const {
+    const uint32_t percentToleranceX100 = static_cast<uint32_t>(
+        (static_cast<uint64_t>(rateX100) * config_.allowedVariationPercent + 50U) /
+        100U);
+    const uint32_t onePulseToleranceX100 =
+        (100U + static_cast<uint32_t>(config_.windowSec) - 1U) /
+        static_cast<uint32_t>(config_.windowSec);
+    return percentToleranceX100 > onePulseToleranceX100
+               ? percentToleranceX100
+               : onePulseToleranceX100;
 }
 
 void CalibrationStabilityDetector::appendWindow(uint32_t startedMs,
@@ -121,16 +122,7 @@ void CalibrationStabilityDetector::evaluateCandidate() {
     }
     const uint32_t average = static_cast<uint32_t>(
         (total + config_.requiredWindows / 2U) / config_.requiredWindows);
-    const uint32_t onePulseToleranceX100 =
-        (100U + static_cast<uint32_t>(config_.windowSec) - 1U) /
-        static_cast<uint32_t>(config_.windowSec);
-    const uint32_t percentToleranceX100 = static_cast<uint32_t>(
-        (static_cast<uint64_t>(average) * config_.allowedVariationPercent + 50U) /
-        100U);
-    const uint32_t tolerance = percentToleranceX100 > onePulseToleranceX100
-                                   ? percentToleranceX100
-                                   : onePulseToleranceX100;
-    if (maximum - minimum > tolerance) return;
+    if (maximum - minimum > toleranceForRate(average)) return;
     steadyDetected_ = true;
     steadyStartedMs_ = windowStartedMs_[0];
     steadyStartedPulseCount_ = windowStartedPulseCount_[0];

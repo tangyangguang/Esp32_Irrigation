@@ -519,12 +519,12 @@ void IrrigationApp::advanceBusiness() {
                                       now.epochSec);
         }
         Esp32BaseRecordStore::StoreStatus recordStatus{};
-        Esp32BaseAppEvents::EventStoreStatus eventStatus{};
+        Esp32BaseAppEvents::AppEventsStatus eventStatus{};
         if (wateringRecordStore_.readStatus(recordStatus) &&
             Esp32BaseAppEvents::readStatus(eventStatus)) {
             const uint64_t activitySequence =
                 (static_cast<uint64_t>(recordStatus.nextRecordId) << 32U) |
-                eventStatus.storage.nextRecordId;
+                eventStatus.eventStore.nextRecordId;
             aliveCheckpoint_.handle(now,
                                     config->timeSafety.aliveCheckpointHours,
                                     wateringController_.status().active,
@@ -764,7 +764,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
                               result.businessRecordStoresReloadSuccess &&
                               recordStatusReady &&
                               recordStatus.state == Esp32BaseRecordStore::StoreState::Ready;
-    eventStorageFault_ = !Esp32BaseAppEvents::isReady();
+    eventStorageFault_ = !Esp32BaseAppEvents::isEventStoreReady();
     recordStorageFault_ = !recordsReady;
     if (!recordsReady) {
         reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreAfterFormat);

@@ -595,11 +595,15 @@ void test_flow_calibration_detects_and_records_steady_phases() {
     TEST_ASSERT_EQUAL_UINT32(1, status.zones[0].calibrationStartupPulses);
     TEST_ASSERT_EQUAL_UINT32(24, status.zones[0].calibrationSteadyPulses);
     TEST_ASSERT_EQUAL_UINT32(800, status.zones[0].calibrationPulseRateX100);
+    TEST_ASSERT_EQUAL_UINT32(800,
+                             status.zones[0].calibrationLatestPulseRateX100);
     TEST_ASSERT_EQUAL_UINT8(3, status.zones[0].calibrationCollectedWindows);
 
     hardware.pulses += 16;
     controller.handle(4001);
     TEST_ASSERT_TRUE(controller.status().zones[0].calibrationSteadyLaterUnstable);
+    TEST_ASSERT_EQUAL_UINT32(
+        1600, controller.status().zones[0].calibrationLatestPulseRateX100);
     TEST_ASSERT_TRUE(controller.stop(4501));
     const WateringSessionSummary* summary = controller.finishedSession();
     TEST_ASSERT_NOT_NULL(summary);
@@ -645,6 +649,47 @@ void test_flow_calibration_allows_one_pulse_window_quantization() {
     TEST_ASSERT_EQUAL_UINT32(67, zone.calibrationSteadyPulses);
 }
 
+void test_new_flow_calibration_does_not_reuse_previous_steady_state() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.calibrationStability = {1, 2, 10};
+    config.flowProtection.flowStartTimeoutSec = 1;
+    WateringRequest request = requestFor(1, 60);
+    request.purpose = WateringPurpose::FlowCalibration;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    controller.handle(0);
+    hardware.pulses = 1;
+    controller.handle(1);
+    hardware.pulses += 8;
+    controller.handle(1001);
+    hardware.pulses += 8;
+    controller.handle(2001);
+    TEST_ASSERT_TRUE(controller.status().zones[0].calibrationSteadyDetected);
+    TEST_ASSERT_TRUE(controller.stop(2500));
+    controller.clearFinishedSession();
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 3000)));
+    controller.handle(3000);
+    WateringStatus status = controller.status();
+    TEST_ASSERT_FALSE(status.flowEstablished);
+    TEST_ASSERT_FALSE(status.zones[0].calibrationSteadyDetected);
+    TEST_ASSERT_EQUAL_UINT32(0, status.zones[0].calibrationSteadyPulses);
+    TEST_ASSERT_EQUAL_UINT32(0,
+                             status.zones[0].calibrationLatestPulseRateX100);
+
+    controller.handle(4000);
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::FlowStartTimeout),
+                      static_cast<int>(summary->stopReason));
+    TEST_ASSERT_FALSE(summary->zones[0].calibrationSteadyDetected);
+    TEST_ASSERT_EQUAL_UINT32(0, summary->zones[0].calibrationSteadyPulses);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -672,5 +717,6 @@ int main(int, char**) {
     RUN_TEST(test_flow_calibration_limit_counts_from_valve_open);
     RUN_TEST(test_flow_calibration_detects_and_records_steady_phases);
     RUN_TEST(test_flow_calibration_allows_one_pulse_window_quantization);
+    RUN_TEST(test_new_flow_calibration_does_not_reuse_previous_steady_state);
     return UNITY_END();
 }

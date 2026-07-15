@@ -185,6 +185,7 @@ struct ZoneWateringSummary {
     uint32_t calibrationStopDurationMs;
     uint32_t calibrationStopPulses;
     uint32_t calibrationPulseRateX100;
+    uint32_t calibrationLatestPulseRateX100;
     uint8_t calibrationWindowSec;
     uint8_t calibrationRequiredWindows;
     uint8_t calibrationAllowedVariationPercent;

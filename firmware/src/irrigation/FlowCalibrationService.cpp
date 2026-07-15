@@ -10,6 +10,14 @@ constexpr uint32_t kMaximumCoefficientX100 = 10000000;
 constexpr uint32_t kRecommendedVolumeSpanMl = 500;
 constexpr uint16_t kUnstableResidualPercentX100 = 800;
 
+int64_t roundSaturated(double value) {
+    if (!std::isfinite(value) || value >= static_cast<double>(INT64_MAX)) {
+        return value < 0.0 ? INT64_MIN : INT64_MAX;
+    }
+    if (value <= static_cast<double>(INT64_MIN)) return INT64_MIN;
+    return static_cast<int64_t>(std::llround(value));
+}
+
 }  // namespace
 
 void FlowCalibrationService::clear() {
@@ -17,7 +25,6 @@ void FlowCalibrationService::clear() {
     pendingSample_ = {};
     combinedPulsesPerLiterX100_ = 0;
     volumeSpanMl_ = 0;
-    steadyFitInterceptPulseX100_ = 0;
     combinedNonSteadyWaterMlX100_ = 0;
     resultUpdatedEpoch_ = 0;
     appliedEpoch_ = 0;
@@ -54,6 +61,7 @@ bool FlowCalibrationService::captureFinishedSession(
     pendingSample_.stopDurationMs = zone.calibrationStopDurationMs;
     pendingSample_.stopPulseCount = zone.calibrationStopPulses;
     pendingSample_.pulseRateX100 = zone.calibrationPulseRateX100;
+    pendingSample_.latestPulseRateX100 = zone.calibrationLatestPulseRateX100;
     pendingSample_.stabilityWindowSec = zone.calibrationWindowSec;
     pendingSample_.requiredStableWindows = zone.calibrationRequiredWindows;
     pendingSample_.allowedVariationPercent =
@@ -172,10 +180,6 @@ uint32_t FlowCalibrationService::combinedPulsesPerLiterX100() const {
     return combinedPulsesPerLiterX100_;
 }
 
-int64_t FlowCalibrationService::steadyFitInterceptPulseX100() const {
-    return steadyFitInterceptPulseX100_;
-}
-
 int64_t FlowCalibrationService::combinedNonSteadyWaterMlX100() const {
     return combinedNonSteadyWaterMlX100_;
 }
@@ -194,14 +198,6 @@ uint8_t FlowCalibrationService::qualityFlags() const {
     return qualityFlags_;
 }
 
-bool FlowCalibrationService::samplesUnstable() const {
-    return (qualityFlags_ & (kQualitySmallVolumeSpan |
-                             kQualityNonMonotonic |
-                             kQualityResidualHigh |
-                             kQualityPostSteadyUnstable |
-                             kQualityNegativeNonSteadyWater)) != 0;
-}
-
 uint32_t FlowCalibrationService::resultUpdatedEpoch() const { return resultUpdatedEpoch_; }
 uint32_t FlowCalibrationService::appliedEpoch() const { return appliedEpoch_; }
 uint32_t FlowCalibrationService::appliedCoefficientX100() const {
@@ -210,7 +206,6 @@ uint32_t FlowCalibrationService::appliedCoefficientX100() const {
 
 void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
     combinedPulsesPerLiterX100_ = 0;
-    steadyFitInterceptPulseX100_ = 0;
     combinedNonSteadyWaterMlX100_ = 0;
     volumeSpanMl_ = 0;
     maximumResidualPercentX100_ = 0;
@@ -290,8 +285,6 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
     const double intercept =
         (static_cast<double>(sumPulses) - slope * static_cast<double>(sumVolume)) /
         static_cast<double>(count);
-    steadyFitInterceptPulseX100_ =
-        static_cast<int64_t>(std::llround(intercept * 100.0));
     combinedNonSteadyWaterMlX100_ =
         static_cast<int64_t>(std::llround(-intercept * 100.0 / slope));
     if (combinedNonSteadyWaterMlX100_ < 0) {
@@ -304,14 +297,12 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
         const double signedResidual =
             static_cast<double>(sample.steadyPulseCount) - predicted;
         const double signedResidualPercentX100 =
-            signedResidual * 10000.0 /
-            static_cast<double>(sample.steadyPulseCount);
+            predicted > 0.0 ? signedResidual * 10000.0 / predicted : 0.0;
         sample.predictedPulseX100 =
             static_cast<int64_t>(std::llround(predicted * 100.0));
         sample.residualPulseX100 =
             static_cast<int64_t>(std::llround(signedResidual * 100.0));
-        sample.residualPercentX100 =
-            static_cast<int64_t>(std::llround(signedResidualPercentX100));
+        sample.residualPercentX100 = roundSaturated(signedResidualPercentX100);
         sample.estimatedSteadyWaterMlX100 = static_cast<int64_t>(std::llround(
             static_cast<double>(sample.steadyPulseCount) * 100.0 / slope));
         sample.estimatedNonSteadyWaterMlX100 =

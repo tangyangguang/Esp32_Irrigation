@@ -19,6 +19,11 @@ const ZoneWateringSummary* affectedZone(const WateringSessionSummary& summary) {
     return lastStarted;
 }
 
+bool appendDiscreteEvent(const Esp32BaseAppEvents::EventInput& event) {
+    return Esp32BaseAppEvents::appendDiscreteEvent(event) ==
+           Esp32BaseAppEvents::DiscreteEventAppendResult::Stored;
+}
+
 }  // namespace
 
 bool IrrigationEvents::appendAbnormalWateringStop(const WateringSessionSummary& summary) {
@@ -43,7 +48,7 @@ bool IrrigationEvents::appendAbnormalWateringStop(const WateringSessionSummary& 
     event.level = summary.stopReason == WateringStopReason::HardwareFailure
                       ? Esp32BaseAppEvents::Level::Error
                       : Esp32BaseAppEvents::Level::Warning;
-    return Esp32BaseAppEvents::append(event);
+    return appendDiscreteEvent(event);
 }
 
 bool IrrigationEvents::appendRecordStorageFault(
@@ -56,7 +61,7 @@ bool IrrigationEvents::appendRecordStorageFault(
     event.value1 = static_cast<int32_t>(state);
     event.value2 = static_cast<int32_t>(error);
     event.level = Esp32BaseAppEvents::Level::Error;
-    return Esp32BaseAppEvents::append(event);
+    return appendDiscreteEvent(event);
 }
 
 bool IrrigationEvents::appendSchedulerEvent(uint32_t eventCode,
@@ -70,7 +75,7 @@ bool IrrigationEvents::appendSchedulerEvent(uint32_t eventCode,
     event.objectId = planId;
     event.value1 = value;
     event.level = level;
-    return Esp32BaseAppEvents::append(event);
+    return appendDiscreteEvent(event);
 }
 
 bool IrrigationEvents::appendFlowDeviationEvents(const WateringSessionSummary& summary) {
@@ -84,7 +89,7 @@ bool IrrigationEvents::appendFlowDeviationEvents(const WateringSessionSummary& s
             event.objectId = zone.zoneId;
             event.value1 = static_cast<int32_t>(zone.actualWateringSec);
             event.level = Esp32BaseAppEvents::Level::Warning;
-            success = Esp32BaseAppEvents::append(event) && success;
+            success = appendDiscreteEvent(event) && success;
         }
         if (zone.highFlowDetected && summary.stopReason != WateringStopReason::HighFlow) {
             Esp32BaseAppEvents::EventInput event;
@@ -93,7 +98,7 @@ bool IrrigationEvents::appendFlowDeviationEvents(const WateringSessionSummary& s
             event.objectId = zone.zoneId;
             event.value1 = static_cast<int32_t>(zone.actualWateringSec);
             event.level = Esp32BaseAppEvents::Level::Warning;
-            success = Esp32BaseAppEvents::append(event) && success;
+            success = appendDiscreteEvent(event) && success;
         }
     }
     return success;

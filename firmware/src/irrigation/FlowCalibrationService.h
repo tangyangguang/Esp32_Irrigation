@@ -30,6 +30,7 @@ public:
         uint32_t stopDurationMs;
         uint32_t stopPulseCount;
         uint32_t pulseRateX100;
+        uint32_t latestPulseRateX100;
         int64_t predictedPulseX100;
         int64_t residualPulseX100;
         int64_t residualPercentX100;
@@ -64,13 +65,11 @@ public:
     const Sample* sample(uint8_t index) const;
     bool resultReady() const;
     uint32_t combinedPulsesPerLiterX100() const;
-    int64_t steadyFitInterceptPulseX100() const;
     int64_t combinedNonSteadyWaterMlX100() const;
     uint32_t volumeSpanMl() const;
     uint8_t validZoneCount() const;
     uint16_t maximumResidualPercentX100() const;
     uint8_t qualityFlags() const;
-    bool samplesUnstable() const;
     uint32_t resultUpdatedEpoch() const;
     uint32_t appliedEpoch() const;
     uint32_t appliedCoefficientX100() const;
@@ -83,7 +82,6 @@ private:
     Sample pendingSample_{};
     uint32_t combinedPulsesPerLiterX100_ = 0;
     uint32_t volumeSpanMl_ = 0;
-    int64_t steadyFitInterceptPulseX100_ = 0;
     int64_t combinedNonSteadyWaterMlX100_ = 0;
     uint32_t resultUpdatedEpoch_ = 0;
     uint32_t appliedEpoch_ = 0;
