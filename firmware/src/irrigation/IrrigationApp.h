@@ -49,6 +49,9 @@ public:
     WateringStartResult startFlowCalibration(uint8_t zoneId,
                                              uint16_t maximumDurationMinutes);
     bool submitFlowCalibrationMeasurement(uint32_t measuredWaterMl);
+    bool markFlowCalibrationSampleInvalid();
+    bool updateFlowCalibrationMeasurement(uint8_t index, uint32_t measuredWaterMl);
+    bool deleteFlowCalibrationSample(uint8_t index);
     bool applyFlowCalibrationResult();
     void resetFlowCalibration();
     const FlowCalibrationService& flowCalibration() const;
@@ -83,6 +86,7 @@ private:
     static void parameterConfigSaved(void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
+    uint32_t trustedEpoch() const;
 
     bool started_ = false;
     bool baseReady_ = false;

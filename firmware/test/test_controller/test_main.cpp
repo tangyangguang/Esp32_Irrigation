@@ -541,6 +541,35 @@ void test_maintenance_abort_immediately_closes_outputs_and_keeps_result() {
     TEST_ASSERT_EQUAL_UINT32(2, summary->zones[0].actualWateringSec);
 }
 
+void test_flow_calibration_limit_counts_from_valve_open() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.flowProtection.flowStartTimeoutSec = 120;
+    config.flowProtection.noFlowTimeoutSec = 120;
+    WateringRequest request = requestFor(1, 600);
+    request.purpose = WateringPurpose::FlowCalibration;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    controller.handle(100000);
+    ++hardware.pulses;
+    controller.handle(100001);
+    ++hardware.pulses;
+    controller.handle(500000);
+    controller.handle(599999);
+    TEST_ASSERT_TRUE(controller.status().active);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.status().currentZoneRemainingSec);
+
+    controller.handle(600000);
+    TEST_ASSERT_FALSE(controller.status().active);
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
+                      static_cast<int>(summary->stopReason));
+    TEST_ASSERT_EQUAL_UINT32(600, summary->elapsedSec);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -565,5 +594,6 @@ int main(int, char**) {
     RUN_TEST(test_invalid_request_and_hardware_failure_are_rejected_safely);
     RUN_TEST(test_timers_work_across_millis_wraparound);
     RUN_TEST(test_maintenance_abort_immediately_closes_outputs_and_keeps_result);
+    RUN_TEST(test_flow_calibration_limit_counts_from_valve_open);
     return UNITY_END();
 }

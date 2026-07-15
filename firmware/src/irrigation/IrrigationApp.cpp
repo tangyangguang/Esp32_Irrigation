@@ -325,13 +325,31 @@ WateringStartResult IrrigationApp::startFlowCalibration(
 }
 
 bool IrrigationApp::submitFlowCalibrationMeasurement(uint32_t measuredWaterMl) {
-    return businessReady_ && flowCalibrationService_.addPendingMeasurement(measuredWaterMl);
+    return businessReady_ && !wateringController_.status().active &&
+           flowCalibrationService_.addPendingMeasurement(measuredWaterMl, trustedEpoch());
+}
+
+bool IrrigationApp::markFlowCalibrationSampleInvalid() {
+    return businessReady_ && !wateringController_.status().active &&
+           flowCalibrationService_.markPendingInvalid();
+}
+
+bool IrrigationApp::updateFlowCalibrationMeasurement(uint8_t index,
+                                                     uint32_t measuredWaterMl) {
+    return businessReady_ && !wateringController_.status().active &&
+           flowCalibrationService_.updateMeasurement(index, measuredWaterMl, trustedEpoch());
+}
+
+bool IrrigationApp::deleteFlowCalibrationSample(uint8_t index) {
+    return businessReady_ && !wateringController_.status().active &&
+           flowCalibrationService_.deleteSample(index, trustedEpoch());
 }
 
 bool IrrigationApp::applyFlowCalibrationResult() {
     const uint32_t coefficient = flowCalibrationService_.combinedPulsesPerLiterX100();
     const IrrigationConfig* current = configStore_.current();
     if (!businessReady_ || wateringController_.status().active || !current ||
+        flowCalibrationService_.hasPendingMeasurement() ||
         !flowCalibrationService_.resultReady() || coefficient == 0) {
         return false;
     }
@@ -352,6 +370,7 @@ bool IrrigationApp::applyFlowCalibrationResult() {
             Esp32BaseAppEvents::Level::Info)) {
         eventStorageFault_ = true;
     }
+    flowCalibrationService_.markResultApplied(trustedEpoch(), coefficient);
     return true;
 }
 
@@ -523,7 +542,7 @@ void IrrigationApp::consumeFinishedWatering() {
     }
 
     if (summary->purpose == WateringPurpose::FlowCalibration) {
-        flowCalibrationService_.captureFinishedSession(*summary);
+        flowCalibrationService_.captureFinishedSession(*summary, trustedEpoch());
     } else if (summary->purpose == WateringPurpose::ZoneFlowLearning &&
                summary->zoneCount == 1 &&
                summary->zones[0].suggestedFlowMlPerMinute != 0) {
@@ -555,6 +574,11 @@ void IrrigationApp::consumeFinishedWatering() {
     wateringController_.clearFinishedSession();
     wateringStartTime_ = {};
     wateringStartTimeValid_ = false;
+}
+
+uint32_t IrrigationApp::trustedEpoch() const {
+    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+    return now.synced ? now.epochSec : 0;
 }
 
 void IrrigationApp::applyPendingHardwareConfiguration() {

@@ -103,6 +103,16 @@ void WateringController::handle(uint32_t nowMs) {
         return;
     }
 
+    if (request_.purpose == WateringPurpose::FlowCalibration &&
+        state_ != WateringState::StoppingZone &&
+        currentStepIndex_ < request_.stepCount &&
+        elapsed(nowMs,
+                sessionStartedMs_,
+                request_.steps[currentStepIndex_].targetDurationSec * 1000U)) {
+        finishCurrentZone(nowMs);
+        return;
+    }
+
     switch (state_) {
         case WateringState::StartingZone:
             if (elapsed(nowMs, stateStartedMs_, pump_.startDelayMs)) {
@@ -213,8 +223,11 @@ WateringStatus WateringController::status() const {
                 static_cast<uint32_t>(endedMs - wateringStartedMs_) / 1000U;
         }
         const uint32_t targetSec = request_.steps[currentStepIndex_].targetDurationSec;
-        result.currentZoneRemainingSec = result.currentZoneElapsedSec < targetSec
-                                             ? targetSec - result.currentZoneElapsedSec
+        const uint32_t limitElapsedSec = request_.purpose == WateringPurpose::FlowCalibration
+                                             ? result.elapsedSec
+                                             : result.currentZoneElapsedSec;
+        result.currentZoneRemainingSec = limitElapsedSec < targetSec
+                                             ? targetSec - limitElapsedSec
                                              : 0U;
         ZoneWateringSummary& current = result.zones[currentStepIndex_];
         current.actualWateringSec = result.currentZoneElapsedSec;
