@@ -1015,9 +1015,17 @@ void IrrigationWeb::plans() {
         redirectResult("/irrigation/plans", savePlanFromRequest());
         return;
     }
-    if (!beginPage("浇水计划", "查看已有计划，点击编辑后再修改详细内容")) return;
+    if (!beginPage("浇水计划", "查看计划的执行时间和各水路时长，点击编辑可修改配置")) return;
     Esp32BaseWeb::sendChunk(
         "<style>"
+        ".plan-table{width:100%;min-width:780px;border-collapse:collapse;font-size:13px}"
+        ".plan-table th,.plan-table td{padding:10px 8px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:top}"
+        ".plan-table th{color:var(--eb-muted);font-weight:650;white-space:nowrap}"
+        ".plan-table tbody tr:last-child td{border-bottom:0}"
+        ".plan-table tbody tr:hover{background:var(--eb-soft)}"
+        ".plan-name{min-width:10em}.plan-name b,.plan-name small{display:block}.plan-name small{margin-top:3px;color:var(--eb-muted)}"
+        ".plan-values{display:grid;gap:3px;min-width:9em}.plan-values span{display:block}.plan-values .muted{color:var(--eb-muted)}"
+        ".plan-mode,.plan-action{width:1%;white-space:nowrap}.plan-action{text-align:right}"
         ".plan-modal{width:min(820px,calc(100vw - 28px))}"
         ".plan-editor{display:grid;gap:14px;margin-top:12px}"
         ".plan-group{padding:14px;border:1px solid var(--eb-line);border-radius:9px;background:var(--eb-soft)}"
@@ -1038,6 +1046,13 @@ void IrrigationWeb::plans() {
         ".plan-zone small{display:block;margin-top:5px;color:var(--eb-muted)}"
         ".plan-form-actions{padding-top:2px}"
         "@media(max-width:760px){"
+        ".plan-table{display:block;min-width:0}.plan-table thead{display:none}.plan-table tbody{display:grid;gap:9px}"
+        ".plan-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}"
+        ".plan-table tbody tr:hover{background:#fff}.plan-table td{display:grid;grid-template-columns:7em minmax(0,1fr);gap:8px;padding:4px 0;border:0;white-space:normal}"
+        ".plan-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:650}"
+        ".plan-table .plan-name b,.plan-table .plan-name small{display:inline}.plan-table .plan-name small{margin:0 0 0 6px}"
+        ".plan-table .plan-values{min-width:0}.plan-table .plan-action{display:flex;justify-content:flex-end;width:auto;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}"
+        ".plan-table .plan-action::before{display:none}.plan-table .plan-action>.btnlink{width:100%;min-height:34px}"
         ".plan-modal{width:calc(100vw - 20px)}"
         ".plan-basic,.plan-times,.plan-zones{grid-template-columns:1fr}"
         ".plan-group{padding:12px}"
@@ -1050,22 +1065,39 @@ void IrrigationWeb::plans() {
         Esp32BaseWeb::beginPanel("已有计划");
         for (const WateringPlan& plan : config->plans) {
             if (!plan.configured) { if (firstAvailable < 0) firstAvailable = plan.id - 1; continue; }
+            if (!anyConfigured) {
+                Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='plan-table'><thead><tr><th>计划名称</th><th>执行方式</th><th>启动时间</th><th>各水路浇水时长</th><th>操作</th></tr></thead><tbody>");
+            }
             anyConfigured = true;
-            uint8_t zoneCount = 0, timeCount = 0;
-            for (uint8_t i = 0; i < plan.zoneDurationMinutes.size(); ++i)
-                if (config->zones[i].enabled && plan.zoneDurationMinutes[i] != 0) ++zoneCount;
-            for (uint16_t minute : plan.startMinutes) if (minute != kUnusedStartMinute) ++timeCount;
-            char summary[72];
-            std::snprintf(summary, sizeof(summary), "%s · %u 条水路 · %u 个时间",
-                          plan.scheduleEnabled ? "自动执行" : "仅手动", zoneCount, timeCount);
-            Esp32BaseWeb::sendChunk("<div class='urow'><div><b>");
+            Esp32BaseWeb::sendChunk("<tr><td data-label='计划名称' class='plan-name'><b>");
             Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
-            Esp32BaseWeb::sendChunk("</b><small>"); Esp32BaseWeb::writeHtmlEscaped(summary);
-            Esp32BaseWeb::sendChunk("</small></div><div class='uactions'><span class='uvalue'>计划 "); sendUnsigned(plan.id);
-            Esp32BaseWeb::sendChunk("</span><button type='button' class='btnlink info' onclick=\"document.getElementById('plan-"); sendUnsigned(plan.id);
-            Esp32BaseWeb::sendChunk("').showModal()\">编辑</button></div></div>");
+            Esp32BaseWeb::sendChunk("</b><small>计划 "); sendUnsigned(plan.id);
+            Esp32BaseWeb::sendChunk("</small></td><td data-label='执行方式' class='plan-mode'><span class='tag ");
+            Esp32BaseWeb::sendChunk(plan.scheduleEnabled ? "ok'>自动执行" : "'>仅手动");
+            Esp32BaseWeb::sendChunk("</span></td><td data-label='启动时间'><div class='plan-values'>");
+            bool hasStartTime = false;
+            for (uint16_t minute : plan.startMinutes) {
+                if (minute == kUnusedStartMinute) continue;
+                hasStartTime = true;
+                char time[8];
+                std::snprintf(time, sizeof(time), "%02u:%02u", minute / 60U, minute % 60U);
+                Esp32BaseWeb::sendChunk("<span>"); Esp32BaseWeb::sendChunk(time); Esp32BaseWeb::sendChunk("</span>");
+            }
+            if (!hasStartTime) Esp32BaseWeb::sendChunk("<span class='muted'>未设置</span>");
+            Esp32BaseWeb::sendChunk("</div></td><td data-label='各水路浇水时长'><div class='plan-values'>");
+            bool hasEnabledZone = false;
+            for (uint8_t index = 0; index < plan.zoneDurationMinutes.size(); ++index) {
+                if (!config->zones[index].enabled) continue;
+                hasEnabledZone = true;
+                Esp32BaseWeb::sendChunk("<span>"); Esp32BaseWeb::writeHtmlEscaped(config->zones[index].name.data());
+                Esp32BaseWeb::sendChunk("："); sendUnsigned(plan.zoneDurationMinutes[index]); Esp32BaseWeb::sendChunk(" 分钟</span>");
+            }
+            if (!hasEnabledZone) Esp32BaseWeb::sendChunk("<span class='muted'>暂无启用水路</span>");
+            Esp32BaseWeb::sendChunk("</div></td><td data-label='操作' class='plan-action'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('plan-"); sendUnsigned(plan.id);
+            Esp32BaseWeb::sendChunk("').showModal()\">编辑</button></td></tr>");
         }
-        if (!anyConfigured) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "尚无浇水计划", "新增后可用于手动浇水或定时自动执行。");
+        if (anyConfigured) Esp32BaseWeb::sendChunk("</tbody></table></div>");
+        else Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "尚无浇水计划", "新增后可用于手动浇水或定时自动执行。");
         if (firstAvailable >= 0) {
             Esp32BaseWeb::sendChunk("<div class='actions'><button type='button' onclick=\"document.getElementById('plan-"); sendUnsigned(firstAvailable + 1U);
             Esp32BaseWeb::sendChunk("').showModal()\">新增计划</button></div>");

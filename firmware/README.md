@@ -24,4 +24,6 @@ pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-po
 
 2026-07-15 的实际结果：执行 `pio test -e native` 通过 55/55 个测试用例，执行 `pio run -e esp32_irrigation` 通过，资源占用为 RAM 78452 B / 23.9%，Flash 1137889 B / 72.3%。
 
+2026-07-15 浇水计划完整列表改造：执行 `pio test -e native` 通过 55/55 个测试用例，执行 `pio run -e esp32_irrigation` 通过，资源占用为 RAM 78452 B / 23.9%，Flash 1140117 B / 72.5%；通过 `/dev/cu.usbserial-57460296581` 烧录正式固件成功，写入 Hash 校验通过并正常硬复位。本轮按约定只完成代码级 HTML/CSS 检查，没有执行桌面或手机页面截图与人工视觉验收。
+
 仍需在完整 PCB 和真实水路上验证电磁阀、泵、流量计、RTC、突然断电及 LittleFS 真实写失败。本地 LCD2004 与四按钮功能按方案明确留待 Web 功能稳定后另行设计。
