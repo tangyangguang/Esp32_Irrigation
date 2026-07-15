@@ -20,7 +20,11 @@ public:
         uint32_t pulseCount;
         uint32_t measuredWaterMl;
         uint32_t elapsedSec;
+        int64_t predictedPulseX100;
+        int64_t residualPulseX100;
+        int64_t residualPercentX100;
         WateringStopReason stopReason;
+        uint8_t zoneId;
         bool valid;
     };
 
@@ -35,14 +39,17 @@ public:
     bool hasPendingMeasurement() const;
     uint32_t pendingPulseCount() const;
     uint32_t pendingElapsedSec() const;
+    uint8_t pendingZoneId() const;
     WateringStopReason pendingStopReason() const;
     uint8_t sampleCount() const;
     uint8_t validSampleCount() const;
     const Sample* sample(uint8_t index) const;
-    uint8_t zoneId() const;
     bool resultReady() const;
     uint32_t combinedPulsesPerLiterX100() const;
+    int64_t nonSteadyPulseX100() const;
+    int64_t equivalentWaterMlX100() const;
     uint32_t volumeSpanMl() const;
+    uint8_t validZoneCount() const;
     uint16_t maximumResidualPercentX100() const;
     uint8_t qualityFlags() const;
     bool samplesUnstable() const;
@@ -59,13 +66,16 @@ private:
     uint32_t volumeSpanMl_ = 0;
     uint32_t pendingPulseCount_ = 0;
     uint32_t pendingElapsedSec_ = 0;
+    int64_t nonSteadyPulseX100_ = 0;
+    int64_t equivalentWaterMlX100_ = 0;
     uint32_t resultUpdatedEpoch_ = 0;
     uint32_t appliedEpoch_ = 0;
     uint32_t appliedCoefficientX100_ = 0;
     uint16_t maximumResidualPercentX100_ = 0;
     uint8_t sampleCount_ = 0;
     uint8_t validSampleCount_ = 0;
-    uint8_t zoneId_ = 0;
+    uint8_t validZoneCount_ = 0;
+    uint8_t pendingZoneId_ = 0;
     uint8_t qualityFlags_ = 0;
     WateringStopReason pendingStopReason_ = WateringStopReason::None;
     bool pendingMeasurement_ = false;

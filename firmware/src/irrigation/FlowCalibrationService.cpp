@@ -18,13 +18,16 @@ void FlowCalibrationService::clear() {
     volumeSpanMl_ = 0;
     pendingPulseCount_ = 0;
     pendingElapsedSec_ = 0;
+    nonSteadyPulseX100_ = 0;
+    equivalentWaterMlX100_ = 0;
     resultUpdatedEpoch_ = 0;
     appliedEpoch_ = 0;
     appliedCoefficientX100_ = 0;
     maximumResidualPercentX100_ = 0;
     sampleCount_ = 0;
     validSampleCount_ = 0;
-    zoneId_ = 0;
+    validZoneCount_ = 0;
+    pendingZoneId_ = 0;
     qualityFlags_ = 0;
     pendingStopReason_ = WateringStopReason::None;
     pendingMeasurement_ = false;
@@ -37,11 +40,10 @@ bool FlowCalibrationService::captureFinishedSession(
     if (summary.purpose != WateringPurpose::FlowCalibration ||
         summary.zoneCount != 1 || summary.zones[0].zoneId == 0 ||
         summary.zones[0].result == ZoneWateringResult::NotStarted ||
-        pendingMeasurement_ || sampleCount_ >= samples_.size() ||
-        (zoneId_ != 0 && zoneId_ != summary.zones[0].zoneId)) {
+        pendingMeasurement_ || sampleCount_ >= samples_.size()) {
         return false;
     }
-    zoneId_ = summary.zones[0].zoneId;
+    pendingZoneId_ = summary.zones[0].zoneId;
     pendingPulseCount_ = summary.zones[0].pulseCount;
     pendingElapsedSec_ = summary.elapsedSec;
     pendingStopReason_ = summary.stopReason;
@@ -112,9 +114,11 @@ bool FlowCalibrationService::appendPending(bool valid,
     sample.measuredWaterMl = measuredWaterMl;
     sample.elapsedSec = pendingElapsedSec_;
     sample.stopReason = pendingStopReason_;
+    sample.zoneId = pendingZoneId_;
     sample.valid = valid;
     pendingPulseCount_ = 0;
     pendingElapsedSec_ = 0;
+    pendingZoneId_ = 0;
     pendingStopReason_ = WateringStopReason::None;
     pendingMeasurement_ = false;
     if (valid) recalculate(resultEpoch);
@@ -127,6 +131,7 @@ bool FlowCalibrationService::hasPendingMeasurement() const {
 
 uint32_t FlowCalibrationService::pendingPulseCount() const { return pendingPulseCount_; }
 uint32_t FlowCalibrationService::pendingElapsedSec() const { return pendingElapsedSec_; }
+uint8_t FlowCalibrationService::pendingZoneId() const { return pendingZoneId_; }
 WateringStopReason FlowCalibrationService::pendingStopReason() const {
     return pendingStopReason_;
 }
@@ -141,10 +146,6 @@ const FlowCalibrationService::Sample* FlowCalibrationService::sample(uint8_t ind
     return index < sampleCount_ ? &samples_[index] : nullptr;
 }
 
-uint8_t FlowCalibrationService::zoneId() const {
-    return zoneId_;
-}
-
 bool FlowCalibrationService::resultReady() const {
     return resultReady_;
 }
@@ -153,9 +154,19 @@ uint32_t FlowCalibrationService::combinedPulsesPerLiterX100() const {
     return combinedPulsesPerLiterX100_;
 }
 
+int64_t FlowCalibrationService::nonSteadyPulseX100() const {
+    return nonSteadyPulseX100_;
+}
+
+int64_t FlowCalibrationService::equivalentWaterMlX100() const {
+    return equivalentWaterMlX100_;
+}
+
 uint32_t FlowCalibrationService::volumeSpanMl() const {
     return volumeSpanMl_;
 }
+
+uint8_t FlowCalibrationService::validZoneCount() const { return validZoneCount_; }
 
 uint16_t FlowCalibrationService::maximumResidualPercentX100() const {
     return maximumResidualPercentX100_;
@@ -179,11 +190,23 @@ uint32_t FlowCalibrationService::appliedCoefficientX100() const {
 
 void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
     combinedPulsesPerLiterX100_ = 0;
+    nonSteadyPulseX100_ = 0;
+    equivalentWaterMlX100_ = 0;
     volumeSpanMl_ = 0;
     maximumResidualPercentX100_ = 0;
     validSampleCount_ = 0;
+    validZoneCount_ = 0;
+    bool zonesSeen[UINT8_MAX + 1U]{};
     for (uint8_t index = 0; index < sampleCount_; ++index) {
-        if (samples_[index].valid) ++validSampleCount_;
+        samples_[index].predictedPulseX100 = 0;
+        samples_[index].residualPulseX100 = 0;
+        samples_[index].residualPercentX100 = 0;
+        if (!samples_[index].valid) continue;
+        ++validSampleCount_;
+        if (!zonesSeen[samples_[index].zoneId]) {
+            zonesSeen[samples_[index].zoneId] = true;
+            ++validZoneCount_;
+        }
     }
     qualityFlags_ = validSampleCount_ == 2 ? kQualityOnlyTwoSamples : 0;
     resultReady_ = false;
@@ -245,13 +268,23 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
     const double intercept =
         (static_cast<double>(sumPulses) - slope * static_cast<double>(sumVolume)) /
         static_cast<double>(count);
+    nonSteadyPulseX100_ = static_cast<int64_t>(std::llround(intercept * 100.0));
+    equivalentWaterMlX100_ =
+        static_cast<int64_t>(std::llround(intercept * 100.0 / slope));
     for (uint8_t index = 0; index < sampleCount_; ++index) {
-        const Sample& sample = samples_[index];
+        Sample& sample = samples_[index];
         if (!sample.valid) continue;
         const double predicted = intercept + slope * sample.measuredWaterMl;
-        const double residual =
-            std::fabs(predicted - sample.pulseCount) * 10000.0 /
-            static_cast<double>(sample.pulseCount);
+        const double signedResidual = static_cast<double>(sample.pulseCount) - predicted;
+        const double signedResidualPercentX100 =
+            signedResidual * 10000.0 / static_cast<double>(sample.pulseCount);
+        sample.predictedPulseX100 =
+            static_cast<int64_t>(std::llround(predicted * 100.0));
+        sample.residualPulseX100 =
+            static_cast<int64_t>(std::llround(signedResidual * 100.0));
+        sample.residualPercentX100 =
+            static_cast<int64_t>(std::llround(signedResidualPercentX100));
+        const double residual = std::fabs(signedResidualPercentX100);
         const uint16_t residualX100 = residual >= UINT16_MAX
                                           ? UINT16_MAX
                                           : static_cast<uint16_t>(residual + 0.5);

@@ -310,8 +310,6 @@ WateringStartResult IrrigationApp::startFlowCalibration(
     uint16_t maximumDurationMinutes) {
     if (flowCalibrationService_.hasPendingMeasurement() ||
         flowCalibrationService_.sampleCount() >= FlowCalibrationService::kMaximumSamples ||
-        (flowCalibrationService_.zoneId() != 0 &&
-         flowCalibrationService_.zoneId() != zoneId) ||
         !BoardPins::isValidZoneId(zoneId) || maximumDurationMinutes == 0 ||
         maximumDurationMinutes > 10) {
         return WateringStartResult::InvalidRequest;
@@ -363,7 +361,7 @@ bool IrrigationApp::applyFlowCalibrationResult() {
     if (!IrrigationEvents::appendSchedulerEvent(
             static_cast<uint32_t>(IrrigationEvents::EventCode::FlowCalibrationSaved),
             IrrigationEvents::ReasonCode::CalibrationCoefficientSaved,
-            flowCalibrationService_.zoneId(),
+            0,
             coefficient > static_cast<uint32_t>(INT32_MAX)
                 ? INT32_MAX
                 : static_cast<int32_t>(coefficient),
