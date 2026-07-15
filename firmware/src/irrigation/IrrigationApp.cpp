@@ -68,7 +68,6 @@ bool IrrigationApp::begin() {
     Esp32Base::setFirmwareInfo(kFirmwareName, kFirmwareVersion);
     Esp32BaseRtc::configure(Wire);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
-    Esp32BaseWeb::setBuiltinLabel(Esp32BaseWeb::BUILTIN_APP_EVENTS, "原始事件");
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
     if (!IrrigationParameterConfig::registerFields(parameterConfigSaved, this) ||
         !IrrigationWeb::registerRoutes(*this)) {

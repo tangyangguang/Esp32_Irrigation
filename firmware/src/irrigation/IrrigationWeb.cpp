@@ -627,7 +627,7 @@ void sendEventTime(const Esp32BaseRecordStore::RecordTiming& timing) {
     uint32_t epoch = 0;
     char text[32]{};
     if (Esp32BaseRecordStore::resolveCompletedEpoch(timing, epoch) &&
-        Esp32BaseTime::formatEpoch(epoch, text, sizeof(text), "%Y-%m-%d %H:%M:%S")) {
+        Esp32BaseTime::formatEpoch(epoch, text, sizeof(text), "%m-%d %H:%M:%S")) {
         Esp32BaseWeb::sendChunk(text);
         return;
     }
@@ -652,54 +652,76 @@ void sendEventDetailDialog(const Esp32BaseAppEvents::EventRecord& event,
     IrrigationEvents::formatSummary(event, summary, sizeof(summary));
     Esp32BaseWeb::sendChunk("<dialog id='");
     Esp32BaseWeb::sendChunk(dialogId);
-    Esp32BaseWeb::sendChunk("' class='panel eb-modal event-detail' data-eb-light-dismiss='1'><div class='event-detail-head'><div><span class='tag ");
+    Esp32BaseWeb::sendChunk("' class='panel eb-modal event-detail' data-eb-light-dismiss='1'><div class='event-detail-head'><div class='event-detail-heading'><span class='tag ");
     Esp32BaseWeb::sendChunk(eventToneClass(event.level));
     Esp32BaseWeb::sendChunk("'>");
     Esp32BaseWeb::sendChunk(IrrigationEvents::levelName(event.level));
     Esp32BaseWeb::sendChunk("</span><h2>");
-    Esp32BaseWeb::sendChunk(title);
-    Esp32BaseWeb::sendChunk("</h2></div><button type='button' class='secondary compact' onclick='this.closest(\"dialog\").close()'>关闭</button></div><p class='event-detail-summary'>");
-    Esp32BaseWeb::sendChunk(summary);
-    Esp32BaseWeb::sendChunk("</p><div class='event-detail-grid'><div><b>时间</b><span>");
+    Esp32BaseWeb::writeHtmlEscaped(title);
+    Esp32BaseWeb::sendChunk("</h2></div><button type='button' class='secondary compact event-detail-close' onclick='this.closest(\"dialog\").close()'>关闭</button></div><p class='event-detail-summary'>");
+    Esp32BaseWeb::writeHtmlEscaped(summary);
+    Esp32BaseWeb::sendChunk("</p><section class='event-detail-section'><h3>事件概况</h3><div class='event-detail-grid'><div><b>发生时间</b><span class='event-time-value'>");
     sendEventTime(event.timing);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>分类</b><span>");
+    Esp32BaseWeb::sendChunk("</span></div><div><b>严重程度</b><span><span class='tag ");
+    Esp32BaseWeb::sendChunk(eventToneClass(event.level));
+    Esp32BaseWeb::sendChunk("'>");
+    Esp32BaseWeb::sendChunk(IrrigationEvents::levelName(event.level));
+    Esp32BaseWeb::sendChunk("</span></span></div><div><b>业务分类</b><span>");
     Esp32BaseWeb::sendChunk(IrrigationEvents::categoryName(IrrigationEvents::category(event)));
-    Esp32BaseWeb::sendChunk("</span></div><div><b>记录编号</b><span>#");
-    sendUnsigned(event.recordId);
-    Esp32BaseWeb::sendChunk("</span></div>");
+    Esp32BaseWeb::sendChunk("</span></div></div></section>");
     const IrrigationEvents::EventCode eventCode =
         static_cast<IrrigationEvents::EventCode>(event.eventCode);
     if (eventCode == IrrigationEvents::EventCode::WateringStoppedAbnormally ||
         eventCode == IrrigationEvents::EventCode::FlowDeviation) {
-        Esp32BaseWeb::sendChunk("<div><b>检测脉冲</b><span>");
+        Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关数据</h3><div class='event-detail-grid'><div><b>水路</b><span>");
+        sendUnsigned(event.objectId);
+        Esp32BaseWeb::sendChunk("</span></div><div><b>检测脉冲</b><span>");
         sendUnsigned(event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1));
         Esp32BaseWeb::sendChunk(" 个</span></div><div><b>实际时间</b><span>");
         sendUnsigned(event.value2 < 0 ? 0 : static_cast<uint32_t>(event.value2));
-        Esp32BaseWeb::sendChunk(" 秒</span></div>");
+        Esp32BaseWeb::sendChunk(" 秒</span></div></div></section>");
     } else if (eventCode == IrrigationEvents::EventCode::ClosedValveFlow) {
-        Esp32BaseWeb::sendChunk("<div><b>窗口脉冲</b><span>");
+        Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关数据</h3><div class='event-detail-grid'><div><b>窗口脉冲</b><span>");
         sendUnsigned(event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1));
         Esp32BaseWeb::sendChunk(" 个</span></div><div><b>检测窗口</b><span>");
         sendUnsigned(event.value2 < 0 ? 0 : static_cast<uint32_t>(event.value2));
-        Esp32BaseWeb::sendChunk(" 秒</span></div>");
+        Esp32BaseWeb::sendChunk(" 秒</span></div></div></section>");
     } else if (eventCode == IrrigationEvents::EventCode::FlowCalibrationSaved) {
         const uint32_t coefficient = event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1);
         char coefficientText[24]{};
         std::snprintf(coefficientText, sizeof(coefficientText), "%lu.%02lu P/L",
                       static_cast<unsigned long>(coefficient / 100U),
                       static_cast<unsigned long>(coefficient % 100U));
-        Esp32BaseWeb::sendChunk("<div><b>稳态流量系数</b><span>");
+        Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关数据</h3><div class='event-detail-grid'><div><b>稳态流量系数</b><span>");
         Esp32BaseWeb::sendChunk(coefficientText);
-        Esp32BaseWeb::sendChunk("</span></div>");
+        Esp32BaseWeb::sendChunk("</span></div></div></section>");
     } else if (eventCode == IrrigationEvents::EventCode::ZoneFlowSaved) {
         char flow[20]{};
         IrrigationConfigRules::formatLitersPerMinute(
             event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1), flow, sizeof(flow));
-        Esp32BaseWeb::sendChunk("<div><b>参考流量</b><span>");
+        Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关数据</h3><div class='event-detail-grid'><div><b>水路</b><span>");
+        sendUnsigned(event.objectId);
+        Esp32BaseWeb::sendChunk("</span></div><div><b>参考流量</b><span>");
         Esp32BaseWeb::sendChunk(flow);
-        Esp32BaseWeb::sendChunk(" L/min</span></div>");
+        Esp32BaseWeb::sendChunk(" L/min</span></div></div></section>");
+    } else if (eventCode == IrrigationEvents::EventCode::AutomaticPlanSkipped) {
+        Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关对象</h3><div class='event-detail-grid'><div><b>计划</b><span>");
+        sendUnsigned(event.objectId);
+        Esp32BaseWeb::sendChunk("</span></div></div></section>");
+    } else if (eventCode == IrrigationEvents::EventCode::ConfigurationChanged &&
+               event.objectId != 0) {
+        const IrrigationEvents::ReasonCode reason =
+            static_cast<IrrigationEvents::ReasonCode>(event.reasonCode);
+        const bool zoneChanged = reason == IrrigationEvents::ReasonCode::ZoneUpdated;
+        Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关对象</h3><div class='event-detail-grid'><div><b>");
+        Esp32BaseWeb::sendChunk(zoneChanged ? "水路" : "计划");
+        Esp32BaseWeb::sendChunk("</b><span>");
+        sendUnsigned(event.objectId);
+        Esp32BaseWeb::sendChunk("</span></div></div></section>");
     }
-    Esp32BaseWeb::sendChunk("</div><details class='event-technical'><summary>技术信息</summary><div class='event-detail-grid'><div><b>事件码</b><span>");
+    Esp32BaseWeb::sendChunk("<details class='event-technical'><summary>技术信息</summary><div class='event-detail-grid'><div><b>记录编号</b><span>#");
+    sendUnsigned(event.recordId);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>事件码</b><span>");
     sendUnsigned(event.eventCode);
     Esp32BaseWeb::sendChunk("</span></div><div><b>原因码</b><span>");
     sendUnsigned(event.reasonCode);
@@ -716,9 +738,15 @@ void sendEventDetailDialog(const Esp32BaseAppEvents::EventRecord& event,
     sendUnsigned(event.flags);
     Esp32BaseWeb::sendChunk("</span></div><div><b>条件 ID</b><span>");
     sendUnsigned(event.conditionId);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>事件类型</b><span>");
+    sendUnsigned(static_cast<uint32_t>(event.eventKind));
     Esp32BaseWeb::sendChunk("</span></div><div><b>启动编号</b><span>");
     sendUnsigned(event.timing.completedBootId);
-    Esp32BaseWeb::sendChunk("</span></div></div></details><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>关闭</button></div></dialog>");
+    Esp32BaseWeb::sendChunk("</span></div><div><b>启动后时间</b><span>");
+    sendUnsigned(event.timing.completedUptimeSec);
+    Esp32BaseWeb::sendChunk(" 秒</span></div><div><b>持续时间</b><span>");
+    sendUnsigned(event.timing.durationSec);
+    Esp32BaseWeb::sendChunk(" 秒</span></div></div></details></dialog>");
 }
 
 void sendEventRow(const Esp32BaseAppEvents::EventRecord& event, void* user) {
@@ -736,16 +764,16 @@ void sendEventRow(const Esp32BaseAppEvents::EventRecord& event, void* user) {
                   static_cast<unsigned long>(event.recordId));
     Esp32BaseWeb::sendChunk("<tr><td data-label='时间' class='event-time'>");
     sendEventTime(event.timing);
-    Esp32BaseWeb::sendChunk("</td><td data-label='等级'><span class='tag ");
+    Esp32BaseWeb::sendChunk("</td><td data-label='等级' class='event-level'><span class='tag ");
     Esp32BaseWeb::sendChunk(eventToneClass(event.level));
     Esp32BaseWeb::sendChunk("'>");
     Esp32BaseWeb::sendChunk(IrrigationEvents::levelName(event.level));
-    Esp32BaseWeb::sendChunk("</span></td><td data-label='事件'><b>");
-    Esp32BaseWeb::sendChunk(title);
-    Esp32BaseWeb::sendChunk("</b><small>");
-    Esp32BaseWeb::sendChunk(summary);
-    Esp32BaseWeb::sendChunk("</small></td><td data-label='分类'>");
+    Esp32BaseWeb::sendChunk("</span></td><td data-label='分类' class='event-category'>");
     Esp32BaseWeb::sendChunk(IrrigationEvents::categoryName(IrrigationEvents::category(event)));
+    Esp32BaseWeb::sendChunk("</td><td data-label='事件' class='event-title'><b>");
+    Esp32BaseWeb::writeHtmlEscaped(title);
+    Esp32BaseWeb::sendChunk("</b></td><td data-label='说明' class='event-summary'>");
+    Esp32BaseWeb::writeHtmlEscaped(summary);
     Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='event-action'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('");
     Esp32BaseWeb::sendChunk(dialogId);
     Esp32BaseWeb::sendChunk("').showModal()\">查看详情</button>");
@@ -2051,9 +2079,9 @@ void IrrigationWeb::events() {
     if (!beginPage("事件", "记录设备的重要操作、报警和异常")) return;
     Esp32BaseWeb::sendChunk(
         R"HTML(<style>
-.event-filter{display:flex;flex-wrap:wrap;align-items:end;gap:10px;margin-bottom:12px}.event-filter label{display:grid;gap:4px;color:var(--eb-muted);font-size:12px}.event-filter select{min-width:150px}.event-table{width:100%;min-width:760px;border-collapse:collapse;font-size:13px}.event-table th,.event-table td{padding:10px 8px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:middle}.event-table th{color:var(--eb-muted);font-weight:650;white-space:nowrap}.event-table tbody tr:last-child td{border-bottom:0}.event-table tbody tr:hover{background:var(--eb-soft)}.event-table td>b,.event-table td>small{display:block}.event-table td>small{margin-top:2px;color:var(--eb-muted)}.event-time{min-width:12em;white-space:nowrap}.event-action{width:1%;white-space:nowrap}.event-empty{padding:24px!important;text-align:center!important;color:var(--eb-muted)}.event-detail{width:min(720px,calc(100vw - 28px))}.event-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.event-detail-head h2{margin:7px 0 0;font-size:20px}.event-detail-summary{margin:14px 0;padding:12px;border-radius:8px;background:var(--eb-soft)}.event-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 14px}.event-detail-grid b{display:block;color:var(--eb-muted);font-size:11px}.event-detail-grid span{display:block;margin-top:2px;overflow-wrap:anywhere}.event-technical{margin-top:16px;padding-top:12px;border-top:1px solid var(--eb-line)}.event-technical summary{cursor:pointer;color:var(--eb-muted);font-size:13px}.event-technical[open] summary{margin-bottom:12px}
-@media(max-width:760px){.event-filter{display:grid;grid-template-columns:1fr 1fr}.event-filter label,.event-filter select,.event-filter .btnlink{width:100%}.event-table{display:block;min-width:0}.event-table thead{display:none}.event-table tbody{display:grid;gap:9px}.event-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}.event-table tbody tr:hover{background:#fff}.event-table td{display:grid;grid-template-columns:6em minmax(0,1fr);gap:8px;padding:4px 0;border:0;white-space:normal}.event-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:650}.event-table .event-action{display:flex;justify-content:flex-end;width:auto;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}.event-table .event-action::before{display:none}.event-table .event-action>.btnlink{width:100%;min-height:34px}.event-empty{display:block!important}.event-empty::before{display:none}.event-detail{width:calc(100vw - 20px);padding:12px!important}.event-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:440px){.event-filter{grid-template-columns:1fr}.event-detail-grid{grid-template-columns:1fr}.event-detail-head h2{font-size:18px}}
+.event-filter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px;margin-bottom:14px}.event-filter label{display:grid;gap:4px;margin:0;color:var(--eb-muted);font-size:12px}.event-filter select{width:180px;max-width:none;min-height:34px;margin:0}.event-filter-actions{display:flex;align-items:center;gap:8px}.event-filter-actions input,.event-filter-actions .btnlink{min-height:34px;margin:0}.event-table{width:100%;min-width:900px;border-collapse:collapse;table-layout:auto;font-size:13px}.event-table th,.event-table td{padding:11px 10px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:top}.event-table th{padding-top:9px;padding-bottom:9px;color:var(--eb-muted);font-weight:650;white-space:nowrap;background:var(--eb-soft)}.event-table tbody tr:last-child td{border-bottom:0}.event-table tbody tr:hover{background:#fbfcfd}.event-time{width:1%;min-width:10.5em;white-space:nowrap;font-variant-numeric:tabular-nums}.event-level{width:1%;white-space:nowrap}.event-category{width:1%;min-width:8em;white-space:nowrap}.event-title{min-width:15em}.event-title b{display:block;line-height:1.4}.event-summary{min-width:20em;color:var(--eb-muted);line-height:1.5}.event-action{width:1%;white-space:nowrap;text-align:right!important}.event-empty{padding:26px!important;text-align:center!important;color:var(--eb-muted)}.event-detail{width:min(780px,calc(100vw - 28px))}.event-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.event-detail-heading{min-width:0}.event-detail-head h2{margin:7px 0 0;font-size:21px}.event-detail-close{flex:0 0 auto;min-height:32px}.event-detail-summary{margin:16px 0;padding:13px 14px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);font-size:15px;line-height:1.55}.event-detail-section{margin-top:16px}.event-detail-section h3{margin-bottom:7px;color:#344054;font-size:13px}.event-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff;overflow:hidden}.event-detail-grid>div{min-width:0;padding:10px 12px;border-right:1px solid var(--eb-line-soft)}.event-detail-grid>div:last-child{border-right:0}.event-detail-grid b{display:block;color:var(--eb-muted);font-size:11px;font-weight:650}.event-detail-grid span{display:block;margin-top:3px;overflow-wrap:anywhere}.event-detail-grid span.tag{display:inline-flex}.event-time-value{white-space:nowrap;font-variant-numeric:tabular-nums}.event-technical{margin-top:18px;padding-top:13px;border-top:1px solid var(--eb-line)}.event-technical summary{cursor:pointer;color:var(--eb-muted);font-size:13px}.event-technical[open] summary{margin-bottom:10px}.event-technical .event-detail-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.event-technical .event-detail-grid>div{border-bottom:1px solid var(--eb-line-soft)}
+@media(max-width:760px){.event-filter{display:grid;grid-template-columns:1fr 1fr}.event-filter label,.event-filter select{width:100%}.event-filter-actions{grid-column:1/-1}.event-filter-actions input,.event-filter-actions .btnlink{flex:1}.event-table{display:block;min-width:0}.event-table thead{display:none}.event-table tbody{display:grid;gap:9px}.event-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}.event-table tbody tr:hover{background:#fff}.event-table td{display:grid;grid-template-columns:6em minmax(0,1fr);gap:8px;width:auto;min-width:0;padding:4px 0;border:0;text-align:left!important;white-space:normal}.event-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:650}.event-table .event-time{white-space:nowrap}.event-table .event-action{display:flex;justify-content:flex-end;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}.event-table .event-action::before{display:none}.event-table .event-action>.btnlink{width:100%;min-height:34px}.event-empty{display:block!important}.event-empty::before{display:none}.event-detail{width:calc(100vw - 20px);padding:12px!important}.event-detail-grid,.event-technical .event-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.event-detail-grid>div:nth-child(2n){border-right:0}.event-detail-grid>div:nth-child(-n+2){border-bottom:1px solid var(--eb-line-soft)}}
+@media(max-width:440px){.event-filter{grid-template-columns:1fr}.event-filter-actions{grid-column:auto}.event-detail-grid,.event-technical .event-detail-grid{grid-template-columns:1fr}.event-detail-grid>div{border-right:0;border-bottom:1px solid var(--eb-line-soft)}.event-detail-grid>div:last-child{border-bottom:0}.event-detail-head h2{font-size:18px}}
 </style>)HTML");
 
     EventFilter filter{};
@@ -2112,7 +2140,7 @@ void IrrigationWeb::events() {
     if (filter.category == static_cast<int8_t>(IrrigationEvents::Category::SettingsAndCalibration)) Esp32BaseWeb::sendChunk(" selected");
     Esp32BaseWeb::sendChunk(">设置与校准</option><option value='time'");
     if (filter.category == static_cast<int8_t>(IrrigationEvents::Category::TimeAndStorage)) Esp32BaseWeb::sendChunk(" selected");
-    Esp32BaseWeb::sendChunk(">时间与存储</option></select></label><input type='submit' value='筛选'><a class='btnlink secondary' href='/irrigation/events'>重置</a></form><div class='tablewrap'><table class='event-table'><thead><tr><th>时间</th><th>等级</th><th>事件</th><th>分类</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk(">时间与存储</option></select></label><span class='event-filter-actions'><input type='submit' value='筛选'><a class='btnlink secondary' href='/irrigation/events'>重置</a></span></form><div class='tablewrap'><table class='event-table'><thead><tr><th>时间</th><th>等级</th><th>分类</th><th>事件</th><th>说明</th><th>操作</th></tr></thead><tbody>");
 
     EventRowsContext context{&filter, (page - 1U) * 20U, 20U, 0, 0};
     const bool readOk = status.eventStore.recordCount == 0 ||
@@ -2121,7 +2149,7 @@ void IrrigationWeb::events() {
                                                 sendEventRow,
                                                 &context);
     if (readOk && context.emitted == 0) {
-        Esp32BaseWeb::sendChunk("<tr><td class='event-empty' colspan='5'>");
+        Esp32BaseWeb::sendChunk("<tr><td class='event-empty' colspan='6'>");
         Esp32BaseWeb::sendChunk(status.eventStore.recordCount == 0
                                     ? "还没有事件记录。"
                                     : "当前筛选条件下没有事件。"
