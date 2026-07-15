@@ -16,5 +16,6 @@ private:
     static void records();
     static void settings();
     static void statusApi();
+    static void flowHistoryApi();
     static void recordsCsv();
 };

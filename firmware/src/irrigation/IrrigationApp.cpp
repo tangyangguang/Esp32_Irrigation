@@ -250,6 +250,10 @@ WateringStatus IrrigationApp::wateringStatus() const {
     return wateringController_.status();
 }
 
+FlowHistorySnapshot IrrigationApp::wateringFlowHistory() const {
+    return wateringController_.flowHistory();
+}
+
 bool IrrigationApp::readLatestWateringRecords(uint32_t offset,
                                               uint32_t limit,
                                               WateringRecordStore::ReadCallback callback,

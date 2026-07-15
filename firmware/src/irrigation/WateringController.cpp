@@ -173,29 +173,81 @@ void WateringController::clearFinishedSession() {
 }
 
 WateringStatus WateringController::status() const {
-    return {
-        active_,
-        state_,
-        static_cast<uint8_t>(active_ ? request_.steps[currentStepIndex_].zoneId : 0U),
-        static_cast<uint8_t>(request_.stepCount == 0
-                                 ? 0U
-                                 : request_.steps[currentStepIndex_].zoneId),
-        currentStepIndex_,
-        active_ && flowMonitor_.flowEstablished(),
-        lastResult_,
-        lastStopReason_,
-        request_.purpose,
-        active_ ? static_cast<uint32_t>(lastHandledMs_ - sessionStartedMs_) / 1000U
-                : sessionSummary_.elapsedSec,
-        active_ && currentZoneStarted_
-            ? static_cast<uint32_t>(hardware_.flowPulseCount() - zoneStartedPulseCount_)
-            : 0U,
-        currentFlowMlPerMinute_,
-        learningAverageMlPerMinute_,
-        learningMinimumMlPerMinute_,
-        learningMaximumMlPerMinute_,
-        learningRateSampleCount_,
-    };
+    WateringStatus result{};
+    result.active = active_;
+    result.state = state_;
+    result.source = request_.source;
+    result.planId = request_.planId;
+    result.stepCount = request_.stepCount;
+    result.activeZoneId = static_cast<uint8_t>(active_ && currentStepIndex_ < request_.stepCount
+                                                   ? request_.steps[currentStepIndex_].zoneId
+                                                   : 0U);
+    result.lastZoneId = static_cast<uint8_t>(request_.stepCount == 0
+                                                ? 0U
+                                                : request_.steps[currentStepIndex_].zoneId);
+    result.currentStepIndex = currentStepIndex_;
+    result.flowEstablished = active_ && flowMonitor_.flowEstablished();
+    result.lastResult = lastResult_;
+    result.lastStopReason = lastStopReason_;
+    result.purpose = request_.purpose;
+    result.elapsedSec = active_ ? static_cast<uint32_t>(lastHandledMs_ - sessionStartedMs_) / 1000U
+                                : sessionSummary_.elapsedSec;
+    result.currentFlowMlPerMinute = currentFlowMlPerMinute_;
+    result.learningAverageMlPerMinute = learningAverageMlPerMinute_;
+    result.learningMinimumMlPerMinute = learningMinimumMlPerMinute_;
+    result.learningMaximumMlPerMinute = learningMaximumMlPerMinute_;
+    result.learningSampleCount = learningRateSampleCount_;
+    result.flowHistoryGeneration = flowHistoryGeneration_;
+    result.flowSampleSerial = flowSampleSerial_;
+    result.zones = sessionSummary_.zones;
+
+    if (active_ && currentStepIndex_ < request_.stepCount) {
+        result.expectedFlowMlPerMinute = learnedFlowMlPerMinute_[currentStepIndex_];
+        result.pulseCount = currentZoneStarted_
+                                ? static_cast<uint32_t>(hardware_.flowPulseCount() -
+                                                        zoneStartedPulseCount_)
+                                : 0U;
+        if (currentZoneStarted_ && flowMonitor_.flowEstablished()) {
+            const uint32_t endedMs = wateringEndCaptured_ ? wateringEndedMs_ : lastHandledMs_;
+            result.currentZoneElapsedSec =
+                static_cast<uint32_t>(endedMs - wateringStartedMs_) / 1000U;
+        }
+        const uint32_t targetSec = request_.steps[currentStepIndex_].targetDurationSec;
+        result.currentZoneRemainingSec = result.currentZoneElapsedSec < targetSec
+                                             ? targetSec - result.currentZoneElapsedSec
+                                             : 0U;
+        ZoneWateringSummary& current = result.zones[currentStepIndex_];
+        current.actualWateringSec = result.currentZoneElapsedSec;
+        current.pulseCount = result.pulseCount;
+        current.waterEstimateCapped = !FlowMonitor::estimateWaterMilliliters(
+            current.pulseCount, flowMeter_.pulsesPerLiterX100, current.estimatedWaterMl);
+    }
+
+    if (!(active_ && state_ == WateringState::StoppingZone && stopSessionAfterValveClose_ &&
+          pendingStopReason_ != WateringStopReason::Completed)) {
+        for (uint8_t index = currentStepIndex_; active_ && index < request_.stepCount; ++index) {
+            result.plannedRemainingSec += index == currentStepIndex_
+                                              ? result.currentZoneRemainingSec
+                                              : request_.steps[index].targetDurationSec;
+        }
+    }
+    for (uint8_t index = 0; index < result.stepCount; ++index) {
+        result.totalEstimatedWaterMl += result.zones[index].estimatedWaterMl;
+    }
+    return result;
+}
+
+FlowHistorySnapshot WateringController::flowHistory() const {
+    FlowHistorySnapshot snapshot{};
+    snapshot.zoneId = flowHistoryZoneId_;
+    snapshot.sampleCount = flowHistoryCount_;
+    snapshot.generation = flowHistoryGeneration_;
+    snapshot.latestSerial = flowSampleSerial_;
+    for (uint16_t index = 0; index < flowHistoryCount_; ++index) {
+        snapshot.samples[index] = flowHistorySamples_[
+            (flowHistoryStart_ + index) % flowHistorySamples_.size()];
+    }
+    return snapshot;
 }
 
 bool WateringController::isValidRequest(const WateringRequest& request, const IrrigationConfig& config) {
@@ -241,6 +293,10 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
     highFlowTiming_ = false;
     learningRateSampleCount_ = 0;
     learningRateSamples_.fill(0);
+    flowHistoryStart_ = 0;
+    flowHistoryCount_ = 0;
+    flowHistoryZoneId_ = step.zoneId;
+    ++flowHistoryGeneration_;
     currentFlowMlPerMinute_ = 0;
     learningAverageMlPerMinute_ = 0;
     learningMinimumMlPerMinute_ = 0;
@@ -356,9 +412,6 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
     const bool learning = request_.purpose == WateringPurpose::ZoneFlowLearning;
     const bool deviationCheck = request_.purpose == WateringPurpose::Normal &&
                                 learnedFlowMlPerMinute_[currentStepIndex_] != 0;
-    if (!learning && !deviationCheck) {
-        return true;
-    }
     FlowMonitor::RateSample sample{};
     if (!flowMonitor_.takeRateSample(nowMs,
                                      hardware_.flowPulseCount(),
@@ -369,6 +422,7 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
 
     ZoneWateringSummary& zone = sessionSummary_.zones[currentStepIndex_];
     currentFlowMlPerMinute_ = sample.flowMlPerMinute;
+    appendFlowSample(sample.flowMlPerMinute);
     if (learning) {
         if (learningRateSampleCount_ < learningRateSamples_.size()) {
             learningRateSamples_[learningRateSampleCount_++] = sample.flowMlPerMinute;
@@ -418,6 +472,10 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
         return true;
     }
 
+    if (!deviationCheck) {
+        return true;
+    }
+
     const uint64_t learned = learnedFlowMlPerMinute_[currentStepIndex_];
     const bool low = static_cast<uint64_t>(sample.flowMlPerMinute) * 100U <
                      learned * flowProtection_.lowFlowPercent;
@@ -456,4 +514,19 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
         highFlowTiming_ = false;
     }
     return true;
+}
+
+void WateringController::appendFlowSample(uint32_t flowMlPerMinute) {
+    uint16_t index = 0;
+    if (flowHistoryCount_ < flowHistorySamples_.size()) {
+        index = static_cast<uint16_t>((flowHistoryStart_ + flowHistoryCount_) %
+                                      flowHistorySamples_.size());
+        ++flowHistoryCount_;
+    } else {
+        index = flowHistoryStart_;
+        flowHistoryStart_ = static_cast<uint16_t>((flowHistoryStart_ + 1U) %
+                                                  flowHistorySamples_.size());
+    }
+    flowHistorySamples_[index] = flowMlPerMinute;
+    ++flowSampleSerial_;
 }

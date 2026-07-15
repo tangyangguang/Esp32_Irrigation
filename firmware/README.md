@@ -28,4 +28,6 @@ pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-po
 
 2026-07-15 浇水计划卡片列表优化：执行 `pio test -e native` 通过 55/55 个测试用例，执行 `pio run -e esp32_irrigation` 通过，资源占用为 RAM 78452 B / 23.9%，Flash 1140801 B / 72.5%；通过 `/dev/cu.usbserial-57460296581` 烧录正式固件成功，写入 Hash 校验通过并正常硬复位。本轮继续按约定不执行页面截图和人工视觉验收。
 
+2026-07-15 浇水运行控制台改造：执行 `pio test -e native` 通过 57/57 个测试用例，新增覆盖运行来源、计划进度、剩余时间、实时估算水量、无基准流量采样、120 点流量环形缓冲和水路切换重置；嵌入式运行页脚本通过 Node.js 语法检查，执行 `pio run -e esp32_irrigation` 通过，资源占用为 RAM 78940 B / 24.1%、Flash 1158473 B / 73.7%。通过 `/dev/cu.usbserial-57460296581` 烧录正式固件成功，写入 Hash 校验通过并正常硬复位。烧录后本机无法解析 `irrigation-controller.local`，因此未完成设备 HTTP 接口复查；按约定未执行页面截图和人工视觉验收。
+
 仍需在完整 PCB 和真实水路上验证电磁阀、泵、流量计、RTC、突然断电及 LittleFS 真实写失败。本地 LCD2004 与四按钮功能按方案明确留待 Web 功能稳定后另行设计。

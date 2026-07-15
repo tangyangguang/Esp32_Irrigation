@@ -17,6 +17,7 @@ public:
     bool abortForMaintenance(uint32_t nowMs);
     void handle(uint32_t nowMs);
     WateringStatus status() const;
+    FlowHistorySnapshot flowHistory() const;
     const WateringSessionSummary* finishedSession() const;
     void clearFinishedSession();
 
@@ -29,6 +30,7 @@ private:
     void finalizeCurrentZone(ZoneWateringResult result, uint32_t nowMs);
     void finishSession(WateringStopReason reason, uint32_t nowMs);
     bool checkFlowRate(uint32_t nowMs);
+    void appendFlowSample(uint32_t flowMlPerMinute);
 
     WateringHardware& hardware_;
     WateringRequest request_{};
@@ -38,6 +40,7 @@ private:
     FlowProtectionConfig flowProtection_{};
     std::array<uint32_t, BoardPins::kZoneCount> learnedFlowMlPerMinute_{};
     std::array<uint32_t, 5> learningRateSamples_{};
+    std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
     FlowMonitor flowMonitor_;
     WateringState state_ = WateringState::Idle;
     WateringResult lastResult_ = WateringResult::None;
@@ -55,11 +58,16 @@ private:
     uint32_t lowFlowStartedMs_ = 0;
     uint32_t highFlowStartedMs_ = 0;
     uint32_t currentFlowMlPerMinute_ = 0;
+    uint32_t flowHistoryGeneration_ = 0;
+    uint32_t flowSampleSerial_ = 0;
     uint32_t learningAverageMlPerMinute_ = 0;
     uint32_t learningMinimumMlPerMinute_ = 0;
     uint32_t learningMaximumMlPerMinute_ = 0;
     uint8_t currentStepIndex_ = 0;
     uint8_t learningRateSampleCount_ = 0;
+    uint16_t flowHistoryStart_ = 0;
+    uint16_t flowHistoryCount_ = 0;
+    uint8_t flowHistoryZoneId_ = 0;
     bool active_ = false;
     bool valveHolding_ = false;
     bool currentZoneStarted_ = false;

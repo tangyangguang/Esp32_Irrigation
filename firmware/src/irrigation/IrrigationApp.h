@@ -26,6 +26,7 @@ public:
         const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes);
     bool stopWatering();
     WateringStatus wateringStatus() const;
+    FlowHistorySnapshot wateringFlowHistory() const;
     bool readLatestWateringRecords(uint32_t offset,
                                    uint32_t limit,
                                    WateringRecordStore::ReadCallback callback,

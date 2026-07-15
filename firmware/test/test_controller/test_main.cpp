@@ -300,6 +300,75 @@ void test_rate_window_uses_fixed_point_arithmetic() {
     TEST_ASSERT_EQUAL_UINT32(5000, sample.windowMs);
 }
 
+void test_live_status_reports_plan_progress_remaining_time_and_water() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 60);
+    request.source = WateringSource::ManualPlan;
+    request.planId = 2;
+    request.stepCount = 2;
+    request.steps[1] = {2, 120};
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    establishFlow(controller, hardware, 0);
+    hardware.pulses += 25;
+    controller.handle(5001);
+
+    const WateringStatus status = controller.status();
+    TEST_ASSERT_TRUE(status.active);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::ManualPlan),
+                      static_cast<int>(status.source));
+    TEST_ASSERT_EQUAL_UINT8(2, status.planId);
+    TEST_ASSERT_EQUAL_UINT8(2, status.stepCount);
+    TEST_ASSERT_EQUAL_UINT8(0, status.currentStepIndex);
+    TEST_ASSERT_EQUAL_UINT32(5, status.currentZoneElapsedSec);
+    TEST_ASSERT_EQUAL_UINT32(55, status.currentZoneRemainingSec);
+    TEST_ASSERT_EQUAL_UINT32(175, status.plannedRemainingSec);
+    TEST_ASSERT_EQUAL_UINT32(60, status.zones[0].plannedDurationSec);
+    TEST_ASSERT_EQUAL_UINT32(120, status.zones[1].plannedDurationSec);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, status.currentFlowMlPerMinute);
+    TEST_ASSERT_GREATER_THAN_UINT64(0, status.totalEstimatedWaterMl);
+
+    const FlowHistorySnapshot history = controller.flowHistory();
+    TEST_ASSERT_EQUAL_UINT8(1, history.zoneId);
+    TEST_ASSERT_EQUAL_UINT16(1, history.sampleCount);
+    TEST_ASSERT_EQUAL_UINT32(status.currentFlowMlPerMinute, history.samples[0]);
+}
+
+void test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(requestFor(1, 7200), config, 0)));
+    establishFlow(controller, hardware, 0);
+    for (uint32_t sample = 1; sample <= kFlowHistorySampleCount + 5U; ++sample) {
+        hardware.pulses += sample;
+        controller.handle(sample * 5000U + 1U);
+    }
+    const FlowHistorySnapshot full = controller.flowHistory();
+    TEST_ASSERT_EQUAL_UINT16(kFlowHistorySampleCount, full.sampleCount);
+    TEST_ASSERT_EQUAL_UINT32(kFlowHistorySampleCount + 5U, full.latestSerial);
+    TEST_ASSERT_LESS_THAN_UINT32(full.samples[kFlowHistorySampleCount - 1U], full.samples[0]);
+
+    TEST_ASSERT_TRUE(controller.stop((kFlowHistorySampleCount + 6U) * 5000U));
+    controller.clearFinishedSession();
+    WateringRequest next = requestFor(1, 5);
+    next.stepCount = 2;
+    next.steps[1] = {2, 60};
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(next, config, 0)));
+    establishFlow(controller, hardware, 0);
+    const uint32_t firstGeneration = controller.flowHistory().generation;
+    ++hardware.pulses;
+    controller.handle(5001);
+    const FlowHistorySnapshot secondZone = controller.flowHistory();
+    TEST_ASSERT_EQUAL_UINT8(2, secondZone.zoneId);
+    TEST_ASSERT_EQUAL_UINT16(0, secondZone.sampleCount);
+    TEST_ASSERT_GREATER_THAN_UINT32(firstGeneration, secondZone.generation);
+}
+
 void test_persistent_low_flow_alert_can_stop_watering() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
@@ -486,6 +555,8 @@ int main(int, char**) {
     RUN_TEST(test_stopped_session_keeps_unstarted_zones_explicit);
     RUN_TEST(test_water_estimate_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_rate_window_uses_fixed_point_arithmetic);
+    RUN_TEST(test_live_status_reports_plan_progress_remaining_time_and_water);
+    RUN_TEST(test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone);
     RUN_TEST(test_persistent_low_flow_alert_can_stop_watering);
     RUN_TEST(test_unlearned_zone_does_not_enable_flow_deviation_protection);
     RUN_TEST(test_zone_flow_learning_completes_after_five_stable_windows);

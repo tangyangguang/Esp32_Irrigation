@@ -9,6 +9,7 @@
 constexpr uint32_t kIrrigationConfigSchemaVersion = 1;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
+constexpr std::size_t kFlowHistorySampleCount = 120;
 constexpr uint16_t kUnusedStartMinute = 0xFFFF;
 constexpr std::size_t kObjectNameCapacity = 64;
 
@@ -159,25 +160,6 @@ struct WateringRequest {
     std::array<WateringStep, BoardPins::kZoneCount> steps;
 };
 
-struct WateringStatus {
-    bool active;
-    WateringState state;
-    uint8_t activeZoneId;
-    uint8_t lastZoneId;
-    uint8_t currentStepIndex;
-    bool flowEstablished;
-    WateringResult lastResult;
-    WateringStopReason lastStopReason;
-    WateringPurpose purpose;
-    uint32_t elapsedSec;
-    uint32_t pulseCount;
-    uint32_t currentFlowMlPerMinute;
-    uint32_t learningAverageMlPerMinute;
-    uint32_t learningMinimumMlPerMinute;
-    uint32_t learningMaximumMlPerMinute;
-    uint8_t learningSampleCount;
-};
-
 struct ZoneWateringSummary {
     uint8_t zoneId;
     ZoneWateringResult result;
@@ -189,6 +171,44 @@ struct ZoneWateringSummary {
     bool lowFlowDetected;
     bool highFlowDetected;
     uint32_t suggestedFlowMlPerMinute;
+};
+
+struct WateringStatus {
+    bool active;
+    WateringState state;
+    WateringSource source;
+    uint8_t planId;
+    uint8_t stepCount;
+    uint8_t activeZoneId;
+    uint8_t lastZoneId;
+    uint8_t currentStepIndex;
+    bool flowEstablished;
+    WateringResult lastResult;
+    WateringStopReason lastStopReason;
+    WateringPurpose purpose;
+    uint32_t elapsedSec;
+    uint32_t currentZoneElapsedSec;
+    uint32_t currentZoneRemainingSec;
+    uint32_t plannedRemainingSec;
+    uint32_t pulseCount;
+    uint32_t currentFlowMlPerMinute;
+    uint32_t expectedFlowMlPerMinute;
+    uint64_t totalEstimatedWaterMl;
+    uint32_t learningAverageMlPerMinute;
+    uint32_t learningMinimumMlPerMinute;
+    uint32_t learningMaximumMlPerMinute;
+    uint8_t learningSampleCount;
+    uint32_t flowHistoryGeneration;
+    uint32_t flowSampleSerial;
+    std::array<ZoneWateringSummary, BoardPins::kZoneCount> zones;
+};
+
+struct FlowHistorySnapshot {
+    uint8_t zoneId;
+    uint16_t sampleCount;
+    uint32_t generation;
+    uint32_t latestSerial;
+    std::array<uint32_t, kFlowHistorySampleCount> samples;
 };
 
 struct WateringSessionSummary {
