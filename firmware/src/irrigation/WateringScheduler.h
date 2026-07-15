@@ -20,6 +20,29 @@ struct WateringSchedulerPersistentState {
     uint32_t previousProcessedMask = 0;
 };
 
+enum class NextAutomaticWateringStatus : uint8_t {
+    Available = 0,
+    NoEnabledPlans,
+    TimeUnavailable,
+    RtcRollback,
+    PausedIndefinitely,
+};
+
+struct NextAutomaticWatering {
+    constexpr NextAutomaticWatering(
+        NextAutomaticWateringStatus valueStatus =
+            NextAutomaticWateringStatus::TimeUnavailable,
+        uint8_t valuePlanId = 0,
+        uint32_t valueScheduledEpoch = 0)
+        : status(valueStatus),
+          planId(valuePlanId),
+          scheduledEpoch(valueScheduledEpoch) {}
+
+    NextAutomaticWateringStatus status;
+    uint8_t planId;
+    uint32_t scheduledEpoch;
+};
+
 class WateringSchedulerStorage {
 public:
     virtual ~WateringSchedulerStorage() = default;
@@ -67,6 +90,8 @@ public:
     void disable();
 
     AutomaticWateringState automaticState() const;
+    NextAutomaticWatering nextAutomaticWatering(const IrrigationConfig& config,
+                                                 uint32_t currentEpoch) const;
     TimeState timeState() const;
     bool storageReady() const;
 

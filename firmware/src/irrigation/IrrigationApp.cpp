@@ -99,16 +99,25 @@ bool IrrigationApp::begin() {
         return false;
     }
 
-    if (!wateringRecordStore_.begin()) {
-        recordStorageFault_ = true;
+    const bool storeReady = wateringRecordStore_.begin();
+    const bool storeRegistered =
+        Esp32BaseWeb::registerBusinessRecordStore(wateringRecordStore_.baseStore());
+    wateringRecordStoreRegistered_ = storeRegistered;
+    recordStorageFault_ = !storeReady || !storeRegistered ||
+                          wateringRecordStore_.state() !=
+                              Esp32BaseRecordStore::StoreState::Ready;
+    if (!storeReady) {
         reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreBegin);
         ESP32BASE_LOG_E("irrigation",
                         "watering_record_store_begin_failed state=%s error=%s",
                         Esp32BaseRecordStore::storeStateName(wateringRecordStore_.state()),
                         wateringRecordStore_.lastErrorReason());
-    } else {
-        recordStorageFault_ = wateringRecordStore_.state() !=
-                              Esp32BaseRecordStore::StoreState::Ready;
+    }
+    if (!storeRegistered) {
+        reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreRegistration);
+        ESP32BASE_LOG_E("irrigation", "watering_record_store_registration_failed");
+    }
+    if (storeReady) {
         Esp32BaseRecordStore::StoreStatus status;
         wateringRecordStore_.readStatus(status);
         ESP32BASE_LOG_I("irrigation",
@@ -254,19 +263,6 @@ Esp32BaseRecordStore::RecordReadResult IrrigationApp::readWateringRecordById(
     return wateringRecordStore_.readById(recordId, record);
 }
 
-bool IrrigationApp::clearWateringRecords(bool userConfirmed) {
-    if (!businessReady_ || wateringController_.status().active || !userConfirmed) {
-        return false;
-    }
-    const bool cleared = wateringRecordStore_.clear(true);
-    recordStorageFault_ = !cleared ||
-                          wateringRecordStore_.state() != Esp32BaseRecordStore::StoreState::Ready;
-    if (!cleared) {
-        reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordClearFailed);
-    }
-    return cleared;
-}
-
 bool IrrigationApp::readWateringRecordStoreStatus(
     Esp32BaseRecordStore::StoreStatus& status) const {
     return wateringRecordStore_.readStatus(status);
@@ -300,6 +296,15 @@ AutomaticWateringState IrrigationApp::automaticWateringState() const {
     return wateringScheduler_.automaticState();
 }
 
+NextAutomaticWatering IrrigationApp::nextAutomaticWatering() const {
+    const IrrigationConfig* config = configStore_.current();
+    if (!config) {
+        return {NextAutomaticWateringStatus::TimeUnavailable, 0, 0};
+    }
+    return wateringScheduler_.nextAutomaticWatering(
+        *config, Esp32BaseTime::snapshot().epochSec);
+}
+
 WateringScheduler::TimeState IrrigationApp::schedulerTimeState() const {
     return wateringScheduler_.timeState();
 }
@@ -311,7 +316,9 @@ bool IrrigationApp::pauseAutomaticWateringIndefinitely() {
 bool IrrigationApp::pauseAutomaticWateringUntil(uint32_t resumeAtEpoch) {
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     return businessReady_ && wateringScheduler_.pauseUntil(resumeAtEpoch,
-                                                           now.synced,
+                                                           now.synced &&
+                                                               wateringScheduler_.timeState() ==
+                                                                   WateringScheduler::TimeState::Ready,
                                                            now.epochSec);
 }
 
@@ -323,8 +330,11 @@ WateringStartResult IrrigationApp::startFlowCalibration(
     uint8_t zoneId,
     uint16_t maximumDurationMinutes) {
     if (flowCalibrationService_.hasPendingMeasurement() ||
+        flowCalibrationService_.sampleCount() >= FlowCalibrationService::kMaximumSamples ||
+        (flowCalibrationService_.zoneId() != 0 &&
+         flowCalibrationService_.zoneId() != zoneId) ||
         !BoardPins::isValidZoneId(zoneId) || maximumDurationMinutes == 0 ||
-        maximumDurationMinutes > 60) {
+        maximumDurationMinutes > 10) {
         return WateringStartResult::InvalidRequest;
     }
     WateringRequest request{};
@@ -337,6 +347,33 @@ WateringStartResult IrrigationApp::startFlowCalibration(
 
 bool IrrigationApp::submitFlowCalibrationMeasurement(uint32_t measuredWaterMl) {
     return businessReady_ && flowCalibrationService_.addPendingMeasurement(measuredWaterMl);
+}
+
+bool IrrigationApp::applyFlowCalibrationResult() {
+    const uint32_t coefficient = flowCalibrationService_.combinedPulsesPerLiterX100();
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || wateringController_.status().active || !current ||
+        !flowCalibrationService_.resultReady() || coefficient == 0) {
+        return false;
+    }
+    if (current->flowMeter.pulsesPerLiterX100 == coefficient) return true;
+    if (!IrrigationParameterConfig::saveFlowCoefficient(coefficient) ||
+        !applyStoredParameterConfig()) {
+        return false;
+    }
+    wateringScheduler_.rebaseTimeCheck();
+    resetUnexpectedFlowMonitor(millis());
+    if (!IrrigationEvents::appendSchedulerEvent(
+            static_cast<uint32_t>(IrrigationEvents::EventCode::FlowCalibrationSaved),
+            IrrigationEvents::ReasonCode::CalibrationCoefficientSaved,
+            flowCalibrationService_.zoneId(),
+            coefficient > static_cast<uint32_t>(INT32_MAX)
+                ? INT32_MAX
+                : static_cast<int32_t>(coefficient),
+            Esp32BaseAppEvents::Level::Info)) {
+        eventStorageFault_ = true;
+    }
+    return true;
 }
 
 void IrrigationApp::resetFlowCalibration() {
@@ -720,12 +757,16 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     }
     const bool checkpointReady = aliveCheckpoint_.begin();
     schedulerStorageFault_ = !schedulerReady;
-    const bool recordsReady = wateringRecordStore_.reload();
+    Esp32BaseRecordStore::StoreStatus recordStatus{};
+    const bool recordStatusReady = wateringRecordStore_.readStatus(recordStatus);
+    const bool recordsReady = wateringRecordStoreRegistered_ &&
+                              result.businessRecordStoresReloadSuccess &&
+                              recordStatusReady &&
+                              recordStatus.state == Esp32BaseRecordStore::StoreState::Ready;
     eventStorageFault_ = !Esp32BaseAppEvents::isReady();
-    recordStorageFault_ = !recordsReady ||
-                          wateringRecordStore_.state() != Esp32BaseRecordStore::StoreState::Ready;
+    recordStorageFault_ = !recordsReady;
     if (!recordsReady) {
-        reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreReload);
+        reportRecordStorageFault(IrrigationEvents::ReasonCode::RecordStoreAfterFormat);
     }
     businessReady_ = configReady && pwmReady;
     if (businessReady_) {

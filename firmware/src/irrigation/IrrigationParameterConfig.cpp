@@ -143,6 +143,13 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     return IrrigationConfigRules::validate(config);
 }
 
+bool IrrigationParameterConfig::saveFlowCoefficient(uint32_t pulsesPerLiterX100) {
+    return pulsesPerLiterX100 >= 1U && pulsesPerLiterX100 <= 10000000U &&
+           Esp32BaseConfig::setInt(kNamespace,
+                                   kCoefficient,
+                                   static_cast<int32_t>(pulsesPerLiterX100));
+}
+
 bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {
     g_validationScratch = g_defaults;
     if (!readSubmitted(g_validationScratch) ||

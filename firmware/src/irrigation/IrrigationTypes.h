@@ -163,10 +163,19 @@ struct WateringStatus {
     bool active;
     WateringState state;
     uint8_t activeZoneId;
+    uint8_t lastZoneId;
     uint8_t currentStepIndex;
     bool flowEstablished;
     WateringResult lastResult;
     WateringStopReason lastStopReason;
+    WateringPurpose purpose;
+    uint32_t elapsedSec;
+    uint32_t pulseCount;
+    uint32_t currentFlowMlPerMinute;
+    uint32_t learningAverageMlPerMinute;
+    uint32_t learningMinimumMlPerMinute;
+    uint32_t learningMaximumMlPerMinute;
+    uint8_t learningSampleCount;
 };
 
 struct ZoneWateringSummary {

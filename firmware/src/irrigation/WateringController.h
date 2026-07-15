@@ -51,8 +51,13 @@ private:
     uint32_t zoneStartedPulseCount_ = 0;
     uint32_t wateringStartedMs_ = 0;
     uint32_t wateringEndedMs_ = 0;
+    uint32_t lastHandledMs_ = 0;
     uint32_t lowFlowStartedMs_ = 0;
     uint32_t highFlowStartedMs_ = 0;
+    uint32_t currentFlowMlPerMinute_ = 0;
+    uint32_t learningAverageMlPerMinute_ = 0;
+    uint32_t learningMinimumMlPerMinute_ = 0;
+    uint32_t learningMaximumMlPerMinute_ = 0;
     uint8_t currentStepIndex_ = 0;
     uint8_t learningRateSampleCount_ = 0;
     bool active_ = false;

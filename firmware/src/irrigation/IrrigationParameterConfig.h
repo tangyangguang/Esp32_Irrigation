@@ -10,6 +10,7 @@ public:
 
     static bool registerFields(SavedCallback callback, void* user);
     static bool applyStored(IrrigationConfig& config);
+    static bool saveFlowCoefficient(uint32_t pulsesPerLiterX100);
 
 private:
     static bool validatePage(char* error, size_t errorLength);

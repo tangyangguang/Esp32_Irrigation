@@ -11,6 +11,8 @@ private:
     static void run();
     static void plans();
     static void zones();
+    static void flowCalibration();
+    static void zoneLearning();
     static void records();
     static void settings();
     static void statusApi();

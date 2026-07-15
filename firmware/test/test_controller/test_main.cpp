@@ -353,6 +353,15 @@ void test_zone_flow_learning_completes_after_five_stable_windows() {
     for (uint32_t second = 5; second <= 25; second += 5) {
         hardware.pulses += 21;
         controller.handle(second * 1000U + 1U);
+        if (second == 20) {
+            const WateringStatus live = controller.status();
+            TEST_ASSERT_TRUE(live.active);
+            TEST_ASSERT_EQUAL_UINT32(1008, live.currentFlowMlPerMinute);
+            TEST_ASSERT_EQUAL_UINT32(1008, live.learningAverageMlPerMinute);
+            TEST_ASSERT_EQUAL_UINT32(1008, live.learningMinimumMlPerMinute);
+            TEST_ASSERT_EQUAL_UINT32(1008, live.learningMaximumMlPerMinute);
+            TEST_ASSERT_EQUAL_UINT8(4, live.learningSampleCount);
+        }
     }
     TEST_ASSERT_FALSE(controller.status().active);
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
@@ -360,6 +369,27 @@ void test_zone_flow_learning_completes_after_five_stable_windows() {
     const WateringSessionSummary* summary = controller.finishedSession();
     TEST_ASSERT_NOT_NULL(summary);
     TEST_ASSERT_EQUAL_UINT32(1008, summary->zones[0].suggestedFlowMlPerMinute);
+    TEST_ASSERT_EQUAL_UINT8(5, controller.status().learningSampleCount);
+}
+
+void test_zone_flow_learning_can_be_stopped_manually() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 600);
+    request.purpose = WateringPurpose::ZoneFlowLearning;
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    establishFlow(controller, hardware, 0);
+    hardware.pulses += 21;
+    controller.handle(5001);
+    TEST_ASSERT_TRUE(controller.stop(6000));
+    TEST_ASSERT_FALSE(controller.status().active);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::UserStopped),
+                      static_cast<int>(controller.status().lastStopReason));
+    TEST_ASSERT_EQUAL_UINT32(0,
+                             controller.finishedSession()->zones[0]
+                                 .suggestedFlowMlPerMinute);
 }
 
 void test_zone_flow_learning_stops_at_ten_minute_limit_when_unstable() {
@@ -459,6 +489,7 @@ int main(int, char**) {
     RUN_TEST(test_persistent_low_flow_alert_can_stop_watering);
     RUN_TEST(test_unlearned_zone_does_not_enable_flow_deviation_protection);
     RUN_TEST(test_zone_flow_learning_completes_after_five_stable_windows);
+    RUN_TEST(test_zone_flow_learning_can_be_stopped_manually);
     RUN_TEST(test_zone_flow_learning_stops_at_ten_minute_limit_when_unstable);
     RUN_TEST(test_invalid_request_and_hardware_failure_are_rejected_safely);
     RUN_TEST(test_timers_work_across_millis_wraparound);

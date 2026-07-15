@@ -23,7 +23,7 @@ public:
     using ReadCallback = void (*)(const StoredWateringRecord& record, void* user);
 
     bool begin();
-    bool reload();
+    Esp32BaseRecordStore& baseStore();
     bool captureStartTime(Esp32BaseRecordStore::RecordStartTime& startTime) const;
     bool appendCompleted(const Esp32BaseRecordStore::RecordStartTime& startTime,
                          const WateringSessionSummary& summary);
@@ -33,7 +33,6 @@ public:
                     void* user = nullptr);
     Esp32BaseRecordStore::RecordReadResult readById(uint32_t recordId,
                                                     StoredWateringRecord& record);
-    bool clear(bool userConfirmed);
     bool readStatus(Esp32BaseRecordStore::StoreStatus& status) const;
     bool isReady() const;
     bool isWritable() const;

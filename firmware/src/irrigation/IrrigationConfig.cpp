@@ -168,7 +168,8 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         const ZoneConfig& zone = config.zones[index];
-        if (zone.id != index + 1 || !isValidName(zone.name, false)) {
+        if (zone.id != index + 1 || !isValidName(zone.name, false) ||
+            zone.learnedFlowMlPerMinute > 100000U) {
             return false;
         }
     }
@@ -280,5 +281,52 @@ bool IrrigationConfigRules::formatPulsesPerLiter(uint32_t valueX100, char* out, 
                                       "%lu.%02lu",
                                       static_cast<unsigned long>(valueX100 / 100U),
                                       static_cast<unsigned long>(valueX100 % 100U));
+    return written > 0 && static_cast<std::size_t>(written) < outSize;
+}
+
+bool IrrigationConfigRules::parseLitersPerMinute(const char* text,
+                                                 uint32_t& valueMlPerMinute) {
+    if (!text || *text == '\0') return false;
+    uint32_t whole = 0;
+    std::size_t index = 0;
+    std::size_t wholeDigits = 0;
+    while (text[index] >= '0' && text[index] <= '9') {
+        whole = whole * 10U + static_cast<uint8_t>(text[index] - '0');
+        if (whole > 100U) return false;
+        ++index;
+        ++wholeDigits;
+    }
+    if (wholeDigits == 0) return false;
+
+    uint32_t fraction = 0;
+    uint32_t scale = 100;
+    if (text[index] == '.') {
+        ++index;
+        std::size_t digits = 0;
+        while (text[index] >= '0' && text[index] <= '9' && digits < 3) {
+            fraction += static_cast<uint32_t>(text[index] - '0') * scale;
+            scale /= 10U;
+            ++index;
+            ++digits;
+        }
+        if (digits == 0 || (text[index] >= '0' && text[index] <= '9')) return false;
+    }
+    if (text[index] != '\0') return false;
+    const uint32_t result = whole * 1000U + fraction;
+    if (result > 100000U) return false;
+    valueMlPerMinute = result;
+    return true;
+}
+
+bool IrrigationConfigRules::formatLitersPerMinute(uint32_t valueMlPerMinute,
+                                                  char* out,
+                                                  std::size_t outSize) {
+    if (!out || outSize == 0 || valueMlPerMinute > 100000U) return false;
+    const int written = std::snprintf(
+        out,
+        outSize,
+        "%lu.%03lu",
+        static_cast<unsigned long>(valueMlPerMinute / 1000U),
+        static_cast<unsigned long>(valueMlPerMinute % 1000U));
     return written > 0 && static_cast<std::size_t>(written) < outSize;
 }

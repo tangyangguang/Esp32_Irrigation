@@ -33,7 +33,6 @@ public:
     Esp32BaseRecordStore::RecordReadResult readWateringRecordById(
         uint32_t recordId,
         StoredWateringRecord& record);
-    bool clearWateringRecords(bool userConfirmed);
     bool readWateringRecordStoreStatus(Esp32BaseRecordStore::StoreStatus& status) const;
     bool recordStorageFault() const;
     bool eventStorageFault() const;
@@ -42,6 +41,7 @@ public:
     uint32_t lastKnownAliveEpoch() const;
     bool unexpectedFlowAlarm() const;
     AutomaticWateringState automaticWateringState() const;
+    NextAutomaticWatering nextAutomaticWatering() const;
     WateringScheduler::TimeState schedulerTimeState() const;
     bool pauseAutomaticWateringIndefinitely();
     bool pauseAutomaticWateringUntil(uint32_t resumeAtEpoch);
@@ -49,6 +49,7 @@ public:
     WateringStartResult startFlowCalibration(uint8_t zoneId,
                                              uint16_t maximumDurationMinutes);
     bool submitFlowCalibrationMeasurement(uint32_t measuredWaterMl);
+    bool applyFlowCalibrationResult();
     void resetFlowCalibration();
     const FlowCalibrationService& flowCalibration() const;
     WateringStartResult startZoneFlowLearning(uint8_t zoneId);
@@ -88,6 +89,7 @@ private:
     bool businessReady_ = false;
     bool wateringStartTimeValid_ = false;
     bool recordStorageFault_ = false;
+    bool wateringRecordStoreRegistered_ = false;
     bool eventStorageFault_ = false;
     bool schedulerStorageFault_ = false;
     bool pendingPwmReconfigure_ = false;

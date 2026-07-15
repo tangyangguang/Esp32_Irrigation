@@ -10,8 +10,8 @@ bool WateringRecordStore::begin() {
     return store_.begin(definition);
 }
 
-bool WateringRecordStore::reload() {
-    return store_.reload();
+Esp32BaseRecordStore& WateringRecordStore::baseStore() {
+    return store_;
 }
 
 bool WateringRecordStore::captureStartTime(
@@ -62,10 +62,6 @@ Esp32BaseRecordStore::RecordReadResult WateringRecordStore::readById(
     record.recordId = metadata.recordId;
     record.timing = metadata.timing;
     return Esp32BaseRecordStore::RecordReadResult::Found;
-}
-
-bool WateringRecordStore::clear(bool userConfirmed) {
-    return userConfirmed && store_.clear();
 }
 
 bool WateringRecordStore::readStatus(Esp32BaseRecordStore::StoreStatus& status) const {

@@ -164,6 +164,66 @@ AutomaticWateringState WateringScheduler::automaticState() const {
     return {state_.mode, state_.resumeAtEpoch};
 }
 
+NextAutomaticWatering WateringScheduler::nextAutomaticWatering(
+    const IrrigationConfig& config,
+    uint32_t currentEpoch) const {
+    bool hasEnabledStart = false;
+    for (const WateringPlan& plan : config.plans) {
+        if (!plan.configured || !plan.scheduleEnabled) continue;
+        for (const uint16_t minute : plan.startMinutes) {
+            if (minute != kUnusedStartMinute) {
+                hasEnabledStart = true;
+                break;
+            }
+        }
+        if (hasEnabledStart) break;
+    }
+    if (!hasEnabledStart) {
+        return {NextAutomaticWateringStatus::NoEnabledPlans, 0, 0};
+    }
+    if (timeState_ == TimeState::RtcRollback) {
+        return {NextAutomaticWateringStatus::RtcRollback, 0, 0};
+    }
+    if (timeState_ != TimeState::Ready || currentEpoch < kMinimumLocalEpochUtc) {
+        return {NextAutomaticWateringStatus::TimeUnavailable, 0, 0};
+    }
+    if (state_.mode == AutomaticWateringMode::PausedIndefinitely) {
+        return {NextAutomaticWateringStatus::PausedIndefinitely, 0, 0};
+    }
+
+    uint32_t baselineEpoch = currentEpoch;
+    if (state_.mode == AutomaticWateringMode::PausedUntil &&
+        state_.resumeAtEpoch > baselineEpoch) {
+        baselineEpoch = state_.resumeAtEpoch;
+    }
+    const uint32_t baselineDay = localDay(baselineEpoch);
+    NextAutomaticWatering result{NextAutomaticWateringStatus::Available, 0, 0};
+    for (uint32_t dayOffset = 0; dayOffset <= 1U; ++dayOffset) {
+        const uint32_t day = baselineDay + dayOffset;
+        for (uint8_t planIndex = 0; planIndex < config.plans.size(); ++planIndex) {
+            const WateringPlan& plan = config.plans[planIndex];
+            if (!plan.configured || !plan.scheduleEnabled) continue;
+            for (uint8_t startIndex = 0; startIndex < plan.startMinutes.size(); ++startIndex) {
+                const uint16_t minute = plan.startMinutes[startIndex];
+                if (minute == kUnusedStartMinute) continue;
+                const uint32_t candidateEpoch =
+                    day * kSecondsPerDay + static_cast<uint32_t>(minute) * 60U -
+                    kUtcOffsetSec;
+                if (candidateEpoch <= baselineEpoch ||
+                    wasProcessed(day, scheduleBit(planIndex, startIndex))) {
+                    continue;
+                }
+                if (result.scheduledEpoch == 0 || candidateEpoch < result.scheduledEpoch) {
+                    result.planId = plan.id;
+                    result.scheduledEpoch = candidateEpoch;
+                }
+            }
+        }
+        if (result.scheduledEpoch != 0) return result;
+    }
+    return {NextAutomaticWateringStatus::NoEnabledPlans, 0, 0};
+}
+
 WateringScheduler::TimeState WateringScheduler::timeState() const {
     return timeState_;
 }

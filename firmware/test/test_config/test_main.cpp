@@ -105,6 +105,28 @@ void test_flow_coefficient_decimal_conversion_is_exact() {
     TEST_ASSERT_EQUAL_STRING("250.37", text);
 }
 
+void test_baseline_flow_liters_conversion_is_exact() {
+    uint32_t value = 0;
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("0", value));
+    TEST_ASSERT_EQUAL_UINT32(0, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("1.234", value));
+    TEST_ASSERT_EQUAL_UINT32(1234, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("100.000", value));
+    TEST_ASSERT_EQUAL_UINT32(100000, value);
+
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute("1.2345", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute("100.001", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute(" 1.000", value));
+
+    char text[16];
+    TEST_ASSERT_TRUE(IrrigationConfigRules::formatLitersPerMinute(1234, text, sizeof(text)));
+    TEST_ASSERT_EQUAL_STRING("1.234", text);
+
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.zones[0].learnedFlowMlPerMinute = 100001;
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
+}
+
 void test_config_json_round_trip_is_exact_and_strict() {
     IrrigationConfig original = IrrigationConfigRules::createDefault();
     original.flowMeter.pulsesPerLiterX100 = 25037;
@@ -151,6 +173,7 @@ int main(int, char**) {
     RUN_TEST(test_names_and_cross_field_rules_are_validated);
     RUN_TEST(test_confirmed_parameter_ranges_are_validated);
     RUN_TEST(test_flow_coefficient_decimal_conversion_is_exact);
+    RUN_TEST(test_baseline_flow_liters_conversion_is_exact);
     RUN_TEST(test_config_json_round_trip_is_exact_and_strict);
     return UNITY_END();
 }

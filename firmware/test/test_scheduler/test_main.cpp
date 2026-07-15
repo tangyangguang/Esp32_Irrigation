@@ -161,6 +161,12 @@ void test_pause_modes_skip_or_resume_without_immediate_manual_run() {
     WateringScheduler timedScheduler;
     initialize(timedScheduler, timedStorage, timedCallbacks);
     config.plans[0].startMinutes[0] = 3;
+    TEST_ASSERT_FALSE(timedScheduler.pauseUntil(kLocalMidnight + 180U,
+                                               false,
+                                               kLocalMidnight + 60U));
+    TEST_ASSERT_FALSE(timedScheduler.pauseUntil(kLocalMidnight + 60U,
+                                               true,
+                                               kLocalMidnight + 60U));
     TEST_ASSERT_TRUE(timedScheduler.pauseUntil(kLocalMidnight + 180U,
                                               true,
                                               kLocalMidnight + 60U));
@@ -223,6 +229,117 @@ void test_persist_failure_prevents_automatic_start() {
                       static_cast<int>(callbacks.lastEvent));
 }
 
+void test_next_automatic_watering_finds_same_day_and_next_day() {
+    FakeStorage storage;
+    CallbackState callbacks;
+    WateringScheduler scheduler;
+    initialize(scheduler, storage, callbacks);
+    IrrigationConfig config = scheduledConfig(8U * 60U);
+    scheduler.handle(config, true, false, kLocalMidnight + 6U * 3600U);
+
+    NextAutomaticWatering next = scheduler.nextAutomaticWatering(
+        config, kLocalMidnight + 6U * 3600U);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::Available),
+                      static_cast<int>(next.status));
+    TEST_ASSERT_EQUAL_UINT8(1, next.planId);
+    TEST_ASSERT_EQUAL_UINT32(kLocalMidnight + 8U * 3600U, next.scheduledEpoch);
+
+    next = scheduler.nextAutomaticWatering(config, kLocalMidnight + 8U * 3600U);
+    TEST_ASSERT_EQUAL_UINT32(kLocalMidnight + 32U * 3600U, next.scheduledEpoch);
+}
+
+void test_next_automatic_watering_uses_earliest_enabled_plan() {
+    FakeStorage storage;
+    CallbackState callbacks;
+    WateringScheduler scheduler;
+    initialize(scheduler, storage, callbacks);
+    IrrigationConfig config = scheduledConfig(9U * 60U);
+    WateringPlan& second = config.plans[1];
+    second.configured = true;
+    second.scheduleEnabled = true;
+    second.name[0] = 'B';
+    second.startMinutes[0] = 7U * 60U;
+    second.zoneDurationMinutes[0] = 1;
+    scheduler.handle(config, true, false, kLocalMidnight + 6U * 3600U);
+
+    const NextAutomaticWatering next = scheduler.nextAutomaticWatering(
+        config, kLocalMidnight + 6U * 3600U);
+    TEST_ASSERT_EQUAL_UINT8(2, next.planId);
+    TEST_ASSERT_EQUAL_UINT32(kLocalMidnight + 7U * 3600U, next.scheduledEpoch);
+}
+
+void test_next_automatic_watering_starts_after_timed_resume_minute() {
+    FakeStorage storage;
+    CallbackState callbacks;
+    WateringScheduler scheduler;
+    initialize(scheduler, storage, callbacks);
+    IrrigationConfig config = scheduledConfig(8U * 60U);
+    config.plans[0].startMinutes[1] = 9U * 60U;
+    scheduler.handle(config, true, false, kLocalMidnight + 6U * 3600U);
+    TEST_ASSERT_TRUE(scheduler.pauseUntil(kLocalMidnight + 8U * 3600U,
+                                         true,
+                                         kLocalMidnight + 6U * 3600U));
+
+    const NextAutomaticWatering next = scheduler.nextAutomaticWatering(
+        config, kLocalMidnight + 6U * 3600U);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::Available),
+                      static_cast<int>(next.status));
+    TEST_ASSERT_EQUAL_UINT32(kLocalMidnight + 9U * 3600U, next.scheduledEpoch);
+}
+
+void test_next_automatic_watering_reports_unavailable_states() {
+    FakeStorage storage;
+    CallbackState callbacks;
+    WateringScheduler scheduler;
+    initialize(scheduler, storage, callbacks);
+    IrrigationConfig config = scheduledConfig(8U * 60U);
+
+    NextAutomaticWatering next = scheduler.nextAutomaticWatering(config, kLocalMidnight);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::TimeUnavailable),
+                      static_cast<int>(next.status));
+
+    scheduler.handle(config, true, false, kLocalMidnight + 10U * 60U);
+    scheduler.handle(config, true, false, kLocalMidnight);
+    next = scheduler.nextAutomaticWatering(config, kLocalMidnight);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::RtcRollback),
+                      static_cast<int>(next.status));
+
+    scheduler.handle(config, true, true, kLocalMidnight + 60U);
+    TEST_ASSERT_TRUE(scheduler.pauseIndefinitely());
+    next = scheduler.nextAutomaticWatering(config, kLocalMidnight + 60U);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::PausedIndefinitely),
+                      static_cast<int>(next.status));
+
+    TEST_ASSERT_TRUE(scheduler.resumeManually());
+    config.plans[0].scheduleEnabled = false;
+    next = scheduler.nextAutomaticWatering(config, kLocalMidnight + 60U);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::NoEnabledPlans),
+                      static_cast<int>(next.status));
+
+    WateringScheduler notInitialized;
+    next = notInitialized.nextAutomaticWatering(config, 0);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::NoEnabledPlans),
+                      static_cast<int>(next.status));
+}
+
+void test_next_automatic_watering_skips_start_already_processed_after_small_rollback() {
+    FakeStorage storage;
+    CallbackState callbacks;
+    WateringScheduler scheduler;
+    initialize(scheduler, storage, callbacks);
+    IrrigationConfig config = scheduledConfig(1U);
+    config.plans[0].startMinutes[1] = 3U;
+    scheduler.handle(config, true, false, kLocalMidnight);
+    scheduler.handle(config, true, false, kLocalMidnight + 60U);
+    TEST_ASSERT_EQUAL_UINT32(1U, callbacks.startCount);
+
+    scheduler.handle(config, true, false, kLocalMidnight);
+    const NextAutomaticWatering next = scheduler.nextAutomaticWatering(config, kLocalMidnight);
+    TEST_ASSERT_EQUAL(static_cast<int>(NextAutomaticWateringStatus::Available),
+                      static_cast<int>(next.status));
+    TEST_ASSERT_EQUAL_UINT32(kLocalMidnight + 180U, next.scheduledEpoch);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -234,5 +351,10 @@ int main(int, char**) {
     RUN_TEST(test_time_jump_and_rtc_rollback_rebase_without_running);
     RUN_TEST(test_persisted_trusted_epoch_detects_rollback_after_restart);
     RUN_TEST(test_persist_failure_prevents_automatic_start);
+    RUN_TEST(test_next_automatic_watering_finds_same_day_and_next_day);
+    RUN_TEST(test_next_automatic_watering_uses_earliest_enabled_plan);
+    RUN_TEST(test_next_automatic_watering_starts_after_timed_resume_minute);
+    RUN_TEST(test_next_automatic_watering_reports_unavailable_states);
+    RUN_TEST(test_next_automatic_watering_skips_start_already_processed_after_small_rollback);
     return UNITY_END();
 }
