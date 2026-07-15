@@ -193,31 +193,6 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
     return result;
 }
 
-WateringStartResult IrrigationApp::startWateringPlan(uint8_t planId) {
-    const IrrigationConfig* config = configStore_.current();
-    if (!config || planId == 0 || planId > config->plans.size()) {
-        return WateringStartResult::InvalidRequest;
-    }
-    const WateringPlan& plan = config->plans[planId - 1U];
-    if (!plan.configured) {
-        return WateringStartResult::InvalidRequest;
-    }
-    WateringRequest request{};
-    request.source = WateringSource::ManualPlan;
-    request.purpose = WateringPurpose::Normal;
-    request.planId = planId;
-    for (uint8_t index = 0; index < config->zones.size(); ++index) {
-        if (!config->zones[index].enabled || plan.zoneDurationMinutes[index] == 0) {
-            continue;
-        }
-        request.steps[request.stepCount++] = {
-            config->zones[index].id,
-            static_cast<uint32_t>(plan.zoneDurationMinutes[index]) * 60U,
-        };
-    }
-    return startWatering(request);
-}
-
 WateringStartResult IrrigationApp::startManualWatering(
     const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes) {
     const IrrigationConfig* config = configStore_.current();

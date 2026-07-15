@@ -21,7 +21,6 @@ public:
     bool baseReady() const;
     bool businessReady() const;
     WateringStartResult startWatering(const WateringRequest& request);
-    WateringStartResult startWateringPlan(uint8_t planId);
     WateringStartResult startManualWatering(
         const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes);
     bool stopWatering();

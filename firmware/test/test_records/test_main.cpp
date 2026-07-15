@@ -122,6 +122,27 @@ void test_included_but_unstarted_zone_keeps_plan_and_zero_actuals() {
     TEST_ASSERT_EQUAL_UINT32(0, payload.zones[2].pulseCount);
 }
 
+void test_manual_records_have_no_plan_and_historical_manual_plan_still_decodes() {
+    WateringSessionSummary summary = exampleSummary();
+    summary.source = WateringSource::ManualZones;
+    summary.planId = 0;
+    WateringRecordPayload payload{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::ManualZones),
+                      static_cast<int>(payload.source));
+    TEST_ASSERT_EQUAL_UINT8(0, payload.planId);
+
+    payload.source = WateringSource::ManualPlan;
+    payload.planId = 2;
+    uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
+    WateringRecordPayload decoded{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::ManualPlan),
+                      static_cast<int>(decoded.source));
+    TEST_ASSERT_EQUAL_UINT8(2, decoded.planId);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -131,5 +152,6 @@ int main(int, char**) {
     RUN_TEST(test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone);
     RUN_TEST(test_only_normal_sessions_with_actual_flow_become_records);
     RUN_TEST(test_included_but_unstarted_zone_keeps_plan_and_zero_actuals);
+    RUN_TEST(test_manual_records_have_no_plan_and_historical_manual_plan_still_decodes);
     return UNITY_END();
 }
