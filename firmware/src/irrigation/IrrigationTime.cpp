@@ -45,12 +45,4 @@ bool parseLocalDateTimeUtc8(const char* text, uint32_t& epochSec) {
     return true;
 }
 
-bool resumeAfterHours(uint32_t currentEpoch, uint32_t hours, uint32_t& resumeEpoch) {
-    if (hours < 1U || hours > 8760U || hours > (UINT32_MAX - currentEpoch) / 3600U) {
-        return false;
-    }
-    resumeEpoch = currentEpoch + hours * 3600U;
-    return true;
-}
-
 }  // namespace IrrigationTime

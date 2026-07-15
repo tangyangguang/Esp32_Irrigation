@@ -28,6 +28,13 @@ constexpr const char* kLowAction = "low_action";
 constexpr const char* kHighAction = "high_action";
 constexpr const char* kRtcRollback = "rtc_rollback";
 constexpr const char* kAliveHours = "alive_hours";
+constexpr char kCoefficientLabel[] = "稳态流量系数";
+constexpr char kCoefficientHelp[] =
+    "稳定出水时每升水的脉冲数；校准用多组水量拟合扣除启动影响。";
+static_assert(sizeof(kCoefficientLabel) - 1U <= Esp32BaseAppConfig::LABEL_MAX_LENGTH,
+              "flow coefficient label exceeds Esp32Base App Config limit");
+static_assert(sizeof(kCoefficientHelp) - 1U <= Esp32BaseAppConfig::HELP_MAX_LENGTH,
+              "flow coefficient help exceeds Esp32Base App Config limit");
 
 const Esp32BaseAppConfig::EnumOption kFlowActions[] = {
     {"alert", "只报警"},
@@ -98,7 +105,7 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* use
            Esp32BaseAppConfig::addBool({"pump", kNamespace, kPumpEnabled, "启用外部水泵", defaults.pump.enabled, "仅在接有受控水泵时启用；水塔重力供水保持关闭。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"pump", kNamespace, kPumpStart, "水泵启动延时", defaults.pump.startDelayMs, 0, 60000, 100, "ms", "开阀后等待多久启动水泵，范围 0～60000 ms。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"pump", kNamespace, kPumpStop, "停泵后关阀延时", defaults.pump.stopToValveCloseDelayMs, 0, 10000, 100, "ms", "停泵后继续保持阀门开启的时间，范围 0～10000 ms。", false, nullptr}) &&
-           Esp32BaseAppConfig::addDecimal({"meter", kNamespace, kCoefficient, "流量系数", static_cast<int32_t>(defaults.flowMeter.pulsesPerLiterX100), 1, 10000000, 1, 2, "pulse/L", "每升水对应的脉冲数，支持两位小数；可先运行流量校准。", false, nullptr}) &&
+           Esp32BaseAppConfig::addDecimal({"meter", kNamespace, kCoefficient, kCoefficientLabel, static_cast<int32_t>(defaults.flowMeter.pulsesPerLiterX100), 1, 10000000, 1, 2, "P/L", kCoefficientHelp, false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kFlowStart, "流量建立超时", defaults.flowProtection.flowStartTimeoutSec, 1, 120, 1, "s", "开始出水后未检测到脉冲的最长等待时间，范围 1～120 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kNoFlow, "运行无流量超时", defaults.flowProtection.noFlowTimeoutSec, 1, 60, 1, "s", "浇水过程中连续无脉冲多久后停机，范围 1～60 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakDelay, "关阀后检测延时", defaults.flowProtection.unexpectedFlowDelaySec, 0, 300, 1, "s", "全部关闭后延迟多久开始检测非计划流量，范围 0～300 s。", false, nullptr}) &&

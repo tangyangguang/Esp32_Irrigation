@@ -32,16 +32,6 @@ void test_parse_local_datetime_crosses_month_and_year() {
     TEST_ASSERT_EQUAL_UINT32(3600U, after - before);
 }
 
-void test_resume_after_hours_validates_bounds_and_overflow() {
-    uint32_t resume = 0;
-    TEST_ASSERT_TRUE(IrrigationTime::resumeAfterHours(1767196800UL, 1U, resume));
-    TEST_ASSERT_EQUAL_UINT32(1767200400UL, resume);
-    TEST_ASSERT_TRUE(IrrigationTime::resumeAfterHours(1767196800UL, 8760U, resume));
-    TEST_ASSERT_FALSE(IrrigationTime::resumeAfterHours(1767196800UL, 0U, resume));
-    TEST_ASSERT_FALSE(IrrigationTime::resumeAfterHours(1767196800UL, 8761U, resume));
-    TEST_ASSERT_FALSE(IrrigationTime::resumeAfterHours(UINT32_MAX - 3599U, 1U, resume));
-}
-
 }  // namespace
 
 int main(int, char**) {
@@ -49,6 +39,5 @@ int main(int, char**) {
     RUN_TEST(test_parse_local_datetime_uses_fixed_utc8);
     RUN_TEST(test_parse_local_datetime_validates_calendar_and_range);
     RUN_TEST(test_parse_local_datetime_crosses_month_and_year);
-    RUN_TEST(test_resume_after_hours_validates_bounds_and_overflow);
     return UNITY_END();
 }
