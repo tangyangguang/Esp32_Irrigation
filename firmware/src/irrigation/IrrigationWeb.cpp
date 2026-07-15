@@ -40,6 +40,19 @@ bool uintParam(const char* name, uint32_t minimum, uint32_t maximum, uint32_t& v
     return getParam(name, text, sizeof(text)) && parseUint(text, minimum, maximum, value);
 }
 
+bool formatChineseDate(uint32_t epoch, char* output, std::size_t outputSize) {
+    char date[16]{};
+    if (!Esp32BaseTime::formatEpoch(epoch, date, sizeof(date), "%Y-%m-%d") ||
+        std::strlen(date) != 10 || date[4] != '-' || date[7] != '-') {
+        return false;
+    }
+    const unsigned month = static_cast<unsigned>((date[5] - '0') * 10 + date[6] - '0');
+    const unsigned day = static_cast<unsigned>((date[8] - '0') * 10 + date[9] - '0');
+    const int written = std::snprintf(output, outputSize, "%c%c%c%c年%u月%u日",
+                                      date[0], date[1], date[2], date[3], month, day);
+    return written > 0 && static_cast<std::size_t>(written) < outputSize;
+}
+
 bool actionIs(const char* expected);
 
 bool parseStartMinute(const char* text, uint16_t& minute) {
@@ -590,10 +603,10 @@ void IrrigationWeb::overview() {
 .home-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:20px;border:1px solid var(--eb-line);border-radius:12px;background:linear-gradient(135deg,#f4faf7,#fff);margin:12px 0}
 .home-hero.warn{background:linear-gradient(135deg,var(--eb-warn-soft),#fff);border-color:#efcf96}.home-hero.danger{background:linear-gradient(135deg,var(--eb-danger-soft),#fff);border-color:#efc0ba}.home-hero.info{background:linear-gradient(135deg,var(--eb-info-soft),#fff);border-color:#cbdde5}
 .home-eyebrow{display:block;margin-bottom:5px;color:var(--eb-muted);font-size:12px;font-weight:750}.home-hero h1{margin:0 0 6px;font-size:24px}.home-hero p{margin:0;color:var(--eb-muted)}.home-hero .btnlink{min-height:38px;padding:0 16px}
-.home-hero-side{display:flex;align-items:center;justify-content:flex-end;gap:12px}.home-clock{min-width:205px;padding:9px 11px;border:1px solid #cfe1e5;border-radius:9px;background:rgba(255,255,255,.78)}.home-clock-label{display:block;color:var(--eb-muted);font-size:11px;font-weight:700}.home-clock-time{display:block;margin-top:2px;color:var(--eb-primary);font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.15}.home-clock-date{display:block;margin-top:3px;color:var(--eb-muted);font-size:11px}.home-clock.pending .home-clock-time{color:var(--eb-warn);font-size:16px}.home-clock.pending{border-color:#efcf96;background:rgba(255,250,240,.85)}
+.home-hero-side{display:flex;align-items:center;justify-content:flex-end;gap:20px}.home-clock{width:170px}.home-clock-time{display:block;color:inherit;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}.home-clock-date{display:block;margin-top:5px;color:var(--eb-muted);font-size:12px;font-weight:400;white-space:nowrap}.home-clock.pending .home-clock-time{color:var(--eb-warn);font-size:16px}.home-clock.pending .home-clock-date{white-space:normal}
 .home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}.home-card{display:flex;flex-direction:column;min-height:210px;padding:18px;border:1px solid var(--eb-line);border-radius:12px;background:#fff}.home-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.home-card-head h2{margin:0;font-size:17px}.home-main{font-size:22px;font-weight:760;line-height:1.3;overflow-wrap:anywhere}.home-sub{margin:6px 0 0;color:var(--eb-muted);overflow-wrap:anywhere}.home-facts{display:grid;gap:7px;margin:14px 0 0}.home-fact{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;font-size:13px}.home-fact span:first-child{color:var(--eb-muted)}.home-card-actions{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:16px}.home-card-actions form{margin:0}.home-empty{color:var(--eb-muted);line-height:1.7}.home-note{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:13px}
 .manual-modal{width:min(720px,calc(100vw - 28px));padding:20px!important}.manual-template{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:end;margin:14px 0;padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.manual-template label{margin:0}.manual-template select{width:100%;max-width:none;margin:5px 0 0}.manual-template-preview{display:none;grid-column:1/-1;flex-wrap:wrap;gap:6px;padding-top:2px}.manual-template-preview.visible{display:flex}.manual-template-preview span{padding:4px 8px;border:1px solid #d6e1e5;border-radius:999px;background:#fff;color:#526071;font-size:12px;white-space:nowrap}.manual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.manual-zone{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;gap:8px;align-items:center;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft)}.manual-zone label{margin:0;overflow-wrap:anywhere}.manual-zone input{width:100%;max-width:none;min-height:38px;margin:0}.manual-zone span{color:var(--eb-muted);font-weight:650}.manual-summary{margin-top:12px;padding:11px 13px;border:1px solid #cbdde5;border-radius:8px;background:var(--eb-info-soft)}.manual-summary b,.manual-summary span{display:block}.manual-summary span{margin-top:3px;color:var(--eb-muted);font-size:12px}.manual-modal .actions{margin-top:14px}
-@media(max-width:760px){.home-hero,.home-grid{grid-template-columns:1fr}.home-hero{padding:16px}.home-hero h1{font-size:21px}.home-hero-side{align-items:stretch;flex-direction:column}.home-clock{width:100%;min-width:0}.home-hero .btnlink{width:100%}.home-card{min-height:0;padding:15px}.home-fact{grid-template-columns:1fr;gap:2px}.manual-modal{width:calc(100vw - 20px);padding:14px!important}.manual-template,.manual-grid{grid-template-columns:1fr}.manual-zone{grid-template-columns:minmax(0,1fr) 86px auto}.manual-modal .actions{display:grid;grid-template-columns:1fr 1fr}.manual-modal .actions button,.manual-modal .actions input{width:100%;margin:0}}
+@media(max-width:760px){.home-hero,.home-grid{grid-template-columns:1fr}.home-hero{padding:16px}.home-hero h1{font-size:21px}.home-hero-side{align-items:stretch;flex-direction:column;gap:14px}.home-clock{width:100%}.home-hero .btnlink{width:100%}.home-card{min-height:0;padding:15px}.home-fact{grid-template-columns:1fr;gap:2px}.manual-modal{width:calc(100vw - 20px);padding:14px!important}.manual-template,.manual-grid{grid-template-columns:1fr}.manual-zone{grid-template-columns:minmax(0,1fr) 86px auto}.manual-modal .actions{display:grid;grid-template-columns:1fr 1fr}.manual-modal .actions button,.manual-modal .actions input{width:100%;margin:0}}
 </style>)HTML");
     const AutomaticWateringState automatic = g_app->automaticWateringState();
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
@@ -689,14 +702,14 @@ void IrrigationWeb::overview() {
         sendUnsigned(now.epochSec);
         Esp32BaseWeb::sendChunk("'");
     }
-    Esp32BaseWeb::sendChunk("><span class='home-clock-label'>系统时间 · UTC+8</span><b id='home-clock-time' class='home-clock-time'>");
+    Esp32BaseWeb::sendChunk("><b id='home-clock-time' class='home-clock-time'>");
     if (timeTrusted && Esp32BaseTime::formatEpoch(now.epochSec, value, sizeof(value), "%H:%M:%S")) {
         Esp32BaseWeb::writeHtmlEscaped(value);
     } else {
         Esp32BaseWeb::sendChunk("尚未就绪");
     }
     Esp32BaseWeb::sendChunk("</b><span class='home-clock-date'><span id='home-clock-date'>");
-    if (timeTrusted && Esp32BaseTime::formatEpoch(now.epochSec, value, sizeof(value), "%Y年%m月%d日")) {
+    if (timeTrusted && formatChineseDate(now.epochSec, value, sizeof(value))) {
         Esp32BaseWeb::writeHtmlEscaped(value);
         Esp32BaseWeb::sendChunk("</span>");
         Esp32BaseWeb::sendChunk(now.source == Esp32BaseTime::SOURCE_NTP ? " · NTP 校时" : " · RTC 时间");
@@ -897,7 +910,7 @@ void IrrigationWeb::overview() {
         Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink info' href='/irrigation/zones'>前往水路设置</a></div>");
     }
     Esp32BaseWeb::sendChunk(R"HTML(<script>(function(){
-var clock=document.getElementById('home-clock'),clockTime=document.getElementById('home-clock-time'),clockDate=document.getElementById('home-clock-date');if(clock&&clock.dataset.epoch){var clockBase=Number(clock.dataset.epoch),clockStarted=performance.now();function clockPad(v){return String(v).padStart(2,'0')}function updateClock(){var epoch=clockBase+Math.floor((performance.now()-clockStarted)/1000),d=new Date((epoch+28800)*1000);if(clockTime)clockTime.textContent=clockPad(d.getUTCHours())+':'+clockPad(d.getUTCMinutes())+':'+clockPad(d.getUTCSeconds());if(clockDate)clockDate.textContent=d.getUTCFullYear()+'年'+clockPad(d.getUTCMonth()+1)+'月'+clockPad(d.getUTCDate())+'日'}updateClock();setInterval(updateClock,1000)}
+var clock=document.getElementById('home-clock'),clockTime=document.getElementById('home-clock-time'),clockDate=document.getElementById('home-clock-date');if(clock&&clock.dataset.epoch){var clockBase=Number(clock.dataset.epoch),clockStarted=performance.now();function clockPad(v){return String(v).padStart(2,'0')}function updateClock(){var epoch=clockBase+Math.floor((performance.now()-clockStarted)/1000),d=new Date((epoch+28800)*1000);if(clockTime)clockTime.textContent=clockPad(d.getUTCHours())+':'+clockPad(d.getUTCMinutes())+':'+clockPad(d.getUTCSeconds());if(clockDate)clockDate.textContent=d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日'}updateClock();setInterval(updateClock,1000)}
 var inputs=Array.prototype.slice.call(document.querySelectorAll('.manual-duration')),submit=document.getElementById('manual-submit'),summary=document.getElementById('manual-summary'),note=document.getElementById('manual-template-note'),preview=document.getElementById('manual-template-preview'),count=0,total=0;
 function update(){count=0;total=0;inputs.forEach(function(input){var value=Math.max(0,Math.min(120,Number(input.value)||0));if(value>0){count++;total+=value}});if(summary)summary.textContent=count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路';if(submit)submit.disabled=count===0}
 inputs.forEach(function(input){input.addEventListener('input',update)});
