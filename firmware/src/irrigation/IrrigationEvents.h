@@ -44,7 +44,7 @@ public:
         PlanStartRejected = 212,
         SchedulerStateStorage = 221,
         RtcRollback = 231,
-        CalibrationCoefficientSaved = 301,
+        CalibrationParametersSaved = 301,
         ZoneFlowLearned = 302,
         ConfigurationSaved = 401,
     };

@@ -53,6 +53,7 @@ public:
     bool updateFlowCalibrationMeasurement(uint8_t index, uint32_t measuredWaterMl);
     bool deleteFlowCalibrationSample(uint8_t index);
     bool applyFlowCalibrationResult();
+    bool saveFlowCalibrationParameters(const FlowMeterConfig& parameters);
     void resetFlowCalibration();
     const FlowCalibrationService& flowCalibration() const;
     WateringStartResult startZoneFlowLearning(uint8_t zoneId);

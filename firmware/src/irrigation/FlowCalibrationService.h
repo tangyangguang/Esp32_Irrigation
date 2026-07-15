@@ -16,7 +16,7 @@ public:
     static constexpr uint8_t kQualityNonMonotonic = 1U << 2U;
     static constexpr uint8_t kQualityResidualHigh = 1U << 3U;
     static constexpr uint8_t kQualityPostSteadyUnstable = 1U << 4U;
-    static constexpr uint8_t kQualityNegativeNonSteadyWater = 1U << 5U;
+    static constexpr uint8_t kQualityNegativeStartupWater = 1U << 5U;
 
     struct Sample {
         uint32_t pulseCount;
@@ -35,7 +35,7 @@ public:
         int64_t residualPulseX100;
         int64_t residualPercentX100;
         int64_t estimatedSteadyWaterMlX100;
-        int64_t estimatedNonSteadyWaterMlX100;
+        int64_t estimatedStartupWaterMlX100;
         WateringStopReason stopReason;
         uint8_t zoneId;
         uint8_t stabilityWindowSec;
@@ -65,7 +65,10 @@ public:
     const Sample* sample(uint8_t index) const;
     bool resultReady() const;
     uint32_t combinedPulsesPerLiterX100() const;
-    int64_t combinedNonSteadyWaterMlX100() const;
+    uint32_t combinedStartupPulseCount() const;
+    uint32_t combinedStartupWaterMl() const;
+    uint32_t combinedSteadyFlowMlPerMinute() const;
+    int64_t combinedStartupWaterMlX100() const;
     uint32_t volumeSpanMl() const;
     uint8_t validZoneCount() const;
     uint16_t maximumResidualPercentX100() const;
@@ -81,8 +84,11 @@ private:
     std::array<Sample, kMaximumSamples> samples_{};
     Sample pendingSample_{};
     uint32_t combinedPulsesPerLiterX100_ = 0;
+    uint32_t combinedStartupPulseCount_ = 0;
+    uint32_t combinedStartupWaterMl_ = 0;
+    uint32_t combinedSteadyFlowMlPerMinute_ = 0;
     uint32_t volumeSpanMl_ = 0;
-    int64_t combinedNonSteadyWaterMlX100_ = 0;
+    int64_t combinedStartupWaterMlX100_ = 0;
     uint32_t resultUpdatedEpoch_ = 0;
     uint32_t appliedEpoch_ = 0;
     uint32_t appliedCoefficientX100_ = 0;

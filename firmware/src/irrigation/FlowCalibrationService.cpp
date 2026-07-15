@@ -24,8 +24,11 @@ void FlowCalibrationService::clear() {
     samples_ = {};
     pendingSample_ = {};
     combinedPulsesPerLiterX100_ = 0;
+    combinedStartupPulseCount_ = 0;
+    combinedStartupWaterMl_ = 0;
+    combinedSteadyFlowMlPerMinute_ = 0;
     volumeSpanMl_ = 0;
-    combinedNonSteadyWaterMlX100_ = 0;
+    combinedStartupWaterMlX100_ = 0;
     resultUpdatedEpoch_ = 0;
     appliedEpoch_ = 0;
     appliedCoefficientX100_ = 0;
@@ -180,8 +183,20 @@ uint32_t FlowCalibrationService::combinedPulsesPerLiterX100() const {
     return combinedPulsesPerLiterX100_;
 }
 
-int64_t FlowCalibrationService::combinedNonSteadyWaterMlX100() const {
-    return combinedNonSteadyWaterMlX100_;
+uint32_t FlowCalibrationService::combinedStartupPulseCount() const {
+    return combinedStartupPulseCount_;
+}
+
+uint32_t FlowCalibrationService::combinedStartupWaterMl() const {
+    return combinedStartupWaterMl_;
+}
+
+uint32_t FlowCalibrationService::combinedSteadyFlowMlPerMinute() const {
+    return combinedSteadyFlowMlPerMinute_;
+}
+
+int64_t FlowCalibrationService::combinedStartupWaterMlX100() const {
+    return combinedStartupWaterMlX100_;
 }
 
 uint32_t FlowCalibrationService::volumeSpanMl() const {
@@ -206,7 +221,10 @@ uint32_t FlowCalibrationService::appliedCoefficientX100() const {
 
 void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
     combinedPulsesPerLiterX100_ = 0;
-    combinedNonSteadyWaterMlX100_ = 0;
+    combinedStartupPulseCount_ = 0;
+    combinedStartupWaterMl_ = 0;
+    combinedSteadyFlowMlPerMinute_ = 0;
+    combinedStartupWaterMlX100_ = 0;
     volumeSpanMl_ = 0;
     maximumResidualPercentX100_ = 0;
     validSampleCount_ = 0;
@@ -217,7 +235,7 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
         samples_[index].residualPulseX100 = 0;
         samples_[index].residualPercentX100 = 0;
         samples_[index].estimatedSteadyWaterMlX100 = 0;
-        samples_[index].estimatedNonSteadyWaterMlX100 = 0;
+        samples_[index].estimatedStartupWaterMlX100 = 0;
         if (!samples_[index].valid) continue;
         ++validSampleCount_;
         if (!zonesSeen[samples_[index].zoneId]) {
@@ -232,6 +250,8 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
 
     uint64_t sumVolume = 0;
     uint64_t sumPulses = 0;
+    uint64_t sumStartupPulses = 0;
+    uint64_t sumSteadyDurationMs = 0;
     uint64_t sumVolumeSquared = 0;
     uint64_t sumVolumePulses = 0;
     uint32_t minimumVolume = UINT32_MAX;
@@ -241,6 +261,8 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
         if (!sample.valid) continue;
         sumVolume += sample.measuredWaterMl;
         sumPulses += sample.steadyPulseCount;
+        sumStartupPulses += sample.startupPulseCount;
+        sumSteadyDurationMs += sample.steadyDurationMs;
         sumVolumeSquared += static_cast<uint64_t>(sample.measuredWaterMl) *
                             sample.measuredWaterMl;
         sumVolumePulses += static_cast<uint64_t>(sample.measuredWaterMl) *
@@ -279,16 +301,35 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
         (remainder * 100000 + slopeDenominator / 2) / slopeDenominator;
     if (coefficient < kMinimumCoefficientX100 || coefficient > kMaximumCoefficientX100) return;
     combinedPulsesPerLiterX100_ = static_cast<uint32_t>(coefficient);
+    combinedStartupPulseCount_ = static_cast<uint32_t>(
+        (sumStartupPulses + validSampleCount_ / 2U) / validSampleCount_);
 
     const double slope = static_cast<double>(slopeNumerator) /
                          static_cast<double>(slopeDenominator);
     const double intercept =
         (static_cast<double>(sumPulses) - slope * static_cast<double>(sumVolume)) /
         static_cast<double>(count);
-    combinedNonSteadyWaterMlX100_ =
+    combinedStartupWaterMlX100_ =
         static_cast<int64_t>(std::llround(-intercept * 100.0 / slope));
-    if (combinedNonSteadyWaterMlX100_ < 0) {
-        qualityFlags_ |= kQualityNegativeNonSteadyWater;
+    if (combinedStartupWaterMlX100_ < 0) {
+        qualityFlags_ |= kQualityNegativeStartupWater;
+    } else {
+        const int64_t roundedStartupWaterMl =
+            (combinedStartupWaterMlX100_ + 50) / 100;
+        combinedStartupWaterMl_ = roundedStartupWaterMl >= UINT32_MAX
+                                      ? UINT32_MAX
+                                      : static_cast<uint32_t>(roundedStartupWaterMl);
+    }
+    if (sumSteadyDurationMs != 0) {
+        const double steadyFlowMlPerMinute =
+            static_cast<double>(sumPulses) * 6000000000.0 /
+            (static_cast<double>(sumSteadyDurationMs) * coefficient);
+        if (std::isfinite(steadyFlowMlPerMinute) && steadyFlowMlPerMinute > 0.0) {
+            combinedSteadyFlowMlPerMinute_ = steadyFlowMlPerMinute >= UINT32_MAX
+                                                  ? UINT32_MAX
+                                                  : static_cast<uint32_t>(
+                                                        std::llround(steadyFlowMlPerMinute));
+        }
     }
     for (uint8_t index = 0; index < sampleCount_; ++index) {
         Sample& sample = samples_[index];
@@ -305,7 +346,7 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
         sample.residualPercentX100 = roundSaturated(signedResidualPercentX100);
         sample.estimatedSteadyWaterMlX100 = static_cast<int64_t>(std::llround(
             static_cast<double>(sample.steadyPulseCount) * 100.0 / slope));
-        sample.estimatedNonSteadyWaterMlX100 =
+        sample.estimatedStartupWaterMlX100 =
             static_cast<int64_t>(sample.measuredWaterMl) * 100 -
             sample.estimatedSteadyWaterMlX100;
         if (sample.steadyLaterUnstable) {

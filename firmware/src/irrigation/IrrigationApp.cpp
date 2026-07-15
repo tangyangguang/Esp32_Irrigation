@@ -345,14 +345,43 @@ bool IrrigationApp::deleteFlowCalibrationSample(uint8_t index) {
 
 bool IrrigationApp::applyFlowCalibrationResult() {
     const uint32_t coefficient = flowCalibrationService_.combinedPulsesPerLiterX100();
-    const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.status().active || !current ||
+    if (!businessReady_ || wateringController_.status().active ||
         flowCalibrationService_.hasPendingMeasurement() ||
         !flowCalibrationService_.resultReady() || coefficient == 0) {
         return false;
     }
-    if (current->flowMeter.pulsesPerLiterX100 == coefficient) return true;
-    if (!IrrigationParameterConfig::saveFlowCoefficient(coefficient) ||
+    FlowMeterConfig parameters{};
+    parameters.pulsesPerLiterX100 = coefficient;
+    parameters.calibrationStartupPulseCount =
+        flowCalibrationService_.combinedStartupPulseCount();
+    parameters.calibrationStartupWaterMl =
+        flowCalibrationService_.combinedStartupWaterMl();
+    parameters.calibrationSteadyFlowMlPerMinute =
+        flowCalibrationService_.combinedSteadyFlowMlPerMinute();
+    if (!saveFlowCalibrationParameters(parameters)) {
+        return false;
+    }
+    flowCalibrationService_.markResultApplied(trustedEpoch(), coefficient);
+    return true;
+}
+
+bool IrrigationApp::saveFlowCalibrationParameters(
+    const FlowMeterConfig& parameters) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || wateringController_.status().active || !current ||
+        flowCalibrationService_.hasPendingMeasurement()) {
+        return false;
+    }
+    if (current->flowMeter.pulsesPerLiterX100 == parameters.pulsesPerLiterX100 &&
+        current->flowMeter.calibrationStartupPulseCount ==
+            parameters.calibrationStartupPulseCount &&
+        current->flowMeter.calibrationStartupWaterMl ==
+            parameters.calibrationStartupWaterMl &&
+        current->flowMeter.calibrationSteadyFlowMlPerMinute ==
+            parameters.calibrationSteadyFlowMlPerMinute) {
+        return true;
+    }
+    if (!IrrigationParameterConfig::saveFlowCalibrationParameters(parameters) ||
         !applyStoredParameterConfig()) {
         return false;
     }
@@ -360,15 +389,14 @@ bool IrrigationApp::applyFlowCalibrationResult() {
     resetUnexpectedFlowMonitor(millis());
     if (!IrrigationEvents::appendSchedulerEvent(
             static_cast<uint32_t>(IrrigationEvents::EventCode::FlowCalibrationSaved),
-            IrrigationEvents::ReasonCode::CalibrationCoefficientSaved,
+            IrrigationEvents::ReasonCode::CalibrationParametersSaved,
             0,
-            coefficient > static_cast<uint32_t>(INT32_MAX)
+            parameters.pulsesPerLiterX100 > static_cast<uint32_t>(INT32_MAX)
                 ? INT32_MAX
-                : static_cast<int32_t>(coefficient),
+                : static_cast<int32_t>(parameters.pulsesPerLiterX100),
             Esp32BaseAppEvents::Level::Info)) {
         eventStorageFault_ = true;
     }
-    flowCalibrationService_.markResultApplied(trustedEpoch(), coefficient);
     return true;
 }
 

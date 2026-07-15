@@ -28,6 +28,9 @@ void test_default_config_matches_confirmed_product_defaults() {
     TEST_ASSERT_EQUAL_UINT8(75, config.valveDrive.holdDutyPercent);
     TEST_ASSERT_FALSE(config.pump.enabled);
     TEST_ASSERT_EQUAL_UINT32(25000, config.flowMeter.pulsesPerLiterX100);
+    TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupPulseCount);
+    TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupWaterMl);
+    TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationSteadyFlowMlPerMinute);
     TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.windowSec);
     TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.requiredWindows);
     TEST_ASSERT_EQUAL_UINT8(10, config.calibrationStability.allowedVariationPercent);
@@ -76,6 +79,16 @@ void test_confirmed_parameter_ranges_are_validated() {
 
     config = IrrigationConfigRules::createDefault();
     config.flowMeter.pulsesPerLiterX100 = 10000001;
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
+
+    config = IrrigationConfigRules::createDefault();
+    config.flowMeter.calibrationStartupPulseCount = 10000001;
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
+    config = IrrigationConfigRules::createDefault();
+    config.flowMeter.calibrationStartupWaterMl = 1000001;
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
+    config = IrrigationConfigRules::createDefault();
+    config.flowMeter.calibrationSteadyFlowMlPerMinute = 100001;
     TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
 
     config = IrrigationConfigRules::createDefault();

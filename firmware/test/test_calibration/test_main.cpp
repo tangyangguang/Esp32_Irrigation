@@ -54,7 +54,10 @@ void test_two_samples_remove_shared_startup_effect() {
     TEST_ASSERT_TRUE(service.resultReady());
     TEST_ASSERT_EQUAL_UINT8(2, service.validSampleCount());
     TEST_ASSERT_EQUAL_UINT32(25000, service.combinedPulsesPerLiterX100());
-    TEST_ASSERT_EQUAL_INT64(-8000, service.combinedNonSteadyWaterMlX100());
+    TEST_ASSERT_EQUAL_UINT32(20, service.combinedStartupPulseCount());
+    TEST_ASSERT_EQUAL_UINT32(0, service.combinedStartupWaterMl());
+    TEST_ASSERT_EQUAL_UINT32(10740, service.combinedSteadyFlowMlPerMinute());
+    TEST_ASSERT_EQUAL_INT64(-8000, service.combinedStartupWaterMlX100());
     TEST_ASSERT_EQUAL_UINT32(3000, service.volumeSpanMl());
     TEST_ASSERT_EQUAL_UINT8(1, service.validZoneCount());
     TEST_ASSERT_EQUAL_UINT32(1100, service.resultUpdatedEpoch());
@@ -70,7 +73,10 @@ void test_three_samples_expose_intercept_residuals_and_mixed_zones() {
 
     TEST_ASSERT_TRUE(service.resultReady());
     TEST_ASSERT_EQUAL_UINT32(221721, service.combinedPulsesPerLiterX100());
-    TEST_ASSERT_EQUAL_INT64(18456, service.combinedNonSteadyWaterMlX100());
+    TEST_ASSERT_EQUAL_UINT32(20, service.combinedStartupPulseCount());
+    TEST_ASSERT_EQUAL_UINT32(185, service.combinedStartupWaterMl());
+    TEST_ASSERT_EQUAL_UINT32(8546, service.combinedSteadyFlowMlPerMinute());
+    TEST_ASSERT_EQUAL_INT64(18456, service.combinedStartupWaterMlX100());
     TEST_ASSERT_EQUAL_UINT8(3, service.validZoneCount());
     TEST_ASSERT_EQUAL_UINT16(9, service.maximumResidualPercentX100());
 

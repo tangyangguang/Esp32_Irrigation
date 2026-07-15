@@ -16,6 +16,9 @@ constexpr const char* kPumpEnabled = "pump_on";
 constexpr const char* kPumpStart = "pump_start";
 constexpr const char* kPumpStop = "pump_stop";
 constexpr const char* kCoefficient = "pulse_l";
+constexpr const char* kStartupPulses = "cal_start_p";
+constexpr const char* kStartupWater = "cal_start_ml";
+constexpr const char* kSteadyFlow = "cal_flow";
 constexpr const char* kCalibrationWindow = "cal_window";
 constexpr const char* kCalibrationWindows = "cal_windows";
 constexpr const char* kCalibrationVariation = "cal_variation";
@@ -140,6 +143,9 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     GET_INT(kPumpStart, defaults.pump.startDelayMs, config.pump.startDelayMs);
     GET_INT(kPumpStop, defaults.pump.stopToValveCloseDelayMs, config.pump.stopToValveCloseDelayMs);
     GET_INT(kCoefficient, defaults.flowMeter.pulsesPerLiterX100, config.flowMeter.pulsesPerLiterX100);
+    GET_INT(kStartupPulses, defaults.flowMeter.calibrationStartupPulseCount, config.flowMeter.calibrationStartupPulseCount);
+    GET_INT(kStartupWater, defaults.flowMeter.calibrationStartupWaterMl, config.flowMeter.calibrationStartupWaterMl);
+    GET_INT(kSteadyFlow, defaults.flowMeter.calibrationSteadyFlowMlPerMinute, config.flowMeter.calibrationSteadyFlowMlPerMinute);
     GET_INT(kCalibrationWindow, defaults.calibrationStability.windowSec, config.calibrationStability.windowSec);
     GET_INT(kCalibrationWindows, defaults.calibrationStability.requiredWindows, config.calibrationStability.requiredWindows);
     GET_INT(kCalibrationVariation, defaults.calibrationStability.allowedVariationPercent, config.calibrationStability.allowedVariationPercent);
@@ -162,11 +168,31 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     return IrrigationConfigRules::validate(config);
 }
 
-bool IrrigationParameterConfig::saveFlowCoefficient(uint32_t pulsesPerLiterX100) {
-    return pulsesPerLiterX100 >= 1U && pulsesPerLiterX100 <= 10000000U &&
-           Esp32BaseConfig::setInt(kNamespace,
-                                   kCoefficient,
-                                   static_cast<int32_t>(pulsesPerLiterX100));
+bool IrrigationParameterConfig::saveFlowCalibrationParameters(
+    const FlowMeterConfig& parameters) {
+    if (parameters.pulsesPerLiterX100 < 1U ||
+        parameters.pulsesPerLiterX100 > 10000000U ||
+        parameters.calibrationStartupPulseCount > 10000000U ||
+        parameters.calibrationStartupWaterMl > 1000000U ||
+        parameters.calibrationSteadyFlowMlPerMinute > 100000U) {
+        return false;
+    }
+    return Esp32BaseConfig::setInt(
+               kNamespace,
+               kStartupPulses,
+               static_cast<int32_t>(parameters.calibrationStartupPulseCount)) &&
+           Esp32BaseConfig::setInt(
+               kNamespace,
+               kStartupWater,
+               static_cast<int32_t>(parameters.calibrationStartupWaterMl)) &&
+           Esp32BaseConfig::setInt(
+               kNamespace,
+               kSteadyFlow,
+               static_cast<int32_t>(parameters.calibrationSteadyFlowMlPerMinute)) &&
+           Esp32BaseConfig::setInt(
+               kNamespace,
+               kCoefficient,
+               static_cast<int32_t>(parameters.pulsesPerLiterX100));
 }
 
 bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {

@@ -305,6 +305,17 @@ void formatPulseRate(uint32_t pulses,
                            outputLength);
 }
 
+uint32_t calculateFlowMlPerMinute(uint32_t pulses,
+                                  uint32_t durationMs,
+                                  uint32_t pulsesPerLiterX100) {
+    if (durationMs == 0 || pulsesPerLiterX100 == 0) return 0;
+    const double value = static_cast<double>(pulses) * 6000000000.0 /
+                         (static_cast<double>(durationMs) * pulsesPerLiterX100);
+    if (value <= 0.0) return 0;
+    return value >= UINT32_MAX ? UINT32_MAX
+                               : static_cast<uint32_t>(value + 0.5);
+}
+
 void sendRecordTime(const Esp32BaseRecordStore::RecordTiming& timing) {
     uint32_t epoch = 0;
     char text[32]{};
@@ -1427,6 +1438,21 @@ void IrrigationWeb::flowCalibration() {
                           static_cast<uint8_t>(sampleNumber - 1U));
         } else if (actionIs("apply")) {
             success = g_app->applyFlowCalibrationResult();
+        } else if (actionIs("parameters")) {
+            char coefficientText[20]{}, steadyFlowText[20]{};
+            FlowMeterConfig parameters{};
+            success = getParam("coefficient", coefficientText, sizeof(coefficientText)) &&
+                      IrrigationConfigRules::parsePulsesPerLiter(
+                          coefficientText, parameters.pulsesPerLiterX100) &&
+                      uintParam("startup_pulses", 0, 10000000,
+                                parameters.calibrationStartupPulseCount) &&
+                      uintParam("startup_water_ml", 0, 1000000,
+                                parameters.calibrationStartupWaterMl) &&
+                      getParam("steady_flow", steadyFlowText, sizeof(steadyFlowText)) &&
+                      IrrigationConfigRules::parseLitersPerMinute(
+                          steadyFlowText,
+                          parameters.calibrationSteadyFlowMlPerMinute) &&
+                      g_app->saveFlowCalibrationParameters(parameters);
         } else if (actionIs("clear")) {
             g_app->resetFlowCalibration();
             success = !g_app->wateringStatus().active;
@@ -1437,12 +1463,8 @@ void IrrigationWeb::flowCalibration() {
     if (!beginPage("流量计校准", "识别稳定出水阶段，用多组实测总水量计算稳态流量系数")) return;
     Esp32BaseWeb::sendChunk(
         "<style>"
-        ".cal-current{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:18px;border:1px solid #cfe1e5;border-radius:12px;background:linear-gradient(135deg,#edf8f9,#fff 72%)}"
-        ".cal-current-label{margin:0 0 5px;color:var(--eb-muted);font-size:13px}"
-        ".cal-current-value{display:flex;align-items:baseline;gap:7px;color:var(--eb-primary);line-height:1}"
-        ".cal-current-number{font-size:32px;font-weight:500;letter-spacing:-.02em}"
-        ".cal-current-unit{font-size:14px;color:var(--eb-muted)}"
-        ".cal-current-note{max-width:360px;color:var(--eb-muted);font-size:13px;line-height:1.6}"
+        ".cal-current{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:0;align-items:center;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff;overflow:hidden}"
+        ".cal-current-fact{min-width:0;padding:10px 13px;border-right:1px solid var(--eb-line-soft)}.cal-current-label{display:block;color:var(--eb-muted);font-size:11px}.cal-current-value{display:block;margin-top:3px;color:var(--eb-text);font-size:17px;font-weight:400;line-height:1.35}.cal-current-unit{font-size:12px;color:var(--eb-muted)}.cal-current-action{padding:10px 13px}.cal-current-action button{white-space:nowrap}"
         ".cal-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}"
         ".cal-step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:9px;align-items:start;padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft);font-size:13px;line-height:1.55}"
         ".cal-step-num{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--eb-primary-soft);color:var(--eb-primary);font-weight:600}"
@@ -1450,26 +1472,22 @@ void IrrigationWeb::flowCalibration() {
         ".cal-start-form{display:grid;grid-template-columns:minmax(360px,1fr) minmax(280px,.8fr);gap:16px;align-items:stretch}.cal-start-picker label{display:block;margin-bottom:6px;font-weight:500}.cal-start-controls{display:flex;align-items:flex-start;gap:10px}.cal-start-controls select{flex:1;min-width:220px}.cal-start-controls .actions{flex:0 0 auto;margin:0}.cal-start-info{display:flex;flex-direction:column;justify-content:center;padding-left:16px;border-left:1px solid var(--eb-line-soft);color:var(--eb-muted);font-size:12px;line-height:1.55}.cal-start-info b{color:var(--eb-text);font-size:13px;font-weight:400}"
         ".cal-live-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:14px}.cal-live-head h3{margin:0 0 3px;font-size:17px}.cal-live-head p{margin:0;color:var(--eb-muted);font-size:13px}"
         ".cal-live .metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.cal-live .metric b{font-weight:500}.cal-live .metric small{display:block;margin-top:4px;color:var(--eb-muted);font-size:11px;font-weight:400;line-height:1.4}.cal-live .actions{margin-top:12px}.cal-live-note{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;line-height:1.5}.cal-live-note b{color:var(--eb-text);font-weight:400}"
-        ".cal-pending{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:18px;align-items:start}.cal-pending-summary{padding:14px;border-radius:9px;background:var(--eb-soft)}.cal-pending-summary h3{margin:0 0 4px;font-size:16px;font-weight:500}.cal-pending-route{margin:0 0 12px;color:var(--eb-muted);font-size:12px}.cal-phase-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.cal-phase{padding:9px 10px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.cal-phase-label{display:block;color:var(--eb-muted);font-size:11px}.cal-phase-value{display:block;margin-top:4px;color:var(--eb-text);font-size:13px;font-weight:400;line-height:1.45}.cal-phase-note{display:block;margin-top:3px;color:var(--eb-muted);font-size:11px;line-height:1.4}.cal-pending-total{margin:10px 0 0;color:var(--eb-muted);font-size:12px}.cal-pending label{font-weight:500}"
+        ".cal-pending{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:18px;align-items:start}.cal-pending-summary{padding:12px 13px;border-radius:9px;background:var(--eb-soft)}.cal-pending-summary h3{margin:0 0 3px;font-size:16px;font-weight:500}.cal-pending-route{margin:0 0 9px;color:var(--eb-muted);font-size:12px}.cal-phase-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cal-phase{padding:8px 9px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.cal-phase-label{display:block;color:var(--eb-muted);font-size:11px}.cal-phase-value{display:block;margin-top:3px;color:var(--eb-text);font-size:13px;font-weight:400;line-height:1.4}.cal-phase-note{display:block;margin-top:2px;color:var(--eb-muted);font-size:11px;line-height:1.35}.cal-pending-total{margin:8px 0 0;color:var(--eb-muted);font-size:12px}.cal-pending-warning{color:var(--eb-danger)}.cal-pending label{font-weight:500}"
         ".cal-sample-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.cal-counts{display:flex;flex-wrap:wrap;gap:7px}.cal-count{padding:5px 9px;border-radius:999px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px}.cal-count b{color:var(--eb-text);font-weight:500}.cal-count.ok{background:var(--eb-ok-soft);color:var(--eb-ok)}.cal-count.bad{background:var(--eb-danger-soft);color:var(--eb-danger)}"
-        ".cal-sample-list{display:grid;gap:10px}.cal-sample{padding:13px 14px;border:1px solid var(--eb-line-soft);border-radius:10px;background:#fff}.cal-sample-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.cal-sample-title{display:flex;align-items:center;gap:8px;min-width:0}.cal-sample-name{font-size:14px;font-weight:500}.cal-sample-route{color:var(--eb-muted);font-size:12px}.cal-sample-head-actions{display:flex;align-items:center;gap:7px}.cal-sample-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.cal-sample-fact{min-width:0;padding:9px 10px;border-radius:8px;background:var(--eb-soft)}.cal-sample-fact.wide{grid-column:span 2}.cal-sample-label{display:block;color:var(--eb-muted);font-size:11px}.cal-sample-value{display:block;margin-top:4px;color:var(--eb-text);font-size:13px;font-weight:400;line-height:1.45;overflow-wrap:anywhere}.cal-sample-note{display:block;margin-top:3px;color:var(--eb-muted);font-size:11px;font-weight:400;line-height:1.45;overflow-wrap:anywhere}.cal-residual{font-variant-numeric:tabular-nums}.cal-sample-actions{display:flex;align-items:center;gap:6px;white-space:nowrap}.cal-sample-actions form{margin:0}.cal-sample-actions button,.cal-sample-actions input{min-height:30px;padding:5px 10px;font-size:12px}.cal-status{display:inline-flex;align-items:center;padding:3px 8px;border-radius:999px;font-size:12px;font-weight:400}.cal-status.ok{background:var(--eb-ok-soft);color:var(--eb-ok)}.cal-status.bad{background:var(--eb-danger-soft);color:var(--eb-danger)}"
+        ".cal-sample-guide{margin:-2px 0 10px;color:var(--eb-muted);font-size:11px;line-height:1.5}.cal-sample-list{border:1px solid var(--eb-line-soft);border-radius:9px;overflow:hidden}.cal-sample-columns,.cal-sample{display:grid;grid-template-columns:minmax(95px,.65fr) minmax(135px,.9fr) minmax(160px,1.05fr) minmax(210px,1.35fr) minmax(200px,1.25fr) auto;gap:12px;align-items:center}.cal-sample-columns{padding:7px 11px;background:var(--eb-soft);color:var(--eb-muted);font-size:11px}.cal-sample{padding:10px 11px;background:#fff;border-top:1px solid var(--eb-line-soft)}.cal-sample:first-of-type{border-top:0}.cal-sample-cell{min-width:0}.cal-sample-main{display:block;color:var(--eb-text);font-size:13px;font-weight:400;line-height:1.4;overflow-wrap:anywhere}.cal-sample-sub{display:block;margin-top:2px;color:var(--eb-muted);font-size:11px;font-weight:400;line-height:1.4;overflow-wrap:anywhere}.cal-sample-sub.warn{color:var(--eb-danger)}.cal-sample-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;white-space:nowrap}.cal-sample-actions form{margin:0}.cal-sample-actions button,.cal-sample-actions input{min-height:30px;padding:5px 9px;font-size:12px}.cal-status{display:inline-flex;align-items:center;margin-left:5px;padding:2px 7px;border-radius:999px;font-size:11px;font-weight:400}.cal-status.ok{background:var(--eb-ok-soft);color:var(--eb-ok)}.cal-status.bad{background:var(--eb-danger-soft);color:var(--eb-danger)}"
         ".cal-empty{padding:20px;text-align:center;border:1px dashed #c9d6dc;border-radius:9px;background:var(--eb-soft)}"
         ".cal-empty-title{margin:0;color:#344054;font-size:15px;font-weight:500}"
         ".cal-empty-text{margin:5px 0 0;color:var(--eb-muted);font-size:13px}"
-        ".cal-result{display:grid;grid-template-columns:minmax(270px,.72fr) minmax(460px,1.28fr);gap:20px;padding:16px;border:1px solid #bfe0d4;border-radius:11px;background:linear-gradient(135deg,var(--eb-ok-soft),#fff)}"
-        ".cal-result-label{margin:0 0 5px;color:var(--eb-ok);font-size:13px}"
-        ".cal-result-primary{display:flex;flex-direction:column;align-items:flex-start}.cal-result-value{font-size:32px;font-weight:500;color:var(--eb-ok);line-height:1.15}.cal-result-state{margin-top:10px}.cal-result-primary .actions{margin:14px 0 0}.cal-result-meta{margin-top:auto;padding-top:11px}.cal-result-time{display:block;color:var(--eb-muted);font-size:12px;line-height:1.55}"
-        ".cal-result-detail{min-width:0}.cal-formula{margin:0 0 10px;padding:10px 12px;border-radius:8px;background:rgba(255,255,255,.76);color:#344054;font-size:13px;line-height:1.55;overflow-wrap:anywhere}.cal-result-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.cal-result-fact{padding:9px 10px;border:1px solid rgba(191,224,212,.75);border-radius:8px;background:rgba(255,255,255,.58)}.cal-result-fact span{display:block;color:var(--eb-muted);font-size:11px}.cal-result-fact b{display:block;margin-top:3px;color:var(--eb-text);font-size:14px;font-weight:400}.cal-result-note{margin:9px 0 0;color:var(--eb-muted);font-size:12px;line-height:1.55}"
+        ".cal-result{padding:12px 13px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.cal-result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.cal-result-head-left{display:flex;align-items:center;gap:8px}.cal-result-head p{margin:0;color:var(--eb-muted);font-size:12px}.cal-result-head form{margin:0}.cal-result-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--eb-line-soft);border-radius:8px;overflow:hidden}.cal-result-fact{min-width:0;padding:9px 10px;border-right:1px solid var(--eb-line-soft);background:var(--eb-soft)}.cal-result-fact:last-child{border-right:0}.cal-result-fact span{display:block;color:var(--eb-muted);font-size:11px}.cal-result-fact b{display:block;margin-top:3px;color:var(--eb-text);font-size:15px;font-weight:400}.cal-result-meta{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:8px;color:var(--eb-muted);font-size:11px;line-height:1.5}.cal-result-note{margin:8px 0 0;color:var(--eb-muted);font-size:11px;line-height:1.5}"
         ".cal-sample-toolbar form{margin:0}.cal-sample-toolbar input{min-height:30px;padding:5px 10px;font-size:12px}"
         ".cal-edit{width:min(460px,calc(100vw - 28px))}.cal-edit h2{margin-bottom:4px}.cal-edit>p{margin-top:0}"
-        "@media(max-width:1100px){.cal-sample-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}"
-        "@media(max-width:900px){.cal-start-form,.cal-result{grid-template-columns:1fr}.cal-start-controls select{width:100%;min-width:0}.cal-start-info{padding:10px 0 0;border-left:0;border-top:1px solid var(--eb-line-soft)}.cal-result-meta{margin-top:8px}.cal-phase-grid{grid-template-columns:1fr}}"
+        "@media(max-width:1150px){.cal-current{grid-template-columns:repeat(2,minmax(0,1fr)) auto}.cal-current-fact:nth-child(2){border-right:0}.cal-current-fact:nth-child(-n+2){border-bottom:1px solid var(--eb-line-soft)}.cal-current-action{grid-column:3;grid-row:1/span 2}.cal-sample-columns{display:none}.cal-sample{grid-template-columns:repeat(2,minmax(0,1fr)) auto}.cal-sample-actions{grid-column:3;grid-row:1/span 3}}"
+        "@media(max-width:900px){.cal-start-form{grid-template-columns:1fr}.cal-start-controls select{width:100%;min-width:0}.cal-start-info{padding:10px 0 0;border-left:0;border-top:1px solid var(--eb-line-soft)}.cal-phase-grid{grid-template-columns:1fr}.cal-result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-result-fact:nth-child(2){border-right:0}.cal-result-fact:nth-child(-n+2){border-bottom:1px solid var(--eb-line-soft)}}"
         "@media(max-width:760px){"
-        ".cal-current,.cal-steps{grid-template-columns:1fr}"
-        ".cal-current{padding:14px}.cal-current-number{font-size:28px}.cal-live .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-pending{grid-template-columns:1fr}.cal-result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-sample-toolbar{align-items:flex-start}.cal-start-controls{align-items:stretch}"
+        ".cal-steps{grid-template-columns:1fr}"
+        ".cal-live .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-pending{grid-template-columns:1fr}.cal-sample-toolbar{align-items:flex-start}.cal-start-controls{align-items:stretch}.cal-sample{grid-template-columns:1fr auto}.cal-sample-actions{grid-column:2;grid-row:1/span 5}"
         "}"
-        "@media(max-width:560px){.cal-sample-grid{grid-template-columns:1fr}.cal-sample-fact.wide{grid-column:auto}.cal-sample-head{align-items:flex-start}.cal-sample-head-actions{flex-wrap:wrap;justify-content:flex-end}}"
-        "@media(max-width:480px){.cal-result-grid{grid-template-columns:1fr}}"
+        "@media(max-width:560px){.cal-current{grid-template-columns:1fr auto}.cal-current-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-current-action{grid-column:2;grid-row:1/span 4}.cal-result-head{align-items:flex-start}.cal-result-grid{grid-template-columns:1fr}.cal-result-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-result-fact:last-child{border-bottom:0!important}.cal-sample{grid-template-columns:1fr}.cal-sample-actions{grid-column:1;grid-row:auto;justify-content:flex-start}}"
         "</style>");
     const IrrigationConfig* config = g_app->configuration();
     if (!config) { endPage(); return; }
@@ -1480,11 +1498,25 @@ void IrrigationWeb::flowCalibration() {
     char coefficient[20]{};
     IrrigationConfigRules::formatPulsesPerLiter(
         config->flowMeter.pulsesPerLiterX100, coefficient, sizeof(coefficient));
-    Esp32BaseWeb::beginPanel("当前稳态流量系数");
-    Esp32BaseWeb::sendChunk("<div class='cal-current'><div><p class='cal-current-label'>设备当前使用</p><div class='cal-current-value'><span class='cal-current-number'>");
-    Esp32BaseWeb::writeHtmlEscaped(coefficient);
-    Esp32BaseWeb::sendChunk("</span><span class='cal-current-unit'>P/L</span></div></div><div class='cal-current-note'>稳定出水状态下每升水对应的脉冲数。校准完成前不会修改；确认使用结果后才保存。</div></div>");
+    char currentSteadyFlow[20]{};
+    IrrigationConfigRules::formatLitersPerMinute(
+        config->flowMeter.calibrationSteadyFlowMlPerMinute,
+        currentSteadyFlow,
+        sizeof(currentSteadyFlow));
+    Esp32BaseWeb::beginPanel("设备校准参数");
+    Esp32BaseWeb::sendChunk("<div class='cal-current'><div class='cal-current-fact'><span class='cal-current-label'>启动脉冲</span><span class='cal-current-value'>");
+    sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>个</span>");
+    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>估算启动水量</span><span class='cal-current-value'>");
+    sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>mL</span>");
+    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>稳态流量系数</span><span class='cal-current-value'>"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>P/L</span></span></div><div class='cal-current-fact'><span class='cal-current-label'>稳态参考流量</span><span class='cal-current-value'>");
+    Esp32BaseWeb::writeHtmlEscaped(currentSteadyFlow); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>L/min</span>");
+    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-action'>");
+    if (!managementLocked) Esp32BaseWeb::sendChunk("<button class='secondary' type='button' onclick=\"document.getElementById('cal-parameters').showModal()\">修改参数</button>");
+    Esp32BaseWeb::sendChunk("</div></div>");
     Esp32BaseWeb::endPanel();
+    if (!managementLocked) {
+        Esp32BaseWeb::sendChunk("<dialog id='cal-parameters' class='panel eb-modal cal-edit' data-eb-light-dismiss='1'><h2>修改校准参数</h2><p class='muted'>四项参数统一保存；当前只有稳态流量系数参与水量换算。</p><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='parameters'><div class='fieldgrid'><p class='field'><label>启动脉冲</label><input type='number' name='startup_pulses' min='0' max='10000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk("'><small>单位：个；0 表示未设置。</small></p><p class='field'><label>估算启动水量</label><input type='number' name='startup_water_ml' min='0' max='1000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk("'><small>单位：mL；0 表示未设置。</small></p><p class='field'><label>稳态流量系数</label><input type='number' name='coefficient' min='0.01' max='100000.00' step='0.01' required value='"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk("'><small>单位：P/L。</small></p><p class='field'><label>稳态参考流量</label><input type='number' name='steady_flow' min='0' max='100.000' step='0.001' required value='"); Esp32BaseWeb::writeHtmlEscaped(currentSteadyFlow); Esp32BaseWeb::sendChunk("'><small>单位：L/min；0 表示未设置。</small></p></div><div class='actions'><button class='secondary' type='button' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存参数'></div></form></dialog>");
+    }
     Esp32BaseWeb::beginPanel("开始校准");
     Esp32BaseWeb::sendChunk("<div class='cal-steps'><div class='cal-step'><span class='cal-step-num'>1</span><span>从完全停止状态开始接水，系统自动识别进入稳态的时刻。</span></div><div class='cal-step'><span class='cal-step-num'>2</span><span>停止后填写实测总水量；至少两个不同水量，建议三个样本。</span></div><div class='cal-step'><span class='cal-step-num'>3</span><span>仅用稳态阶段脉冲拟合，确认使用后才写入设备参数。</span></div></div><div class='cal-action'>");
     if (status.active && !active) {
@@ -1499,11 +1531,7 @@ void IrrigationWeb::flowCalibration() {
         formatSignedHundredths(liveZone.calibrationLatestPulseRateX100,
                                liveRate,
                                sizeof(liveRate));
-        char liveStartupRate[24]{}, liveSteadyRate[24]{};
-        formatPulseRate(liveZone.calibrationStartupPulses,
-                        liveZone.calibrationSteadyStartedMs,
-                        liveStartupRate,
-                        sizeof(liveStartupRate));
+        char liveSteadyRate[24]{};
         formatPulseRate(liveZone.calibrationSteadyPulses,
                         liveZone.calibrationSteadyDurationMs,
                         liveSteadyRate,
@@ -1523,21 +1551,17 @@ void IrrigationWeb::flowCalibration() {
             sendUnsigned(liveZone.calibrationRequiredWindows);
             Esp32BaseWeb::sendChunk(" 个窗口");
         }
-        Esp32BaseWeb::sendChunk("</b><span>稳态确认进度</span><small id='cal-steady-help'>"); if (liveZone.calibrationSteadyDetected) Esp32BaseWeb::sendChunk("后续波动仍会继续监测"); else if (!status.flowEstablished) Esp32BaseWeb::sendChunk("检测到脉冲后开始统计"); else if (liveZone.calibrationCollectedWindows >= liveZone.calibrationRequiredWindows) { Esp32BaseWeb::sendChunk("最近 "); sendUnsigned(liveZone.calibrationRequiredWindows); Esp32BaseWeb::sendChunk(" 个窗口尚未满足波动要求，继续识别"); } else { Esp32BaseWeb::sendChunk("收满 "); sendUnsigned(liveZone.calibrationRequiredWindows); Esp32BaseWeb::sendChunk(" 个窗口后比较速率波动"); } Esp32BaseWeb::sendChunk("</small></div><div class='metric'><b id='cal-remaining'>"); sendDuration(status.currentZoneRemainingSec); Esp32BaseWeb::sendChunk("</b><span>剩余上限</span></div></div><div class='cal-live-note'><span>检测规则：<b>每个窗口 "); sendUnsigned(liveZone.calibrationWindowSec); Esp32BaseWeb::sendChunk(" 秒，需连续 "); sendUnsigned(liveZone.calibrationRequiredWindows); Esp32BaseWeb::sendChunk(" 个，窗口速率波动不超过 "); sendUnsigned(liveZone.calibrationAllowedVariationPercent); Esp32BaseWeb::sendChunk("%</b></span><span>启动阶段：<b id='cal-startup-phase'>"); if (liveZone.calibrationSteadyDetected) { sendMilliseconds(liveZone.calibrationSteadyStartedMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(liveZone.calibrationStartupPulses); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(liveStartupRate); Esp32BaseWeb::sendChunk(" P/s"); } else Esp32BaseWeb::sendChunk("等待稳态确认"); Esp32BaseWeb::sendChunk("</b></span><span>稳态阶段：<b id='cal-steady-phase'>"); if (liveZone.calibrationSteadyDetected) { sendMilliseconds(liveZone.calibrationSteadyDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(liveZone.calibrationSteadyPulses); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(liveSteadyRate); Esp32BaseWeb::sendChunk(" P/s"); } else Esp32BaseWeb::sendChunk("尚未开始"); Esp32BaseWeb::sendChunk("</b></span><span>最近窗口：<b id='cal-rate'>"); Esp32BaseWeb::writeHtmlEscaped(liveRate); Esp32BaseWeb::sendChunk(" P/s</b></span></div><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='stop'><div class='actions'><input class='danger' type='submit' value='停止本次采样'></div></form></div>");
+        Esp32BaseWeb::sendChunk("</b><span>稳态确认进度</span><small id='cal-steady-help'>"); if (liveZone.calibrationSteadyDetected) Esp32BaseWeb::sendChunk("后续波动仍会继续监测"); else if (!status.flowEstablished) Esp32BaseWeb::sendChunk("检测到脉冲后开始统计"); else if (liveZone.calibrationCollectedWindows >= liveZone.calibrationRequiredWindows) { Esp32BaseWeb::sendChunk("最近 "); sendUnsigned(liveZone.calibrationRequiredWindows); Esp32BaseWeb::sendChunk(" 个窗口尚未满足波动要求，继续识别"); } else { Esp32BaseWeb::sendChunk("收满 "); sendUnsigned(liveZone.calibrationRequiredWindows); Esp32BaseWeb::sendChunk(" 个窗口后比较速率波动"); } Esp32BaseWeb::sendChunk("</small></div><div class='metric'><b id='cal-remaining'>"); sendDuration(status.currentZoneRemainingSec); Esp32BaseWeb::sendChunk("</b><span>剩余上限</span></div></div><div class='cal-live-note'><span>检测规则：<b>每个窗口 "); sendUnsigned(liveZone.calibrationWindowSec); Esp32BaseWeb::sendChunk(" 秒，需连续 "); sendUnsigned(liveZone.calibrationRequiredWindows); Esp32BaseWeb::sendChunk(" 个，窗口速率波动不超过 "); sendUnsigned(liveZone.calibrationAllowedVariationPercent); Esp32BaseWeb::sendChunk("%</b></span><span>启动阶段：<b id='cal-startup-phase'>"); if (liveZone.calibrationSteadyDetected) { sendMilliseconds(liveZone.calibrationSteadyStartedMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(liveZone.calibrationStartupPulses); Esp32BaseWeb::sendChunk(" 脉冲"); } else Esp32BaseWeb::sendChunk("等待稳态确认"); Esp32BaseWeb::sendChunk("</b></span><span>稳态阶段：<b id='cal-steady-phase'>"); if (liveZone.calibrationSteadyDetected) { sendMilliseconds(liveZone.calibrationSteadyDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(liveZone.calibrationSteadyPulses); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(liveSteadyRate); Esp32BaseWeb::sendChunk(" P/s"); } else Esp32BaseWeb::sendChunk("尚未开始"); Esp32BaseWeb::sendChunk("</b></span><span>最近窗口：<b id='cal-rate'>"); Esp32BaseWeb::writeHtmlEscaped(liveRate); Esp32BaseWeb::sendChunk(" P/s</b></span></div><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='stop'><div class='actions'><input class='danger' type='submit' value='停止本次采样'></div></form></div>");
     } else if (calibration.hasPendingMeasurement()) {
         const uint8_t pendingZoneId = calibration.pendingZoneId();
         const char* pendingZoneName = pendingZoneId >= 1 && pendingZoneId <= config->zones.size()
                                           ? config->zones[pendingZoneId - 1U].name.data()
                                           : "未知水路";
         const FlowCalibrationService::Sample* pending = calibration.pendingSample();
-        char pendingStartupRate[24]{}, pendingSteadyRate[24]{}, pendingStopRate[24]{};
-        formatPulseRate(pending->startupPulseCount, pending->steadyStartedMs,
-                        pendingStartupRate, sizeof(pendingStartupRate));
+        char pendingSteadyRate[24]{};
         formatPulseRate(pending->steadyPulseCount, pending->steadyDurationMs,
                         pendingSteadyRate, sizeof(pendingSteadyRate));
-        formatPulseRate(pending->stopPulseCount, pending->stopDurationMs,
-                        pendingStopRate, sizeof(pendingStopRate));
-        Esp32BaseWeb::sendChunk("<div class='cal-pending'><div class='cal-pending-summary'><h3>本次采样已停止</h3><p class='cal-pending-route'>采样水路："); Esp32BaseWeb::writeHtmlEscaped(pendingZoneName); Esp32BaseWeb::sendChunk("</p><div class='cal-phase-grid'><div class='cal-phase'><span class='cal-phase-label'>启动阶段</span><span class='cal-phase-value'>"); sendMilliseconds(pending->steadyStartedMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(pending->startupPulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(pendingStartupRate); Esp32BaseWeb::sendChunk(" P/s</span><span class='cal-phase-note'>从开阀到进入稳态</span></div><div class='cal-phase'><span class='cal-phase-label'>稳态阶段</span><span class='cal-phase-value'>"); sendMilliseconds(pending->steadyDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(pending->steadyPulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(pendingSteadyRate); Esp32BaseWeb::sendChunk(" P/s</span><span class='cal-phase-note'>从进入稳态到停止命令</span></div><div class='cal-phase'><span class='cal-phase-label'>停止阶段</span><span class='cal-phase-value'>"); sendMilliseconds(pending->stopDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(pending->stopPulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(pendingStopRate); Esp32BaseWeb::sendChunk(" P/s</span><span class='cal-phase-note'>从停止命令到输出关闭</span></div></div><p class='cal-pending-total'>完整采样："); sendDuration(calibration.pendingElapsedSec()); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(calibration.pendingPulseCount()); Esp32BaseWeb::sendChunk(" 脉冲</p></div><div><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='measurement'><div class='fieldgrid'><p class='field full'><label>本次实测总水量</label><input type='number' name='measured_ml' min='1000' max='1000000' step='1' inputmode='numeric' required autofocus><small>填写三个阶段实际接到的全部水量，单位 mL。</small></p></div><div class='actions'><input type='submit' value='保存有效样本'></div></form><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return confirm(&quot;确认本次接水无效？该样本会保留，但不参与计算。&quot;)&&once(this)'><input type='hidden' name='action' value='invalid'><div class='actions'><input class='secondary' type='submit' value='本次接水无效'></div></form></div></div>");
+        Esp32BaseWeb::sendChunk("<div class='cal-pending'><div class='cal-pending-summary'><h3>本次采样已停止</h3><p class='cal-pending-route'>采样水路："); Esp32BaseWeb::writeHtmlEscaped(pendingZoneName); Esp32BaseWeb::sendChunk("</p><div class='cal-phase-grid'><div class='cal-phase'><span class='cal-phase-label'>启动阶段</span><span class='cal-phase-value'>"); sendMilliseconds(pending->steadyStartedMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(pending->startupPulseCount); Esp32BaseWeb::sendChunk(" 脉冲</span><span class='cal-phase-note'>从开阀到进入稳态</span></div><div class='cal-phase'><span class='cal-phase-label'>稳态阶段</span><span class='cal-phase-value'>"); sendMilliseconds(pending->steadyDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(pending->steadyPulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(pendingSteadyRate); Esp32BaseWeb::sendChunk(" P/s</span><span class='cal-phase-note'>从进入稳态到停止命令</span></div></div><p class='cal-pending-total'>完整采样："); sendDuration(calibration.pendingElapsedSec()); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(calibration.pendingPulseCount()); Esp32BaseWeb::sendChunk(" 脉冲"); if (pending->stopPulseCount != 0) { Esp32BaseWeb::sendChunk("<br><span class='cal-pending-warning'>停止后仍检测到 "); sendUnsigned(pending->stopPulseCount); Esp32BaseWeb::sendChunk(" 个脉冲，估算启动水量可能包含少量关闭尾水。</span>"); } Esp32BaseWeb::sendChunk("</p></div><div><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='measurement'><div class='fieldgrid'><p class='field full'><label>本次实测总水量</label><input type='number' name='measured_ml' min='1000' max='1000000' step='1' inputmode='numeric' required autofocus><small>填写启动和稳态期间实际接到的全部水量，单位 mL。</small></p></div><div class='actions'><input type='submit' value='保存有效样本'></div></form><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return confirm(&quot;确认本次接水无效？该样本会保留，但不参与计算。&quot;)&&once(this)'><input type='hidden' name='action' value='invalid'><div class='actions'><input class='secondary' type='submit' value='本次接水无效'></div></form></div></div>");
     } else if (calibration.sampleCount() < FlowCalibrationService::kMaximumSamples) {
         bool hasEligibleZone = false;
         for (const ZoneConfig& zone : config->zones) {
@@ -1562,45 +1586,43 @@ void IrrigationWeb::flowCalibration() {
     Esp32BaseWeb::sendChunk("<div class='cal-sample-toolbar'><div class='cal-counts'><span class='cal-count'><b>"); sendUnsigned(calibration.sampleCount()); Esp32BaseWeb::sendChunk("/10</b> 全部样本</span><span class='cal-count ok'><b>"); sendUnsigned(calibration.validSampleCount()); Esp32BaseWeb::sendChunk("</b> 有效</span><span class='cal-count bad'><b>"); sendUnsigned(calibration.sampleCount() - calibration.validSampleCount()); Esp32BaseWeb::sendChunk("</b> 无效</span></div>");
     if (calibration.sampleCount() != 0 && !managementLocked) Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/flow-calibration' onsubmit=\"return confirm('确认清空全部校准样本？设备当前使用的流量系数不会改变。')&&once(this)\"><input type='hidden' name='action' value='clear'><input class='danger' type='submit' value='全部清空'></form>");
     Esp32BaseWeb::sendChunk("</div>");
+    Esp32BaseWeb::sendChunk("<p class='cal-sample-guide'>阶段数据格式为“时长 · 脉冲”；稳态另显示平均 P/s 和换算流量。稳态判定：每个窗口 "); sendUnsigned(config->calibrationStability.windowSec); Esp32BaseWeb::sendChunk(" 秒，连续 "); sendUnsigned(config->calibrationStability.requiredWindows); Esp32BaseWeb::sendChunk(" 个窗口的速率波动不超过 "); sendUnsigned(config->calibrationStability.allowedVariationPercent); Esp32BaseWeb::sendChunk("%。无效样本保留记录但不参与计算。</p>");
     if (calibration.sampleCount() == 0) {
         Esp32BaseWeb::sendChunk("<div class='cal-empty'><p class='cal-empty-title'>尚无校准样本</p><p class='cal-empty-text'>完成第一次采样后，有效和无效样本都会显示在这里。</p></div>");
     } else {
-        Esp32BaseWeb::sendChunk("<div class='cal-sample-list'>");
+        Esp32BaseWeb::sendChunk("<div class='cal-sample-list'><div class='cal-sample-columns'><span>样本</span><span>接水记录</span><span>启动阶段</span><span>稳态阶段</span><span>拟合诊断</span><span>操作</span></div>");
         for (uint8_t index = 0; index < calibration.sampleCount(); ++index) {
             const FlowCalibrationService::Sample* sample = calibration.sample(index);
             const char* sampleZoneName = sample->zoneId >= 1 && sample->zoneId <= config->zones.size()
                                              ? config->zones[sample->zoneId - 1U].name.data()
                                              : "未知水路";
-            char startupRate[24]{}, steadyRate[24]{}, stopRate[24]{};
-            formatPulseRate(sample->startupPulseCount, sample->steadyStartedMs,
-                            startupRate, sizeof(startupRate));
+            char steadyRate[24]{};
             formatPulseRate(sample->steadyPulseCount, sample->steadyDurationMs,
                             steadyRate, sizeof(steadyRate));
-            formatPulseRate(sample->stopPulseCount, sample->stopDurationMs,
-                            stopRate, sizeof(stopRate));
-            Esp32BaseWeb::sendChunk("<article class='cal-sample'><div class='cal-sample-head'><div class='cal-sample-title'><span class='cal-sample-name'>样本 "); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("</span><span class='cal-sample-route'>"); Esp32BaseWeb::writeHtmlEscaped(sampleZoneName); Esp32BaseWeb::sendChunk("</span></div><div class='cal-sample-head-actions'><span class='cal-status "); Esp32BaseWeb::sendChunk(sample->valid ? "ok'>有效" : "bad'>无效"); Esp32BaseWeb::sendChunk("</span><div class='cal-sample-actions'>");
-            if (managementLocked) {
-                Esp32BaseWeb::sendChunk("</div>");
-            } else {
-                if (sample->valid) { Esp32BaseWeb::sendChunk("<button class='secondary' type='button' onclick=\"document.getElementById('cal-edit-"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("').showModal()\">修改</button>"); }
-                Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/flow-calibration' onsubmit=\"return confirm('确认删除这个样本？删除后无法恢复。')&&once(this)\"><input type='hidden' name='action' value='delete'><input type='hidden' name='sample' value='"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("'><input class='danger' type='submit' value='删除'></form></div>");
-            }
-            Esp32BaseWeb::sendChunk("</div></div><div class='cal-sample-grid'><div class='cal-sample-fact'><span class='cal-sample-label'>实测总水量</span><span class='cal-sample-value'>");
-            if (sample->valid) { sendUnsigned(sample->measuredWaterMl); Esp32BaseWeb::sendChunk(" mL"); } else Esp32BaseWeb::sendChunk("—");
-            Esp32BaseWeb::sendChunk("</span><span class='cal-sample-note'>三个阶段实际接到的总水量</span></div><div class='cal-sample-fact'><span class='cal-sample-label'>启动阶段</span><span class='cal-sample-value'>");
-            if (sample->steadyDetected) { sendMilliseconds(sample->steadyStartedMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(sample->startupPulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(startupRate); Esp32BaseWeb::sendChunk(" P/s"); } else Esp32BaseWeb::sendChunk("未识别稳态");
-            Esp32BaseWeb::sendChunk("</span><span class='cal-sample-note'>开阀至进入稳态；首次出水 "); sendMilliseconds(sample->flowEstablishedMs); if (!sample->steadyDetected) { Esp32BaseWeb::sendChunk("，完整采样 "); sendUnsigned(sample->pulseCount); Esp32BaseWeb::sendChunk(" 脉冲"); } Esp32BaseWeb::sendChunk("</span></div><div class='cal-sample-fact'><span class='cal-sample-label'>稳态阶段</span><span class='cal-sample-value'>");
-            if (sample->steadyDetected) { sendMilliseconds(sample->steadyDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(sample->steadyPulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(steadyRate); Esp32BaseWeb::sendChunk(" P/s"); } else Esp32BaseWeb::sendChunk("—");
-            Esp32BaseWeb::sendChunk("</span><span class='cal-sample-note'>"); if (sample->steadyDetected) { char detectedRate[24]{}, latestRate[24]{}; formatSignedHundredths(sample->pulseRateX100, detectedRate, sizeof(detectedRate)); formatSignedHundredths(sample->latestPulseRateX100, latestRate, sizeof(latestRate)); Esp32BaseWeb::sendChunk("识别时 "); Esp32BaseWeb::writeHtmlEscaped(detectedRate); Esp32BaseWeb::sendChunk(" P/s，最近窗口 "); Esp32BaseWeb::writeHtmlEscaped(latestRate); Esp32BaseWeb::sendChunk(" P/s；判定规则：每个窗口 "); sendUnsigned(sample->stabilityWindowSec); Esp32BaseWeb::sendChunk(" 秒，连续 "); sendUnsigned(sample->requiredStableWindows); Esp32BaseWeb::sendChunk(" 个，波动不超过 "); sendUnsigned(sample->allowedVariationPercent); Esp32BaseWeb::sendChunk("%"); if (sample->steadyLaterUnstable) Esp32BaseWeb::sendChunk("；后续有波动"); } else Esp32BaseWeb::sendChunk("不参与计算"); Esp32BaseWeb::sendChunk("</span></div><div class='cal-sample-fact'><span class='cal-sample-label'>停止阶段</span><span class='cal-sample-value'>"); sendMilliseconds(sample->stopDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(sample->stopPulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(stopRate); Esp32BaseWeb::sendChunk(" P/s</span><span class='cal-sample-note'>完整运行 "); sendDuration(sample->elapsedSec); Esp32BaseWeb::sendChunk("；"); Esp32BaseWeb::writeHtmlEscaped(sample->stopReason == WateringStopReason::Completed ? "达到 10 分钟上限" : stopReasonName(sample->stopReason)); Esp32BaseWeb::sendChunk("</span></div><div class='cal-sample-fact wide cal-residual'><span class='cal-sample-label'>拟合诊断</span>");
+            char sampleFlow[20]{};
+            const uint32_t sampleFlowMlPerMinute = calibration.resultReady()
+                                                        ? calculateFlowMlPerMinute(
+                                                              sample->steadyPulseCount,
+                                                              sample->steadyDurationMs,
+                                                              calibration.combinedPulsesPerLiterX100())
+                                                        : 0;
+            const bool sampleFlowReady = sampleFlowMlPerMinute <= 100000U &&
+                                         IrrigationConfigRules::formatLitersPerMinute(
+                                             sampleFlowMlPerMinute,
+                                             sampleFlow,
+                                             sizeof(sampleFlow));
+            Esp32BaseWeb::sendChunk("<article class='cal-sample'><div class='cal-sample-cell'><span class='cal-sample-main'>样本 "); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("<span class='cal-status "); Esp32BaseWeb::sendChunk(sample->valid ? "ok'>有效" : "bad'>无效"); Esp32BaseWeb::sendChunk("</span></span><span class='cal-sample-sub'>"); Esp32BaseWeb::writeHtmlEscaped(sampleZoneName); Esp32BaseWeb::sendChunk("</span></div><div class='cal-sample-cell'><span class='cal-sample-main'>");
+            if (sample->valid) { sendUnsigned(sample->measuredWaterMl); Esp32BaseWeb::sendChunk(" mL"); } else Esp32BaseWeb::sendChunk("未填写水量");
+            Esp32BaseWeb::sendChunk("</span><span class='cal-sample-sub'>"); sendUnsigned(sample->pulseCount); Esp32BaseWeb::sendChunk(" 脉冲 · "); sendDuration(sample->elapsedSec); Esp32BaseWeb::sendChunk("</span>"); if (sample->stopPulseCount != 0) { Esp32BaseWeb::sendChunk("<span class='cal-sample-sub warn'>停止后仍有 "); sendUnsigned(sample->stopPulseCount); Esp32BaseWeb::sendChunk(" 个脉冲</span>"); } Esp32BaseWeb::sendChunk("</div><div class='cal-sample-cell'><span class='cal-sample-main'>");
+            if (sample->steadyDetected) { sendMilliseconds(sample->steadyStartedMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(sample->startupPulseCount); Esp32BaseWeb::sendChunk(" 脉冲"); } else Esp32BaseWeb::sendChunk("未识别稳态");
+            Esp32BaseWeb::sendChunk("</span><span class='cal-sample-sub'>首次出水 "); sendMilliseconds(sample->flowEstablishedMs); Esp32BaseWeb::sendChunk("</span></div><div class='cal-sample-cell'><span class='cal-sample-main'>");
+            if (sample->steadyDetected) { sendMilliseconds(sample->steadyDurationMs); Esp32BaseWeb::sendChunk(" · "); sendUnsigned(sample->steadyPulseCount); Esp32BaseWeb::sendChunk(" 脉冲</span><span class='cal-sample-sub'>"); Esp32BaseWeb::writeHtmlEscaped(steadyRate); Esp32BaseWeb::sendChunk(" P/s"); if (sampleFlowReady && sampleFlowMlPerMinute != 0) { Esp32BaseWeb::sendChunk(" · "); Esp32BaseWeb::writeHtmlEscaped(sampleFlow); Esp32BaseWeb::sendChunk(" L/min"); } if (sample->steadyLaterUnstable) Esp32BaseWeb::sendChunk(" · 后续有波动"); } else Esp32BaseWeb::sendChunk("—</span><span class='cal-sample-sub'>不参与计算"); Esp32BaseWeb::sendChunk("</span></div><div class='cal-sample-cell'>");
             if (!sample->valid) {
-                Esp32BaseWeb::sendChunk("<span class='cal-sample-value'>不参与计算</span><span class='cal-sample-note'>无效样本只保留采样记录</span>");
+                Esp32BaseWeb::sendChunk("<span class='cal-sample-main'>不参与计算</span><span class='cal-sample-sub'>"); Esp32BaseWeb::writeHtmlEscaped(sample->stopReason == WateringStopReason::Completed ? "达到 10 分钟上限" : stopReasonName(sample->stopReason)); Esp32BaseWeb::sendChunk("</span>");
             } else if (!calibration.resultReady()) {
-                Esp32BaseWeb::sendChunk("<span class='cal-sample-value'>等待有效结果</span><span class='cal-sample-note'>至少需要两个不同水量的有效样本</span>");
+                Esp32BaseWeb::sendChunk("<span class='cal-sample-main'>等待计算</span><span class='cal-sample-sub'>需要两个不同水量的有效样本</span>");
             } else {
-                char predicted[32]{}, residualPulse[32]{}, residualPercent[32]{};
-                formatSignedHundredths(sample->predictedPulseX100,
-                                       predicted,
-                                       sizeof(predicted));
+                char residualPulse[32]{}, residualPercent[32]{};
                 formatSignedHundredths(sample->residualPulseX100,
                                        residualPulse,
                                        sizeof(residualPulse),
@@ -1609,17 +1631,19 @@ void IrrigationWeb::flowCalibration() {
                                        residualPercent,
                                        sizeof(residualPercent),
                                        true);
-                char steadyWater[32]{}, nonSteadyWater[32]{};
-                formatSignedHundredths(sample->estimatedSteadyWaterMlX100,
-                                       steadyWater,
-                                       sizeof(steadyWater));
-                formatSignedHundredths(sample->estimatedNonSteadyWaterMlX100,
-                                       nonSteadyWater,
-                                       sizeof(nonSteadyWater),
+                char startupWater[32]{};
+                formatSignedHundredths(sample->estimatedStartupWaterMlX100,
+                                       startupWater,
+                                       sizeof(startupWater),
                                        true);
-                Esp32BaseWeb::sendChunk("<span class='cal-sample-value'>偏差 "); Esp32BaseWeb::writeHtmlEscaped(residualPulse); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(residualPercent); Esp32BaseWeb::sendChunk("%</span><span class='cal-sample-note'>估算稳态水量 "); Esp32BaseWeb::writeHtmlEscaped(steadyWater); Esp32BaseWeb::sendChunk(" mL，启停非稳态水量 "); Esp32BaseWeb::writeHtmlEscaped(nonSteadyWater); Esp32BaseWeb::sendChunk(" mL；模型预测稳态脉冲 "); Esp32BaseWeb::writeHtmlEscaped(predicted); Esp32BaseWeb::sendChunk("</span>");
+                Esp32BaseWeb::sendChunk("<span class='cal-sample-main'>估算启动水量 "); Esp32BaseWeb::writeHtmlEscaped(startupWater); Esp32BaseWeb::sendChunk(" mL</span><span class='cal-sample-sub'>偏差 "); Esp32BaseWeb::writeHtmlEscaped(residualPulse); Esp32BaseWeb::sendChunk(" 脉冲 · "); Esp32BaseWeb::writeHtmlEscaped(residualPercent); Esp32BaseWeb::sendChunk("%</span>");
             }
-            Esp32BaseWeb::sendChunk("</div></div></article>");
+            Esp32BaseWeb::sendChunk("</div><div class='cal-sample-actions'>");
+            if (!managementLocked) {
+                if (sample->valid) { Esp32BaseWeb::sendChunk("<button class='secondary' type='button' onclick=\"document.getElementById('cal-edit-"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("').showModal()\">修改</button>"); }
+                Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/flow-calibration' onsubmit=\"return confirm('确认删除这个样本？删除后无法恢复。')&&once(this)\"><input type='hidden' name='action' value='delete'><input type='hidden' name='sample' value='"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("'><input class='danger' type='submit' value='删除'></form>");
+            }
+            Esp32BaseWeb::sendChunk("</div></article>");
         }
         Esp32BaseWeb::sendChunk("</div>");
     }
@@ -1636,30 +1660,41 @@ void IrrigationWeb::flowCalibration() {
         char result[20]{};
         IrrigationConfigRules::formatPulsesPerLiter(
             calibration.combinedPulsesPerLiterX100(), result, sizeof(result));
-        const bool matchesCurrent = config->flowMeter.pulsesPerLiterX100 ==
-                                    calibration.combinedPulsesPerLiterX100();
+        char suggestedSteadyFlow[20]{};
+        const bool steadyFlowValid =
+            calibration.combinedSteadyFlowMlPerMinute() <= 100000U &&
+            IrrigationConfigRules::formatLitersPerMinute(
+                calibration.combinedSteadyFlowMlPerMinute(),
+                suggestedSteadyFlow,
+                sizeof(suggestedSteadyFlow));
+        const bool canApply = calibration.combinedStartupPulseCount() <= 10000000U &&
+                              calibration.combinedStartupWaterMl() <= 1000000U &&
+                              steadyFlowValid;
+        const bool matchesCurrent =
+            config->flowMeter.pulsesPerLiterX100 ==
+                calibration.combinedPulsesPerLiterX100() &&
+            config->flowMeter.calibrationStartupPulseCount ==
+                calibration.combinedStartupPulseCount() &&
+            config->flowMeter.calibrationStartupWaterMl ==
+                calibration.combinedStartupWaterMl() &&
+            config->flowMeter.calibrationSteadyFlowMlPerMinute ==
+                calibration.combinedSteadyFlowMlPerMinute();
         const bool appliedInSession = calibration.appliedCoefficientX100() ==
                                       calibration.combinedPulsesPerLiterX100() &&
                                       calibration.appliedEpoch() != 0;
-        char nonSteadyWater[32]{}, maximumResidual[32]{};
-        formatSignedHundredths(calibration.combinedNonSteadyWaterMlX100(),
-                               nonSteadyWater,
-                               sizeof(nonSteadyWater),
-                               true);
+        char maximumResidual[32]{};
         formatSignedHundredths(calibration.maximumResidualPercentX100(),
                                maximumResidual,
                                sizeof(maximumResidual));
-        Esp32BaseWeb::sendChunk("<div class='cal-result'><div class='cal-result-primary'><p class='cal-result-label'>稳态流量系数</p><div class='cal-result-value'>"); Esp32BaseWeb::writeHtmlEscaped(result); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>P/L</span></div><span class='cal-result-state tag "); Esp32BaseWeb::sendChunk(matchesCurrent ? "ok'>设备正在使用此数值" : "warn'>新结果尚未应用"); Esp32BaseWeb::sendChunk("</span>");
-        if (!matchesCurrent && !managementLocked) Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/flow-calibration' onsubmit=\"return confirm('确认使用当前样本计算得到的稳态流量系数？')&&once(this)\"><input type='hidden' name='action' value='apply'><div class='actions'><input type='submit' value='使用此结果'></div></form>");
-        Esp32BaseWeb::sendChunk("<div class='cal-result-meta'><span class='cal-result-time'>结果更新：");
+        Esp32BaseWeb::sendChunk("<div class='cal-result'><div class='cal-result-head'><div class='cal-result-head-left'><p>当前样本计算结果</p><span class='tag "); Esp32BaseWeb::sendChunk(matchesCurrent ? "ok'>设备正在使用" : "warn'>尚未应用"); Esp32BaseWeb::sendChunk("</span></div>");
+        if (!matchesCurrent && canApply && !managementLocked) Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/flow-calibration' onsubmit=\"return confirm('确认保存并使用当前样本生成的四项校准参数？')&&once(this)\"><input type='hidden' name='action' value='apply'><input type='submit' value='使用此结果'></form>");
+        Esp32BaseWeb::sendChunk("</div><div class='cal-result-grid'><div class='cal-result-fact'><span>启动脉冲</span><b>"); sendUnsigned(calibration.combinedStartupPulseCount()); Esp32BaseWeb::sendChunk(" 个</b></div><div class='cal-result-fact'><span>估算启动水量</span><b>"); sendUnsigned(calibration.combinedStartupWaterMl()); Esp32BaseWeb::sendChunk(" mL</b></div><div class='cal-result-fact'><span>稳态流量系数</span><b>"); Esp32BaseWeb::writeHtmlEscaped(result); Esp32BaseWeb::sendChunk(" P/L</b></div><div class='cal-result-fact'><span>稳态参考流量</span><b>"); if (steadyFlowValid) { Esp32BaseWeb::writeHtmlEscaped(suggestedSteadyFlow); Esp32BaseWeb::sendChunk(" L/min"); } else Esp32BaseWeb::sendChunk("超出范围"); Esp32BaseWeb::sendChunk("</b></div></div><div class='cal-result-meta'><span>有效样本："); sendUnsigned(calibration.validSampleCount()); Esp32BaseWeb::sendChunk(" 个</span><span>涉及水路："); sendUnsigned(calibration.validZoneCount()); Esp32BaseWeb::sendChunk(" 条</span><span>水量跨度："); sendUnsigned(calibration.volumeSpanMl()); Esp32BaseWeb::sendChunk(" mL</span><span>最大拟合残差："); if (calibration.validSampleCount() == 2) Esp32BaseWeb::sendChunk("暂无法检验"); else { Esp32BaseWeb::writeHtmlEscaped(maximumResidual); Esp32BaseWeb::sendChunk("%"); } Esp32BaseWeb::sendChunk("</span><span>结果更新：");
         char timeText[32]{};
         if (calibration.resultUpdatedEpoch() != 0 && Esp32BaseTime::formatEpoch(calibration.resultUpdatedEpoch(), timeText, sizeof(timeText), "%Y-%m-%d %H:%M:%S")) Esp32BaseWeb::writeHtmlEscaped(timeText); else Esp32BaseWeb::sendChunk("设备时间不可用");
         Esp32BaseWeb::sendChunk("</span>");
-        if (calibration.appliedEpoch() != 0) { Esp32BaseWeb::sendChunk(appliedInSession ? "<span class='cal-result-time'>应用于设备：" : "<span class='cal-result-time'>上次应用："); if (Esp32BaseTime::formatEpoch(calibration.appliedEpoch(), timeText, sizeof(timeText), "%Y-%m-%d %H:%M:%S")) Esp32BaseWeb::writeHtmlEscaped(timeText); else Esp32BaseWeb::sendChunk("设备时间不可用"); Esp32BaseWeb::sendChunk("</span>"); }
-        if (!matchesCurrent) { Esp32BaseWeb::sendChunk("<span class='cal-result-time'>设备当前仍使用 "); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk(" P/L</span>"); }
-        Esp32BaseWeb::sendChunk("</div></div><div class='cal-result-detail'><p class='cal-formula'>实测总水量 = 稳态水量估算 + 启停非稳态水量估算；稳态系数只使用各样本的稳态阶段脉冲拟合。</p><div class='cal-result-grid'><div class='cal-result-fact'><span>启停非稳态水量估算</span><b>"); Esp32BaseWeb::writeHtmlEscaped(nonSteadyWater); Esp32BaseWeb::sendChunk(" mL</b></div><div class='cal-result-fact'><span>拟合数据</span><b>稳态阶段脉冲</b></div><div class='cal-result-fact'><span>有效样本</span><b>"); sendUnsigned(calibration.validSampleCount()); Esp32BaseWeb::sendChunk(" 个</b></div><div class='cal-result-fact'><span>涉及水路</span><b>"); sendUnsigned(calibration.validZoneCount()); Esp32BaseWeb::sendChunk(" 条</b></div><div class='cal-result-fact'><span>水量跨度</span><b>"); sendUnsigned(calibration.volumeSpanMl()); Esp32BaseWeb::sendChunk(" mL</b></div><div class='cal-result-fact'><span>最大拟合残差</span><b>");
-        if (calibration.validSampleCount() == 2) Esp32BaseWeb::sendChunk("暂无法检验"); else { Esp32BaseWeb::writeHtmlEscaped(maximumResidual); Esp32BaseWeb::sendChunk("%"); }
-        Esp32BaseWeb::sendChunk("</b></div></div><p class='cal-result-note'>非稳态水量是由多组样本共同估算的启动与停止阶段合计值；当前数据不能可靠拆分成单独的启动水量和停止水量。</p></div></div>");
+        if (calibration.appliedEpoch() != 0) { Esp32BaseWeb::sendChunk(appliedInSession ? "<span>应用时间：" : "<span>上次应用："); if (Esp32BaseTime::formatEpoch(calibration.appliedEpoch(), timeText, sizeof(timeText), "%Y-%m-%d %H:%M:%S")) Esp32BaseWeb::writeHtmlEscaped(timeText); else Esp32BaseWeb::sendChunk("设备时间不可用"); Esp32BaseWeb::sendChunk("</span>"); }
+        Esp32BaseWeb::sendChunk("</div><p class='cal-result-note'>计算关系：实测总水量 = 估算启动水量 + 稳态脉冲 ÷ 稳态流量系数。启动脉冲只记录进入稳态前的实际脉冲；若停止后仍有脉冲，样本会单独提示关闭尾水。</p></div>");
+        if (!canApply) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "部分结果超出可保存范围", "请检查样本，或使用上方“修改参数”手工设置合理数值。");
         const uint8_t flags = calibration.qualityFlags();
         if (calibration.volumeSpanMl() >= 1000U) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_OK, "水量跨度达到 1 L", "这组样本对量杯读数误差更不敏感。");
         if (flags & FlowCalibrationService::kQualityOnlyTwoSamples) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "当前只有两个有效样本", "两点必然完全落在拟合直线上，暂时无法检验一致性；结果可以使用，建议增加第三个样本。");
@@ -1667,8 +1702,8 @@ void IrrigationWeb::flowCalibration() {
         if (flags & FlowCalibrationService::kQualityNonMonotonic) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "样本趋势不完全一致", "建议检查接水读数，或删除有问题的样本。");
         if (flags & FlowCalibrationService::kQualityResidualHigh) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "拟合残差较大", "建议检查或补充样本后再应用。");
         if (flags & FlowCalibrationService::kQualityPostSteadyUnstable) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "部分样本进入稳态后仍有波动", "结果仍可使用，请结合样本中的稳态速率和拟合偏差判断。");
-        if (flags & FlowCalibrationService::kQualityNegativeNonSteadyWater) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "非稳态水量估算为负值", "当前样本与阶段模型不完全一致；结果仍可使用，建议检查接水读数或补充样本。");
-        if (calibration.validZoneCount() > 1) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "样本来自不同水路", "不同水路的启停特性可能不同，请结合每条样本的拟合偏差判断；系统不会限制应用。");
+        if (flags & FlowCalibrationService::kQualityNegativeStartupWater) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "无法得到正的启动水量", "当前样本与阶段模型不完全一致，建议启动水量已按 0 mL 生成；可以检查样本或手工修改参数。");
+        if (calibration.validZoneCount() > 1) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "样本来自不同水路", "不同水路的启动特性可能不同，请结合每条样本的拟合偏差判断；系统不会限制应用。");
     }
     Esp32BaseWeb::endPanel();
 
@@ -1677,7 +1712,7 @@ void IrrigationWeb::flowCalibration() {
         if (!sample || !sample->valid || managementLocked) continue;
         Esp32BaseWeb::sendChunk("<dialog id='cal-edit-"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("' class='panel eb-modal cal-edit' data-eb-light-dismiss='1'><h2>修改样本 "); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("</h2><p class='muted'>只能修正实测总水量；设备记录的脉冲、时间和停止原因不会改变。</p><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='update'><input type='hidden' name='sample' value='"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("'><div class='fieldgrid'><p class='field full'><label>实测总水量</label><input type='number' name='measured_ml' min='1000' max='1000000' step='1' inputmode='numeric' required value='"); sendUnsigned(sample->measuredWaterMl); Esp32BaseWeb::sendChunk("'><small>单位 mL，保存后结果会自动重新计算。</small></p></div><div class='actions'><button class='secondary' type='button' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存修改'></div></form></dialog>");
     }
-    if (active) Esp32BaseWeb::sendChunk("<script>(function(){function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';return Math.floor(v/60)+' 分 '+(v%60)+' 秒'}function millis(v){v=Math.max(0,Number(v)||0);return (v/1000).toFixed(1)+' 秒'}function rate(p,m){m=Number(m)||0;return m>0?(Number(p||0)*1000/m).toFixed(2):'—'}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active||s.purpose!==1){location.reload();return}var states=['空闲','区域启动中','等待水流','正在采样','正在停止'];set('cal-state',states[s.state]||'状态未知');set('cal-elapsed',duration(s.elapsedSec));set('cal-remaining',duration(s.currentZoneRemainingSec));set('cal-pulses',s.pulseCount);var z=s.zones&&s.zones[s.currentStepIndex];if(z){var detected=!!z.calibrationSteadyDetected,flow=!!s.flowEstablished,full=Number(z.calibrationCollectedWindows||0)>=Number(z.calibrationRequiredWindows||0);set('cal-steady-state',detected?'已确认':(!flow?'等待水流':(full?'波动偏大':'已采集 '+z.calibrationCollectedWindows+' / '+z.calibrationRequiredWindows+' 个窗口')));set('cal-steady-help',detected?'后续波动仍会继续监测':(!flow?'检测到脉冲后开始统计':(full?'最近 '+z.calibrationRequiredWindows+' 个窗口尚未满足波动要求，继续识别':'收满 '+z.calibrationRequiredWindows+' 个窗口后比较速率波动')));set('cal-startup-phase',detected?millis(z.calibrationSteadyStartedMs)+' · '+z.calibrationStartupPulses+' 脉冲 · '+rate(z.calibrationStartupPulses,z.calibrationSteadyStartedMs)+' P/s':'等待稳态确认');set('cal-steady-phase',detected?millis(z.calibrationSteadyDurationMs)+' · '+z.calibrationSteadyPulses+' 脉冲 · '+rate(z.calibrationSteadyPulses,z.calibrationSteadyDurationMs)+' P/s':'尚未开始');set('cal-rate',(Number(z.calibrationLatestPulseRateX100||0)/100).toFixed(2)+' P/s')}setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}setTimeout(poll,1000)})();</script>");
+    if (active) Esp32BaseWeb::sendChunk("<script>(function(){function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';return Math.floor(v/60)+' 分 '+(v%60)+' 秒'}function millis(v){v=Math.max(0,Number(v)||0);return (v/1000).toFixed(1)+' 秒'}function rate(p,m){m=Number(m)||0;return m>0?(Number(p||0)*1000/m).toFixed(2):'—'}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active||s.purpose!==1){location.reload();return}var states=['空闲','区域启动中','等待水流','正在采样','正在停止'];set('cal-state',states[s.state]||'状态未知');set('cal-elapsed',duration(s.elapsedSec));set('cal-remaining',duration(s.currentZoneRemainingSec));set('cal-pulses',s.pulseCount);var z=s.zones&&s.zones[s.currentStepIndex];if(z){var detected=!!z.calibrationSteadyDetected,flow=!!s.flowEstablished,full=Number(z.calibrationCollectedWindows||0)>=Number(z.calibrationRequiredWindows||0);set('cal-steady-state',detected?'已确认':(!flow?'等待水流':(full?'波动偏大':'已采集 '+z.calibrationCollectedWindows+' / '+z.calibrationRequiredWindows+' 个窗口')));set('cal-steady-help',detected?'后续波动仍会继续监测':(!flow?'检测到脉冲后开始统计':(full?'最近 '+z.calibrationRequiredWindows+' 个窗口尚未满足波动要求，继续识别':'收满 '+z.calibrationRequiredWindows+' 个窗口后比较速率波动')));set('cal-startup-phase',detected?millis(z.calibrationSteadyStartedMs)+' · '+z.calibrationStartupPulses+' 脉冲':'等待稳态确认');set('cal-steady-phase',detected?millis(z.calibrationSteadyDurationMs)+' · '+z.calibrationSteadyPulses+' 脉冲 · '+rate(z.calibrationSteadyPulses,z.calibrationSteadyDurationMs)+' P/s':'尚未开始');set('cal-rate',(Number(z.calibrationLatestPulseRateX100||0)/100).toFixed(2)+' P/s')}setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}setTimeout(poll,1000)})();</script>");
     endPage();
 }
 

@@ -32,6 +32,9 @@ struct PumpConfig {
 
 struct FlowMeterConfig {
     uint32_t pulsesPerLiterX100;
+    uint32_t calibrationStartupPulseCount;
+    uint32_t calibrationStartupWaterMl;
+    uint32_t calibrationSteadyFlowMlPerMinute;
 };
 
 struct CalibrationStabilityConfig {
