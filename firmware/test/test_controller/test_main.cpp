@@ -570,6 +570,81 @@ void test_flow_calibration_limit_counts_from_valve_open() {
     TEST_ASSERT_EQUAL_UINT32(600, summary->elapsedSec);
 }
 
+void test_flow_calibration_detects_and_records_steady_phases() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.calibrationStability = {1, 3, 10};
+    config.flowProtection.noFlowTimeoutSec = 20;
+    WateringRequest request = requestFor(1, 60);
+    request.purpose = WateringPurpose::FlowCalibration;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    controller.handle(0);
+    hardware.pulses = 1;
+    controller.handle(1);
+    for (uint32_t window = 1; window <= 3; ++window) {
+        hardware.pulses += 8;
+        controller.handle(window * 1000U + 1U);
+    }
+
+    WateringStatus status = controller.status();
+    TEST_ASSERT_TRUE(status.zones[0].calibrationSteadyDetected);
+    TEST_ASSERT_EQUAL_UINT32(1, status.zones[0].calibrationSteadyStartedMs);
+    TEST_ASSERT_EQUAL_UINT32(1, status.zones[0].calibrationStartupPulses);
+    TEST_ASSERT_EQUAL_UINT32(24, status.zones[0].calibrationSteadyPulses);
+    TEST_ASSERT_EQUAL_UINT32(800, status.zones[0].calibrationPulseRateX100);
+    TEST_ASSERT_EQUAL_UINT8(3, status.zones[0].calibrationCollectedWindows);
+
+    hardware.pulses += 16;
+    controller.handle(4001);
+    TEST_ASSERT_TRUE(controller.status().zones[0].calibrationSteadyLaterUnstable);
+    TEST_ASSERT_TRUE(controller.stop(4501));
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    const ZoneWateringSummary& zone = summary->zones[0];
+    TEST_ASSERT_TRUE(zone.calibrationSteadyDetected);
+    TEST_ASSERT_TRUE(zone.calibrationSteadyLaterUnstable);
+    TEST_ASSERT_EQUAL_UINT32(1, zone.calibrationFlowEstablishedMs);
+    TEST_ASSERT_EQUAL_UINT32(1, zone.calibrationSteadyStartedMs);
+    TEST_ASSERT_EQUAL_UINT32(1, zone.calibrationStartupPulses);
+    TEST_ASSERT_EQUAL_UINT32(4500, zone.calibrationSteadyDurationMs);
+    TEST_ASSERT_EQUAL_UINT32(40, zone.calibrationSteadyPulses);
+    TEST_ASSERT_EQUAL_UINT32(0, zone.calibrationStopPulses);
+    TEST_ASSERT_EQUAL_UINT32(
+        zone.pulseCount,
+        zone.calibrationStartupPulses + zone.calibrationSteadyPulses +
+            zone.calibrationStopPulses);
+}
+
+void test_flow_calibration_allows_one_pulse_window_quantization() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.calibrationStability = {3, 3, 10};
+    WateringRequest request = requestFor(1, 60);
+    request.purpose = WateringPurpose::FlowCalibration;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    controller.handle(0);
+    hardware.pulses = 1;
+    controller.handle(1);
+    const uint32_t windowPulses[] = {22, 23, 22};
+    for (uint32_t window = 0; window < 3; ++window) {
+        hardware.pulses += windowPulses[window];
+        controller.handle((window + 1U) * 3000U + 1U);
+    }
+
+    const WateringStatus status = controller.status();
+    const ZoneWateringSummary& zone = status.zones[0];
+    TEST_ASSERT_TRUE(zone.calibrationSteadyDetected);
+    TEST_ASSERT_EQUAL_UINT32(1, zone.calibrationSteadyStartedMs);
+    TEST_ASSERT_EQUAL_UINT32(1, zone.calibrationStartupPulses);
+    TEST_ASSERT_EQUAL_UINT32(67, zone.calibrationSteadyPulses);
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -595,5 +670,7 @@ int main(int, char**) {
     RUN_TEST(test_timers_work_across_millis_wraparound);
     RUN_TEST(test_maintenance_abort_immediately_closes_outputs_and_keeps_result);
     RUN_TEST(test_flow_calibration_limit_counts_from_valve_open);
+    RUN_TEST(test_flow_calibration_detects_and_records_steady_phases);
+    RUN_TEST(test_flow_calibration_allows_one_pulse_window_quantization);
     return UNITY_END();
 }

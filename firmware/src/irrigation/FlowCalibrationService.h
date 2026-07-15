@@ -15,16 +15,33 @@ public:
     static constexpr uint8_t kQualitySmallVolumeSpan = 1U << 1U;
     static constexpr uint8_t kQualityNonMonotonic = 1U << 2U;
     static constexpr uint8_t kQualityResidualHigh = 1U << 3U;
+    static constexpr uint8_t kQualityPostSteadyUnstable = 1U << 4U;
+    static constexpr uint8_t kQualityNegativeNonSteadyWater = 1U << 5U;
 
     struct Sample {
         uint32_t pulseCount;
         uint32_t measuredWaterMl;
         uint32_t elapsedSec;
+        uint32_t flowEstablishedMs;
+        uint32_t steadyStartedMs;
+        uint32_t startupPulseCount;
+        uint32_t steadyDurationMs;
+        uint32_t steadyPulseCount;
+        uint32_t stopDurationMs;
+        uint32_t stopPulseCount;
+        uint32_t pulseRateX100;
         int64_t predictedPulseX100;
         int64_t residualPulseX100;
         int64_t residualPercentX100;
+        int64_t estimatedSteadyWaterMlX100;
+        int64_t estimatedNonSteadyWaterMlX100;
         WateringStopReason stopReason;
         uint8_t zoneId;
+        uint8_t stabilityWindowSec;
+        uint8_t requiredStableWindows;
+        uint8_t allowedVariationPercent;
+        bool steadyDetected;
+        bool steadyLaterUnstable;
         bool valid;
     };
 
@@ -40,14 +57,15 @@ public:
     uint32_t pendingPulseCount() const;
     uint32_t pendingElapsedSec() const;
     uint8_t pendingZoneId() const;
+    const Sample* pendingSample() const;
     WateringStopReason pendingStopReason() const;
     uint8_t sampleCount() const;
     uint8_t validSampleCount() const;
     const Sample* sample(uint8_t index) const;
     bool resultReady() const;
     uint32_t combinedPulsesPerLiterX100() const;
-    int64_t nonSteadyPulseX100() const;
-    int64_t equivalentWaterMlX100() const;
+    int64_t steadyFitInterceptPulseX100() const;
+    int64_t combinedNonSteadyWaterMlX100() const;
     uint32_t volumeSpanMl() const;
     uint8_t validZoneCount() const;
     uint16_t maximumResidualPercentX100() const;
@@ -62,12 +80,11 @@ private:
     void recalculate(uint32_t resultEpoch);
 
     std::array<Sample, kMaximumSamples> samples_{};
+    Sample pendingSample_{};
     uint32_t combinedPulsesPerLiterX100_ = 0;
     uint32_t volumeSpanMl_ = 0;
-    uint32_t pendingPulseCount_ = 0;
-    uint32_t pendingElapsedSec_ = 0;
-    int64_t nonSteadyPulseX100_ = 0;
-    int64_t equivalentWaterMlX100_ = 0;
+    int64_t steadyFitInterceptPulseX100_ = 0;
+    int64_t combinedNonSteadyWaterMlX100_ = 0;
     uint32_t resultUpdatedEpoch_ = 0;
     uint32_t appliedEpoch_ = 0;
     uint32_t appliedCoefficientX100_ = 0;
@@ -75,7 +92,6 @@ private:
     uint8_t sampleCount_ = 0;
     uint8_t validSampleCount_ = 0;
     uint8_t validZoneCount_ = 0;
-    uint8_t pendingZoneId_ = 0;
     uint8_t qualityFlags_ = 0;
     WateringStopReason pendingStopReason_ = WateringStopReason::None;
     bool pendingMeasurement_ = false;

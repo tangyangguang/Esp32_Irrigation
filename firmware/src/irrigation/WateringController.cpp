@@ -27,6 +27,7 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     valveDrive_ = config.valveDrive;
     pump_ = config.pump;
     flowMeter_ = config.flowMeter;
+    calibrationStability_ = config.calibrationStability;
     flowProtection_ = config.flowProtection;
     learnedFlowMlPerMinute_.fill(0);
     currentStepIndex_ = 0;
@@ -71,6 +72,7 @@ bool WateringController::stop(uint32_t nowMs) {
         pendingStopReason_ = WateringStopReason::UserStopped;
         return true;
     }
+    captureCalibrationStop(nowMs);
     if (flowMonitor_.flowEstablished()) {
         wateringEndedMs_ = nowMs;
         wateringEndCaptured_ = true;
@@ -129,6 +131,12 @@ void WateringController::handle(uint32_t nowMs) {
                 stateStartedMs_ = nowMs;
                 wateringStartedMs_ = nowMs;
                 flowMonitor_.beginRateWindow(nowMs, hardware_.flowPulseCount());
+                if (request_.purpose == WateringPurpose::FlowCalibration) {
+                    calibrationFlowEstablishedMs_ = nowMs;
+                    calibrationDetector_.begin(nowMs,
+                                               hardware_.flowPulseCount(),
+                                               calibrationStability_);
+                }
             } else if (flowMonitor_.flowStartTimedOut(nowMs, flowProtection_.flowStartTimeoutSec)) {
                 finishSession(WateringStopReason::FlowStartTimeout, nowMs);
             }
@@ -136,6 +144,9 @@ void WateringController::handle(uint32_t nowMs) {
 
         case WateringState::WateringZone: {
             flowMonitor_.observe(nowMs, hardware_.flowPulseCount());
+            if (request_.purpose == WateringPurpose::FlowCalibration) {
+                calibrationDetector_.observe(nowMs, hardware_.flowPulseCount());
+            }
             if (flowMonitor_.noFlowTimedOut(nowMs, flowProtection_.noFlowTimeoutSec)) {
                 finishSession(WateringStopReason::NoFlowTimeout, nowMs);
                 break;
@@ -234,6 +245,9 @@ WateringStatus WateringController::status() const {
         current.pulseCount = result.pulseCount;
         current.waterEstimateCapped = !FlowMonitor::estimateWaterMilliliters(
             current.pulseCount, flowMeter_.pulsesPerLiterX100, current.estimatedWaterMl);
+        fillCalibrationMetrics(current,
+                               lastHandledMs_,
+                               hardware_.flowPulseCount());
     }
 
     if (!(active_ && state_ == WateringState::StoppingZone && stopSessionAfterValveClose_ &&
@@ -303,6 +317,10 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
     wateringEndCaptured_ = false;
     lowFlowTiming_ = false;
     highFlowTiming_ = false;
+    calibrationFlowEstablishedMs_ = 0;
+    calibrationStopMs_ = 0;
+    calibrationStopPulseCount_ = 0;
+    calibrationStopCaptured_ = false;
     learningRateSampleCount_ = 0;
     learningRateSamples_.fill(0);
     flowHistoryStart_ = 0;
@@ -343,6 +361,7 @@ bool WateringController::applyValveHoldIfDue(uint32_t nowMs) {
 }
 
 void WateringController::finishCurrentZone(uint32_t nowMs) {
+    captureCalibrationStop(nowMs);
     const bool lastStep = currentStepIndex_ + 1U >= request_.stepCount;
     wateringEndedMs_ = nowMs;
     wateringEndCaptured_ = flowMonitor_.flowEstablished();
@@ -381,6 +400,7 @@ void WateringController::finalizeCurrentZone(ZoneWateringResult result, uint32_t
     ZoneWateringSummary& zone = sessionSummary_.zones[currentStepIndex_];
     zone.result = result;
     zone.pulseCount = static_cast<uint32_t>(hardware_.flowPulseCount() - zoneStartedPulseCount_);
+    fillCalibrationMetrics(zone, nowMs, hardware_.flowPulseCount());
     if (flowMonitor_.flowEstablished()) {
         if (!wateringEndCaptured_) {
             wateringEndedMs_ = nowMs;
@@ -396,6 +416,7 @@ void WateringController::finalizeCurrentZone(ZoneWateringResult result, uint32_t
 }
 
 void WateringController::finishSession(WateringStopReason reason, uint32_t nowMs) {
+    captureCalibrationStop(nowMs);
     hardware_.safeShutdown();
     ZoneWateringResult zoneResult = ZoneWateringResult::Failed;
     if (reason == WateringStopReason::Completed) {
@@ -418,6 +439,59 @@ void WateringController::finishSession(WateringStopReason reason, uint32_t nowMs
     sessionSummary_.stopReason = reason;
     sessionSummary_.elapsedSec = static_cast<uint32_t>(nowMs - sessionStartedMs_) / 1000U;
     finishedSessionReady_ = true;
+}
+
+void WateringController::captureCalibrationStop(uint32_t nowMs) {
+    if (request_.purpose != WateringPurpose::FlowCalibration ||
+        calibrationStopCaptured_) {
+        return;
+    }
+    calibrationStopMs_ = nowMs;
+    calibrationStopPulseCount_ = hardware_.flowPulseCount();
+    calibrationStopCaptured_ = true;
+}
+
+void WateringController::fillCalibrationMetrics(ZoneWateringSummary& zone,
+                                                uint32_t nowMs,
+                                                uint32_t pulseCount) const {
+    if (request_.purpose != WateringPurpose::FlowCalibration) return;
+    const CalibrationStabilityConfig& detectorConfig = calibrationDetector_.config();
+    zone.calibrationWindowSec = detectorConfig.windowSec != 0
+                                    ? detectorConfig.windowSec
+                                    : calibrationStability_.windowSec;
+    zone.calibrationRequiredWindows = detectorConfig.requiredWindows != 0
+                                          ? detectorConfig.requiredWindows
+                                          : calibrationStability_.requiredWindows;
+    zone.calibrationAllowedVariationPercent =
+        detectorConfig.allowedVariationPercent != 0
+            ? detectorConfig.allowedVariationPercent
+            : calibrationStability_.allowedVariationPercent;
+    zone.calibrationCollectedWindows = calibrationDetector_.collectedWindowCount();
+    zone.calibrationPulseRateX100 = calibrationDetector_.latestRateX100();
+    if (flowMonitor_.flowEstablished()) {
+        zone.calibrationFlowEstablishedMs = calibrationFlowEstablishedMs_ - valveOpenedMs_;
+    }
+    zone.calibrationSteadyDetected = calibrationDetector_.steadyDetected();
+    zone.calibrationSteadyLaterUnstable =
+        calibrationDetector_.steadyLaterUnstable();
+    if (!zone.calibrationSteadyDetected) return;
+
+    const uint32_t steadyStartedMs = calibrationDetector_.steadyStartedMs();
+    const uint32_t steadyStartedPulseCount =
+        calibrationDetector_.steadyStartedPulseCount();
+    const uint32_t steadyEndedMs = calibrationStopCaptured_ ? calibrationStopMs_ : nowMs;
+    const uint32_t steadyEndedPulseCount = calibrationStopCaptured_
+                                               ? calibrationStopPulseCount_
+                                               : pulseCount;
+    zone.calibrationSteadyStartedMs = steadyStartedMs - valveOpenedMs_;
+    zone.calibrationStartupPulses = steadyStartedPulseCount - zoneStartedPulseCount_;
+    zone.calibrationSteadyDurationMs = steadyEndedMs - steadyStartedMs;
+    zone.calibrationSteadyPulses = steadyEndedPulseCount - steadyStartedPulseCount;
+    zone.calibrationPulseRateX100 = calibrationDetector_.stableAverageRateX100();
+    if (calibrationStopCaptured_) {
+        zone.calibrationStopDurationMs = nowMs - calibrationStopMs_;
+        zone.calibrationStopPulses = pulseCount - calibrationStopPulseCount_;
+    }
 }
 
 bool WateringController::checkFlowRate(uint32_t nowMs) {

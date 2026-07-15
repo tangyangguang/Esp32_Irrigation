@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "FlowMonitor.h"
+#include "CalibrationStabilityDetector.h"
 #include "IrrigationTypes.h"
 #include "WateringHardware.h"
 
@@ -31,6 +32,10 @@ private:
     void finishSession(WateringStopReason reason, uint32_t nowMs);
     bool checkFlowRate(uint32_t nowMs);
     void appendFlowSample(uint32_t flowMlPerMinute);
+    void captureCalibrationStop(uint32_t nowMs);
+    void fillCalibrationMetrics(ZoneWateringSummary& zone,
+                                uint32_t nowMs,
+                                uint32_t pulseCount) const;
 
     WateringHardware& hardware_;
     WateringRequest request_{};
@@ -38,10 +43,12 @@ private:
     PumpConfig pump_{};
     FlowMeterConfig flowMeter_{};
     FlowProtectionConfig flowProtection_{};
+    CalibrationStabilityConfig calibrationStability_{};
     std::array<uint32_t, BoardPins::kZoneCount> learnedFlowMlPerMinute_{};
     std::array<uint32_t, 5> learningRateSamples_{};
     std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
     FlowMonitor flowMonitor_;
+    CalibrationStabilityDetector calibrationDetector_;
     WateringState state_ = WateringState::Idle;
     WateringResult lastResult_ = WateringResult::None;
     WateringStopReason lastStopReason_ = WateringStopReason::None;
@@ -58,6 +65,9 @@ private:
     uint32_t lowFlowStartedMs_ = 0;
     uint32_t highFlowStartedMs_ = 0;
     uint32_t currentFlowMlPerMinute_ = 0;
+    uint32_t calibrationFlowEstablishedMs_ = 0;
+    uint32_t calibrationStopMs_ = 0;
+    uint32_t calibrationStopPulseCount_ = 0;
     uint32_t flowHistoryGeneration_ = 0;
     uint32_t flowSampleSerial_ = 0;
     uint32_t learningAverageMlPerMinute_ = 0;
@@ -77,4 +87,5 @@ private:
     bool finishedSessionReady_ = false;
     bool lowFlowTiming_ = false;
     bool highFlowTiming_ = false;
+    bool calibrationStopCaptured_ = false;
 };

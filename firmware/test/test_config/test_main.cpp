@@ -28,6 +28,9 @@ void test_default_config_matches_confirmed_product_defaults() {
     TEST_ASSERT_EQUAL_UINT8(75, config.valveDrive.holdDutyPercent);
     TEST_ASSERT_FALSE(config.pump.enabled);
     TEST_ASSERT_EQUAL_UINT32(25000, config.flowMeter.pulsesPerLiterX100);
+    TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.windowSec);
+    TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.requiredWindows);
+    TEST_ASSERT_EQUAL_UINT8(10, config.calibrationStability.allowedVariationPercent);
     TEST_ASSERT_EQUAL_UINT8(5, config.timeSafety.rtcRollbackThresholdMinutes);
     TEST_ASSERT_EQUAL_UINT8(12, config.timeSafety.aliveCheckpointHours);
     TEST_ASSERT_TRUE(config.zones[0].enabled);
@@ -73,6 +76,16 @@ void test_confirmed_parameter_ranges_are_validated() {
 
     config = IrrigationConfigRules::createDefault();
     config.flowMeter.pulsesPerLiterX100 = 10000001;
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
+
+    config = IrrigationConfigRules::createDefault();
+    config.calibrationStability.windowSec = 0;
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
+    config.calibrationStability.windowSec = 10;
+    config.calibrationStability.requiredWindows = 10;
+    config.calibrationStability.allowedVariationPercent = 30;
+    TEST_ASSERT_TRUE(IrrigationConfigRules::validate(config));
+    config.calibrationStability.allowedVariationPercent = 31;
     TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
 
     config = IrrigationConfigRules::createDefault();

@@ -231,7 +231,7 @@ bool IrrigationConfigJson::decode(const char* json, std::size_t length, Irrigati
         return false;
     }
     const JsonObjectConst root = document.as<JsonObjectConst>();
-    IrrigationConfig decoded{};
+    IrrigationConfig decoded = IrrigationConfigRules::createDefault();
     if (root.isNull() ||
         !readUnsigned(root, "schema_version", decoded.schemaVersion) ||
         !readUnsigned(root, "revision", decoded.revision) ||

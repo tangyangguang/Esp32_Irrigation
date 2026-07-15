@@ -100,6 +100,7 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
     config.valveDrive = {3000, 20000, 75};
     config.pump = {false, 0, 1000};
     config.flowMeter = {25000};
+    config.calibrationStability = {3, 3, 10};
     config.flowProtection = {
         20,
         10,
@@ -148,6 +149,9 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
     if (!inRange(config.pump.startDelayMs, 0, 60000) ||
         !inRange(config.pump.stopToValveCloseDelayMs, 0, 10000) ||
         !inRange(config.flowMeter.pulsesPerLiterX100, 1, 10000000) ||
+        !inRange(config.calibrationStability.windowSec, 1, 10) ||
+        !inRange(config.calibrationStability.requiredWindows, 2, 10) ||
+        !inRange(config.calibrationStability.allowedVariationPercent, 1, 30) ||
         !inRange(config.flowProtection.flowStartTimeoutSec, 1, 120) ||
         !inRange(config.flowProtection.noFlowTimeoutSec, 1, 60) ||
         !inRange(config.flowProtection.unexpectedFlowDelaySec, 0, 300) ||

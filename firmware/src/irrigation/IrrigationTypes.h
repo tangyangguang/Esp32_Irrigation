@@ -34,6 +34,12 @@ struct FlowMeterConfig {
     uint32_t pulsesPerLiterX100;
 };
 
+struct CalibrationStabilityConfig {
+    uint8_t windowSec;
+    uint8_t requiredWindows;
+    uint8_t allowedVariationPercent;
+};
+
 struct FlowProtectionConfig {
     uint16_t flowStartTimeoutSec;
     uint16_t noFlowTimeoutSec;
@@ -74,6 +80,7 @@ struct IrrigationConfig {
     ValveDriveConfig valveDrive;
     PumpConfig pump;
     FlowMeterConfig flowMeter;
+    CalibrationStabilityConfig calibrationStability;
     FlowProtectionConfig flowProtection;
     TimeSafetyConfig timeSafety;
     std::array<ZoneConfig, BoardPins::kZoneCount> zones;
@@ -170,6 +177,20 @@ struct ZoneWateringSummary {
     bool lowFlowDetected;
     bool highFlowDetected;
     uint32_t suggestedFlowMlPerMinute;
+    uint32_t calibrationFlowEstablishedMs;
+    uint32_t calibrationSteadyStartedMs;
+    uint32_t calibrationStartupPulses;
+    uint32_t calibrationSteadyDurationMs;
+    uint32_t calibrationSteadyPulses;
+    uint32_t calibrationStopDurationMs;
+    uint32_t calibrationStopPulses;
+    uint32_t calibrationPulseRateX100;
+    uint8_t calibrationWindowSec;
+    uint8_t calibrationRequiredWindows;
+    uint8_t calibrationAllowedVariationPercent;
+    uint8_t calibrationCollectedWindows;
+    bool calibrationSteadyDetected;
+    bool calibrationSteadyLaterUnstable;
 };
 
 struct WateringStatus {

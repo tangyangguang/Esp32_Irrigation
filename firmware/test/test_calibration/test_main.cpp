@@ -21,7 +21,16 @@ WateringSessionSummary calibrationSummary(
                                   : (reason == WateringStopReason::Completed
                                          ? ZoneWateringResult::Completed
                                          : ZoneWateringResult::Failed);
-    summary.zones[0].pulseCount = pulses;
+    summary.zones[0].pulseCount = pulses == 0 ? 0 : pulses + 20U;
+    summary.zones[0].calibrationSteadyDetected = pulses > 0;
+    summary.zones[0].calibrationSteadyStartedMs = pulses > 0 ? 3000 : 0;
+    summary.zones[0].calibrationStartupPulses = pulses > 0 ? 20 : 0;
+    summary.zones[0].calibrationSteadyDurationMs = pulses > 0 ? 20000 : 0;
+    summary.zones[0].calibrationSteadyPulses = pulses;
+    summary.zones[0].calibrationPulseRateX100 = pulses > 0 ? 2500 : 0;
+    summary.zones[0].calibrationWindowSec = 3;
+    summary.zones[0].calibrationRequiredWindows = 3;
+    summary.zones[0].calibrationAllowedVariationPercent = 10;
     return summary;
 }
 
@@ -44,8 +53,8 @@ void test_two_samples_remove_shared_startup_effect() {
     TEST_ASSERT_TRUE(service.resultReady());
     TEST_ASSERT_EQUAL_UINT8(2, service.validSampleCount());
     TEST_ASSERT_EQUAL_UINT32(25000, service.combinedPulsesPerLiterX100());
-    TEST_ASSERT_EQUAL_INT64(2000, service.nonSteadyPulseX100());
-    TEST_ASSERT_EQUAL_INT64(8000, service.equivalentWaterMlX100());
+    TEST_ASSERT_EQUAL_INT64(2000, service.steadyFitInterceptPulseX100());
+    TEST_ASSERT_EQUAL_INT64(-8000, service.combinedNonSteadyWaterMlX100());
     TEST_ASSERT_EQUAL_UINT32(3000, service.volumeSpanMl());
     TEST_ASSERT_EQUAL_UINT8(1, service.validZoneCount());
     TEST_ASSERT_EQUAL_UINT32(1100, service.resultUpdatedEpoch());
@@ -61,8 +70,8 @@ void test_three_samples_expose_intercept_residuals_and_mixed_zones() {
 
     TEST_ASSERT_TRUE(service.resultReady());
     TEST_ASSERT_EQUAL_UINT32(221721, service.combinedPulsesPerLiterX100());
-    TEST_ASSERT_EQUAL_INT64(-40922, service.nonSteadyPulseX100());
-    TEST_ASSERT_EQUAL_INT64(-18456, service.equivalentWaterMlX100());
+    TEST_ASSERT_EQUAL_INT64(-40922, service.steadyFitInterceptPulseX100());
+    TEST_ASSERT_EQUAL_INT64(18456, service.combinedNonSteadyWaterMlX100());
     TEST_ASSERT_EQUAL_UINT8(3, service.validZoneCount());
     TEST_ASSERT_EQUAL_UINT16(9, service.maximumResidualPercentX100());
 
@@ -168,7 +177,7 @@ void test_pending_sample_can_be_saved_or_marked_invalid() {
     FlowCalibrationService service;
     TEST_ASSERT_TRUE(service.captureFinishedSession(calibrationSummary(270), 1000));
     TEST_ASSERT_TRUE(service.hasPendingMeasurement());
-    TEST_ASSERT_EQUAL_UINT32(270, service.pendingPulseCount());
+    TEST_ASSERT_EQUAL_UINT32(290, service.pendingPulseCount());
     TEST_ASSERT_EQUAL_UINT32(30, service.pendingElapsedSec());
     TEST_ASSERT_EQUAL_UINT8(1, service.pendingZoneId());
     TEST_ASSERT_FALSE(service.addPendingMeasurement(999, 1000));

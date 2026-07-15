@@ -16,6 +16,9 @@ constexpr const char* kPumpEnabled = "pump_on";
 constexpr const char* kPumpStart = "pump_start";
 constexpr const char* kPumpStop = "pump_stop";
 constexpr const char* kCoefficient = "pulse_l";
+constexpr const char* kCalibrationWindow = "cal_window";
+constexpr const char* kCalibrationWindows = "cal_windows";
+constexpr const char* kCalibrationVariation = "cal_variation";
 constexpr const char* kFlowStart = "flow_start";
 constexpr const char* kNoFlow = "no_flow";
 constexpr const char* kLeakDelay = "leak_delay";
@@ -62,6 +65,9 @@ bool readSubmitted(IrrigationConfig& config) {
     READ_INT(kPumpStop, config.pump.stopToValveCloseDelayMs);
     if (!Esp32BaseAppConfig::submittedDecimal(kNamespace, kCoefficient, value)) return false;
     config.flowMeter.pulsesPerLiterX100 = static_cast<uint32_t>(value);
+    READ_INT(kCalibrationWindow, config.calibrationStability.windowSec);
+    READ_INT(kCalibrationWindows, config.calibrationStability.requiredWindows);
+    READ_INT(kCalibrationVariation, config.calibrationStability.allowedVariationPercent);
     READ_INT(kFlowStart, config.flowProtection.flowStartTimeoutSec);
     READ_INT(kNoFlow, config.flowProtection.noFlowTimeoutSec);
     READ_INT(kLeakDelay, config.flowProtection.unexpectedFlowDelaySec);
@@ -106,6 +112,9 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* use
            Esp32BaseAppConfig::addInt({"pump", kNamespace, kPumpStart, "水泵启动延时", defaults.pump.startDelayMs, 0, 60000, 100, "ms", "开阀后等待多久启动水泵，范围 0～60000 ms。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"pump", kNamespace, kPumpStop, "停泵后关阀延时", defaults.pump.stopToValveCloseDelayMs, 0, 10000, 100, "ms", "停泵后继续保持阀门开启的时间，范围 0～10000 ms。", false, nullptr}) &&
            Esp32BaseAppConfig::addDecimal({"meter", kNamespace, kCoefficient, kCoefficientLabel, static_cast<int32_t>(defaults.flowMeter.pulsesPerLiterX100), 1, 10000000, 1, 2, "P/L", kCoefficientHelp, false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationWindow, "稳态检测窗口", defaults.calibrationStability.windowSec, 1, 10, 1, "s", "按原始脉冲速率判断稳态的窗口长度，范围 1～10 s。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationWindows, "连续稳定窗口", defaults.calibrationStability.requiredWindows, 2, 10, 1, "个", "连续多少个窗口满足条件后确认稳态，范围 2～10 个。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationVariation, "稳态允许波动", defaults.calibrationStability.allowedVariationPercent, 1, 30, 1, "%", "窗口脉冲速率最大与最小值的允许波动，范围 1%～30%。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kFlowStart, "流量建立超时", defaults.flowProtection.flowStartTimeoutSec, 1, 120, 1, "s", "开始出水后未检测到脉冲的最长等待时间，范围 1～120 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kNoFlow, "运行无流量超时", defaults.flowProtection.noFlowTimeoutSec, 1, 60, 1, "s", "浇水过程中连续无脉冲多久后停机，范围 1～60 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakDelay, "关阀后检测延时", defaults.flowProtection.unexpectedFlowDelaySec, 0, 300, 1, "s", "全部关闭后延迟多久开始检测非计划流量，范围 0～300 s。", false, nullptr}) &&
@@ -131,6 +140,9 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     GET_INT(kPumpStart, defaults.pump.startDelayMs, config.pump.startDelayMs);
     GET_INT(kPumpStop, defaults.pump.stopToValveCloseDelayMs, config.pump.stopToValveCloseDelayMs);
     GET_INT(kCoefficient, defaults.flowMeter.pulsesPerLiterX100, config.flowMeter.pulsesPerLiterX100);
+    GET_INT(kCalibrationWindow, defaults.calibrationStability.windowSec, config.calibrationStability.windowSec);
+    GET_INT(kCalibrationWindows, defaults.calibrationStability.requiredWindows, config.calibrationStability.requiredWindows);
+    GET_INT(kCalibrationVariation, defaults.calibrationStability.allowedVariationPercent, config.calibrationStability.allowedVariationPercent);
     GET_INT(kFlowStart, defaults.flowProtection.flowStartTimeoutSec, config.flowProtection.flowStartTimeoutSec);
     GET_INT(kNoFlow, defaults.flowProtection.noFlowTimeoutSec, config.flowProtection.noFlowTimeoutSec);
     GET_INT(kLeakDelay, defaults.flowProtection.unexpectedFlowDelaySec, config.flowProtection.unexpectedFlowDelaySec);
