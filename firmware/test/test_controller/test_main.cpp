@@ -305,7 +305,7 @@ void test_live_status_reports_plan_progress_remaining_time_and_water() {
     WateringController controller(hardware);
     const IrrigationConfig config = IrrigationConfigRules::createDefault();
     WateringRequest request = requestFor(1, 60);
-    request.source = WateringSource::ManualPlan;
+    request.source = WateringSource::AutomaticPlan;
     request.planId = 2;
     request.stepCount = 2;
     request.steps[1] = {2, 120};
@@ -317,7 +317,7 @@ void test_live_status_reports_plan_progress_remaining_time_and_water() {
 
     const WateringStatus status = controller.status();
     TEST_ASSERT_TRUE(status.active);
-    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::ManualPlan),
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::AutomaticPlan),
                       static_cast<int>(status.source));
     TEST_ASSERT_EQUAL_UINT8(2, status.planId);
     TEST_ASSERT_EQUAL_UINT8(2, status.stepCount);

@@ -228,7 +228,6 @@ const char* zoneResultName(ZoneWateringResult result) {
 const char* sourceName(WateringSource source) {
     switch (source) {
         case WateringSource::ManualZones: return "手动浇水";
-        case WateringSource::ManualPlan: return "手动计划（历史）";
         case WateringSource::AutomaticPlan: return "自动计划";
     }
     return "未知";
@@ -916,9 +915,7 @@ void IrrigationWeb::activeTask() {
         const char* taskName = "手动浇水";
         const char* taskSource = status.source == WateringSource::AutomaticPlan
                                      ? "自动计划"
-                                     : (status.source == WateringSource::ManualPlan
-                                            ? "手动计划（历史）"
-                                            : "手动浇水");
+                                     : "手动浇水";
         if (status.purpose == WateringPurpose::FlowCalibration) {
             taskName = "流量计校准";
             taskSource = "维护任务";

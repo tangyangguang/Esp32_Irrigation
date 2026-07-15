@@ -37,8 +37,7 @@ uint32_t get32(const uint8_t*& cursor) {
 }
 
 bool validSource(WateringSource value) {
-    return value == WateringSource::ManualZones || value == WateringSource::ManualPlan ||
-           value == WateringSource::AutomaticPlan;
+    return value == WateringSource::ManualZones || value == WateringSource::AutomaticPlan;
 }
 
 bool validResult(WateringResult value) {

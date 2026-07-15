@@ -82,7 +82,6 @@ struct IrrigationConfig {
 
 enum class WateringSource : uint8_t {
     ManualZones = 0,
-    ManualPlan = 1,
     AutomaticPlan = 2,
 };
 

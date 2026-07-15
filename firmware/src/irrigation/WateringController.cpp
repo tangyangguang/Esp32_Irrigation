@@ -255,7 +255,6 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
         return false;
     }
     if ((request.source != WateringSource::ManualZones &&
-         request.source != WateringSource::ManualPlan &&
          request.source != WateringSource::AutomaticPlan) ||
         (request.purpose != WateringPurpose::Normal &&
          request.purpose != WateringPurpose::FlowCalibration &&
