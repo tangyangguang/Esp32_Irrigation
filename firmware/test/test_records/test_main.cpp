@@ -132,13 +132,34 @@ void test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone() {
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 }
 
-void test_only_normal_sessions_with_actual_flow_become_records() {
+void test_all_started_normal_sessions_become_records() {
     WateringSessionSummary summary = exampleSummary();
     WateringRecordPayload payload{};
 
     summary.anyFlowEstablished = false;
-    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(summary, payload));
-    summary.anyFlowEstablished = true;
+    summary.result = WateringResult::Failed;
+    summary.stopReason = WateringStopReason::FlowStartTimeout;
+    for (ZoneWateringSummary& zone : summary.zones) {
+        zone.actualWateringSec = 0;
+        zone.pulseCount = 0;
+        zone.estimatedWaterMl = 0;
+        zone.averageFlowMlPerMinute = 0;
+        zone.waterEstimateCapped = false;
+        zone.terminalFlowAvailable = false;
+        zone.terminalFlowStable = false;
+        zone.terminalFlowMlPerMinute = 0;
+        zone.terminalMinimumFlowMlPerMinute = 0;
+        zone.terminalMaximumFlowMlPerMinute = 0;
+    }
+    summary.zones[0].result = ZoneWateringResult::Failed;
+    summary.zones[1].result = ZoneWateringResult::NotStarted;
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Failed),
+                      static_cast<int>(payload.zones[0].result));
+    TEST_ASSERT_EQUAL_UINT32(0, payload.zones[0].pulseCount);
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::NotStarted),
+                      static_cast<int>(payload.zones[2].result));
+
     summary.purpose = WateringPurpose::FlowCalibration;
     TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(summary, payload));
 }
@@ -177,7 +198,7 @@ int main(int, char**) {
     RUN_TEST(test_fixed_payload_round_trip_preserves_business_fields);
     RUN_TEST(test_totals_are_derived_without_overflow);
     RUN_TEST(test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone);
-    RUN_TEST(test_only_normal_sessions_with_actual_flow_become_records);
+    RUN_TEST(test_all_started_normal_sessions_become_records);
     RUN_TEST(test_included_but_unstarted_zone_keeps_plan_and_zero_actuals);
     RUN_TEST(test_manual_records_have_no_plan);
     return UNITY_END();

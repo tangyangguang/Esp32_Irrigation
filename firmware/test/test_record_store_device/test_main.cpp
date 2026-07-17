@@ -206,6 +206,7 @@ struct EventCapture {
     uint32_t objectId = 0;
     int32_t value1 = 0;
     int32_t value2 = 0;
+    uint8_t flags = 0;
     Esp32BaseAppEvents::Level level = Esp32BaseAppEvents::Level::Info;
     Esp32BaseAppEvents::EventKind eventKind = Esp32BaseAppEvents::EventKind::Discrete;
     uint8_t conditionId = 0;
@@ -219,6 +220,7 @@ void captureEvent(const Esp32BaseAppEvents::EventRecord& event, void* user) {
         capture->objectId = event.objectId;
         capture->value1 = event.value1;
         capture->value2 = event.value2;
+        capture->flags = event.flags;
         capture->level = event.level;
         capture->eventKind = event.eventKind;
         capture->conditionId = event.conditionId;
@@ -231,6 +233,8 @@ void test_irrigation_event_mapping_and_latest_read() {
     IrrigationEvents events;
     WateringSessionSummary summary{};
     summary.purpose = WateringPurpose::Normal;
+    summary.source = WateringSource::AutomaticPlan;
+    summary.planId = 3;
     summary.result = WateringResult::Failed;
     summary.stopReason = WateringStopReason::NoFlowTimeout;
     summary.zoneCount = 1;
@@ -252,8 +256,32 @@ void test_irrigation_event_mapping_and_latest_read() {
     TEST_ASSERT_EQUAL_UINT32(2, capture.objectId);
     TEST_ASSERT_EQUAL_INT32(37, capture.value1);
     TEST_ASSERT_EQUAL_INT32(18, capture.value2);
+    TEST_ASSERT_EQUAL_UINT8(
+        (1U << 7U) | (1U << 2U) | (3U << 3U), capture.flags);
     TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::Level::Error),
                       static_cast<int>(capture.level));
+    Esp32BaseAppEvents::EventRecord wateringPresentation{};
+    wateringPresentation.eventCode = capture.eventCode;
+    wateringPresentation.reasonCode = capture.reasonCode;
+    wateringPresentation.objectId = capture.objectId;
+    wateringPresentation.flags = capture.flags;
+    char wateringTitle[96]{};
+    IrrigationEvents::formatTitle(wateringPresentation,
+                                  wateringTitle,
+                                  sizeof(wateringTitle),
+                                  "晚间花园",
+                                  "菜地");
+    TEST_ASSERT_EQUAL_STRING(
+        "自动计划“晚间花园”失败：菜地浇水时水流中断",
+        wateringTitle);
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(WateringSource::AutomaticPlan),
+        static_cast<int>(IrrigationEvents::wateringSource(
+            wateringPresentation)));
+    TEST_ASSERT_TRUE(
+        IrrigationEvents::hasWateringContext(wateringPresentation));
+    TEST_ASSERT_EQUAL_UINT8(
+        3, IrrigationEvents::wateringPlanId(wateringPresentation));
 
     const uint32_t afterWateringEvent = Esp32BaseAppEvents::eventCount();
     summary.purpose = WateringPurpose::FlowCalibration;

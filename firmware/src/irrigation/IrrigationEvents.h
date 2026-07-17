@@ -93,7 +93,9 @@ public:
     void recordAbnormalWateringStop(const WateringSessionSummary& summary);
     void recordFlowDeviationEvent(const ZoneWateringSummary& zone,
                                   ReasonCode reason,
-                                  bool stopped);
+                                  bool stopped,
+                                  WateringSource source,
+                                  uint8_t planId);
     void recordAutomaticWateringPaused(bool indefinitely, uint32_t resumeAtEpoch);
     void recordAutomaticWateringResumed(bool automatically);
     void recordAutomaticPlanSkipped(uint8_t planId, bool busy);
@@ -120,9 +122,17 @@ public:
     static Category category(const Esp32BaseAppEvents::EventRecord& event);
     static const char* categoryName(Category category);
     static const char* levelName(Esp32BaseAppEvents::Level level);
+    static bool hasWateringContext(
+        const Esp32BaseAppEvents::EventRecord& event);
+    static WateringSource wateringSource(
+        const Esp32BaseAppEvents::EventRecord& event);
+    static uint8_t wateringPlanId(
+        const Esp32BaseAppEvents::EventRecord& event);
     static void formatTitle(const Esp32BaseAppEvents::EventRecord& event,
                             char* out,
-                            std::size_t length);
+                            std::size_t length,
+                            const char* planName = nullptr,
+                            const char* zoneName = nullptr);
     static void formatSummary(const Esp32BaseAppEvents::EventRecord& event,
                               char* out,
                               std::size_t length);
@@ -132,8 +142,12 @@ private:
     static constexpr uint8_t kTrustedTimeUnavailableConditionId = 2;
     static constexpr uint8_t kRtcRollbackConditionId = 3;
     static constexpr uint8_t kClosedValveFlowConditionId = 4;
-    static constexpr uint16_t kFlagValue1Capped = 1U << 0U;
-    static constexpr uint16_t kFlagWateringStopped = 1U << 1U;
+    static constexpr uint8_t kFlagValue1Capped = 1U << 0U;
+    static constexpr uint8_t kFlagWateringStopped = 1U << 1U;
+    static constexpr uint8_t kFlagAutomaticPlan = 1U << 2U;
+    static constexpr uint8_t kPlanIdShift = 3U;
+    static constexpr uint8_t kPlanIdMask = 0x78U;
+    static constexpr uint8_t kFlagWateringContextPresent = 1U << 7U;
 
     void append(const Esp32BaseAppEvents::EventInput& event);
     void observe(Esp32BaseAppEvents::ConditionStateTracker& tracker,
@@ -144,6 +158,9 @@ private:
     void handleConditionResult(Esp32BaseAppEvents::ConditionObservationResult result);
     void updateStorageFault(bool fault, const char* reason);
     static ReasonCode wateringReason(WateringStopReason reason);
+    static void addWateringContext(Esp32BaseAppEvents::EventInput& event,
+                                   WateringSource source,
+                                   uint8_t planId);
 
     Esp32BaseAppEvents::ConditionStateTracker rtcUnavailableCondition_;
     Esp32BaseAppEvents::ConditionStateTracker trustedTimeUnavailableCondition_;

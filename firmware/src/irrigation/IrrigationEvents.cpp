@@ -90,6 +90,7 @@ void IrrigationEvents::recordAbnormalWateringStop(const WateringSessionSummary& 
     event.objectId = zone ? zone->zoneId : 0;
     event.value1 = static_cast<int32_t>(cappedValue(zone ? zone->pulseCount : 0, event.flags));
     event.value2 = static_cast<int32_t>(zone ? zone->actualWateringSec : 0);
+    addWateringContext(event, summary.source, summary.planId);
     event.level = summary.stopReason == WateringStopReason::MaintenanceInterrupted
                       ? Esp32BaseAppEvents::Level::Warning
                       : Esp32BaseAppEvents::Level::Error;
@@ -99,7 +100,9 @@ void IrrigationEvents::recordAbnormalWateringStop(const WateringSessionSummary& 
 void IrrigationEvents::recordFlowDeviationEvent(
     const ZoneWateringSummary& zone,
     ReasonCode reason,
-    bool stopped) {
+    bool stopped,
+    WateringSource source,
+    uint8_t planId) {
     const bool low = reason == ReasonCode::LowFlow;
     if (!low && reason != ReasonCode::HighFlow) return;
     Esp32BaseAppEvents::EventInput event;
@@ -113,6 +116,7 @@ void IrrigationEvents::recordFlowDeviationEvent(
     event.value2 = static_cast<int32_t>(
         cappedValue(zone.baselineFlowMlPerMinute, event.flags));
     if (stopped) event.flags |= kFlagWateringStopped;
+    addWateringContext(event, source, planId);
     event.level = stopped ? Esp32BaseAppEvents::Level::Error
                           : Esp32BaseAppEvents::Level::Warning;
     append(event);
@@ -325,25 +329,65 @@ const char* IrrigationEvents::levelName(Esp32BaseAppEvents::Level level) {
     }
 }
 
+bool IrrigationEvents::hasWateringContext(
+    const Esp32BaseAppEvents::EventRecord& event) {
+    return (event.flags & kFlagWateringContextPresent) != 0;
+}
+
+WateringSource IrrigationEvents::wateringSource(
+    const Esp32BaseAppEvents::EventRecord& event) {
+    return (event.flags & kFlagAutomaticPlan) != 0
+               ? WateringSource::AutomaticPlan
+               : WateringSource::ManualZones;
+}
+
+uint8_t IrrigationEvents::wateringPlanId(
+    const Esp32BaseAppEvents::EventRecord& event) {
+    if ((event.flags & kFlagAutomaticPlan) == 0) return 0;
+    return static_cast<uint8_t>((event.flags & kPlanIdMask) >> kPlanIdShift);
+}
+
 void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
                                    char* out,
-                                   std::size_t length) {
+                                   std::size_t length,
+                                   const char* planName,
+                                   const char* zoneName) {
     if (!out || length == 0) return;
+    char source[96]{};
+    const uint8_t planId = wateringPlanId(event);
+    if (!hasWateringContext(event)) {
+        std::snprintf(source, sizeof(source), "浇水");
+    } else if (wateringSource(event) == WateringSource::AutomaticPlan) {
+        if (planName && planName[0] != '\0') {
+            std::snprintf(source, sizeof(source), "自动计划“%s”", planName);
+        } else {
+            std::snprintf(source, sizeof(source), "自动计划 %u", planId);
+        }
+    } else {
+        std::snprintf(source, sizeof(source), "手动浇水");
+    }
+    char zone[80]{};
+    if (zoneName && zoneName[0] != '\0') {
+        std::snprintf(zone, sizeof(zone), "%s", zoneName);
+    } else {
+        std::snprintf(zone, sizeof(zone), "水路 %lu",
+                      static_cast<unsigned long>(event.objectId));
+    }
     switch (static_cast<EventCode>(event.eventCode)) {
         case EventCode::WateringStoppedAbnormally:
             switch (static_cast<ReasonCode>(event.reasonCode)) {
                 case ReasonCode::FlowStartTimeout:
-                    std::snprintf(out, length, "水路 %lu 未检测到水流", static_cast<unsigned long>(event.objectId)); return;
+                    std::snprintf(out, length, "%s失败：%s未检测到水流", source, zone); return;
                 case ReasonCode::NoFlowTimeout:
-                    std::snprintf(out, length, "水路 %lu 浇水时水流中断", static_cast<unsigned long>(event.objectId)); return;
+                    std::snprintf(out, length, "%s失败：%s浇水时水流中断", source, zone); return;
                 case ReasonCode::LowFlow:
-                    std::snprintf(out, length, "水路 %lu 因流量过低停止", static_cast<unsigned long>(event.objectId)); return;
+                    std::snprintf(out, length, "%s失败：%s因流量过低停止", source, zone); return;
                 case ReasonCode::HighFlow:
-                    std::snprintf(out, length, "水路 %lu 因流量过高停止", static_cast<unsigned long>(event.objectId)); return;
+                    std::snprintf(out, length, "%s失败：%s因流量过高停止", source, zone); return;
                 case ReasonCode::MaintenanceInterrupted:
-                    std::snprintf(out, length, "浇水因维护操作中断"); return;
+                    std::snprintf(out, length, "%s因维护操作中断", source); return;
                 default:
-                    std::snprintf(out, length, "浇水因设备故障停止"); return;
+                    std::snprintf(out, length, "%s因设备故障停止", source); return;
             }
         case EventCode::AutomaticWateringStateChanged:
             if (event.reasonCode == static_cast<uint32_t>(ReasonCode::ResumedManually)) std::snprintf(out, length, "自动浇水已手动恢复");
@@ -368,8 +412,8 @@ void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
         case EventCode::FlowDeviation:
             std::snprintf(out, length,
                           event.reasonCode == static_cast<uint32_t>(ReasonCode::LowFlow)
-                              ? "水路 %lu 流量偏低" : "水路 %lu 流量偏高",
-                          static_cast<unsigned long>(event.objectId)); return;
+                              ? "%s：%s流量偏低" : "%s：%s流量偏高",
+                          source, zone); return;
         case EventCode::ClosedValveFlow:
             std::snprintf(out, length, recovered(event) ? "关阀后水流已恢复正常" : "关阀后检测到水流"); return;
         case EventCode::FlowCalibrationSaved:
@@ -400,6 +444,19 @@ void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
         default:
             std::snprintf(out, length, "未知事件"); return;
     }
+}
+
+void IrrigationEvents::addWateringContext(
+    Esp32BaseAppEvents::EventInput& event,
+    WateringSource source,
+    uint8_t planId) {
+    event.flags |= kFlagWateringContextPresent;
+    if (source != WateringSource::AutomaticPlan ||
+        planId == 0 || planId > kWateringPlanCount) {
+        return;
+    }
+    event.flags |= kFlagAutomaticPlan;
+    event.flags |= static_cast<uint8_t>(planId << kPlanIdShift);
 }
 
 void IrrigationEvents::formatSummary(const Esp32BaseAppEvents::EventRecord& event,

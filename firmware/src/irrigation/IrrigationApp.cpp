@@ -699,7 +699,11 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
                 !status.active &&
                 status.lastStopReason == WateringStopReason::LowFlow;
             events_.recordFlowDeviationEvent(
-                zone, IrrigationEvents::ReasonCode::LowFlow, stopped);
+                zone,
+                IrrigationEvents::ReasonCode::LowFlow,
+                stopped,
+                status.source,
+                status.planId);
             lowFlowEventReported_[zoneIndex] = true;
         }
         if (!zone.highFlowActive) {
@@ -709,7 +713,11 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
                 !status.active &&
                 status.lastStopReason == WateringStopReason::HighFlow;
             events_.recordFlowDeviationEvent(
-                zone, IrrigationEvents::ReasonCode::HighFlow, stopped);
+                zone,
+                IrrigationEvents::ReasonCode::HighFlow,
+                stopped,
+                status.source,
+                status.planId);
             highFlowEventReported_[zoneIndex] = true;
         }
     }
@@ -731,7 +739,7 @@ void IrrigationApp::consumeFinishedWatering() {
             summary->zones[0].suggestedBaselinePulseRateX10000;
     }
 
-    if (summary->purpose == WateringPurpose::Normal && summary->anyFlowEstablished) {
+    if (summary->purpose == WateringPurpose::Normal) {
         if (!wateringStartTimeValid_ ||
             !wateringRecordStore_.appendCompleted(wateringStartTime_, *summary)) {
             recordStorageFault_ = true;

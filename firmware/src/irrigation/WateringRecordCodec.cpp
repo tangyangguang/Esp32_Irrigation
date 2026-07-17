@@ -80,6 +80,7 @@ bool validPayload(const WateringRecordPayload& payload) {
     }
 
     bool hasIncludedZone = false;
+    bool hasStartedZone = false;
     uint64_t totalPulses = 0;
     for (const ZoneWateringRecord& zone : payload.zones) {
         if (!validZoneResult(zone.result) || (zone.flags & ~kKnownZoneFlags) != 0 ||
@@ -100,6 +101,9 @@ bool validPayload(const WateringRecordPayload& payload) {
             continue;
         }
         hasIncludedZone = true;
+        if (zone.result != ZoneWateringResult::NotStarted) {
+            hasStartedZone = true;
+        }
         if (zone.result == ZoneWateringResult::NotStarted &&
             (zone.flags != 0 || zone.actualWateringSec != 0 ||
              zone.pulseCount != 0 || zone.estimatedWaterMl != 0 ||
@@ -140,7 +144,8 @@ bool validPayload(const WateringRecordPayload& payload) {
         }
         totalPulses += zone.pulseCount;
     }
-    return hasIncludedZone && totalPulses > 0;
+    return hasIncludedZone && hasStartedZone &&
+           (payload.result != WateringResult::Completed || totalPulses != 0);
 }
 
 }  // namespace
@@ -152,7 +157,7 @@ static_assert(WateringRecordCodec::kPayloadSize ==
 bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
                                       WateringRecordPayload& payload) {
     payload = {};
-    if (summary.purpose != WateringPurpose::Normal || !summary.anyFlowEstablished ||
+    if (summary.purpose != WateringPurpose::Normal ||
         summary.zoneCount == 0 || summary.zoneCount > summary.zones.size()) {
         return false;
     }
