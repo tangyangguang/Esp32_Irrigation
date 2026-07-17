@@ -543,7 +543,12 @@ void IrrigationEvents::observe(Esp32BaseAppEvents::ConditionStateTracker& tracke
             displayState = ConditionDisplayState::Unknown;
             break;
         default:
-            displayState = ConditionDisplayState::Unknown;
+            displayState =
+                state == Esp32BaseAppEvents::ObservedConditionState::Active
+                    ? ConditionDisplayState::Active
+                    : state == Esp32BaseAppEvents::ObservedConditionState::Inactive
+                          ? ConditionDisplayState::Normal
+                          : ConditionDisplayState::Unknown;
             break;
     }
     handleConditionResult(result);

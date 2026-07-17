@@ -497,11 +497,11 @@ void test_flow_alert_recovers_and_can_become_active_again_in_same_run() {
     TEST_ASSERT_FALSE(controller.status().zones[0].highFlowActive);
     TEST_ASSERT_TRUE(controller.status().zones[0].highFlowDetected);
 
-    hardware.pulses += 20;
+    hardware.pulses += 25;
     controller.handle(15001);
     TEST_ASSERT_TRUE(controller.status().zones[0].highFlowActive);
     TEST_ASSERT_TRUE(controller.status().zones[0].highFlowDetected);
-    TEST_ASSERT_EQUAL_UINT32(
+    TEST_ASSERT_GREATER_THAN_UINT32(
         firstDetectedFlow,
         controller.status().zones[0].highFlowDetectedMlPerMinute);
 }

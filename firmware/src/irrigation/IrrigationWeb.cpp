@@ -876,7 +876,7 @@ const char* conditionStateName(
         case IrrigationEvents::ConditionDisplayState::ConfirmingRecovery:
             return "恢复确认中";
         case IrrigationEvents::ConditionDisplayState::Unknown:
-        default: return "暂无法判断";
+        default: return "等待判断";
     }
 }
 
@@ -1293,8 +1293,16 @@ void IrrigationWeb::overview() {
         Esp32BaseWeb::sendChunk("关阀后水流监测：最近 ");
         sendUnsigned(config ? config->flowProtection.unexpectedFlowWindowSec : 0);
         Esp32BaseWeb::sendChunk(" 秒未达到异常阈值");
+    } else if (watering.active) {
+        Esp32BaseWeb::sendChunk("关阀后水流监测：浇水期间暂停");
+    } else if (g_app->unexpectedFlowDelayRemainingSec() != 0) {
+        Esp32BaseWeb::sendChunk("关阀后水流监测：等待余流消退，约剩 ");
+        sendUnsigned(g_app->unexpectedFlowDelayRemainingSec());
+        Esp32BaseWeb::sendChunk(" 秒");
     } else {
-        Esp32BaseWeb::sendChunk("关阀后水流监测：等待首个有效窗口");
+        Esp32BaseWeb::sendChunk("关阀后水流监测：正在观察，约剩 ");
+        sendUnsigned(g_app->unexpectedFlowWindowRemainingSec());
+        Esp32BaseWeb::sendChunk(" 秒");
     }
     Esp32BaseWeb::sendChunk("</span></div><div class='home-hero-side'><div id='home-clock' class='home-clock");
     if (!timeTrusted) Esp32BaseWeb::sendChunk(" pending");
@@ -1547,7 +1555,7 @@ var clear=document.getElementById('manual-clear');if(clear)clear.addEventListene
 window.submitManualWatering=function(form){update();if(!count){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认手动浇水 '+count+' 条水路，合计 '+total+' 分钟？')&&once(form)};update();
 var hero=document.getElementById('home-hero'),heroTitle=document.getElementById('home-hero-title'),heroDescription=document.getElementById('home-hero-description'),monitor=document.getElementById('home-flow-monitor'),defaultAction=document.getElementById('home-default-action'),alarmAction=document.getElementById('home-alarm-action');
 function toggleHidden(element,hidden){if(element)element.classList.toggle('hidden',hidden)}
-function updateIdleStatus(status){if(status.active){location.reload();return false}var alarm=!!status.unexpectedFlowAlarm;if(hero){var tone=alarm?'danger':String(hero.dataset.defaultTone||'').trim();hero.className='home-hero'+(tone?' '+tone:'')}if(heroTitle)heroTitle.textContent=alarm?'关阀后水流异常':hero.dataset.defaultTitle;if(heroDescription)heroDescription.textContent=alarm?'所有阀门关闭后仍检测到水流，请检查阀门和管路。':hero.dataset.defaultDescription;toggleHidden(defaultAction,alarm);toggleHidden(alarmAction,!alarm);if(monitor){monitor.classList.toggle('danger',alarm);if(alarm)monitor.textContent='关阀后水流监测：异常 · 最近窗口 '+Number(status.unexpectedFlowPulseCount||0)+' 脉冲';else if(status.unexpectedFlowObservationReady)monitor.textContent='关阀后水流监测：最近 '+Number(status.unexpectedFlowWindowSec||0)+' 秒未达到异常阈值';else monitor.textContent='关阀后水流监测：等待首个有效窗口'}return true}
+function updateIdleStatus(status){if(status.active){location.reload();return false}var alarm=!!status.unexpectedFlowAlarm;if(hero){var tone=alarm?'danger':String(hero.dataset.defaultTone||'').trim();hero.className='home-hero'+(tone?' '+tone:'')}if(heroTitle)heroTitle.textContent=alarm?'关阀后水流异常':hero.dataset.defaultTitle;if(heroDescription)heroDescription.textContent=alarm?'所有阀门关闭后仍检测到水流，请检查阀门和管路。':hero.dataset.defaultDescription;toggleHidden(defaultAction,alarm);toggleHidden(alarmAction,!alarm);if(monitor){monitor.classList.toggle('danger',alarm);if(alarm)monitor.textContent='关阀后水流监测：异常 · 最近窗口 '+Number(status.unexpectedFlowPulseCount||0)+' 脉冲';else if(status.unexpectedFlowObservationReady)monitor.textContent='关阀后水流监测：最近 '+Number(status.unexpectedFlowWindowSec||0)+' 秒未达到异常阈值';else if(Number(status.unexpectedFlowDelayRemainingSec||0)>0)monitor.textContent='关阀后水流监测：等待余流消退，约剩 '+Number(status.unexpectedFlowDelayRemainingSec)+' 秒';else monitor.textContent='关阀后水流监测：正在观察，约剩 '+Number(status.unexpectedFlowWindowRemainingSec||0)+' 秒'}return true}
 var pollTimer=0,polling=false;function schedulePoll(delay){clearTimeout(pollTimer);pollTimer=setTimeout(poll,delay)}function poll(){if(polling)return;polling=true;fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(response){return response.json()}).then(function(status){polling=false;if(updateIdleStatus(status))schedulePoll(document.hidden?15000:5000)}).catch(function(){polling=false;schedulePoll(document.hidden?15000:10000)})}
 document.addEventListener('visibilitychange',function(){schedulePoll(document.hidden?15000:0)});schedulePoll(5000);
 })();</script>)HTML");
@@ -2895,17 +2903,49 @@ void IrrigationWeb::events() {
         {3, "时间倒退保护", "异常时暂停自动计划"},
         {4, "关阀后水流", "监测阀门关闭后的异常水流"},
     };
+    IrrigationEvents::ConditionDisplayState conditionStates[
+        sizeof(conditions) / sizeof(conditions[0])]{};
+    uint8_t activeConditionCount = 0;
+    for (std::size_t index = 0;
+         index < sizeof(conditions) / sizeof(conditions[0]);
+         ++index) {
+        conditionStates[index] =
+            g_app->eventConditionState(conditions[index].id);
+        if (conditionStates[index] ==
+                IrrigationEvents::ConditionDisplayState::Active ||
+            conditionStates[index] ==
+                IrrigationEvents::ConditionDisplayState::ConfirmingRecovery) {
+            ++activeConditionCount;
+        }
+    }
     Esp32BaseWeb::beginPanel("当前持续状态");
     Esp32BaseWeb::sendChunk("<div class='condition-summary'><p>共监测 4 项；当前持续异常 ");
-    sendUnsigned(status.activeConditionCount);
-    Esp32BaseWeb::sendChunk(" 项</p><small>发生和恢复均需连续确认</small></div><div class='condition-grid'>");
-    for (const ConditionCard& condition : conditions) {
+    sendUnsigned(activeConditionCount);
+    Esp32BaseWeb::sendChunk(" 项</p><small>等待判断不计入异常；需要确认的状态会明确标出</small></div><div class='condition-grid'>");
+    for (std::size_t index = 0;
+         index < sizeof(conditions) / sizeof(conditions[0]);
+         ++index) {
+        const ConditionCard& condition = conditions[index];
         const IrrigationEvents::ConditionDisplayState state =
-            g_app->eventConditionState(condition.id);
+            conditionStates[index];
         Esp32BaseWeb::sendChunk("<div class='condition-item'><div><b>");
         Esp32BaseWeb::sendChunk(condition.name);
         Esp32BaseWeb::sendChunk("</b><small>");
-        Esp32BaseWeb::sendChunk(condition.description);
+        if (condition.id != 4) {
+            Esp32BaseWeb::sendChunk(condition.description);
+        } else if (g_app->wateringStatus().active) {
+            Esp32BaseWeb::sendChunk("浇水期间暂停，结束后重新观察");
+        } else if (g_app->unexpectedFlowObservationReady()) {
+            Esp32BaseWeb::sendChunk("最近完整窗口已完成判断");
+        } else if (g_app->unexpectedFlowDelayRemainingSec() != 0) {
+            Esp32BaseWeb::sendChunk("等待余流消退，约剩 ");
+            sendUnsigned(g_app->unexpectedFlowDelayRemainingSec());
+            Esp32BaseWeb::sendChunk(" 秒");
+        } else {
+            Esp32BaseWeb::sendChunk("正在收集首个完整窗口，约剩 ");
+            sendUnsigned(g_app->unexpectedFlowWindowRemainingSec());
+            Esp32BaseWeb::sendChunk(" 秒");
+        }
         Esp32BaseWeb::sendChunk("</small></div><span class='tag ");
         Esp32BaseWeb::sendChunk(conditionStateTone(state));
         Esp32BaseWeb::sendChunk("'>");
@@ -3020,6 +3060,8 @@ void IrrigationWeb::statusApi() {
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowAlarm\":"); Esp32BaseWeb::sendChunk(g_app->unexpectedFlowAlarm() ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowObservationReady\":"); Esp32BaseWeb::sendChunk(g_app->unexpectedFlowObservationReady() ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowPulseCount\":"); sendUnsigned(g_app->unexpectedFlowObservedPulseCount());
+    Esp32BaseWeb::sendChunk(",\"unexpectedFlowDelayRemainingSec\":"); sendUnsigned(g_app->unexpectedFlowDelayRemainingSec());
+    Esp32BaseWeb::sendChunk(",\"unexpectedFlowWindowRemainingSec\":"); sendUnsigned(g_app->unexpectedFlowWindowRemainingSec());
     const IrrigationConfig* statusConfig = g_app->configuration();
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowWindowSec\":");
     sendUnsigned(statusConfig ? statusConfig->flowProtection.unexpectedFlowWindowSec : 0);

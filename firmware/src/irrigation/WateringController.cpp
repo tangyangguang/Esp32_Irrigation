@@ -773,10 +773,8 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
         if (lowFlowDurationMs_ >= confirmMs) {
             zone.lowFlowActive = true;
             lowFlowDurationMs_ = 0;
-            if (!zone.lowFlowDetected) {
-                zone.lowFlowDetected = true;
-                zone.lowFlowDetectedMlPerMinute = sample.flowMlPerMinute;
-            }
+            zone.lowFlowDetected = true;
+            zone.lowFlowDetectedMlPerMinute = sample.flowMlPerMinute;
             if (flowProtection_.lowFlowAction == FlowAlertAction::StopWatering) {
                 finishSession(WateringStopReason::LowFlow, nowMs);
                 return false;
@@ -807,10 +805,8 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
         if (highFlowDurationMs_ >= confirmMs) {
             zone.highFlowActive = true;
             highFlowDurationMs_ = 0;
-            if (!zone.highFlowDetected) {
-                zone.highFlowDetected = true;
-                zone.highFlowDetectedMlPerMinute = sample.flowMlPerMinute;
-            }
+            zone.highFlowDetected = true;
+            zone.highFlowDetectedMlPerMinute = sample.flowMlPerMinute;
             if (flowProtection_.highFlowAction == FlowAlertAction::StopWatering) {
                 finishSession(WateringStopReason::HighFlow, nowMs);
                 return false;

@@ -48,6 +48,8 @@ public:
     uint32_t lastKnownAliveEpoch() const;
     bool unexpectedFlowAlarm() const;
     bool unexpectedFlowObservationReady() const;
+    uint16_t unexpectedFlowDelayRemainingSec() const;
+    uint16_t unexpectedFlowWindowRemainingSec() const;
     uint32_t unexpectedFlowObservedPulseCount() const;
     AutomaticWateringState automaticWateringState() const;
     NextAutomaticWatering nextAutomaticWatering() const;

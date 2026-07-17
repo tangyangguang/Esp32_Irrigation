@@ -280,8 +280,8 @@ void test_irrigation_event_mapping_and_latest_read() {
     IrrigationEvents::formatTitle(presentation, title, sizeof(title));
     TEST_ASSERT_EQUAL_STRING("设备时间已恢复正常", title);
 
-    constexpr uint32_t eventCodes[] = {1001, 1002, 1003, 1004, 1005, 1006, 1007,
-                                       1008, 1009, 1101, 1102, 1103, 1104};
+    constexpr uint32_t eventCodes[] = {1001, 1002, 1003, 1004, 1006, 1009, 1101,
+                                       1102, 1103, 1104, 1201, 1202, 1203};
     for (const uint32_t eventCode : eventCodes) {
         Esp32BaseAppEvents::EventRecord sample{};
         sample.eventCode = eventCode;
@@ -289,7 +289,7 @@ void test_irrigation_event_mapping_and_latest_read() {
         sample.reasonCode = eventCode == 1001 ? 1U :
                             eventCode == 1002 ? 201U :
                             eventCode == 1003 ? 211U :
-                            eventCode == 1005 ? 5U :
+                            eventCode == 1201 ? 5U :
                             eventCode == 1009 ? 405U : 0U;
         char sampleTitle[96]{};
         char sampleSummary[160]{};

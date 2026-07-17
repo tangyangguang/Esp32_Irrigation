@@ -73,6 +73,23 @@ bool UnexpectedFlowMonitor::observationReady(uint32_t nowMs) const {
                 static_cast<uint32_t>(windowSec_) * 1000U);
 }
 
+uint16_t UnexpectedFlowMonitor::delayRemainingSec(uint32_t nowMs) const {
+    if (monitoring_) return 0;
+    const uint32_t targetMs = static_cast<uint32_t>(delaySec_) * 1000U;
+    const uint32_t elapsedMs = static_cast<uint32_t>(nowMs - delayStartedMs_);
+    if (elapsedMs >= targetMs) return 0;
+    return static_cast<uint16_t>((targetMs - elapsedMs + 999U) / 1000U);
+}
+
+uint16_t UnexpectedFlowMonitor::windowRemainingSec(uint32_t nowMs) const {
+    if (!monitoring_) return windowSec_;
+    if (observationReady(nowMs)) return 0;
+    const uint32_t targetMs = static_cast<uint32_t>(windowSec_) * 1000U;
+    const uint32_t elapsedMs = static_cast<uint32_t>(nowMs - monitoringStartedMs_);
+    if (elapsedMs >= targetMs) return 0;
+    return static_cast<uint16_t>((targetMs - elapsedMs + 999U) / 1000U);
+}
+
 uint32_t UnexpectedFlowMonitor::observedPulseCount() const {
     return rollingPulseCount_;
 }

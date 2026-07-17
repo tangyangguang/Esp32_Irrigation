@@ -19,6 +19,8 @@ public:
     Update observe(uint32_t nowMs, uint32_t pulseCount);
     bool alarmActive() const;
     bool observationReady(uint32_t nowMs) const;
+    uint16_t delayRemainingSec(uint32_t nowMs) const;
+    uint16_t windowRemainingSec(uint32_t nowMs) const;
     uint32_t observedPulseCount() const;
 
 private:

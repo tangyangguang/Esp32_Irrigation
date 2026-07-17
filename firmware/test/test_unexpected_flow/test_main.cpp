@@ -45,10 +45,16 @@ void test_alarm_stays_active_while_any_pulse_remains_in_window() {
 void test_normal_state_waits_for_a_complete_window() {
     UnexpectedFlowMonitor monitor;
     monitor.begin(0, 0, 10, 30, 3);
+    TEST_ASSERT_EQUAL_UINT16(10, monitor.delayRemainingSec(0));
+    TEST_ASSERT_EQUAL_UINT16(1, monitor.delayRemainingSec(9999));
     monitor.observe(10000, 0);
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.delayRemainingSec(10000));
+    TEST_ASSERT_EQUAL_UINT16(30, monitor.windowRemainingSec(10000));
     TEST_ASSERT_FALSE(monitor.observationReady(39999));
+    TEST_ASSERT_EQUAL_UINT16(1, monitor.windowRemainingSec(39999));
     monitor.observe(40000, 0);
     TEST_ASSERT_TRUE(monitor.observationReady(40000));
+    TEST_ASSERT_EQUAL_UINT16(0, monitor.windowRemainingSec(40000));
     TEST_ASSERT_FALSE(monitor.alarmActive());
 }
 

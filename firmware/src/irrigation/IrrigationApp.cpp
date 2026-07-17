@@ -290,6 +290,14 @@ bool IrrigationApp::unexpectedFlowObservationReady() const {
     return unexpectedFlowMonitor_.observationReady(millis());
 }
 
+uint16_t IrrigationApp::unexpectedFlowDelayRemainingSec() const {
+    return unexpectedFlowMonitor_.delayRemainingSec(millis());
+}
+
+uint16_t IrrigationApp::unexpectedFlowWindowRemainingSec() const {
+    return unexpectedFlowMonitor_.windowRemainingSec(millis());
+}
+
 uint32_t IrrigationApp::unexpectedFlowObservedPulseCount() const {
     return unexpectedFlowMonitor_.observedPulseCount();
 }
@@ -658,7 +666,9 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
         const ZoneWateringSummary& zone = status.zones[index];
         if (!BoardPins::isValidZoneId(zone.zoneId)) continue;
         const uint8_t zoneIndex = BoardPins::zoneIndex(zone.zoneId);
-        if (zone.lowFlowDetected && !lowFlowEventReported_[zoneIndex]) {
+        if (!zone.lowFlowActive) {
+            lowFlowEventReported_[zoneIndex] = false;
+        } else if (!lowFlowEventReported_[zoneIndex]) {
             const bool stopped =
                 !status.active &&
                 status.lastStopReason == WateringStopReason::LowFlow;
@@ -666,7 +676,9 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
                 zone, IrrigationEvents::ReasonCode::LowFlow, stopped);
             lowFlowEventReported_[zoneIndex] = true;
         }
-        if (zone.highFlowDetected && !highFlowEventReported_[zoneIndex]) {
+        if (!zone.highFlowActive) {
+            highFlowEventReported_[zoneIndex] = false;
+        } else if (!highFlowEventReported_[zoneIndex]) {
             const bool stopped =
                 !status.active &&
                 status.lastStopReason == WateringStopReason::HighFlow;
@@ -916,11 +928,44 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     const bool checkpointReady = aliveCheckpoint_.begin();
     schedulerStorageFault_ = !schedulerReady;
     Esp32BaseRecordStore::StoreStatus recordStatus{};
-    const bool recordStatusReady = wateringRecordStore_.readStatus(recordStatus);
-    const bool recordsReady = wateringRecordStoreRegistered_ &&
-                              result.businessRecordStoresReloadSuccess &&
-                              recordStatusReady &&
-                              recordStatus.state == Esp32BaseRecordStore::StoreState::Ready;
+    bool recordStatusReady = wateringRecordStore_.readStatus(recordStatus);
+    bool recordStoreReady = recordStatusReady && recordStatus.ready &&
+                            recordStatus.writable;
+    if (!recordStoreReady) {
+        ESP32BASE_LOG_W(
+            "irrigation",
+            "watering_record_store_recover_after_format base_reload=%s state=%s error=%s",
+            result.businessRecordStoresReloadSuccess ? "success" : "failed",
+            recordStatusReady
+                ? Esp32BaseRecordStore::storeStateName(recordStatus.state)
+                : "uninitialized",
+            recordStatusReady && recordStatus.errorReason
+                ? recordStatus.errorReason
+                : "status_unavailable");
+        recordStoreReady = wateringRecordStore_.begin();
+        recordStatusReady = wateringRecordStore_.readStatus(recordStatus);
+        recordStoreReady = recordStoreReady && recordStatusReady &&
+                           recordStatus.ready && recordStatus.writable;
+    }
+    if (recordStoreReady && !wateringRecordStoreRegistered_) {
+        wateringRecordStoreRegistered_ =
+            Esp32BaseWeb::registerBusinessRecordStore(
+                wateringRecordStore_.baseStore());
+    }
+    const bool recordsReady =
+        wateringRecordStoreRegistered_ && recordStoreReady;
+    if (!recordsReady) {
+        ESP32BASE_LOG_E(
+            "irrigation",
+            "watering_record_store_recovery_failed registered=%s state=%s error=%s",
+            wateringRecordStoreRegistered_ ? "yes" : "no",
+            recordStatusReady
+                ? Esp32BaseRecordStore::storeStateName(recordStatus.state)
+                : "uninitialized",
+            recordStatusReady && recordStatus.errorReason
+                ? recordStatus.errorReason
+                : "status_unavailable");
+    }
     events_.syncStorageStatus();
     recordStorageFault_ = !recordsReady;
     businessReady_ = configReady && pwmReady;
