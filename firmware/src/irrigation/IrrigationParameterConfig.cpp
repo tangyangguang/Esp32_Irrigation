@@ -119,9 +119,9 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* use
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationVariation, "稳态允许波动", defaults.calibrationStability.allowedVariationPercent, 1, 30, 1, "%", "窗口脉冲速率最大与最小值的允许波动，范围 1%～30%。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kFlowStart, "流量建立超时", defaults.flowProtection.flowStartTimeoutSec, 1, 120, 1, "s", "开始出水后未检测到脉冲的最长等待时间，范围 1～120 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kNoFlow, "运行无流量超时", defaults.flowProtection.noFlowTimeoutSec, 1, 60, 1, "s", "浇水过程中连续无脉冲多久后停机，范围 1～60 s。", false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakDelay, "关阀后检测延时", defaults.flowProtection.unexpectedFlowDelaySec, 0, 300, 1, "s", "全部关闭后先等待这段时间，再开始检测，避免余流误报。范围 0～300 s。", false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakWindow, "关阀后检测窗口", defaults.flowProtection.unexpectedFlowWindowSec, 1, 300, 1, "s", "滚动统计这段时间内的脉冲；报警后连续一个窗口为 0 脉冲才恢复。范围 1～300 s。", false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakPulses, "关阀后报警脉冲数", defaults.flowProtection.unexpectedFlowPulseCount, 1, 65535, 1, "pulse", "检测窗口内脉冲数达到或超过此值时报警。范围 1～65535。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakDelay, "关阀后检测延时", defaults.flowProtection.unexpectedFlowDelaySec, 0, 300, 1, "s", "全部关闭后先等待该时长再检测，避免余流误报。范围 0～300 s。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakWindow, "关阀后检测窗口", defaults.flowProtection.unexpectedFlowWindowSec, 1, 300, 1, "s", "滚动统计窗口内脉冲；报警后一个完整窗口为 0 才恢复。范围 1～300 s。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakPulses, "关阀后报警脉冲数", defaults.flowProtection.unexpectedFlowPulseCount, 1, 65535, 1, "pulse", "窗口内脉冲达到阈值时报警。范围 1～65535。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kDeviation, "偏差确认时间", defaults.flowProtection.flowDeviationConfirmSec, 1, 300, 1, "s", "低流量或高流量持续多久才确认异常，范围 1～300 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kLowPercent, "低流量阈值", defaults.flowProtection.lowFlowPercent, 1, 99, 1, "%", "低于已学习基准流量的该百分比时判为偏低，范围 1%～99%。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kHighPercent, "高流量阈值", defaults.flowProtection.highFlowPercent, 101, 1000, 1, "%", "高于已学习基准流量的该百分比时判为偏高，范围 101%～1000%。", false, nullptr}) &&

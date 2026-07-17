@@ -33,6 +33,8 @@ private:
     static bool removeExisting(const char* path);
 
     IrrigationConfig config_{};
+    IrrigationConfig saveScratch_{};
+    IrrigationConfig verificationScratch_{};
     LoadResult loadResult_ = LoadResult::NotLoaded;
     const char* lastError_ = "not_loaded";
     bool ready_ = false;

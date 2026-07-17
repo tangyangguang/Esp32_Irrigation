@@ -74,16 +74,16 @@ bool IrrigationConfigStore::loadBestConfig(bool& anyFileExists,
     anyFileExists = false;
     bestPath = 0;
     bool foundValid = false;
-    IrrigationConfig candidate{};
     for (std::size_t index = 0; index < paths.size(); ++index) {
         if (!Esp32BaseFs::exists(paths[index])) continue;
         anyFileExists = true;
-        candidate = {};
-        if (readConfig(paths[index], candidate) &&
-            (!foundValid || candidate.revision > config_.revision)) {
+        verificationScratch_ = {};
+        if (readConfig(paths[index], verificationScratch_) &&
+            (!foundValid ||
+             verificationScratch_.revision > config_.revision)) {
             foundValid = true;
             bestPath = index;
-            config_ = candidate;
+            config_ = verificationScratch_;
         }
     }
     return foundValid;
@@ -102,32 +102,32 @@ bool IrrigationConfigStore::save(const IrrigationConfig& proposed, uint32_t expe
         lastError_ = "config_revision_exhausted";
         return false;
     }
-    IrrigationConfig next = proposed;
-    next.schemaVersion = kIrrigationConfigSchemaVersion;
-    next.revision = config_.revision + 1U;
-    if (!IrrigationConfigRules::validate(next)) {
+    saveScratch_ = proposed;
+    saveScratch_.schemaVersion = kIrrigationConfigSchemaVersion;
+    saveScratch_.revision = config_.revision + 1U;
+    if (!IrrigationConfigRules::validate(saveScratch_)) {
         lastError_ = "config_validation_failed";
         return false;
     }
-    if (!writeConfig(next)) {
+    if (!writeConfig(saveScratch_)) {
         lastError_ = "config_write_failed";
         return false;
     }
-    config_ = next;
+    config_ = saveScratch_;
     lastError_ = "none";
     return true;
 }
 
 bool IrrigationConfigStore::applyRuntimeParameters(const IrrigationConfig& source) {
     if (!ready_) return false;
-    IrrigationConfig next = config_;
-    next.valveDrive = source.valveDrive;
-    next.pump = source.pump;
-    next.flowMeter = source.flowMeter;
-    next.flowProtection = source.flowProtection;
-    next.timeSafety = source.timeSafety;
-    if (!IrrigationConfigRules::validate(next)) return false;
-    config_ = next;
+    saveScratch_ = config_;
+    saveScratch_.valveDrive = source.valveDrive;
+    saveScratch_.pump = source.pump;
+    saveScratch_.flowMeter = source.flowMeter;
+    saveScratch_.flowProtection = source.flowProtection;
+    saveScratch_.timeSafety = source.timeSafety;
+    if (!IrrigationConfigRules::validate(saveScratch_)) return false;
+    config_ = saveScratch_;
     return true;
 }
 
@@ -178,8 +178,9 @@ bool IrrigationConfigStore::writeConfig(const IrrigationConfig& config) {
         return false;
     }
 
-    IrrigationConfig verified{};
-    if (!readConfig(kTempPath, verified) || !sameCanonicalConfig(verified, json)) {
+    verificationScratch_ = {};
+    if (!readConfig(kTempPath, verificationScratch_) ||
+        !sameCanonicalConfig(verificationScratch_, json)) {
         return false;
     }
     if (!removeExisting(kBackupPath)) {
@@ -197,7 +198,9 @@ bool IrrigationConfigStore::writeConfig(const IrrigationConfig& config) {
         return false;
     }
 
-    if (readConfig(kConfigPath, verified) && sameCanonicalConfig(verified, json)) {
+    verificationScratch_ = {};
+    if (readConfig(kConfigPath, verificationScratch_) &&
+        sameCanonicalConfig(verificationScratch_, json)) {
         return true;
     }
 
