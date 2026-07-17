@@ -282,6 +282,50 @@ void formatSignedHundredths(int64_t value,
                   static_cast<unsigned long long>(magnitude % 100U));
 }
 
+void formatIntegerChange(uint32_t current,
+                         uint32_t previous,
+                         char* output,
+                         std::size_t outputSize) {
+    const int64_t change =
+        static_cast<int64_t>(current) - static_cast<int64_t>(previous);
+    std::snprintf(output,
+                  outputSize,
+                  "%s%llu",
+                  change < 0 ? "−" : "+",
+                  static_cast<unsigned long long>(
+                      change < 0 ? -change : change));
+}
+
+void formatFlowChange(uint32_t current,
+                      uint32_t previous,
+                      char* output,
+                      std::size_t outputSize) {
+    const int64_t change =
+        static_cast<int64_t>(current) - static_cast<int64_t>(previous);
+    const uint64_t magnitude =
+        static_cast<uint64_t>(change < 0 ? -change : change);
+    if (previous == 0) {
+        std::snprintf(output,
+                      outputSize,
+                      "%s%llu.%03llu",
+                      change < 0 ? "−" : "+",
+                      static_cast<unsigned long long>(magnitude / 1000U),
+                      static_cast<unsigned long long>(magnitude % 1000U));
+        return;
+    }
+    const uint64_t percentTenths =
+        (magnitude * 1000ULL + previous / 2U) / previous;
+    std::snprintf(output,
+                  outputSize,
+                  "%s%llu.%03llu (%s%llu.%llu%%)",
+                  change < 0 ? "−" : "+",
+                  static_cast<unsigned long long>(magnitude / 1000U),
+                  static_cast<unsigned long long>(magnitude % 1000U),
+                  change < 0 ? "−" : "+",
+                  static_cast<unsigned long long>(percentTenths / 10U),
+                  static_cast<unsigned long long>(percentTenths % 10U));
+}
+
 void sendMilliseconds(uint32_t value) {
     char text[24];
     const uint32_t roundedTenths = (value + 50U) / 100U;
@@ -1937,7 +1981,7 @@ void IrrigationWeb::zoneLearning() {
         R"HTML(<style>
 .learning-panel{padding-bottom:16px}.learning-context{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:-2px 0 14px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.learning-context>div{min-width:0;padding:10px 12px;border-right:1px solid var(--eb-line-soft)}.learning-context>div:last-child{border-right:0}.learning-label{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.learning-context-value{display:block;margin-top:2px;font-size:14px;font-weight:400;overflow-wrap:anywhere}.learning-context-help{display:block;margin-top:2px;color:var(--eb-muted);font-size:11px;font-weight:400}
 .learning-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}.learning-head h3{margin:0;font-size:15px;font-weight:500}.learning-head .tag{font-weight:400}.learning-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.learning-metric{min-width:0;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.learning-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.learning-rule{margin:10px 0 0;padding:9px 11px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;font-weight:400;line-height:1.55}.learning-rule span{color:var(--eb-text);font-weight:400}
-.learning-debug{margin-top:14px}.learning-debug h3{margin:0 0 2px;font-size:14px;font-weight:500}.learning-debug>p{margin:0 0 7px;color:var(--eb-muted);font-size:11px}.learning-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.learning-table th,.learning-table td{padding:7px 8px;border-bottom:1px solid var(--eb-line-soft);text-align:right;font-weight:400;white-space:nowrap}.learning-table th{color:var(--eb-muted);font-size:11px}.learning-table th:first-child,.learning-table td:first-child{text-align:left}.learning-table tbody tr:last-child td{border-bottom:0}.learning-table .learning-empty{text-align:center;color:var(--eb-muted);padding:12px}.learning-summary{display:flex;flex-wrap:wrap;gap:5px 18px;margin:8px 0 0;color:var(--eb-muted);font-size:11px}.learning-summary span{font-weight:400}.learning-result{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.learning-result>div{padding:11px;border:1px solid var(--eb-line-soft);border-radius:8px}.learning-result-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}.learning-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.learning-actions form,.learning-actions .actions{margin:0}.learning-panel input,.learning-panel .btnlink{font-weight:500}
+.learning-debug{margin-top:14px}.learning-debug h3{margin:0 0 2px;font-size:14px;font-weight:500}.learning-debug>p{margin:0 0 7px;color:var(--eb-muted);font-size:11px}.learning-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.learning-table th,.learning-table td{padding:7px 8px;border-bottom:1px solid var(--eb-line-soft);text-align:right;font-weight:400;white-space:nowrap}.learning-table th{color:var(--eb-muted);font-size:11px}.learning-table th:first-child,.learning-table td:first-child{text-align:left}.learning-table tbody tr:last-child td{border-bottom:0}.learning-table tr.learning-decision td{background:#f6faf8}.learning-table tr.learning-decision-start td{border-top:1px solid #cfe5da}.learning-inline{display:inline-flex;align-items:baseline;justify-content:flex-end;gap:7px}.learning-change{color:var(--eb-muted);font-size:10px;font-weight:400}.learning-latest{margin-left:5px;color:#16794a;font-size:10px;font-weight:400}.learning-table .learning-empty{text-align:center;color:var(--eb-muted);padding:12px}.learning-summary{display:flex;flex-wrap:wrap;gap:5px 18px;margin:8px 0 0;color:var(--eb-muted);font-size:11px}.learning-summary span{font-weight:400}.learning-result{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.learning-result>div{padding:11px;border:1px solid var(--eb-line-soft);border-radius:8px}.learning-result-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}.learning-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.learning-actions form,.learning-actions .actions{margin:0}.learning-panel input,.learning-panel .btnlink{font-weight:500}
 @media(max-width:760px){.learning-context{grid-template-columns:1fr 1fr}.learning-context>div{border-bottom:1px solid var(--eb-line-soft)}.learning-context>div:nth-child(2){border-right:0}.learning-context>div:last-child{grid-column:1/-1;border-bottom:0}.learning-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.learning-table{display:block}.learning-table thead{display:none}.learning-table tbody{display:grid;gap:7px}.learning-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:7px 9px;border:1px solid var(--eb-line-soft);border-radius:7px}.learning-table td{display:grid;grid-template-columns:6.8em minmax(0,1fr);gap:6px;padding:3px 0;border:0;text-align:right}.learning-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:11px;text-align:left}.learning-table td:first-child{text-align:right}.learning-table .learning-empty{display:block;grid-column:1/-1;text-align:center}.learning-table .learning-empty::before{display:none}}
 @media(max-width:420px){.learning-context,.learning-metrics,.learning-result{grid-template-columns:1fr}.learning-context>div{border-right:0}.learning-context>div:last-child{grid-column:auto}.learning-value,.learning-result-value{font-size:17px}.learning-table tr{grid-template-columns:1fr}}
 </style>)HTML");
@@ -1965,16 +2009,16 @@ void IrrigationWeb::zoneLearning() {
         Esp32BaseWeb::sendChunk(" L/min</span></div><div class='learning-metric'><span class='learning-label'>已采集窗口平均</span><span class='learning-value' id='learn-average'>");
         Esp32BaseWeb::writeHtmlEscaped(averageFlow);
         Esp32BaseWeb::sendChunk(" L/min</span></div><div class='learning-metric'><span class='learning-label'>稳定判断</span><span class='learning-value' id='learn-state'>");
-        if (status.learningSampleCount < 5) {
+        if (status.learningTotalWindowCount < kLearningDecisionWindowCount) {
             Esp32BaseWeb::sendChunk("采集中 ");
-            sendUnsigned(status.learningSampleCount);
+            sendUnsigned(status.learningTotalWindowCount);
             Esp32BaseWeb::sendChunk("/5");
         } else {
             Esp32BaseWeb::sendChunk("波动偏大");
         }
         Esp32BaseWeb::sendChunk("</span></div></div><p class='learning-rule' id='learn-rule'>");
-        if (status.learningSampleCount == 0) {
-            Esp32BaseWeb::sendChunk("等待首个 5 秒有效窗口；每个窗口必须检测到脉冲。");
+        if (status.learningWindowCount == 0) {
+            Esp32BaseWeb::sendChunk("窗口 #1 正在采集；每个窗口约 5 秒且互不重叠。");
         } else {
             char minimumRate[20]{};
             char maximumRate[20]{};
@@ -1990,17 +2034,28 @@ void IrrigationWeb::zoneLearning() {
                 spreadRate, sizeof(spreadRate));
             formatSignedHundredths(status.learningAllowedPulseRateSpreadX100,
                                    allowedRate, sizeof(allowedRate));
-            Esp32BaseWeb::sendChunk("最近 ");
-            sendUnsigned(status.learningSampleCount);
-            Esp32BaseWeb::sendChunk(" 个窗口的原始脉冲速率为 <span>");
+            const uint32_t decisionFirst =
+                status.learningTotalWindowCount >= kLearningDecisionWindowCount
+                    ? status.learningTotalWindowCount -
+                          kLearningDecisionWindowCount + 1U
+                    : 1U;
+            Esp32BaseWeb::sendChunk("已采集 <span>");
+            sendUnsigned(status.learningTotalWindowCount);
+            Esp32BaseWeb::sendChunk("</span> 个完整窗口，窗口 <span>#");
+            sendUnsigned(status.learningTotalWindowCount + 1U);
+            Esp32BaseWeb::sendChunk("</span> 正在采集；当前使用 <span>#");
+            sendUnsigned(decisionFirst);
+            Esp32BaseWeb::sendChunk("～#");
+            sendUnsigned(status.learningTotalWindowCount);
+            Esp32BaseWeb::sendChunk("</span> 判断。原始脉冲速率为 <span>");
             Esp32BaseWeb::writeHtmlEscaped(minimumRate);
             Esp32BaseWeb::sendChunk("～");
             Esp32BaseWeb::writeHtmlEscaped(maximumRate);
-            Esp32BaseWeb::sendChunk(" P/s</span>，速率跨度 <span>");
+            Esp32BaseWeb::sendChunk(" P/s</span>，跨度 <span>");
             Esp32BaseWeb::writeHtmlEscaped(spreadRate);
-            Esp32BaseWeb::sendChunk(" P/s</span>；收满 5 个窗口后，跨度不超过 <span>");
+            Esp32BaseWeb::sendChunk(" P/s</span>，允许 <span>");
             Esp32BaseWeb::writeHtmlEscaped(allowedRate);
-            Esp32BaseWeb::sendChunk(" P/s</span> 即完成。允许跨度取平均速率的 10% 与一个脉冲的窗口计数误差中的较大值。");
+            Esp32BaseWeb::sendChunk(" P/s</span>。收满 5 窗、每窗均有脉冲且跨度不超过允许值时完成。");
         }
         Esp32BaseWeb::sendChunk("</p>");
     } else if (g_app->pendingLearnedZoneId() == zoneId) {
@@ -2016,7 +2071,40 @@ void IrrigationWeb::zoneLearning() {
             Esp32BaseWeb::writeHtmlEscaped(suggestion);
             Esp32BaseWeb::sendChunk(" L/min</span></div><div><span class='learning-label'>原始脉冲基准</span><span class='learning-result-value'>");
             Esp32BaseWeb::writeHtmlEscaped(baselineRate);
-            Esp32BaseWeb::sendChunk(" P/s</span></div></div><p class='learning-rule'>结果按最近 5 个稳定窗口的总脉冲数 ÷ 总实际时长计算；流量计系数只用于换算显示流量。</p><div class='learning-actions'><form method='post' action='/irrigation/zones/learning' onsubmit='return once(this)'><input type='hidden' name='action' value='save'><input type='hidden' name='zone_id' value='");
+            const uint8_t decisionStart =
+                status.learningWindowCount - kLearningDecisionWindowCount;
+            uint32_t decisionPulses = 0;
+            uint32_t decisionWindowMs = 0;
+            for (uint8_t index = decisionStart;
+                 index < status.learningWindowCount;
+                 ++index) {
+                decisionPulses += status.learningWindows[index].pulseCount;
+                decisionWindowMs += status.learningWindows[index].windowMs;
+            }
+            char spreadRate[20]{};
+            char allowedRate[20]{};
+            formatSignedHundredths(
+                status.learningMaximumPulseRateX100 -
+                    status.learningMinimumPulseRateX100,
+                spreadRate, sizeof(spreadRate));
+            formatSignedHundredths(status.learningAllowedPulseRateSpreadX100,
+                                   allowedRate, sizeof(allowedRate));
+            Esp32BaseWeb::sendChunk(" P/s</span></div></div><p class='learning-rule'>累计采集 <span>");
+            sendUnsigned(status.learningTotalWindowCount);
+            Esp32BaseWeb::sendChunk("</span> 窗，结果采用 <span>#");
+            sendUnsigned(status.learningTotalWindowCount -
+                         kLearningDecisionWindowCount + 1U);
+            Esp32BaseWeb::sendChunk("～#");
+            sendUnsigned(status.learningTotalWindowCount);
+            Esp32BaseWeb::sendChunk("</span>；共 <span>");
+            sendUnsigned(decisionPulses);
+            Esp32BaseWeb::sendChunk(" 个脉冲 / ");
+            sendMilliseconds(decisionWindowMs);
+            Esp32BaseWeb::sendChunk("</span>。速率跨度 <span>");
+            Esp32BaseWeb::writeHtmlEscaped(spreadRate);
+            Esp32BaseWeb::sendChunk(" P/s</span>，允许 <span>");
+            Esp32BaseWeb::writeHtmlEscaped(allowedRate);
+            Esp32BaseWeb::sendChunk(" P/s</span>。流量计系数只用于换算显示流量。</p><div class='learning-actions'><form method='post' action='/irrigation/zones/learning' onsubmit='return once(this)'><input type='hidden' name='action' value='save'><input type='hidden' name='zone_id' value='");
             sendUnsigned(zoneId);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='");
             sendUnsigned(config->revision);
@@ -2041,32 +2129,64 @@ void IrrigationWeb::zoneLearning() {
     }
     const bool showLearningWindows =
         (active || g_app->pendingLearnedZoneId() == zoneId) &&
-        status.learningSampleCount != 0;
+        status.learningWindowCount != 0;
     if (active || showLearningWindows) {
-        Esp32BaseWeb::sendChunk("<div class='learning-debug'><h3>最近窗口明细</h3><p>按采集时间从早到晚排列；换算流量使用当前流量计系数。</p><table class='learning-table'><thead><tr><th>窗口</th><th>脉冲数</th><th>实际时长</th><th>脉冲速率</th><th>换算流量</th></tr></thead><tbody id='learn-window-body'><tr id='learn-window-empty'");
-        if (status.learningSampleCount != 0) {
+        Esp32BaseWeb::sendChunk("<div class='learning-debug'><h3>最近窗口明细</h3><p>最多显示最近 10 窗，浅色行参与稳定判断；变化值均与上一个可见窗口比较。</p><table class='learning-table'><thead><tr><th>窗口</th><th>实际时长</th><th>脉冲数 / 变化</th><th>脉冲速率</th><th>换算流量 / 变化</th></tr></thead><tbody id='learn-window-body'><tr id='learn-window-empty'");
+        if (status.learningWindowCount != 0) {
             Esp32BaseWeb::sendChunk(" style='display:none'");
         }
         Esp32BaseWeb::sendChunk("><td class='learning-empty' colspan='5'>等待第一个完整窗口</td></tr>");
-        for (uint8_t index = 0; index < 5; ++index) {
-            const bool populated = index < status.learningSampleCount;
+        const uint8_t decisionStart =
+            status.learningWindowCount > kLearningDecisionWindowCount
+                ? status.learningWindowCount - kLearningDecisionWindowCount
+                : 0U;
+        for (uint8_t index = 0; index < kLearningHistoryWindowCount; ++index) {
+            const bool populated = index < status.learningWindowCount;
             Esp32BaseWeb::sendChunk("<tr id='learn-window-");
             sendUnsigned(index);
+            Esp32BaseWeb::sendChunk("' class='");
+            if (populated && index >= decisionStart) {
+                Esp32BaseWeb::sendChunk("learning-decision");
+                if (index == decisionStart) {
+                    Esp32BaseWeb::sendChunk(" learning-decision-start");
+                }
+            }
             Esp32BaseWeb::sendChunk("'");
             if (!populated) Esp32BaseWeb::sendChunk(" style='display:none'");
             Esp32BaseWeb::sendChunk("><td data-label='窗口' id='learn-window-index-");
             sendUnsigned(index);
             Esp32BaseWeb::sendChunk("'>");
-            sendUnsigned(index + 1U);
-            Esp32BaseWeb::sendChunk("</td><td data-label='脉冲数' id='learn-window-pulses-");
-            sendUnsigned(index);
-            Esp32BaseWeb::sendChunk("'>");
-            if (populated) sendUnsigned(status.learningWindows[index].pulseCount);
+            if (populated) {
+                Esp32BaseWeb::sendChunk("#");
+                sendUnsigned(status.learningWindows[index].sequence);
+                if (index + 1U == status.learningWindowCount) {
+                    Esp32BaseWeb::sendChunk("<span class='learning-latest'>最新</span>");
+                }
+            }
             Esp32BaseWeb::sendChunk("</td><td data-label='实际时长' id='learn-window-duration-");
             sendUnsigned(index);
             Esp32BaseWeb::sendChunk("'>");
             if (populated) sendMilliseconds(status.learningWindows[index].windowMs);
-            Esp32BaseWeb::sendChunk("</td><td data-label='脉冲速率' id='learn-window-rate-");
+            Esp32BaseWeb::sendChunk("</td><td data-label='脉冲数 / 变化'><span class='learning-inline'><span id='learn-window-pulses-");
+            sendUnsigned(index);
+            Esp32BaseWeb::sendChunk("'>");
+            if (populated) sendUnsigned(status.learningWindows[index].pulseCount);
+            Esp32BaseWeb::sendChunk("</span><span class='learning-change' id='learn-window-pulse-change-");
+            sendUnsigned(index);
+            Esp32BaseWeb::sendChunk("'>");
+            if (populated) {
+                if (index == 0) {
+                    Esp32BaseWeb::sendChunk("—");
+                } else {
+                    char change[24]{};
+                    formatIntegerChange(
+                        status.learningWindows[index].pulseCount,
+                        status.learningWindows[index - 1U].pulseCount,
+                        change, sizeof(change));
+                    Esp32BaseWeb::writeHtmlEscaped(change);
+                }
+            }
+            Esp32BaseWeb::sendChunk("</span></span></td><td data-label='脉冲速率' id='learn-window-rate-");
             sendUnsigned(index);
             Esp32BaseWeb::sendChunk("'>");
             if (populated) {
@@ -2076,7 +2196,7 @@ void IrrigationWeb::zoneLearning() {
                 Esp32BaseWeb::writeHtmlEscaped(rate);
                 Esp32BaseWeb::sendChunk(" P/s");
             }
-            Esp32BaseWeb::sendChunk("</td><td data-label='换算流量' id='learn-window-flow-");
+            Esp32BaseWeb::sendChunk("</td><td data-label='换算流量 / 变化'><span class='learning-inline'><span id='learn-window-flow-");
             sendUnsigned(index);
             Esp32BaseWeb::sendChunk("'>");
             if (populated) {
@@ -2087,27 +2207,34 @@ void IrrigationWeb::zoneLearning() {
                 Esp32BaseWeb::writeHtmlEscaped(flow);
                 Esp32BaseWeb::sendChunk(" L/min");
             }
-            Esp32BaseWeb::sendChunk("</td></tr>");
-        }
-        uint32_t totalPulses = 0;
-        uint32_t totalWindowMs = 0;
-        for (uint8_t index = 0; index < status.learningSampleCount; ++index) {
-            totalPulses += status.learningWindows[index].pulseCount;
-            totalWindowMs += status.learningWindows[index].windowMs;
+            Esp32BaseWeb::sendChunk("</span><span class='learning-change' id='learn-window-flow-change-");
+            sendUnsigned(index);
+            Esp32BaseWeb::sendChunk("'>");
+            if (populated) {
+                if (index == 0) {
+                    Esp32BaseWeb::sendChunk("—");
+                } else {
+                    char change[48]{};
+                    formatFlowChange(
+                        status.learningWindows[index].flowMlPerMinute,
+                        status.learningWindows[index - 1U].flowMlPerMinute,
+                        change, sizeof(change));
+                    Esp32BaseWeb::writeHtmlEscaped(change);
+                }
+            }
+            Esp32BaseWeb::sendChunk("</span></span></td></tr>");
         }
         char coefficient[20]{};
         IrrigationConfigRules::formatPulsesPerLiter(
             config->flowMeter.pulsesPerLiterX100,
             coefficient, sizeof(coefficient));
-        Esp32BaseWeb::sendChunk("</tbody></table><p class='learning-summary'><span>最近窗口合计：<span id='learn-window-total-pulses'>");
-        sendUnsigned(totalPulses);
-        Esp32BaseWeb::sendChunk("</span> 个脉冲 / <span id='learn-window-total-duration'>");
-        sendMilliseconds(totalWindowMs);
         const uint32_t sessionPulseCount =
             active ? status.pulseCount : status.zones[0].pulseCount;
-        Esp32BaseWeb::sendChunk("</span></span><span>本次累计脉冲：<span id='learn-total-pulses'>");
+        Esp32BaseWeb::sendChunk("</tbody></table><p class='learning-summary'><span>已采集：<span id='learn-total-windows'>");
+        sendUnsigned(status.learningTotalWindowCount);
+        Esp32BaseWeb::sendChunk("</span> 窗</span><span>本次学习累计脉冲：<span id='learn-total-pulses'>");
         sendUnsigned(sessionPulseCount);
-        Esp32BaseWeb::sendChunk("</span></span><span>当前流量计系数：");
+        Esp32BaseWeb::sendChunk("</span>（包含建立水流阶段及已滚出窗口）</span><span>当前流量计系数：");
         Esp32BaseWeb::writeHtmlEscaped(coefficient);
         Esp32BaseWeb::sendChunk(" P/L</span></p></div>");
     }
@@ -2119,7 +2246,60 @@ void IrrigationWeb::zoneLearning() {
     Esp32BaseWeb::sendChunk("</div>");
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendChunk("<p><a class='btnlink secondary' href='/irrigation/zones'>返回水路设置</a></p>");
-    if (active) Esp32BaseWeb::sendChunk("<script>(function(){function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}function liters(v){return (Math.max(0,Number(v)||0)/1000).toFixed(3)+' L/min'}function rate(v){return (Math.max(0,Number(v)||0)/100).toFixed(2)+' P/s'}function seconds(v){return (Math.max(0,Number(v)||0)/1000).toFixed(1)+' 秒'}function duration(v){v=Math.max(0,Number(v)||0);return v<60?v+' 秒':Math.floor(v/60)+' 分 '+v%60+' 秒'}function updateWindows(s){var rows=s.learningWindows||[],tp=0,tm=0,empty=document.getElementById('learn-window-empty');if(empty)empty.style.display=rows.length?'none':'';for(var i=0;i<5;i++){var row=document.getElementById('learn-window-'+i),w=rows[i];if(!row)continue;row.style.display=w?'':'none';if(!w)continue;set('learn-window-index-'+i,i+1);set('learn-window-pulses-'+i,w.pulseCount);set('learn-window-duration-'+i,seconds(w.windowMs));set('learn-window-rate-'+i,rate(w.pulseRateX100));set('learn-window-flow-'+i,liters(w.flowMlPerMinute));tp+=Number(w.pulseCount)||0;tm+=Number(w.windowMs)||0}set('learn-window-total-pulses',tp);set('learn-window-total-duration',seconds(tm))}function updateRule(s){var n=Number(s.learningSampleCount)||0;if(!n)return '等待首个 5 秒有效窗口；每个窗口必须检测到脉冲。';var min=Number(s.learningMinimumPulseRateX100)||0,max=Number(s.learningMaximumPulseRateX100)||0,allow=Number(s.learningAllowedPulseRateSpreadX100)||0;return '最近 '+n+' 个窗口的原始脉冲速率为 '+rate(min)+'～'+rate(max)+'，速率跨度 '+rate(max-min)+'；收满 5 个窗口后，跨度不超过 '+rate(allow)+' 即完成。允许跨度取平均速率的 10% 与一个脉冲的窗口计数误差中的较大值。'}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active||s.purpose!==2){location.reload();return}set('learn-elapsed',duration(s.elapsedSec));set('learn-current',liters(s.currentFlowMlPerMinute));set('learn-average',liters(s.learningAverageMlPerMinute));set('learn-state',Number(s.learningSampleCount)<5?'采集中 '+s.learningSampleCount+'/5':'波动偏大');set('learn-rule',updateRule(s));set('learn-total-pulses',s.pulseCount);updateWindows(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}setTimeout(poll,1000)})();</script>");
+    if (active) {
+        Esp32BaseWeb::sendChunk(R"HTML(<script>
+(function(){
+function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}
+function liters(v){return (Math.max(0,Number(v)||0)/1000).toFixed(3)+' L/min'}
+function rate(v){return (Math.max(0,Number(v)||0)/100).toFixed(2)+' P/s'}
+function seconds(v){return (Math.max(0,Number(v)||0)/1000).toFixed(1)+' 秒'}
+function duration(v){v=Math.max(0,Number(v)||0);return v<60?v+' 秒':Math.floor(v/60)+' 分 '+v%60+' 秒'}
+function signed(v,digits){v=Number(v)||0;return (v<0?'−':'+')+Math.abs(v).toFixed(digits)}
+function pulseChange(current,previous){return signed(Number(current)-Number(previous),0)}
+function flowChange(current,previous){current=Number(current)||0;previous=Number(previous)||0;var change=current-previous,text=signed(change/1000,3);return previous?text+' ('+signed(change/previous*100,1)+'%)':text}
+function updateWindows(s){
+var rows=s.learningWindows||[],empty=document.getElementById('learn-window-empty'),start=Math.max(0,rows.length-5);
+if(empty)empty.style.display=rows.length?'none':'';
+for(var i=0;i<10;i++){
+var row=document.getElementById('learn-window-'+i),w=rows[i];
+if(!row)continue;
+row.style.display=w?'':'none';
+row.className=w&&i>=start?'learning-decision'+(i===start?' learning-decision-start':''):'';
+if(!w)continue;
+set('learn-window-index-'+i,'#'+w.sequence+(i===rows.length-1?' 最新':''));
+set('learn-window-duration-'+i,seconds(w.windowMs));
+set('learn-window-pulses-'+i,w.pulseCount);
+set('learn-window-pulse-change-'+i,i?pulseChange(w.pulseCount,rows[i-1].pulseCount):'—');
+set('learn-window-rate-'+i,rate(w.pulseRateX100));
+set('learn-window-flow-'+i,liters(w.flowMlPerMinute));
+set('learn-window-flow-change-'+i,i?flowChange(w.flowMlPerMinute,rows[i-1].flowMlPerMinute):'—')
+}
+}
+function updateRule(s){
+var n=Number(s.learningTotalWindowCount)||0;
+if(!n)return '窗口 #1 正在采集；每个窗口约 5 秒且互不重叠。';
+var min=Number(s.learningMinimumPulseRateX100)||0,max=Number(s.learningMaximumPulseRateX100)||0,allow=Number(s.learningAllowedPulseRateSpreadX100)||0,first=Math.max(1,n-4);
+return '已采集 '+n+' 个完整窗口，窗口 #'+(n+1)+' 正在采集；当前使用 #'+first+'～#'+n+' 判断。原始脉冲速率为 '+rate(min)+'～'+rate(max)+'，跨度 '+rate(max-min)+'，允许 '+rate(allow)+'。收满 5 窗、每窗均有脉冲且跨度不超过允许值时完成。'
+}
+function poll(){
+fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){
+if(!s.active||s.purpose!==2){location.reload();return}
+var n=Number(s.learningTotalWindowCount)||0;
+set('learn-elapsed',duration(s.elapsedSec));
+set('learn-current',liters(s.currentFlowMlPerMinute));
+set('learn-average',liters(s.learningAverageMlPerMinute));
+set('learn-state',n<5?'采集中 '+n+'/5':'波动偏大');
+set('learn-rule',updateRule(s));
+set('learn-total-windows',n);
+set('learn-total-pulses',s.pulseCount);
+updateWindows(s);
+setTimeout(poll,1000)
+}).catch(function(){setTimeout(poll,2000)})
+}
+setTimeout(poll,1000)
+})();
+</script>)HTML");
+    }
     endPage();
 }
 
@@ -2352,13 +2532,15 @@ void IrrigationWeb::statusApi() {
     Esp32BaseWeb::sendChunk(",\"learningMinimumPulseRateX100\":"); sendUnsigned(status.learningMinimumPulseRateX100);
     Esp32BaseWeb::sendChunk(",\"learningMaximumPulseRateX100\":"); sendUnsigned(status.learningMaximumPulseRateX100);
     Esp32BaseWeb::sendChunk(",\"learningAllowedPulseRateSpreadX100\":"); sendUnsigned(status.learningAllowedPulseRateSpreadX100);
-    Esp32BaseWeb::sendChunk(",\"learningSampleCount\":"); sendUnsigned(status.learningSampleCount);
+    Esp32BaseWeb::sendChunk(",\"learningWindowCount\":"); sendUnsigned(status.learningWindowCount);
+    Esp32BaseWeb::sendChunk(",\"learningTotalWindowCount\":"); sendUnsigned(status.learningTotalWindowCount);
     Esp32BaseWeb::sendChunk(",\"learningWindows\":[");
-    for (uint8_t index = 0; index < status.learningSampleCount; ++index) {
+    for (uint8_t index = 0; index < status.learningWindowCount; ++index) {
         if (index != 0) Esp32BaseWeb::sendChunk(",");
         const WateringStatus::LearningWindowSample& window =
             status.learningWindows[index];
-        Esp32BaseWeb::sendChunk("{\"pulseCount\":"); sendUnsigned(window.pulseCount);
+        Esp32BaseWeb::sendChunk("{\"sequence\":"); sendUnsigned(window.sequence);
+        Esp32BaseWeb::sendChunk(",\"pulseCount\":"); sendUnsigned(window.pulseCount);
         Esp32BaseWeb::sendChunk(",\"windowMs\":"); sendUnsigned(window.windowMs);
         Esp32BaseWeb::sendChunk(",\"pulseRateX100\":"); sendUnsigned(window.pulseRateX100);
         Esp32BaseWeb::sendChunk(",\"flowMlPerMinute\":"); sendUnsigned(window.flowMlPerMinute);

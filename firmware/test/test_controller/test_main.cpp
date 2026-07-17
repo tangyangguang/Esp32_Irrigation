@@ -473,13 +473,16 @@ void test_zone_flow_learning_completes_after_five_stable_windows() {
             TEST_ASSERT_EQUAL_UINT32(1008, live.learningAverageMlPerMinute);
             TEST_ASSERT_EQUAL_UINT32(1008, live.learningMinimumMlPerMinute);
             TEST_ASSERT_EQUAL_UINT32(1008, live.learningMaximumMlPerMinute);
-            TEST_ASSERT_EQUAL_UINT8(4, live.learningSampleCount);
+            TEST_ASSERT_EQUAL_UINT8(4, live.learningWindowCount);
+            TEST_ASSERT_EQUAL_UINT32(4, live.learningTotalWindowCount);
             TEST_ASSERT_EQUAL_UINT32(420, live.learningAveragePulseRateX100);
             TEST_ASSERT_EQUAL_UINT32(420, live.learningMinimumPulseRateX100);
             TEST_ASSERT_EQUAL_UINT32(420, live.learningMaximumPulseRateX100);
             TEST_ASSERT_EQUAL_UINT32(
                 42, live.learningAllowedPulseRateSpreadX100);
-            for (uint8_t index = 0; index < live.learningSampleCount; ++index) {
+            for (uint8_t index = 0; index < live.learningWindowCount; ++index) {
+                TEST_ASSERT_EQUAL_UINT32(index + 1U,
+                                         live.learningWindows[index].sequence);
                 TEST_ASSERT_EQUAL_UINT32(21,
                                          live.learningWindows[index].pulseCount);
                 TEST_ASSERT_EQUAL_UINT32(5000,
@@ -499,9 +502,36 @@ void test_zone_flow_learning_completes_after_five_stable_windows() {
     TEST_ASSERT_EQUAL_UINT32(420,
                              summary->zones[0].suggestedBaselinePulseRateX100);
     const WateringStatus completed = controller.status();
-    TEST_ASSERT_EQUAL_UINT8(5, completed.learningSampleCount);
+    TEST_ASSERT_EQUAL_UINT8(5, completed.learningWindowCount);
+    TEST_ASSERT_EQUAL_UINT32(5, completed.learningTotalWindowCount);
     TEST_ASSERT_EQUAL_UINT32(21, completed.learningWindows[4].pulseCount);
     TEST_ASSERT_EQUAL_UINT32(5000, completed.learningWindows[4].windowMs);
+}
+
+void test_zone_flow_learning_keeps_latest_ten_numbered_windows() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 600);
+    request.purpose = WateringPurpose::ZoneFlowLearning;
+    controller.start(request, config, 0);
+    establishFlow(controller, hardware, 0);
+    for (uint8_t window = 1; window <= 11; ++window) {
+        hardware.pulses += window % 2U == 0 ? 40U : 10U;
+        controller.handle(static_cast<uint32_t>(window) * 5000U + 1U);
+    }
+
+    const WateringStatus status = controller.status();
+    TEST_ASSERT_TRUE(status.active);
+    TEST_ASSERT_EQUAL_UINT8(10, status.learningWindowCount);
+    TEST_ASSERT_EQUAL_UINT32(11, status.learningTotalWindowCount);
+    TEST_ASSERT_EQUAL_UINT32(2, status.learningWindows[0].sequence);
+    TEST_ASSERT_EQUAL_UINT32(40, status.learningWindows[0].pulseCount);
+    TEST_ASSERT_EQUAL_UINT32(11, status.learningWindows[9].sequence);
+    TEST_ASSERT_EQUAL_UINT32(10, status.learningWindows[9].pulseCount);
+    TEST_ASSERT_EQUAL_UINT32(200, status.learningMinimumPulseRateX100);
+    TEST_ASSERT_EQUAL_UINT32(800, status.learningMaximumPulseRateX100);
+    TEST_ASSERT_TRUE(controller.stop(56000));
 }
 
 void test_zone_flow_learning_allows_one_pulse_window_quantization() {
@@ -816,6 +846,7 @@ int main(int, char**) {
     RUN_TEST(test_persistent_high_flow_alert_can_stop_watering);
     RUN_TEST(test_flow_deviation_uses_raw_rate_independent_of_calibration_coefficient);
     RUN_TEST(test_zone_flow_learning_completes_after_five_stable_windows);
+    RUN_TEST(test_zone_flow_learning_keeps_latest_ten_numbered_windows);
     RUN_TEST(test_zone_flow_learning_allows_one_pulse_window_quantization);
     RUN_TEST(test_zone_flow_learning_rejects_zero_pulse_windows);
     RUN_TEST(test_zone_flow_learning_can_be_stopped_manually);

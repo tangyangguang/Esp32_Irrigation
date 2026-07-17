@@ -45,9 +45,9 @@ private:
     FlowProtectionConfig flowProtection_{};
     CalibrationStabilityConfig calibrationStability_{};
     std::array<uint32_t, BoardPins::kZoneCount> baselinePulseRateX100_{};
-    std::array<uint32_t, 5> learningPulseRatesX100_{};
-    std::array<uint32_t, 5> learningPulseCounts_{};
-    std::array<uint32_t, 5> learningWindowDurationsMs_{};
+    std::array<uint32_t, kLearningHistoryWindowCount> learningPulseRatesX100_{};
+    std::array<uint32_t, kLearningHistoryWindowCount> learningPulseCounts_{};
+    std::array<uint32_t, kLearningHistoryWindowCount> learningWindowDurationsMs_{};
     std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
     FlowMonitor flowMonitor_;
     CalibrationStabilityDetector calibrationDetector_;
@@ -76,7 +76,8 @@ private:
     uint32_t learningMinimumMlPerMinute_ = 0;
     uint32_t learningMaximumMlPerMinute_ = 0;
     uint8_t currentStepIndex_ = 0;
-    uint8_t learningRateSampleCount_ = 0;
+    uint8_t learningWindowCount_ = 0;
+    uint32_t learningTotalWindowCount_ = 0;
     uint16_t flowHistoryStart_ = 0;
     uint16_t flowHistoryCount_ = 0;
     uint8_t flowHistoryZoneId_ = 0;

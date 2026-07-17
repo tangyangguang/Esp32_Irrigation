@@ -10,6 +10,8 @@ constexpr uint32_t kIrrigationConfigSchemaVersion = 2;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
 constexpr std::size_t kFlowHistorySampleCount = 120;
+constexpr std::size_t kLearningDecisionWindowCount = 5;
+constexpr std::size_t kLearningHistoryWindowCount = 10;
 constexpr uint16_t kUnusedStartMinute = 0xFFFF;
 constexpr std::size_t kObjectNameCapacity = 64;
 
@@ -224,14 +226,16 @@ struct WateringStatus {
     uint32_t learningMinimumPulseRateX100;
     uint32_t learningMaximumPulseRateX100;
     uint32_t learningAllowedPulseRateSpreadX100;
-    uint8_t learningSampleCount;
+    uint8_t learningWindowCount;
+    uint32_t learningTotalWindowCount;
     struct LearningWindowSample {
+        uint32_t sequence;
         uint32_t pulseCount;
         uint32_t windowMs;
         uint32_t pulseRateX100;
         uint32_t flowMlPerMinute;
     };
-    std::array<LearningWindowSample, 5> learningWindows;
+    std::array<LearningWindowSample, kLearningHistoryWindowCount> learningWindows;
     uint32_t flowHistoryGeneration;
     uint32_t flowSampleSerial;
     std::array<ZoneWateringSummary, BoardPins::kZoneCount> zones;

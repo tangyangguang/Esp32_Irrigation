@@ -231,18 +231,28 @@ WateringStatus WateringController::status() const {
     result.learningAverageMlPerMinute = learningAverageMlPerMinute_;
     result.learningMinimumMlPerMinute = learningMinimumMlPerMinute_;
     result.learningMaximumMlPerMinute = learningMaximumMlPerMinute_;
-    result.learningSampleCount = learningRateSampleCount_;
-    if (learningRateSampleCount_ != 0) {
+    result.learningWindowCount = learningWindowCount_;
+    result.learningTotalWindowCount = learningTotalWindowCount_;
+    if (learningWindowCount_ != 0) {
+        const uint8_t decisionCount = learningWindowCount_ < kLearningDecisionWindowCount
+                                          ? learningWindowCount_
+                                          : kLearningDecisionWindowCount;
+        const uint8_t decisionStart = learningWindowCount_ - decisionCount;
         uint32_t minimumRate = UINT32_MAX;
         uint32_t maximumRate = 0;
         uint64_t totalRate = 0;
-        for (uint8_t index = 0; index < learningRateSampleCount_; ++index) {
+        const uint32_t firstSequence =
+            learningTotalWindowCount_ - learningWindowCount_ + 1U;
+        for (uint8_t index = 0; index < learningWindowCount_; ++index) {
             const uint32_t rate = learningPulseRatesX100_[index];
-            minimumRate = rate < minimumRate ? rate : minimumRate;
-            maximumRate = rate > maximumRate ? rate : maximumRate;
-            totalRate += rate;
+            if (index >= decisionStart) {
+                minimumRate = rate < minimumRate ? rate : minimumRate;
+                maximumRate = rate > maximumRate ? rate : maximumRate;
+                totalRate += rate;
+            }
             WateringStatus::LearningWindowSample& window =
                 result.learningWindows[index];
+            window.sequence = firstSequence + index;
             window.pulseCount = learningPulseCounts_[index];
             window.windowMs = learningWindowDurationsMs_[index];
             window.pulseRateX100 = rate;
@@ -250,7 +260,7 @@ WateringStatus WateringController::status() const {
                 rate, flowMeter_.pulsesPerLiterX100, window.flowMlPerMinute);
         }
         result.learningAveragePulseRateX100 = static_cast<uint32_t>(
-            (totalRate + learningRateSampleCount_ / 2U) / learningRateSampleCount_);
+            (totalRate + decisionCount / 2U) / decisionCount);
         result.learningMinimumPulseRateX100 = minimumRate;
         result.learningMaximumPulseRateX100 = maximumRate;
         result.learningAllowedPulseRateSpreadX100 =
@@ -368,7 +378,8 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
                                    zoneStartedPulseCount_,
                                    calibrationStability_);
     }
-    learningRateSampleCount_ = 0;
+    learningWindowCount_ = 0;
+    learningTotalWindowCount_ = 0;
     learningPulseRatesX100_.fill(0);
     learningPulseCounts_.fill(0);
     learningWindowDurationsMs_.fill(0);
@@ -559,8 +570,9 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
     currentFlowMlPerMinute_ = sample.flowMlPerMinute;
     appendFlowSample(sample.flowMlPerMinute);
     if (learning) {
-        if (learningRateSampleCount_ < learningPulseRatesX100_.size()) {
-            const uint8_t index = learningRateSampleCount_++;
+        ++learningTotalWindowCount_;
+        if (learningWindowCount_ < learningPulseRatesX100_.size()) {
+            const uint8_t index = learningWindowCount_++;
             learningPulseRatesX100_[index] = sample.pulseRateX100;
             learningPulseCounts_[index] = sample.pulseCount;
             learningWindowDurationsMs_[index] = sample.windowMs;
@@ -575,69 +587,49 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
             learningPulseCounts_.back() = sample.pulseCount;
             learningWindowDurationsMs_.back() = sample.windowMs;
         }
-        if (learningRateSampleCount_ == learningPulseRatesX100_.size()) {
-            uint32_t minimum = UINT32_MAX;
-            uint32_t maximum = 0;
-            uint64_t totalRate = 0;
-            uint64_t totalPulses = 0;
-            uint64_t totalWindowMs = 0;
-            bool allWindowsHavePulses = true;
-            for (std::size_t index = 0; index < learningPulseRatesX100_.size(); ++index) {
-                const uint32_t rate = learningPulseRatesX100_[index];
-                minimum = rate < minimum ? rate : minimum;
-                maximum = rate > maximum ? rate : maximum;
-                totalRate += rate;
-                totalPulses += learningPulseCounts_[index];
-                totalWindowMs += learningWindowDurationsMs_[index];
-                allWindowsHavePulses =
-                    allWindowsHavePulses && learningPulseCounts_[index] != 0;
-            }
-            const uint32_t averageRateX100 = static_cast<uint32_t>(
-                (totalRate + learningPulseRatesX100_.size() / 2U) /
-                learningPulseRatesX100_.size());
-            FlowMonitor::pulseRateToFlowMlPerMinute(
-                averageRateX100, flowMeter_.pulsesPerLiterX100,
-                learningAverageMlPerMinute_);
-            FlowMonitor::pulseRateToFlowMlPerMinute(
-                minimum, flowMeter_.pulsesPerLiterX100,
-                learningMinimumMlPerMinute_);
-            FlowMonitor::pulseRateToFlowMlPerMinute(
-                maximum, flowMeter_.pulsesPerLiterX100,
-                learningMaximumMlPerMinute_);
-            const uint32_t tolerance =
-                learningAllowedPulseRateSpreadX100(averageRateX100);
-            if (allWindowsHavePulses && totalWindowMs != 0 &&
-                maximum - minimum <= tolerance) {
-                const uint64_t weightedRate =
-                    (totalPulses * 100000ULL + totalWindowMs / 2U) / totalWindowMs;
-                zone.suggestedBaselinePulseRateX100 =
-                    weightedRate > UINT32_MAX ? UINT32_MAX
-                                              : static_cast<uint32_t>(weightedRate);
-                finishSession(WateringStopReason::Completed, nowMs);
-                return false;
-            }
+        const uint8_t decisionCount = learningWindowCount_ < kLearningDecisionWindowCount
+                                          ? learningWindowCount_
+                                          : kLearningDecisionWindowCount;
+        const uint8_t decisionStart = learningWindowCount_ - decisionCount;
+        uint32_t minimum = UINT32_MAX;
+        uint32_t maximum = 0;
+        uint64_t totalRate = 0;
+        uint64_t totalPulses = 0;
+        uint64_t totalWindowMs = 0;
+        bool allWindowsHavePulses = true;
+        for (uint8_t index = decisionStart; index < learningWindowCount_; ++index) {
+            const uint32_t rate = learningPulseRatesX100_[index];
+            minimum = rate < minimum ? rate : minimum;
+            maximum = rate > maximum ? rate : maximum;
+            totalRate += rate;
+            totalPulses += learningPulseCounts_[index];
+            totalWindowMs += learningWindowDurationsMs_[index];
+            allWindowsHavePulses =
+                allWindowsHavePulses && learningPulseCounts_[index] != 0;
         }
-        if (learningRateSampleCount_ < learningPulseRatesX100_.size()) {
-            uint32_t minimum = UINT32_MAX;
-            uint32_t maximum = 0;
-            uint64_t total = 0;
-            for (uint8_t index = 0; index < learningRateSampleCount_; ++index) {
-                const uint32_t rate = learningPulseRatesX100_[index];
-                minimum = rate < minimum ? rate : minimum;
-                maximum = rate > maximum ? rate : maximum;
-                total += rate;
-            }
-            const uint32_t averageRateX100 = static_cast<uint32_t>(
-                (total + learningRateSampleCount_ / 2U) / learningRateSampleCount_);
-            FlowMonitor::pulseRateToFlowMlPerMinute(
-                averageRateX100, flowMeter_.pulsesPerLiterX100,
-                learningAverageMlPerMinute_);
-            FlowMonitor::pulseRateToFlowMlPerMinute(
-                minimum, flowMeter_.pulsesPerLiterX100,
-                learningMinimumMlPerMinute_);
-            FlowMonitor::pulseRateToFlowMlPerMinute(
-                maximum, flowMeter_.pulsesPerLiterX100,
-                learningMaximumMlPerMinute_);
+        const uint32_t averageRateX100 = static_cast<uint32_t>(
+            (totalRate + decisionCount / 2U) / decisionCount);
+        FlowMonitor::pulseRateToFlowMlPerMinute(
+            averageRateX100, flowMeter_.pulsesPerLiterX100,
+            learningAverageMlPerMinute_);
+        FlowMonitor::pulseRateToFlowMlPerMinute(
+            minimum, flowMeter_.pulsesPerLiterX100,
+            learningMinimumMlPerMinute_);
+        FlowMonitor::pulseRateToFlowMlPerMinute(
+            maximum, flowMeter_.pulsesPerLiterX100,
+            learningMaximumMlPerMinute_);
+        const uint32_t tolerance =
+            learningAllowedPulseRateSpreadX100(averageRateX100);
+        if (decisionCount == kLearningDecisionWindowCount &&
+            allWindowsHavePulses && totalWindowMs != 0 &&
+            maximum - minimum <= tolerance) {
+            const uint64_t weightedRate =
+                (totalPulses * 100000ULL + totalWindowMs / 2U) / totalWindowMs;
+            zone.suggestedBaselinePulseRateX100 =
+                weightedRate > UINT32_MAX ? UINT32_MAX
+                                          : static_cast<uint32_t>(weightedRate);
+            finishSession(WateringStopReason::Completed, nowMs);
+            return false;
         }
         return true;
     }
