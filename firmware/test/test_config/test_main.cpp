@@ -30,7 +30,7 @@ void test_default_config_matches_confirmed_product_defaults() {
     TEST_ASSERT_EQUAL_UINT32(25000, config.flowMeter.pulsesPerLiterX100);
     TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupPulseCount);
     TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupWaterMl);
-    TEST_ASSERT_EQUAL_UINT32(2, config.schemaVersion);
+    TEST_ASSERT_EQUAL_UINT32(3, config.schemaVersion);
     TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.windowSec);
     TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.requiredWindows);
     TEST_ASSERT_EQUAL_UINT8(10, config.calibrationStability.allowedVariationPercent);
@@ -148,7 +148,7 @@ void test_liters_per_minute_formatting_is_exact() {
 void test_config_json_round_trip_is_exact_and_strict() {
     IrrigationConfig original = IrrigationConfigRules::createDefault();
     original.flowMeter.pulsesPerLiterX100 = 25037;
-    original.zones[0].baselinePulseRateX100 = 420;
+    original.zones[0].baselinePulseRateX10000 = 42000;
     original.plans[0].configured = true;
     std::snprintf(original.plans[0].name.data(), original.plans[0].name.size(), "%s", "日常浇水");
     original.plans[0].zoneDurationMinutes[0] = 15;
@@ -156,7 +156,8 @@ void test_config_json_round_trip_is_exact_and_strict() {
     std::string json;
     TEST_ASSERT_TRUE(IrrigationConfigJson::encode(original, json));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"pulses_per_liter_x100\":25037"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"baseline_pulse_rate_x100\":420"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                          json.find("\"baseline_pulse_rate_x10000\":42000"));
     TEST_ASSERT_EQUAL(std::string::npos, json.find("learned_flow_ml_per_minute"));
 
     IrrigationConfig decoded{};
@@ -166,10 +167,10 @@ void test_config_json_round_trip_is_exact_and_strict() {
     TEST_ASSERT_EQUAL_STRING(json.c_str(), encodedAgain.c_str());
 
     std::string oldSchema = json;
-    const std::size_t schema = oldSchema.find("\"schema_version\":2");
+    const std::size_t schema = oldSchema.find("\"schema_version\":3");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, schema);
-    oldSchema.replace(schema, std::string("\"schema_version\":2").size(),
-                      "\"schema_version\":1");
+    oldSchema.replace(schema, std::string("\"schema_version\":3").size(),
+                      "\"schema_version\":2");
     TEST_ASSERT_FALSE(IrrigationConfigJson::decode(
         oldSchema.data(), oldSchema.size(), decoded));
 

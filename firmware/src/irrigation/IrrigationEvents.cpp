@@ -66,7 +66,9 @@ void IrrigationEvents::recordAbnormalWateringStop(const WateringSessionSummary& 
     if (summary.purpose != WateringPurpose::Normal ||
         summary.stopReason == WateringStopReason::None ||
         summary.stopReason == WateringStopReason::Completed ||
-        summary.stopReason == WateringStopReason::UserStopped) {
+        summary.stopReason == WateringStopReason::UserStopped ||
+        summary.stopReason == WateringStopReason::LowFlow ||
+        summary.stopReason == WateringStopReason::HighFlow) {
         return;
     }
     const ZoneWateringSummary* zone = affectedZone(summary);
@@ -82,25 +84,26 @@ void IrrigationEvents::recordAbnormalWateringStop(const WateringSessionSummary& 
     append(event);
 }
 
-void IrrigationEvents::recordFlowDeviationEvents(const WateringSessionSummary& summary) {
-    if (summary.purpose != WateringPurpose::Normal) return;
-    for (uint8_t index = 0; index < summary.zoneCount && index < summary.zones.size(); ++index) {
-        const ZoneWateringSummary& zone = summary.zones[index];
-        const bool low = zone.lowFlowDetected && summary.stopReason != WateringStopReason::LowFlow;
-        const bool high = zone.highFlowDetected && summary.stopReason != WateringStopReason::HighFlow;
-        const auto record = [this, &zone](ReasonCode reason) {
-            Esp32BaseAppEvents::EventInput event;
-            event.eventCode = static_cast<uint32_t>(EventCode::FlowDeviation);
-            event.reasonCode = static_cast<uint32_t>(reason);
-            event.objectId = zone.zoneId;
-            event.value1 = static_cast<int32_t>(cappedValue(zone.pulseCount, event.flags));
-            event.value2 = static_cast<int32_t>(zone.actualWateringSec);
-            event.level = Esp32BaseAppEvents::Level::Warning;
-            append(event);
-        };
-        if (low) record(ReasonCode::LowFlow);
-        if (high) record(ReasonCode::HighFlow);
-    }
+void IrrigationEvents::recordFlowDeviationEvent(
+    const ZoneWateringSummary& zone,
+    ReasonCode reason,
+    bool stopped) {
+    const bool low = reason == ReasonCode::LowFlow;
+    if (!low && reason != ReasonCode::HighFlow) return;
+    Esp32BaseAppEvents::EventInput event;
+    event.eventCode = static_cast<uint32_t>(EventCode::FlowDeviation);
+    event.reasonCode = static_cast<uint32_t>(reason);
+    event.objectId = zone.zoneId;
+    event.value1 = static_cast<int32_t>(cappedValue(
+        low ? zone.lowFlowDetectedMlPerMinute
+            : zone.highFlowDetectedMlPerMinute,
+        event.flags));
+    event.value2 = static_cast<int32_t>(
+        cappedValue(zone.baselineFlowMlPerMinute, event.flags));
+    if (stopped) event.flags |= kFlagWateringStopped;
+    event.level = stopped ? Esp32BaseAppEvents::Level::Error
+                          : Esp32BaseAppEvents::Level::Warning;
+    append(event);
 }
 
 void IrrigationEvents::recordAutomaticWateringPaused(bool indefinitely,
@@ -133,21 +136,32 @@ void IrrigationEvents::recordAutomaticPlanSkipped(uint8_t planId, bool busy) {
     append(event);
 }
 
-void IrrigationEvents::recordFlowCalibrationSaved(uint32_t coefficientX100) {
+void IrrigationEvents::recordFlowCalibrationSaved(
+    uint32_t previousCoefficientX100,
+    uint32_t coefficientX100) {
     Esp32BaseAppEvents::EventInput event;
     event.eventCode = static_cast<uint32_t>(EventCode::FlowCalibrationSaved);
     event.reasonCode = static_cast<uint32_t>(ReasonCode::CalibrationCoefficientSaved);
-    event.value1 = static_cast<int32_t>(cappedValue(coefficientX100, event.flags));
+    event.value1 = static_cast<int32_t>(
+        cappedValue(previousCoefficientX100, event.flags));
+    event.value2 = static_cast<int32_t>(
+        cappedValue(coefficientX100, event.flags));
     event.level = Esp32BaseAppEvents::Level::Info;
     append(event);
 }
 
-void IrrigationEvents::recordZoneFlowSaved(uint8_t zoneId, uint32_t flowMlPerMinute) {
+void IrrigationEvents::recordZoneFlowSaved(
+    uint8_t zoneId,
+    uint32_t previousFlowMlPerMinute,
+    uint32_t flowMlPerMinute) {
     Esp32BaseAppEvents::EventInput event;
     event.eventCode = static_cast<uint32_t>(EventCode::ZoneFlowSaved);
     event.reasonCode = static_cast<uint32_t>(ReasonCode::ZoneFlowSaved);
     event.objectId = zoneId;
-    event.value1 = static_cast<int32_t>(cappedValue(flowMlPerMinute, event.flags));
+    event.value1 = static_cast<int32_t>(
+        cappedValue(previousFlowMlPerMinute, event.flags));
+    event.value2 = static_cast<int32_t>(
+        cappedValue(flowMlPerMinute, event.flags));
     event.level = Esp32BaseAppEvents::Level::Info;
     append(event);
 }
@@ -201,7 +215,8 @@ void IrrigationEvents::observeRtcAvailability(bool available, uint8_t statusCode
     observe(rtcUnavailableCondition_,
             available ? Esp32BaseAppEvents::ObservedConditionState::Inactive
                       : Esp32BaseAppEvents::ObservedConditionState::Active,
-            event);
+            event,
+            rtcUnavailableState_);
 }
 
 void IrrigationEvents::observeTrustedTime(bool trusted) {
@@ -213,7 +228,8 @@ void IrrigationEvents::observeTrustedTime(bool trusted) {
     observe(trustedTimeUnavailableCondition_,
             trusted ? Esp32BaseAppEvents::ObservedConditionState::Inactive
                     : Esp32BaseAppEvents::ObservedConditionState::Active,
-            event);
+            event,
+            trustedTimeUnavailableState_);
 }
 
 void IrrigationEvents::observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState state) {
@@ -223,16 +239,18 @@ void IrrigationEvents::observeRtcRollback(Esp32BaseAppEvents::ObservedConditionS
     event.level = state == Esp32BaseAppEvents::ObservedConditionState::Active
                       ? Esp32BaseAppEvents::Level::Error
                       : Esp32BaseAppEvents::Level::Info;
-    observe(rtcRollbackCondition_, state, event);
+    observe(rtcRollbackCondition_, state, event, rtcRollbackState_);
 }
 
 void IrrigationEvents::observeClosedValveFlow(
     Esp32BaseAppEvents::ObservedConditionState state,
     uint32_t pulseCount,
-    uint16_t windowSec) {
+    uint16_t windowSec,
+    uint16_t thresholdPulseCount) {
     Esp32BaseAppEvents::EventInput event;
     event.eventCode = static_cast<uint32_t>(EventCode::ClosedValveFlow);
     event.reasonCode = static_cast<uint32_t>(ReasonCode::ClosedValveFlow);
+    event.objectId = thresholdPulseCount;
     event.value1 = pulseCount > static_cast<uint32_t>(INT32_MAX)
                        ? INT32_MAX
                        : static_cast<int32_t>(pulseCount);
@@ -241,7 +259,18 @@ void IrrigationEvents::observeClosedValveFlow(
     event.level = state == Esp32BaseAppEvents::ObservedConditionState::Active
                       ? Esp32BaseAppEvents::Level::Error
                       : Esp32BaseAppEvents::Level::Info;
-    observe(closedValveFlowCondition_, state, event);
+    observe(closedValveFlowCondition_, state, event, closedValveFlowState_);
+}
+
+IrrigationEvents::ConditionDisplayState IrrigationEvents::conditionState(
+    uint8_t conditionId) const {
+    switch (conditionId) {
+        case kRtcUnavailableConditionId: return rtcUnavailableState_;
+        case kTrustedTimeUnavailableConditionId: return trustedTimeUnavailableState_;
+        case kRtcRollbackConditionId: return rtcRollbackState_;
+        case kClosedValveFlowConditionId: return closedValveFlowState_;
+        default: return ConditionDisplayState::Unknown;
+    }
 }
 
 IrrigationEvents::Category IrrigationEvents::category(
@@ -336,7 +365,7 @@ void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
         case EventCode::ZoneFlowSaved:
             std::snprintf(out,
                           length,
-                          event.value1 == 0
+                          event.value2 == 0
                               ? "水路 %lu 的基准流量已清除"
                               : "水路 %lu 的基准流量已保存",
                           static_cast<unsigned long>(event.objectId)); return;
@@ -381,20 +410,89 @@ void IrrigationEvents::formatSummary(const Esp32BaseAppEvents::EventRecord& even
             std::snprintf(out, length, recovered(event)
                           ? "时间已经校正，自动计划可以继续运行。"
                           : "自动计划已停止，等待时间校正。"); return;
-        case EventCode::FlowDeviation:
-            std::snprintf(out, length, "浇水未因本次偏差停止，请检查水路。"); return;
-        case EventCode::ClosedValveFlow:
-            std::snprintf(out, length, recovered(event)
-                          ? "关阀后的水流已经低于报警阈值。"
-                          : "所有阀门关闭后仍检测到水流，请检查阀门和管路。"); return;
-        case EventCode::FlowCalibrationSaved:
-            std::snprintf(out, length, "新的流量系数已生效。"); return;
-        case EventCode::ZoneFlowSaved:
+        case EventCode::FlowDeviation: {
+            const uint32_t actual =
+                event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1);
+            const uint32_t baseline =
+                event.value2 < 0 ? 0 : static_cast<uint32_t>(event.value2);
+            const uint32_t difference =
+                actual >= baseline ? actual - baseline : baseline - actual;
             std::snprintf(out,
                           length,
-                          event.value1 == 0
-                              ? "该水路的高低流量报警已停用。"
-                              : "后续浇水将使用新的基准流量。"); return;
+                          "检测 %lu.%03lu L/min，基准 %lu.%03lu L/min，%s %lu.%03lu L/min；本次%s。",
+                          static_cast<unsigned long>(actual / 1000U),
+                          static_cast<unsigned long>(actual % 1000U),
+                          static_cast<unsigned long>(baseline / 1000U),
+                          static_cast<unsigned long>(baseline % 1000U),
+                          event.reasonCode ==
+                                  static_cast<uint32_t>(ReasonCode::LowFlow)
+                              ? "低"
+                              : "高",
+                          static_cast<unsigned long>(difference / 1000U),
+                          static_cast<unsigned long>(difference % 1000U),
+                          (event.flags & kFlagWateringStopped) != 0
+                              ? "已停止"
+                              : "继续浇水");
+            return;
+        }
+        case EventCode::ClosedValveFlow:
+            if (recovered(event)) {
+                std::snprintf(out,
+                              length,
+                              "连续 %ld 秒未检测到脉冲，关阀后水流已恢复正常。",
+                              static_cast<long>(event.value2));
+            } else {
+                std::snprintf(
+                    out,
+                    length,
+                    "%ld 秒内检测到 %ld 个脉冲，报警阈值为 %lu 个；请检查阀门和管路。",
+                    static_cast<long>(event.value2),
+                    static_cast<long>(event.value1),
+                    static_cast<unsigned long>(event.objectId));
+            }
+            return;
+        case EventCode::FlowCalibrationSaved: {
+            const uint32_t previous =
+                event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1);
+            const uint32_t current =
+                event.value2 < 0 ? 0 : static_cast<uint32_t>(event.value2);
+            std::snprintf(out,
+                          length,
+                          "稳态流量系数由 %lu.%02lu 调整为 %lu.%02lu P/L。",
+                          static_cast<unsigned long>(previous / 100U),
+                          static_cast<unsigned long>(previous % 100U),
+                          static_cast<unsigned long>(current / 100U),
+                          static_cast<unsigned long>(current % 100U));
+            return;
+        }
+        case EventCode::ZoneFlowSaved: {
+            const uint32_t previous =
+                event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1);
+            const uint32_t current =
+                event.value2 < 0 ? 0 : static_cast<uint32_t>(event.value2);
+            if (current == 0) {
+                std::snprintf(out,
+                              length,
+                              "原基准 %lu.%03lu L/min 已清除，高低流量报警停用。",
+                              static_cast<unsigned long>(previous / 1000U),
+                              static_cast<unsigned long>(previous % 1000U));
+            } else if (previous == 0) {
+                std::snprintf(out,
+                              length,
+                              "新基准为 %lu.%03lu L/min，后续浇水开始监测高低流量。",
+                              static_cast<unsigned long>(current / 1000U),
+                              static_cast<unsigned long>(current % 1000U));
+            } else {
+                std::snprintf(out,
+                              length,
+                              "基准由 %lu.%03lu 调整为 %lu.%03lu L/min。",
+                              static_cast<unsigned long>(previous / 1000U),
+                              static_cast<unsigned long>(previous % 1000U),
+                              static_cast<unsigned long>(current / 1000U),
+                              static_cast<unsigned long>(current % 1000U));
+            }
+            return;
+        }
         case EventCode::ConfigurationChanged:
             std::snprintf(out, length, "新设置从之后的操作生效。"); return;
         case EventCode::WateringRecordSaveFailed:
@@ -420,8 +518,35 @@ void IrrigationEvents::append(const Esp32BaseAppEvents::EventInput& event) {
 
 void IrrigationEvents::observe(Esp32BaseAppEvents::ConditionStateTracker& tracker,
                                Esp32BaseAppEvents::ObservedConditionState state,
-                               const Esp32BaseAppEvents::EventInput& event) {
-    handleConditionResult(Esp32BaseAppEvents::observeConditionState(tracker, state, event));
+                               const Esp32BaseAppEvents::EventInput& event,
+                               ConditionDisplayState& displayState) {
+    const Esp32BaseAppEvents::ConditionObservationResult result =
+        Esp32BaseAppEvents::observeConditionState(tracker, state, event);
+    switch (result) {
+        case Esp32BaseAppEvents::ConditionObservationResult::ConditionUnchanged:
+        case Esp32BaseAppEvents::ConditionObservationResult::ActivationEventStored:
+        case Esp32BaseAppEvents::ConditionObservationResult::RecoveryEventStored:
+            displayState =
+                state == Esp32BaseAppEvents::ObservedConditionState::Active
+                    ? ConditionDisplayState::Active
+                    : state == Esp32BaseAppEvents::ObservedConditionState::Inactive
+                          ? ConditionDisplayState::Normal
+                          : ConditionDisplayState::Unknown;
+            break;
+        case Esp32BaseAppEvents::ConditionObservationResult::ActivationConfirmationPending:
+            displayState = ConditionDisplayState::ConfirmingActivation;
+            break;
+        case Esp32BaseAppEvents::ConditionObservationResult::RecoveryConfirmationPending:
+            displayState = ConditionDisplayState::ConfirmingRecovery;
+            break;
+        case Esp32BaseAppEvents::ConditionObservationResult::ObservationUnknown:
+            displayState = ConditionDisplayState::Unknown;
+            break;
+        default:
+            displayState = ConditionDisplayState::Unknown;
+            break;
+    }
+    handleConditionResult(result);
 }
 
 void IrrigationEvents::handleDiscreteResult(

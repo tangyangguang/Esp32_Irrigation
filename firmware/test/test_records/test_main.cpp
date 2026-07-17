@@ -22,6 +22,12 @@ WateringSessionSummary exampleSummary() {
     summary.zones[0].estimatedWaterMl = 60000;
     summary.zones[0].averageFlowMlPerMinute = 1000;
     summary.zones[0].flowBaselineAvailable = true;
+    summary.zones[0].baselineFlowMlPerMinute = 960;
+    summary.zones[0].terminalFlowAvailable = true;
+    summary.zones[0].terminalFlowStable = true;
+    summary.zones[0].terminalFlowMlPerMinute = 1008;
+    summary.zones[0].terminalMinimumFlowMlPerMinute = 984;
+    summary.zones[0].terminalMaximumFlowMlPerMinute = 1032;
     summary.zones[1].zoneId = 3;
     summary.zones[1].result = ZoneWateringResult::Stopped;
     summary.zones[1].plannedDurationSec = 120;
@@ -44,20 +50,28 @@ void test_fixed_payload_round_trip_preserves_business_fields() {
 
     uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    TEST_ASSERT_EQUAL_UINT32(112, sizeof(encoded));
+    TEST_ASSERT_EQUAL_UINT32(208, sizeof(encoded));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringSource::AutomaticPlan), encoded[0]);
     TEST_ASSERT_EQUAL_UINT8(3, encoded[1]);
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[22]);  // Zone 2 fixed slot is empty.
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[23]);
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[38]);  // Zone 2 fixed slot is empty.
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[39]);
 
     WateringRecordPayload decoded{};
     TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
                       static_cast<int>(decoded.zones[0].result));
     TEST_ASSERT_EQUAL_UINT8(WateringRecordCodec::kZoneFlagLowFlow |
-                                WateringRecordCodec::kZoneFlagFlowBaselineAvailable,
+                                WateringRecordCodec::kZoneFlagFlowBaselineAvailable |
+                                WateringRecordCodec::kZoneFlagTerminalFlowAvailable |
+                                WateringRecordCodec::kZoneFlagTerminalFlowStable,
                             decoded.zones[0].flags);
     TEST_ASSERT_EQUAL_UINT32(1000, decoded.zones[0].averageFlowMlPerMinute);
+    TEST_ASSERT_EQUAL_UINT32(960, decoded.zones[0].baselineFlowMlPerMinute);
+    TEST_ASSERT_EQUAL_UINT32(1008, decoded.zones[0].terminalFlowMlPerMinute);
+    TEST_ASSERT_EQUAL_UINT32(984,
+                             decoded.zones[0].terminalMinimumFlowMlPerMinute);
+    TEST_ASSERT_EQUAL_UINT32(1032,
+                             decoded.zones[0].terminalMaximumFlowMlPerMinute);
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::NotStarted),
                       static_cast<int>(decoded.zones[1].result));
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Stopped),
@@ -114,7 +128,7 @@ void test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone() {
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    encoded[22] = static_cast<uint8_t>(ZoneWateringResult::Completed);
+    encoded[38] = static_cast<uint8_t>(ZoneWateringResult::Completed);
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 }
 

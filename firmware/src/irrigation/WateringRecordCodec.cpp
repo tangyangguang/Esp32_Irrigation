@@ -3,11 +3,13 @@
 namespace {
 
 constexpr std::size_t kHeaderSize = 4;
-constexpr std::size_t kZoneSize = 18;
+constexpr std::size_t kZoneSize = 34;
 constexpr uint8_t kKnownZoneFlags = WateringRecordCodec::kZoneFlagWaterEstimateCapped |
                                     WateringRecordCodec::kZoneFlagLowFlow |
                                     WateringRecordCodec::kZoneFlagHighFlow |
-                                    WateringRecordCodec::kZoneFlagFlowBaselineAvailable;
+                                    WateringRecordCodec::kZoneFlagFlowBaselineAvailable |
+                                    WateringRecordCodec::kZoneFlagTerminalFlowAvailable |
+                                    WateringRecordCodec::kZoneFlagTerminalFlowStable;
 constexpr uint16_t kMaximumZoneDurationSec = 120U * 60U;
 
 void put16(uint8_t*& cursor, uint16_t value) {
@@ -88,7 +90,11 @@ bool validPayload(const WateringRecordPayload& payload) {
         if (zone.plannedDurationSec == 0) {
             if (zone.result != ZoneWateringResult::NotStarted || zone.flags != 0 ||
                 zone.actualWateringSec != 0 || zone.pulseCount != 0 ||
-                zone.estimatedWaterMl != 0 || zone.averageFlowMlPerMinute != 0) {
+                zone.estimatedWaterMl != 0 || zone.averageFlowMlPerMinute != 0 ||
+                zone.baselineFlowMlPerMinute != 0 ||
+                zone.terminalFlowMlPerMinute != 0 ||
+                zone.terminalMinimumFlowMlPerMinute != 0 ||
+                zone.terminalMaximumFlowMlPerMinute != 0) {
                 return false;
             }
             continue;
@@ -97,7 +103,11 @@ bool validPayload(const WateringRecordPayload& payload) {
         if (zone.result == ZoneWateringResult::NotStarted &&
             (zone.flags != 0 || zone.actualWateringSec != 0 ||
              zone.pulseCount != 0 || zone.estimatedWaterMl != 0 ||
-             zone.averageFlowMlPerMinute != 0)) {
+             zone.averageFlowMlPerMinute != 0 ||
+             zone.baselineFlowMlPerMinute != 0 ||
+             zone.terminalFlowMlPerMinute != 0 ||
+             zone.terminalMinimumFlowMlPerMinute != 0 ||
+             zone.terminalMaximumFlowMlPerMinute != 0)) {
             return false;
         }
         if ((zone.flags & WateringRecordCodec::kZoneFlagWaterEstimateCapped) != 0 &&
@@ -108,6 +118,24 @@ bool validPayload(const WateringRecordPayload& payload) {
                            WateringRecordCodec::kZoneFlagHighFlow)) != 0 &&
             (zone.flags &
              WateringRecordCodec::kZoneFlagFlowBaselineAvailable) == 0) {
+            return false;
+        }
+        if ((zone.flags & WateringRecordCodec::kZoneFlagFlowBaselineAvailable) == 0 &&
+            zone.baselineFlowMlPerMinute != 0) {
+            return false;
+        }
+        if ((zone.flags & WateringRecordCodec::kZoneFlagTerminalFlowAvailable) == 0 &&
+            (zone.terminalFlowMlPerMinute != 0 ||
+             zone.terminalMinimumFlowMlPerMinute != 0 ||
+             zone.terminalMaximumFlowMlPerMinute != 0 ||
+             (zone.flags & WateringRecordCodec::kZoneFlagTerminalFlowStable) != 0)) {
+            return false;
+        }
+        if ((zone.flags & WateringRecordCodec::kZoneFlagTerminalFlowAvailable) != 0 &&
+            (zone.terminalMinimumFlowMlPerMinute >
+                 zone.terminalFlowMlPerMinute ||
+             zone.terminalFlowMlPerMinute >
+                 zone.terminalMaximumFlowMlPerMinute)) {
             return false;
         }
         totalPulses += zone.pulseCount;
@@ -151,11 +179,29 @@ bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
                                 source.flowBaselineAvailable
                             ? kZoneFlagFlowBaselineAvailable
                             : 0;
+        target.flags |= source.terminalFlowAvailable
+                            ? kZoneFlagTerminalFlowAvailable
+                            : 0;
+        target.flags |= source.terminalFlowStable
+                            ? kZoneFlagTerminalFlowStable
+                            : 0;
         target.plannedDurationSec = static_cast<uint16_t>(source.plannedDurationSec);
         target.actualWateringSec = static_cast<uint16_t>(source.actualWateringSec);
         target.pulseCount = source.pulseCount;
         target.estimatedWaterMl = source.estimatedWaterMl;
         target.averageFlowMlPerMinute = source.averageFlowMlPerMinute;
+        if (source.result != ZoneWateringResult::NotStarted) {
+            target.baselineFlowMlPerMinute =
+                source.flowBaselineAvailable
+                    ? source.baselineFlowMlPerMinute
+                    : 0;
+            target.terminalFlowMlPerMinute =
+                source.terminalFlowMlPerMinute;
+            target.terminalMinimumFlowMlPerMinute =
+                source.terminalMinimumFlowMlPerMinute;
+            target.terminalMaximumFlowMlPerMinute =
+                source.terminalMaximumFlowMlPerMinute;
+        }
     }
     return validPayload(payload);
 }
@@ -179,6 +225,10 @@ bool WateringRecordCodec::encode(const WateringRecordPayload& payload,
         put32(cursor, zone.pulseCount);
         put32(cursor, zone.estimatedWaterMl);
         put32(cursor, zone.averageFlowMlPerMinute);
+        put32(cursor, zone.baselineFlowMlPerMinute);
+        put32(cursor, zone.terminalFlowMlPerMinute);
+        put32(cursor, zone.terminalMinimumFlowMlPerMinute);
+        put32(cursor, zone.terminalMaximumFlowMlPerMinute);
     }
     return cursor == output + outputSize;
 }
@@ -203,6 +253,10 @@ bool WateringRecordCodec::decode(const uint8_t* data,
         zone.pulseCount = get32(cursor);
         zone.estimatedWaterMl = get32(cursor);
         zone.averageFlowMlPerMinute = get32(cursor);
+        zone.baselineFlowMlPerMinute = get32(cursor);
+        zone.terminalFlowMlPerMinute = get32(cursor);
+        zone.terminalMinimumFlowMlPerMinute = get32(cursor);
+        zone.terminalMaximumFlowMlPerMinute = get32(cursor);
     }
     if (cursor != data + dataSize || !validPayload(payload)) {
         payload = {};

@@ -118,3 +118,41 @@ bool FlowMonitor::flowMlPerMinuteToPulseRate(uint32_t flowMlPerMinute,
     pulseRateX100 = static_cast<uint32_t>(estimate);
     return true;
 }
+
+bool FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
+    uint32_t pulseRateX10000,
+    uint32_t pulsesPerLiterX100,
+    uint32_t& flowMlPerMinute) {
+    if (pulsesPerLiterX100 == 0) {
+        flowMlPerMinute = 0;
+        return false;
+    }
+    const uint64_t numerator =
+        static_cast<uint64_t>(pulseRateX10000) * 600ULL;
+    const uint64_t estimate =
+        (numerator + static_cast<uint64_t>(pulsesPerLiterX100) / 2U) /
+        pulsesPerLiterX100;
+    if (estimate > UINT32_MAX) {
+        flowMlPerMinute = UINT32_MAX;
+        return false;
+    }
+    flowMlPerMinute = static_cast<uint32_t>(estimate);
+    return true;
+}
+
+bool FlowMonitor::flowMlPerMinuteToPulseRateX10000(
+    uint32_t flowMlPerMinute,
+    uint32_t pulsesPerLiterX100,
+    uint32_t& pulseRateX10000) {
+    if (flowMlPerMinute == 0 || pulsesPerLiterX100 == 0) {
+        return false;
+    }
+    const uint64_t numerator =
+        static_cast<uint64_t>(flowMlPerMinute) * pulsesPerLiterX100;
+    const uint64_t estimate = (numerator + 300ULL) / 600ULL;
+    if (estimate == 0 || estimate > UINT32_MAX) {
+        return false;
+    }
+    pulseRateX10000 = static_cast<uint32_t>(estimate);
+    return true;
+}

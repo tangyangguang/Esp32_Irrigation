@@ -27,11 +27,17 @@ public:
                                          uint32_t pulsesPerLiterX100,
                                          uint32_t& waterMl);
     static bool pulseRateToFlowMlPerMinute(uint32_t pulseRateX100,
-                                          uint32_t pulsesPerLiterX100,
-                                          uint32_t& flowMlPerMinute);
+                                           uint32_t pulsesPerLiterX100,
+                                           uint32_t& flowMlPerMinute);
     static bool flowMlPerMinuteToPulseRate(uint32_t flowMlPerMinute,
-                                          uint32_t pulsesPerLiterX100,
-                                          uint32_t& pulseRateX100);
+                                           uint32_t pulsesPerLiterX100,
+                                           uint32_t& pulseRateX100);
+    static bool pulseRateX10000ToFlowMlPerMinute(uint32_t pulseRateX10000,
+                                                 uint32_t pulsesPerLiterX100,
+                                                 uint32_t& flowMlPerMinute);
+    static bool flowMlPerMinuteToPulseRateX10000(uint32_t flowMlPerMinute,
+                                                 uint32_t pulsesPerLiterX100,
+                                                 uint32_t& pulseRateX10000);
 
 private:
     uint32_t waitStartedMs_ = 0;

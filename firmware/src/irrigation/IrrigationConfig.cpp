@@ -122,7 +122,7 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
         char name[kObjectNameCapacity];
         std::snprintf(name, sizeof(name), "区域 %u", static_cast<unsigned>(zone.id));
         setText(zone.name, name);
-        zone.baselinePulseRateX100 = 0;
+        zone.baselinePulseRateX10000 = 0;
     }
 
     for (std::size_t index = 0; index < config.plans.size(); ++index) {
@@ -174,7 +174,8 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         const ZoneConfig& zone = config.zones[index];
-        if (zone.id != index + 1 || !isValidName(zone.name, false)) {
+        if (zone.id != index + 1 || !isValidName(zone.name, false) ||
+            zone.baselinePulseRateX10000 > 1666666667U) {
             return false;
         }
     }

@@ -107,8 +107,8 @@ bool readZones(JsonObjectConst root, IrrigationConfig& config) {
             !readUnsigned(object, "id", zone.id) ||
             !readBoolean(object, "enabled", zone.enabled) ||
             !readText(object, "name", zone.name) ||
-            !readUnsigned(object, "baseline_pulse_rate_x100",
-                          zone.baselinePulseRateX100)) {
+            !readUnsigned(object, "baseline_pulse_rate_x10000",
+                          zone.baselinePulseRateX10000)) {
             return false;
         }
     }
@@ -199,7 +199,7 @@ bool IrrigationConfigJson::encode(const IrrigationConfig& config, std::string& j
         object["id"] = zone.id;
         object["enabled"] = zone.enabled;
         object["name"] = zone.name.data();
-        object["baseline_pulse_rate_x100"] = zone.baselinePulseRateX100;
+        object["baseline_pulse_rate_x10000"] = zone.baselinePulseRateX10000;
     }
 
     JsonArray plans = document["plans"].to<JsonArray>();

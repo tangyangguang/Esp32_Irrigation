@@ -29,6 +29,7 @@ private:
     void finishCurrentZone(uint32_t nowMs);
     void enterStoppingZone(uint32_t nowMs, bool stopSession, WateringStopReason reason);
     void finalizeCurrentZone(ZoneWateringResult result, uint32_t nowMs);
+    void finalizeTerminalFlow(ZoneWateringSummary& zone);
     void finishSession(WateringStopReason reason, uint32_t nowMs);
     bool checkFlowRate(uint32_t nowMs);
     void appendFlowSample(uint32_t flowMlPerMinute);
@@ -44,11 +45,14 @@ private:
     FlowMeterConfig flowMeter_{};
     FlowProtectionConfig flowProtection_{};
     CalibrationStabilityConfig calibrationStability_{};
-    std::array<uint32_t, BoardPins::kZoneCount> baselinePulseRateX100_{};
+    std::array<uint32_t, BoardPins::kZoneCount> baselinePulseRateX10000_{};
     std::array<uint32_t, kLearningHistoryWindowCount> learningPulseRatesX100_{};
     std::array<uint32_t, kLearningHistoryWindowCount> learningPulseCounts_{};
     std::array<uint32_t, kLearningHistoryWindowCount> learningWindowDurationsMs_{};
     std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
+    std::array<uint32_t, kLearningDecisionWindowCount> terminalPulseRatesX100_{};
+    std::array<uint32_t, kLearningDecisionWindowCount> terminalPulseCounts_{};
+    std::array<uint32_t, kLearningDecisionWindowCount> terminalWindowDurationsMs_{};
     FlowMonitor flowMonitor_;
     CalibrationStabilityDetector calibrationDetector_;
     WateringState state_ = WateringState::Idle;
@@ -68,6 +72,8 @@ private:
     uint32_t lastHandledMs_ = 0;
     uint32_t lowFlowDurationMs_ = 0;
     uint32_t highFlowDurationMs_ = 0;
+    uint32_t lowFlowRecoveryDurationMs_ = 0;
+    uint32_t highFlowRecoveryDurationMs_ = 0;
     uint32_t currentFlowMlPerMinute_ = 0;
     uint32_t calibrationFlowEstablishedMs_ = 0;
     uint32_t calibrationStopMs_ = 0;
@@ -79,6 +85,7 @@ private:
     uint32_t learningMaximumMlPerMinute_ = 0;
     uint8_t currentStepIndex_ = 0;
     uint8_t learningWindowCount_ = 0;
+    uint8_t terminalWindowCount_ = 0;
     uint32_t learningTotalWindowCount_ = 0;
     uint16_t flowHistoryStart_ = 0;
     uint16_t flowHistoryCount_ = 0;

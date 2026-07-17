@@ -69,6 +69,14 @@ public:
         TimeAndStorage,
     };
 
+    enum class ConditionDisplayState : uint8_t {
+        Unknown,
+        Normal,
+        Active,
+        ConfirmingActivation,
+        ConfirmingRecovery,
+    };
+
     using ReadCallback = Esp32BaseAppEvents::ReadCallback;
 
     IrrigationEvents();
@@ -82,12 +90,17 @@ public:
                     void* user = nullptr) const;
 
     void recordAbnormalWateringStop(const WateringSessionSummary& summary);
-    void recordFlowDeviationEvents(const WateringSessionSummary& summary);
+    void recordFlowDeviationEvent(const ZoneWateringSummary& zone,
+                                  ReasonCode reason,
+                                  bool stopped);
     void recordAutomaticWateringPaused(bool indefinitely, uint32_t resumeAtEpoch);
     void recordAutomaticWateringResumed(bool automatically);
     void recordAutomaticPlanSkipped(uint8_t planId, bool busy);
-    void recordFlowCalibrationSaved(uint32_t coefficientX100);
-    void recordZoneFlowSaved(uint8_t zoneId, uint32_t flowMlPerMinute);
+    void recordFlowCalibrationSaved(uint32_t previousCoefficientX100,
+                                    uint32_t coefficientX100);
+    void recordZoneFlowSaved(uint8_t zoneId,
+                             uint32_t previousFlowMlPerMinute,
+                             uint32_t flowMlPerMinute);
     void recordConfigurationChanged(ConfigurationChange change, uint8_t objectId = 0);
     void recordWateringRecordSaveFailed(ReasonCode reason,
                                         Esp32BaseRecordStore::StoreState state,
@@ -99,7 +112,9 @@ public:
     void observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState state);
     void observeClosedValveFlow(Esp32BaseAppEvents::ObservedConditionState state,
                                 uint32_t pulseCount,
-                                uint16_t windowSec);
+                                uint16_t windowSec,
+                                uint16_t thresholdPulseCount);
+    ConditionDisplayState conditionState(uint8_t conditionId) const;
 
     static Category category(const Esp32BaseAppEvents::EventRecord& event);
     static const char* categoryName(Category category);
@@ -117,11 +132,13 @@ private:
     static constexpr uint8_t kRtcRollbackConditionId = 3;
     static constexpr uint8_t kClosedValveFlowConditionId = 4;
     static constexpr uint16_t kFlagValue1Capped = 1U << 0U;
+    static constexpr uint16_t kFlagWateringStopped = 1U << 1U;
 
     void append(const Esp32BaseAppEvents::EventInput& event);
     void observe(Esp32BaseAppEvents::ConditionStateTracker& tracker,
                  Esp32BaseAppEvents::ObservedConditionState state,
-                 const Esp32BaseAppEvents::EventInput& event);
+                 const Esp32BaseAppEvents::EventInput& event,
+                 ConditionDisplayState& displayState);
     void handleDiscreteResult(Esp32BaseAppEvents::DiscreteEventAppendResult result);
     void handleConditionResult(Esp32BaseAppEvents::ConditionObservationResult result);
     void updateStorageFault(bool fault, const char* reason);
@@ -131,6 +148,10 @@ private:
     Esp32BaseAppEvents::ConditionStateTracker trustedTimeUnavailableCondition_;
     Esp32BaseAppEvents::ConditionStateTracker rtcRollbackCondition_;
     Esp32BaseAppEvents::ConditionStateTracker closedValveFlowCondition_;
+    ConditionDisplayState rtcUnavailableState_ = ConditionDisplayState::Unknown;
+    ConditionDisplayState trustedTimeUnavailableState_ = ConditionDisplayState::Unknown;
+    ConditionDisplayState rtcRollbackState_ = ConditionDisplayState::Unknown;
+    ConditionDisplayState closedValveFlowState_ = ConditionDisplayState::Unknown;
     bool storageStateKnown_ = false;
     bool storageFault_ = true;
 };

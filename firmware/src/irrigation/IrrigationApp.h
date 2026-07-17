@@ -39,6 +39,8 @@ public:
                           IrrigationEvents::ReadCallback callback,
                           void* user = nullptr) const;
     bool readEventStatus(Esp32BaseAppEvents::AppEventsStatus& status) const;
+    IrrigationEvents::ConditionDisplayState eventConditionState(
+        uint8_t conditionId) const;
     bool recordStorageFault() const;
     bool eventStorageFault() const;
     bool schedulerStorageFault() const;
@@ -69,7 +71,7 @@ public:
                                     uint32_t flowMlPerMinute,
                                     uint32_t expectedConfigRevision);
     uint8_t pendingLearnedZoneId() const;
-    uint32_t pendingLearnedBaselinePulseRateX100() const;
+    uint32_t pendingLearnedBaselinePulseRateX10000() const;
     uint32_t pendingLearnedFlowMlPerMinute() const;
     bool clearLearnedZoneFlow(uint8_t zoneId, uint32_t expectedConfigRevision);
     void discardLearnedZoneFlow();
@@ -103,8 +105,9 @@ private:
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
     bool saveZoneBaselinePulseRate(uint8_t zoneId,
-                                   uint32_t pulseRateX100,
+                                   uint32_t pulseRateX10000,
                                    uint32_t expectedConfigRevision);
+    void reportNewFlowDeviationEvents();
     uint32_t trustedEpoch() const;
 
     bool started_ = false;
@@ -118,7 +121,9 @@ private:
     bool rtcObservationInitialized_ = false;
     bool eventConditionsInitialized_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
-    uint32_t pendingLearnedBaselinePulseRateX100_ = 0;
+    uint32_t pendingLearnedBaselinePulseRateX10000_ = 0;
+    std::array<bool, BoardPins::kZoneCount> lowFlowEventReported_{};
+    std::array<bool, BoardPins::kZoneCount> highFlowEventReported_{};
     IrrigationConfig parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
     FlowCalibrationService flowCalibrationService_;
