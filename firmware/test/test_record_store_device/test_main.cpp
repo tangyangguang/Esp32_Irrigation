@@ -268,9 +268,20 @@ void test_irrigation_event_mapping_and_latest_read() {
     events.observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState::Inactive);
     TEST_ASSERT_EQUAL_UINT32(afterActivation + 1U, Esp32BaseAppEvents::eventCount());
 
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::clearEventHistory());
+    events.observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState::Active);
+    TEST_ASSERT_EQUAL_UINT32(1U, Esp32BaseAppEvents::eventCount());
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::clearEventHistory());
+    TEST_ASSERT_TRUE(events.resetConditionHistory());
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(IrrigationEvents::ConditionDisplayState::Unknown),
+        static_cast<int>(events.conditionState(3)));
+    events.observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState::Active);
+    TEST_ASSERT_EQUAL_UINT32(1U, Esp32BaseAppEvents::eventCount());
+
     EventCapture recoveredEvent;
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(0, 1, captureEvent, &recoveredEvent));
-    TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::EventKind::ConditionRecovered),
+    TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::EventKind::ConditionActivated),
                       static_cast<int>(recoveredEvent.eventKind));
     TEST_ASSERT_EQUAL_UINT8(3, recoveredEvent.conditionId);
     char title[64]{};
@@ -278,7 +289,7 @@ void test_irrigation_event_mapping_and_latest_read() {
     presentation.eventCode = recoveredEvent.eventCode;
     presentation.eventKind = recoveredEvent.eventKind;
     IrrigationEvents::formatTitle(presentation, title, sizeof(title));
-    TEST_ASSERT_EQUAL_STRING("设备时间已恢复正常", title);
+    TEST_ASSERT_EQUAL_STRING("检测到设备时间倒退", title);
 
     constexpr uint32_t eventCodes[] = {1001, 1002, 1003, 1004, 1006, 1009, 1101,
                                        1102, 1103, 1104, 1201, 1202, 1203};

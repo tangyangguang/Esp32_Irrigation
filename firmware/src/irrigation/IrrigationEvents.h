@@ -82,6 +82,7 @@ public:
     IrrigationEvents();
 
     void syncStorageStatus();
+    bool resetConditionHistory();
     bool storageFault() const;
     bool readStatus(Esp32BaseAppEvents::AppEventsStatus& status) const;
     bool readLatest(uint32_t offset,

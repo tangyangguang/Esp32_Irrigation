@@ -47,6 +47,18 @@ void IrrigationEvents::syncStorageStatus() {
     updateStorageFault(!ready, ready ? "ready" : Esp32BaseAppEvents::lastErrorReason());
 }
 
+bool IrrigationEvents::resetConditionHistory() {
+    if (!Esp32BaseAppEvents::forgetAllConditionStates()) {
+        updateStorageFault(true, "condition_history_reset_failed");
+        return false;
+    }
+    rtcUnavailableState_ = ConditionDisplayState::Unknown;
+    trustedTimeUnavailableState_ = ConditionDisplayState::Unknown;
+    rtcRollbackState_ = ConditionDisplayState::Unknown;
+    closedValveFlowState_ = ConditionDisplayState::Unknown;
+    return true;
+}
+
 bool IrrigationEvents::storageFault() const {
     return !storageStateKnown_ || storageFault_;
 }

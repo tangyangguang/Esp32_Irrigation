@@ -911,6 +911,10 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
         return;
     }
 
+    const bool conditionHistoryReset = events_.resetConditionHistory();
+    rtcObservationInitialized_ = false;
+    eventConditionsInitialized_ = false;
+
     bool configReady = configStore_.begin();
     if (configReady) configReady = applyStoredParameterConfig();
     const IrrigationConfig* config = configStore_.current();
@@ -976,9 +980,10 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
         hardware.safeShutdown();
     }
     ESP32BASE_LOG_W("irrigation",
-                    "after_format_reinitialized business_ready=%s records_ready=%s scheduler_ready=%s checkpoint_ready=%s",
+                    "after_format_reinitialized business_ready=%s records_ready=%s scheduler_ready=%s checkpoint_ready=%s condition_history_reset=%s",
                     businessReady_ ? "yes" : "no",
                     recordsReady ? "yes" : "no",
                     schedulerReady ? "yes" : "no",
-                    checkpointReady ? "yes" : "no");
+                    checkpointReady ? "yes" : "no",
+                    conditionHistoryReset ? "yes" : "no");
 }
