@@ -55,7 +55,7 @@ UnexpectedFlowMonitor::Update UnexpectedFlowMonitor::observe(uint32_t nowMs,
         alarmActive_ = true;
         return Update::AlarmRaised;
     }
-    if (alarmActive_ && rollingPulseCount_ < pulseThreshold_) {
+    if (alarmActive_ && rollingPulseCount_ == 0) {
         alarmActive_ = false;
         return Update::AlarmCleared;
     }

@@ -367,11 +367,12 @@ uint32_t calculateFlowMlPerMinute(uint32_t pulses,
                                : static_cast<uint32_t>(value + 0.5);
 }
 
-void sendRecordTime(const Esp32BaseRecordStore::RecordTiming& timing) {
+void sendRecordTime(const Esp32BaseRecordStore::RecordTiming& timing,
+                    const char* format = "%m-%d %H:%M") {
     uint32_t epoch = 0;
     char text[32]{};
     if (Esp32BaseRecordStore::resolveCompletedEpoch(timing, epoch) &&
-        Esp32BaseTime::formatEpoch(epoch, text, sizeof(text), "%Y-%m-%d %H:%M:%S")) {
+        Esp32BaseTime::formatEpoch(epoch, text, sizeof(text), format)) {
         Esp32BaseWeb::sendChunk(text);
         return;
     }
@@ -500,6 +501,47 @@ bool recordHasCappedEstimate(const WateringRecordPayload& payload) {
     return false;
 }
 
+uint8_t recordWateredZoneCount(const WateringRecordPayload& payload) {
+    uint8_t count = 0;
+    for (const ZoneWateringRecord& zone : payload.zones) {
+        if (zone.actualWateringSec != 0 || zone.pulseCount != 0) ++count;
+    }
+    return count;
+}
+
+void sendRecordWateredZones(const WateringRecordPayload& payload,
+                            const IrrigationConfig* config) {
+    const uint8_t total = recordWateredZoneCount(payload);
+    uint8_t emitted = 0;
+    for (uint8_t index = 0; index < payload.zones.size() && emitted < 2; ++index) {
+        const ZoneWateringRecord& zone = payload.zones[index];
+        if (zone.actualWateringSec == 0 && zone.pulseCount == 0) continue;
+        if (emitted != 0) Esp32BaseWeb::sendChunk("、");
+        if (config) {
+            Esp32BaseWeb::writeHtmlEscaped(config->zones[index].name.data());
+        } else {
+            Esp32BaseWeb::sendChunk("水路 ");
+            sendUnsigned(index + 1U);
+        }
+        ++emitted;
+    }
+    if (total > emitted) {
+        Esp32BaseWeb::sendChunk(" 等 ");
+        sendUnsigned(total);
+        Esp32BaseWeb::sendChunk(" 路");
+    }
+}
+
+bool recordHasFlowAlert(const WateringRecordPayload& payload) {
+    for (const ZoneWateringRecord& zone : payload.zones) {
+        if ((zone.flags & (WateringRecordCodec::kZoneFlagLowFlow |
+                           WateringRecordCodec::kZoneFlagHighFlow)) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 struct LatestRecordContext {
     bool found = false;
     StoredWateringRecord record{};
@@ -522,35 +564,38 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
                             const IrrigationConfig* config,
                             const char* dialogPrefix) {
     const WateringRecordTotals totals = WateringRecordCodec::calculateTotals(record.payload);
+    const uint8_t wateredZoneCount = recordWateredZoneCount(record.payload);
     Esp32BaseWeb::sendChunk("<dialog id='");
     Esp32BaseWeb::sendChunk(dialogPrefix);
     sendUnsigned(record.recordId);
-    Esp32BaseWeb::sendChunk("' class='panel eb-modal record-detail-dialog' data-eb-light-dismiss='1'><div class='record-detail-head'><div><span class='muted'>浇水记录</span><h2>#");
-    sendUnsigned(record.recordId);
-    Esp32BaseWeb::sendChunk("</h2></div><button type='button' class='secondary record-detail-close' onclick='this.closest(\"dialog\").close()'>关闭</button></div><div class='record-detail-grid'><div><b>完成时间</b><span>");
-    sendRecordTime(record.timing);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>来源</b><span>");
+    Esp32BaseWeb::sendChunk("' class='panel eb-modal record-detail-dialog' data-eb-light-dismiss='1'><div class='record-detail-head'><div><span class='muted'>");
     sendRecordSource(record.payload, config);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>结果</b><span class='tag ");
+    Esp32BaseWeb::sendChunk("</span><h2>");
+    sendRecordTime(record.timing, "%m月%d日 %H:%M 完成");
+    Esp32BaseWeb::sendChunk("</h2></div><button type='button' class='secondary record-detail-close' onclick='this.closest(\"dialog\").close()'>关闭</button></div><div class='record-detail-result'><span class='tag ");
     Esp32BaseWeb::sendChunk(resultToneClass(record.payload.result));
     Esp32BaseWeb::sendChunk("'>");
     Esp32BaseWeb::sendChunk(resultName(record.payload.result));
-    Esp32BaseWeb::sendChunk("</span></div><div><b>结束原因</b><span>");
+    Esp32BaseWeb::sendChunk("</span><span>结束原因：");
     Esp32BaseWeb::sendChunk(stopReasonName(record.payload.stopReason));
-    Esp32BaseWeb::sendChunk("</span></div><div><b>计划浇水时间</b><span>");
-    sendDuration(totals.plannedDurationSec);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>实际浇水时间</b><span>");
+    Esp32BaseWeb::sendChunk("</span></div><div class='record-detail-metrics'><div><span>实际浇水时间</span><b>");
     sendDuration(totals.actualWateringSec);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>整次历时</b><span>");
-    sendDuration(record.timing.durationSec);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>总脉冲</b><span>");
-    sendUnsigned64(totals.pulseCount);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>历史估算总水量</b><span>");
+    Esp32BaseWeb::sendChunk("</b></div><div><span>估算用水量</span><b>");
     if (recordHasCappedEstimate(record.payload)) {
         Esp32BaseWeb::sendChunk("至少 ");
     }
     sendWaterVolume(totals.estimatedWaterMl);
-    Esp32BaseWeb::sendChunk("</span></div></div><div class='record-detail-section'><h3>水路明细</h3><p>名称按当前水路设置显示，历史时长、脉冲和水量保持记录当时的值。</p><div class='tablewrap'><table class='record-zone-table'><thead><tr><th>水路</th><th>结果</th><th>计划时间</th><th>实际时间</th><th>脉冲</th><th>历史估算水量</th><th>异常标记</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("</b></div><div><span>实际执行水路</span><b>");
+    sendUnsigned(wateredZoneCount);
+    Esp32BaseWeb::sendChunk(" 路</b></div><div><span>整次历时</span><b>");
+    sendDuration(record.timing.durationSec);
+    Esp32BaseWeb::sendChunk("</b></div></div><div class='record-detail-section'><h3>执行概况</h3><div class='record-detail-grid'><div><b>完成时间</b><span>");
+    sendRecordTime(record.timing, "%m-%d %H:%M:%S");
+    Esp32BaseWeb::sendChunk("</span></div><div><b>计划浇水时间</b><span>");
+    sendDuration(totals.plannedDurationSec);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>总脉冲</b><span>");
+    sendUnsigned64(totals.pulseCount);
+    Esp32BaseWeb::sendChunk("</span></div></div></div><div class='record-detail-section'><h3>水路明细</h3><p>水路名称按当前设置显示；时长、脉冲和估算水量保留浇水当时的记录。</p><div class='tablewrap'><table class='record-zone-table'><thead><tr><th>水路</th><th>结果</th><th>浇水时间</th><th>估算用水量</th><th>脉冲</th><th>异常</th></tr></thead><tbody>");
     for (uint8_t index = 0; index < record.payload.zones.size(); ++index) {
         const ZoneWateringRecord& zone = record.payload.zones[index];
         if (zone.plannedDurationSec == 0) continue;
@@ -561,22 +606,20 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
             Esp32BaseWeb::sendChunk("水路 ");
             sendUnsigned(index + 1U);
         }
-        Esp32BaseWeb::sendChunk("</b><small>#");
-        sendUnsigned(index + 1U);
-        Esp32BaseWeb::sendChunk("</small></td><td data-label='结果'>");
+        Esp32BaseWeb::sendChunk("</b></td><td data-label='结果'>");
         Esp32BaseWeb::sendChunk(zoneResultName(zone.result));
-        Esp32BaseWeb::sendChunk("</td><td data-label='计划时间'>");
-        sendDuration(zone.plannedDurationSec);
-        Esp32BaseWeb::sendChunk("</td><td data-label='实际时间'>");
+        Esp32BaseWeb::sendChunk("</td><td data-label='浇水时间'><b>");
         sendDuration(zone.actualWateringSec);
-        Esp32BaseWeb::sendChunk("</td><td data-label='脉冲'>");
-        sendUnsigned(zone.pulseCount);
-        Esp32BaseWeb::sendChunk("</td><td data-label='历史估算水量'>");
+        Esp32BaseWeb::sendChunk("</b><small>计划 ");
+        sendDuration(zone.plannedDurationSec);
+        Esp32BaseWeb::sendChunk("</small></td><td data-label='估算用水量'>");
         if ((zone.flags & WateringRecordCodec::kZoneFlagWaterEstimateCapped) != 0) {
             Esp32BaseWeb::sendChunk("至少 ");
         }
         sendWaterVolume(zone.estimatedWaterMl);
-        Esp32BaseWeb::sendChunk("</td><td data-label='异常标记'><div class='record-flags'>");
+        Esp32BaseWeb::sendChunk("</td><td data-label='脉冲'>");
+        sendUnsigned(zone.pulseCount);
+        Esp32BaseWeb::sendChunk("</td><td data-label='异常'><div class='record-flags'>");
         if (zone.flags == 0) {
             Esp32BaseWeb::sendChunk("<span class='muted'>无</span>");
         } else {
@@ -592,26 +635,36 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
         }
         Esp32BaseWeb::sendChunk("</div></td></tr>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div></div><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>关闭</button></div></dialog>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div></div><p class='record-detail-note'>估算用水量使用浇水当时保存的流量参数计算。</p><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>关闭</button></div></dialog>");
 }
 
 void sendRecordRow(const StoredWateringRecord& record, void* user) {
     RecordRowsContext* context = static_cast<RecordRowsContext*>(user);
     const WateringRecordTotals totals = WateringRecordCodec::calculateTotals(record.payload);
     if (context) ++context->emitted;
-    Esp32BaseWeb::sendChunk("<tr><td data-label='编号' class='record-id'>#");
-    sendUnsigned(record.recordId);
-    Esp32BaseWeb::sendChunk("</td><td data-label='完成时间' class='record-time'>");
+    Esp32BaseWeb::sendChunk("<tr><td data-label='完成时间' class='record-time'>");
     sendRecordTime(record.timing);
     Esp32BaseWeb::sendChunk("</td><td data-label='来源'>");
     sendRecordSource(record.payload, context ? context->config : nullptr);
+    Esp32BaseWeb::sendChunk("</td><td data-label='实际水路' class='record-zones'>");
+    sendRecordWateredZones(record.payload, context ? context->config : nullptr);
     Esp32BaseWeb::sendChunk("</td><td data-label='结果'><span class='tag ");
     Esp32BaseWeb::sendChunk(resultToneClass(record.payload.result));
     Esp32BaseWeb::sendChunk("'>");
     Esp32BaseWeb::sendChunk(resultName(record.payload.result));
-    Esp32BaseWeb::sendChunk("</span></td><td data-label='实际浇水时间' class='record-number'>");
+    Esp32BaseWeb::sendChunk("</span>");
+    if (record.payload.result != WateringResult::Completed) {
+        Esp32BaseWeb::sendChunk("<small class='record-result-reason'>");
+        Esp32BaseWeb::sendChunk(stopReasonName(record.payload.stopReason));
+        Esp32BaseWeb::sendChunk("</small>");
+    } else if (recordHasFlowAlert(record.payload)) {
+        Esp32BaseWeb::sendChunk("<small class='record-result-reason'>存在流量异常</small>");
+    }
+    Esp32BaseWeb::sendChunk("</td><td data-label='浇水时间' class='record-number'><span>");
     sendDuration(totals.actualWateringSec);
-    Esp32BaseWeb::sendChunk("</td><td data-label='历史估算水量' class='record-number'>");
+    Esp32BaseWeb::sendChunk("</span><small>计划 ");
+    sendDuration(totals.plannedDurationSec);
+    Esp32BaseWeb::sendChunk("</small></td><td data-label='估算用水量' class='record-number'>");
     if (recordHasCappedEstimate(record.payload)) Esp32BaseWeb::sendChunk("至少 ");
     sendWaterVolume(totals.estimatedWaterMl);
     Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('record-detail-");
@@ -1228,10 +1281,10 @@ void IrrigationWeb::activeTask() {
     if (!beginPage("首页", "查看当前任务的实时状态")) return;
     Esp32BaseWeb::sendChunk(R"HTML(<style>
 .run-idle-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid #cfe1e5;border-radius:10px;background:linear-gradient(135deg,#f4faf7,#fff)}.run-idle-hero h3{margin:0 0 4px;font-size:19px}.run-idle-hero p{margin:0;color:var(--eb-muted)}
-.run-live-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:17px;border:1px solid #cbdde5;border-radius:11px;background:linear-gradient(135deg,var(--eb-info-soft),#fff)}.run-live-head span{display:block;color:var(--eb-muted);font-size:12px;font-weight:700}.run-live-head h3{margin:3px 0 4px;font-size:22px}.run-live-head p{margin:0;color:var(--eb-muted)}.run-live-head form{flex:0 0 auto;margin:0}.run-live-head input{min-height:38px}
-.run-live-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:12px}.run-live-metric{padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.run-live-metric span{display:block;color:var(--eb-muted);font-size:12px}.run-live-metric b{display:block;margin-top:3px;font-size:18px;overflow-wrap:anywhere}
-.run-live-grid{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(0,1.4fr);gap:12px;margin-top:12px}.run-current,.run-chart-card{padding:15px;border:1px solid var(--eb-line);border-radius:10px;background:#fff}.run-section-label{display:block;margin-bottom:5px;color:var(--eb-muted);font-size:12px;font-weight:700}.run-current-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.run-current-head h3{margin:0;font-size:19px}.run-current-head .tag{flex:0 0 auto}.run-progress{height:10px;margin:13px 0 8px;border-radius:999px;background:var(--eb-line-soft);overflow:hidden}.run-progress span{display:block;height:100%;width:0;border-radius:inherit;background:var(--eb-primary);transition:width .25s ease}.run-current-detail{display:flex;justify-content:space-between;gap:10px;color:var(--eb-muted);font-size:13px}.run-flow-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}.run-flow-fact{padding:9px 10px;border-radius:8px;background:var(--eb-soft)}.run-flow-fact span{display:block;color:var(--eb-muted);font-size:11px}.run-flow-fact b{display:block;margin-top:2px;font-size:14px}.run-chart-card{min-width:0}.run-chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.run-chart-head h3{margin:0;font-size:16px}.run-chart-head span{color:var(--eb-muted);font-size:12px}.run-chart-wrap{position:relative;min-height:190px}.run-chart-wrap canvas{display:block;width:100%;height:190px}.run-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--eb-muted);font-size:13px;pointer-events:none}
-.run-steps{display:grid;gap:8px;margin-top:12px}.run-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.run-step-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;font-weight:750}.run-step.current{border-color:#9fc8d0;background:var(--eb-primary-soft)}.run-step.current .run-step-icon{background:var(--eb-primary);color:#fff}.run-step.complete .run-step-icon{background:var(--eb-ok);color:#fff}.run-step-main b,.run-step-main small{display:block}.run-step-main small,.run-step-detail{color:var(--eb-muted);font-size:12px}.run-step-detail{text-align:right}
+.run-live-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;padding:17px;border:1px solid #cbdde5;border-radius:11px;background:linear-gradient(135deg,var(--eb-info-soft),#fff)}.run-live-head span{display:block;color:var(--eb-muted);font-size:12px;font-weight:400}.run-live-head h3{margin:3px 0 4px;font-size:22px;font-weight:600}.run-live-head p{margin:0;color:var(--eb-muted)}.run-live-head form{flex:0 0 auto;margin:0}.run-live-head input{min-height:38px;font-weight:500}
+.run-live-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:12px}.run-live-metric{padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.run-live-metric span{display:block;color:var(--eb-muted);font-size:12px;font-weight:400}.run-live-metric b{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.run-live-grid{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(0,1.4fr);gap:12px;margin-top:12px}.run-current,.run-chart-card{padding:15px;border:1px solid var(--eb-line);border-radius:10px;background:#fff}.run-section-label{display:block;margin-bottom:5px;color:var(--eb-muted);font-size:12px;font-weight:400}.run-current-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.run-current-head h3{margin:0;font-size:19px;font-weight:500}.run-current-head .tag{flex:0 0 auto;font-weight:500}.run-progress{height:10px;margin:13px 0 8px;border-radius:999px;background:var(--eb-line-soft);overflow:hidden}.run-progress span{display:block;height:100%;width:0;border-radius:inherit;background:var(--eb-primary);transition:width .25s ease}.run-current-detail{display:flex;justify-content:space-between;gap:10px;color:var(--eb-muted);font-size:13px;font-variant-numeric:tabular-nums}.run-flow-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}.run-flow-fact{padding:9px 10px;border-radius:8px;background:var(--eb-soft)}.run-flow-fact span{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.run-flow-fact b{display:block;margin-top:2px;font-size:14px;font-weight:500;font-variant-numeric:tabular-nums}.run-chart-card{min-width:0}.run-chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.run-chart-head h3{margin:0;font-size:16px;font-weight:500}.run-chart-head span{color:var(--eb-muted);font-size:12px;font-weight:400}.run-chart-wrap{position:relative;min-height:205px}.run-chart-wrap canvas{display:block;width:100%;height:205px}.run-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--eb-muted);font-size:13px;pointer-events:none}
+.run-steps{display:grid;gap:8px;margin-top:12px}.run-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.run-step-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;font-weight:500}.run-step.current{border-color:#9fc8d0;background:var(--eb-primary-soft)}.run-step.current .run-step-icon{background:var(--eb-primary);color:#fff}.run-step.complete .run-step-icon{background:var(--eb-ok);color:#fff}.run-step-main b,.run-step-main small{display:block}.run-step-main b{font-weight:400}.run-step.current .run-step-main b{font-weight:500}.run-step-main small,.run-step-detail{color:var(--eb-muted);font-size:12px;font-weight:400}.run-step-detail{text-align:right}.run-note{margin:10px 0 0;color:var(--eb-muted);font-size:12px;font-weight:400}
 @media(max-width:900px){.run-live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-live-grid{grid-template-columns:1fr}}
 @media(max-width:760px){.run-live-head{align-items:stretch;flex-direction:column}.run-live-head form input{width:100%}.run-live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-live-grid{grid-template-columns:1fr}.run-step{grid-template-columns:30px minmax(0,1fr)}.run-step-detail{grid-column:2;text-align:left}}
 @media(max-width:420px){.run-live-metrics,.run-flow-facts{grid-template-columns:1fr}}
@@ -1313,7 +1366,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路脉冲</span><b id='run-pulses'>"); sendUnsigned(status.pulseCount);
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路估算水量</span><b id='run-zone-water'>");
         if (status.currentStepIndex < status.stepCount) sendLiters(status.zones[status.currentStepIndex].estimatedWaterMl); else Esp32BaseWeb::sendChunk("0.000 L");
-        Esp32BaseWeb::sendChunk("</b></div></div></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>最近 10 分钟流量</h3></div><span>每 5 秒采样</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='190'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-steps'>");
+        Esp32BaseWeb::sendChunk("</b></div></div></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>实时流量趋势</h3></div><span id='run-chart-range'>正在等待数据 · 5 秒/点</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='205'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-steps'>");
         for (uint8_t index = 0; index < status.stepCount; ++index) {
             const ZoneWateringSummary& zone = status.zones[index];
             const char* stepClass = index < status.currentStepIndex ? " complete" : (index == status.currentStepIndex ? " current" : "");
@@ -1328,10 +1381,33 @@ void IrrigationWeb::activeTask() {
             else Esp32BaseWeb::sendChunk("等待执行");
             Esp32BaseWeb::sendChunk("</span></div>");
         }
-        Esp32BaseWeb::sendChunk("</div><p class='muted' style='margin:10px 0 0'>预计剩余时间只计算计划浇水时长，不包含等待水流和设备启停延时。</p></div>");
+        Esp32BaseWeb::sendChunk("</div><p class='run-note'>预计剩余时间只计算计划浇水时长，不包含等待水流和设备启停延时。</p></div>");
         Esp32BaseWeb::endPanel();
     }
-    Esp32BaseWeb::sendChunk("<script>(function(){var live=document.getElementById('run-live'),initialActive=!!live;function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';if(v<3600)return Math.floor(v/60)+' 分 '+(v%60)+' 秒';return Math.floor(v/3600)+' 小时 '+Math.floor((v%3600)/60)+' 分'}function liters(v){return((Number(v)||0)/1000).toFixed(3)+' L'}function flow(v){return((Number(v)||0)/1000).toFixed(3)+' L/min'}function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}var inputs=document.querySelectorAll('.run-custom-duration'),submit=document.getElementById('run-custom-submit');function updateCustom(){var count=0,total=0;inputs.forEach(function(i){var v=Math.max(0,Math.min(120,Number(i.value)||0));if(v>0){count++;total+=v}});set('run-custom-summary',count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路');if(submit)submit.disabled=count===0}inputs.forEach(function(i){i.addEventListener('input',updateCustom)});window.runCustomSubmit=function(form){updateCustom();if(!submit||submit.disabled){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认按当前自定义时长立即开始浇水？')&&once(form)};updateCustom();if(!initialActive){function idlePoll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(s.active)location.reload();else setTimeout(idlePoll,2000)}).catch(function(){setTimeout(idlePoll,3000)})}setTimeout(idlePoll,2000);return}var canvas=document.getElementById('run-flow-chart'),empty=document.getElementById('run-chart-empty'),samples=[],generation=Number(live.dataset.generation||0),serial=Number(live.dataset.serial||0);function draw(){if(!canvas)return;var rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(280,rect.width),h=190;canvas.width=w*dpr;canvas.height=h*dpr;var c=canvas.getContext('2d');c.scale(dpr,dpr);c.clearRect(0,0,w,h);c.strokeStyle='#d8e2e7';c.lineWidth=1;c.beginPath();c.moveTo(42,12);c.lineTo(42,h-28);c.lineTo(w-10,h-28);c.stroke();if(samples.length===0){if(empty)empty.style.display='flex';return}if(empty)empty.style.display='none';var max=Math.max.apply(null,samples.concat([1000]))*1.12;c.fillStyle='#667085';c.font='11px sans-serif';c.fillText((max/1000).toFixed(2)+' L/min',2,14);c.fillText('10分钟前',42,h-8);c.fillText('现在',w-34,h-8);c.strokeStyle='#117b8b';c.lineWidth=2;c.beginPath();samples.forEach(function(v,i){var x=42+(w-52)*(samples.length===1?1:i/(samples.length-1)),y=12+(h-40)*(1-v/max);if(i===0)c.moveTo(x,y);else c.lineTo(x,y)});c.stroke()}function loadHistory(){fetch('/irrigation/api/flow-history',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(h){samples=Array.isArray(h.samples)?h.samples.slice(-120):[];generation=Number(h.generation||0);serial=Number(h.latestSerial||0);draw()}).catch(function(){setTimeout(loadHistory,2000)})}function update(s){set('run-elapsed',duration(s.elapsedSec));set('run-remaining',duration(s.plannedRemainingSec));set('run-water',liters(s.totalEstimatedWaterMl));set('run-step-count','第 '+(Number(s.currentStepIndex)+1)+' / '+s.stepCount+' 条水路');var states=['空闲','区域启动中','等待水流','正在浇水','区域停止中'];set('run-state',(states[s.state]||'未知')+(s.flowEstablished?' · 水流已建立':' · 等待水流建立'));set('run-current-elapsed',duration(s.currentZoneElapsedSec)+' / '+duration((s.zones[s.currentStepIndex]||{}).plannedDurationSec));set('run-current-remaining','剩余 '+duration(s.currentZoneRemainingSec));set('run-flow',flow(s.currentFlowMlPerMinute));set('run-expected-flow',s.expectedFlowMlPerMinute?flow(s.expectedFlowMlPerMinute):'未设置');set('run-pulses',s.pulseCount);set('run-zone-water',liters((s.zones[s.currentStepIndex]||{}).estimatedWaterMl));var current=document.querySelector('[data-step-index=\"'+s.currentStepIndex+'\"]');if(current){var name=current.querySelector('.run-step-name');set('run-current-zone',name?name.textContent:'水路 '+s.zoneId)}var target=Number((s.zones[s.currentStepIndex]||{}).plannedDurationSec)||0,percent=target?Math.min(100,Math.round(Number(s.currentZoneElapsedSec)*100/target)):0,bar=document.getElementById('run-current-progress');if(bar)bar.style.width=percent+'%';var flowState=document.getElementById('run-flow-state');if(flowState){flowState.textContent=s.flowEstablished?'水流正常':'等待水流';flowState.className='tag '+(s.flowEstablished?'ok':'warn')}document.querySelectorAll('.run-step').forEach(function(row){var i=Number(row.dataset.stepIndex),z=s.zones[i]||{},icon=row.querySelector('.run-step-icon'),detail=row.querySelector('.run-step-detail');row.classList.toggle('complete',i<s.currentStepIndex);row.classList.toggle('current',i===s.currentStepIndex);if(icon)icon.textContent=i<s.currentStepIndex?'✓':String(i+1);if(detail){if(i<s.currentStepIndex)detail.textContent='实际 '+duration(z.actualWateringSec)+' · '+liters(z.estimatedWaterMl);else if(i===s.currentStepIndex)detail.textContent='正在执行 · 剩余 '+duration(s.currentZoneRemainingSec);else detail.textContent='等待执行'}});var nextGeneration=Number(s.flowHistoryGeneration||0),nextSerial=Number(s.flowSampleSerial||0);if(nextGeneration!==generation){generation=nextGeneration;loadHistory()}else if(nextSerial!==serial){if(nextSerial===serial+1){samples.push(Number(s.currentFlowMlPerMinute)||0);if(samples.length>120)samples.shift();serial=nextSerial;draw()}else loadHistory()}}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active){location.reload();return}update(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}window.addEventListener('resize',draw);loadHistory();setTimeout(poll,1000)})();</script>");
+    Esp32BaseWeb::sendChunk(R"HTML(<script>(function(){var live=document.getElementById('run-live'),initialActive=!!live;function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';if(v<3600)return Math.floor(v/60)+' 分 '+(v%60)+' 秒';return Math.floor(v/3600)+' 小时 '+Math.floor((v%3600)/60)+' 分'}function liters(v){return((Number(v)||0)/1000).toFixed(3)+' L'}function flow(v){return((Number(v)||0)/1000).toFixed(3)+' L/min'}function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}var inputs=document.querySelectorAll('.run-custom-duration'),submit=document.getElementById('run-custom-submit');function updateCustom(){var count=0,total=0;inputs.forEach(function(i){var v=Math.max(0,Math.min(120,Number(i.value)||0));if(v>0){count++;total+=v}});set('run-custom-summary',count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路');if(submit)submit.disabled=count===0}inputs.forEach(function(i){i.addEventListener('input',updateCustom)});window.runCustomSubmit=function(form){updateCustom();if(!submit||submit.disabled){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认按当前自定义时长立即开始浇水？')&&once(form)};updateCustom();if(!initialActive){function idlePoll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(s.active)location.reload();else setTimeout(idlePoll,2000)}).catch(function(){setTimeout(idlePoll,3000)})}setTimeout(idlePoll,2000);return}var canvas=document.getElementById('run-flow-chart'),empty=document.getElementById('run-chart-empty'),samples=[],generation=Number(live.dataset.generation||0),serial=Number(live.dataset.serial||0);
+function rangeDuration(value){if(value<60)return value+' 秒';if(value%60===0)return value/60+' 分钟';return Math.floor(value/60)+' 分 '+value%60+' 秒'}
+function draw(){
+if(!canvas)return;
+var rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(280,rect.width),h=205,left=52,right=12,top=14,bottom=28,plotW=w-left-right,plotH=h-top-bottom;
+canvas.width=w*dpr;canvas.height=h*dpr;
+var c=canvas.getContext('2d');c.scale(dpr,dpr);c.clearRect(0,0,w,h);c.font='11px sans-serif';c.fillStyle='#667085';c.textBaseline='middle';
+var count=samples.length,coverage=Math.min(600,count*5);
+set('run-chart-range',count?('最近 '+rangeDuration(coverage)+' · 5 秒/点'):'正在等待数据 · 5 秒/点');
+var maximum=count?Math.max.apply(null,samples)/1000:1,rough=Math.max(maximum*1.08,1)/4,power=Math.pow(10,Math.floor(Math.log(rough)/Math.LN10)),normalized=rough/power,steps=[1,2,2.5,5,10],step=steps[steps.length-1]*power;
+for(var s=0;s<steps.length;s++){if(normalized<=steps[s]){step=steps[s]*power;break}}
+var scale=step*4;
+function yText(value){if(value===0)return '0';if(value>=10)return String(Math.round(value));return value.toFixed(value>=1?1:2)}
+for(var yi=0;yi<=4;yi++){var value=step*yi,y=top+plotH*(1-yi/4);c.strokeStyle=yi===0?'#cbd7dd':'#e7edef';c.lineWidth=1;c.beginPath();c.moveTo(left,y);c.lineTo(w-right,y);c.stroke();c.fillStyle='#667085';c.textAlign='right';c.fillText(yText(value),left-8,y)}
+c.textAlign='left';c.textBaseline='top';c.fillText('L/min',4,0);c.textBaseline='middle';
+if(count){var maximumLabels=w<500?5:6,minimumStep=coverage/Math.max(1,maximumLabels-1),timeSteps=[5,10,15,30,60,120],timeStep=timeSteps[timeSteps.length-1];for(var ts=0;ts<timeSteps.length;ts++){if(timeSteps[ts]>=minimumStep){timeStep=timeSteps[ts];break}}var ticks=[coverage],next=Math.floor((coverage-1)/timeStep)*timeStep;while(next>0){ticks.push(next);next-=timeStep}ticks.push(0);ticks.forEach(function(ago){var x=left+plotW*(1-ago/coverage);c.strokeStyle='#eef2f4';c.beginPath();c.moveTo(x,top);c.lineTo(x,top+plotH);c.stroke();var label=ago===0?'现在':rangeDuration(ago)+'前';c.fillStyle='#667085';c.textBaseline='bottom';c.textAlign=ago===coverage?'left':(ago===0?'right':'center');c.fillText(label,x,h-2)})}
+if(count===0){if(empty)empty.style.display='flex';return}
+if(empty)empty.style.display='none';
+c.strokeStyle='#117b8b';c.lineWidth=2;c.lineJoin='round';c.lineCap='round';c.beginPath();
+samples.forEach(function(value,index){var x=left+plotW*((index+1)/count),y=top+plotH*(1-(value/1000)/scale);if(index===0)c.moveTo(x,y);else c.lineTo(x,y)});
+c.stroke();
+var latest=samples[count-1]/1000,latestX=w-right,latestY=top+plotH*(1-latest/scale);c.fillStyle='#117b8b';c.beginPath();c.arc(latestX,latestY,3.5,0,Math.PI*2);c.fill()
+}
+function loadHistory(){fetch('/irrigation/api/flow-history',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(h){samples=Array.isArray(h.samples)?h.samples.slice(-120):[];generation=Number(h.generation||0);serial=Number(h.latestSerial||0);draw()}).catch(function(){setTimeout(loadHistory,2000)})}function update(s){set('run-elapsed',duration(s.elapsedSec));set('run-remaining',duration(s.plannedRemainingSec));set('run-water',liters(s.totalEstimatedWaterMl));set('run-step-count','第 '+(Number(s.currentStepIndex)+1)+' / '+s.stepCount+' 条水路');var states=['空闲','区域启动中','等待水流','正在浇水','区域停止中'];set('run-state',(states[s.state]||'未知')+(s.flowEstablished?' · 水流已建立':' · 等待水流建立'));set('run-current-elapsed',duration(s.currentZoneElapsedSec)+' / '+duration((s.zones[s.currentStepIndex]||{}).plannedDurationSec));set('run-current-remaining','剩余 '+duration(s.currentZoneRemainingSec));set('run-flow',flow(s.currentFlowMlPerMinute));set('run-expected-flow',s.expectedFlowMlPerMinute?flow(s.expectedFlowMlPerMinute):'未设置');set('run-pulses',s.pulseCount);set('run-zone-water',liters((s.zones[s.currentStepIndex]||{}).estimatedWaterMl));var current=document.querySelector('[data-step-index=\"'+s.currentStepIndex+'\"]');if(current){var name=current.querySelector('.run-step-name');set('run-current-zone',name?name.textContent:'水路 '+s.zoneId)}var target=Number((s.zones[s.currentStepIndex]||{}).plannedDurationSec)||0,percent=target?Math.min(100,Math.round(Number(s.currentZoneElapsedSec)*100/target)):0,bar=document.getElementById('run-current-progress');if(bar)bar.style.width=percent+'%';var flowState=document.getElementById('run-flow-state');if(flowState){flowState.textContent=s.flowEstablished?'水流正常':'等待水流';flowState.className='tag '+(s.flowEstablished?'ok':'warn')}document.querySelectorAll('.run-step').forEach(function(row){var i=Number(row.dataset.stepIndex),z=s.zones[i]||{},icon=row.querySelector('.run-step-icon'),detail=row.querySelector('.run-step-detail');row.classList.toggle('complete',i<s.currentStepIndex);row.classList.toggle('current',i===s.currentStepIndex);if(icon)icon.textContent=i<s.currentStepIndex?'✓':String(i+1);if(detail){if(i<s.currentStepIndex)detail.textContent='实际 '+duration(z.actualWateringSec)+' · '+liters(z.estimatedWaterMl);else if(i===s.currentStepIndex)detail.textContent='正在执行 · 剩余 '+duration(s.currentZoneRemainingSec);else detail.textContent='等待执行'}});var nextGeneration=Number(s.flowHistoryGeneration||0),nextSerial=Number(s.flowSampleSerial||0);if(nextGeneration!==generation){generation=nextGeneration;loadHistory()}else if(nextSerial!==serial){if(nextSerial===serial+1){samples.push(Number(s.currentFlowMlPerMinute)||0);if(samples.length>120)samples.shift();serial=nextSerial;draw()}else loadHistory()}}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active){location.reload();return}update(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}window.addEventListener('resize',draw);loadHistory();setTimeout(poll,1000)})();</script>)HTML");
     endPage();
 }
 
@@ -2368,10 +2444,10 @@ void IrrigationWeb::records() {
     if (!beginPage("浇水记录", "最新记录优先")) return;
     Esp32BaseWeb::sendChunk(
         R"HTML(<style>
-.record-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}.record-toolbar p{margin:0;color:var(--eb-muted);font-size:13px}.record-table{width:100%;min-width:800px;border-collapse:collapse;font-size:13px}.record-table th,.record-table td{padding:9px 8px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:middle}.record-table th{color:var(--eb-muted);font-weight:650;white-space:nowrap}.record-table tbody tr:last-child td{border-bottom:0}.record-table tbody tr:hover{background:var(--eb-soft)}.record-id,.record-number{white-space:nowrap;font-variant-numeric:tabular-nums}.record-time{min-width:12em;white-space:nowrap}.record-action{width:1%;white-space:nowrap}.record-empty-cell{padding:24px 16px!important;background:var(--eb-soft);text-align:center!important}.record-empty-cell b{display:block;margin-bottom:4px;font-size:15px}.record-empty-cell span{color:var(--eb-muted)}
-.record-detail-dialog{width:min(920px,calc(100vw - 28px))}.record-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.record-detail-head h2{margin:1px 0 0;font-size:20px}.record-detail-head>div>span{font-size:12px}.record-detail-close{min-height:30px}.record-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 12px;padding:12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft)}.record-detail-grid>div{min-width:0}.record-detail-grid b{display:block;color:var(--eb-muted);font-size:11px;font-weight:650}.record-detail-grid span{display:block;margin-top:2px;overflow-wrap:anywhere}.record-detail-grid .tag{display:inline-flex}.record-detail-section{margin-top:16px}.record-detail-section>h3{margin-bottom:2px}.record-detail-section>p{margin-bottom:8px;color:var(--eb-muted);font-size:12px}.record-zone-table{width:100%;min-width:820px;border-collapse:collapse;font-size:12px}.record-zone-table th,.record-zone-table td{padding:7px 6px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:top}.record-zone-table th{color:var(--eb-muted);font-weight:650;white-space:nowrap}.record-zone-table tr:last-child td{border-bottom:0}.record-zone-table td>b,.record-zone-table td>small{display:block}.record-zone-table td>small{color:var(--eb-muted)}.record-flags{display:flex;flex-wrap:wrap;gap:4px;min-width:9em}
-@media(max-width:760px){.record-toolbar{align-items:flex-start}.record-toolbar p{display:none}.record-table{display:block;min-width:0}.record-table thead{display:none}.record-table tbody{display:grid;gap:9px}.record-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}.record-table tbody tr:hover{background:#fff}.record-table td{display:grid;grid-template-columns:7.2em minmax(0,1fr);gap:8px;padding:4px 0;border:0;white-space:normal}.record-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:650}.record-table .record-action{display:flex;justify-content:flex-end;width:auto;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}.record-table .record-action::before{display:none}.record-table .record-action>.btnlink{width:100%;min-height:34px}.record-table .record-empty-row{display:block;padding:0}.record-table .record-empty-cell{display:block;padding:22px 12px!important}.record-table .record-empty-cell::before{display:none}.record-detail-dialog{width:calc(100vw - 20px);padding:12px!important}.record-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr));padding:10px}.record-zone-table{display:block;min-width:0}.record-zone-table thead{display:none}.record-zone-table tbody{display:grid;gap:8px}.record-zone-table tr{display:grid;padding:9px;border:1px solid var(--eb-line);border-radius:7px}.record-zone-table td{display:grid;grid-template-columns:7.5em minmax(0,1fr);gap:7px;padding:3px 0;border:0}.record-zone-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:11px;font-weight:650}.record-zone-table td>b,.record-zone-table td>small{display:inline}.record-zone-table td>small{margin-left:4px}.record-flags{min-width:0}.record-detail-dialog>.actions button{width:100%}}
-@media(max-width:420px){.record-detail-grid{grid-template-columns:1fr}.record-detail-head h2{font-size:18px}}
+.record-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 10px}.record-toolbar p{margin:0;color:var(--eb-muted);font-size:13px}.record-table{width:100%;min-width:900px;border-collapse:collapse;font-size:13px}.record-table th,.record-table td{padding:10px 8px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:middle}.record-table th{color:var(--eb-muted);font-weight:500;white-space:nowrap;background:var(--eb-soft)}.record-table tbody tr:last-child td{border-bottom:0}.record-table tbody tr:hover{background:#fbfcfd}.record-number{white-space:nowrap;font-variant-numeric:tabular-nums}.record-number span,.record-number small,.record-result-reason{display:block}.record-number small,.record-result-reason{margin-top:2px;color:var(--eb-muted);font-size:11px;font-weight:400}.record-time{width:1%;min-width:9.5em;white-space:nowrap;font-variant-numeric:tabular-nums}.record-zones{min-width:12em}.record-action{width:1%;white-space:nowrap;text-align:right!important}.record-empty-cell{padding:24px 16px!important;background:var(--eb-soft);text-align:center!important}.record-empty-cell b{display:block;margin-bottom:4px;font-size:15px;font-weight:500}.record-empty-cell span{color:var(--eb-muted)}
+.record-detail-dialog{width:min(920px,calc(100vw - 28px))}.record-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.record-detail-head h2{margin:3px 0 0;font-size:20px;font-weight:500}.record-detail-head>div>span{font-size:12px}.record-detail-close{min-height:30px;font-weight:500}.record-detail-result{display:flex;align-items:center;gap:10px;margin-bottom:10px;color:var(--eb-muted);font-size:13px}.record-detail-result .tag{font-weight:500}.record-detail-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.record-detail-metrics>div{min-width:0;padding:11px 12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft)}.record-detail-metrics span{display:block;color:var(--eb-muted);font-size:11px}.record-detail-metrics b{display:block;margin-top:3px;font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.record-detail-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px 14px;padding:11px 12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.record-detail-grid>div{min-width:0}.record-detail-grid b{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.record-detail-grid span{display:block;margin-top:3px;overflow-wrap:anywhere}.record-detail-section{margin-top:16px}.record-detail-section>h3{margin-bottom:7px;font-size:14px;font-weight:500}.record-detail-section>p{margin:0 0 8px;color:var(--eb-muted);font-size:12px}.record-zone-table{width:100%;min-width:760px;border-collapse:collapse;font-size:12px}.record-zone-table th,.record-zone-table td{padding:8px 7px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:top}.record-zone-table th{color:var(--eb-muted);font-weight:500;white-space:nowrap;background:var(--eb-soft)}.record-zone-table tr:last-child td{border-bottom:0}.record-zone-table td>b,.record-zone-table td>small{display:block}.record-zone-table td>b{font-weight:500}.record-zone-table td>small{margin-top:2px;color:var(--eb-muted);font-weight:400}.record-flags{display:flex;flex-wrap:wrap;gap:4px;min-width:8em}.record-detail-note{margin:10px 0 0;color:var(--eb-muted);font-size:11px}
+@media(max-width:760px){.record-toolbar{align-items:flex-start}.record-toolbar p{display:none}.record-table{display:block;min-width:0}.record-table thead{display:none}.record-table tbody{display:grid;gap:9px}.record-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}.record-table tbody tr:hover{background:#fff}.record-table td{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;padding:4px 0;border:0;white-space:normal;text-align:left!important}.record-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:400}.record-table .record-action{display:flex;justify-content:flex-end;width:auto;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}.record-table .record-action::before{display:none}.record-table .record-action>.btnlink{width:100%;min-height:34px}.record-table .record-empty-row{display:block;padding:0}.record-table .record-empty-cell{display:block;padding:22px 12px!important}.record-table .record-empty-cell::before{display:none}.record-detail-dialog{width:calc(100vw - 20px);padding:12px!important}.record-detail-metrics,.record-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.record-zone-table{display:block;min-width:0}.record-zone-table thead{display:none}.record-zone-table tbody{display:grid;gap:8px}.record-zone-table tr{display:grid;padding:9px;border:1px solid var(--eb-line);border-radius:7px}.record-zone-table td{display:grid;grid-template-columns:7em minmax(0,1fr);gap:7px;padding:3px 0;border:0}.record-zone-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:11px;font-weight:400}.record-zone-table td>b,.record-zone-table td>small{display:inline}.record-zone-table td>small{margin-left:4px}.record-flags{min-width:0}.record-detail-dialog>.actions button{width:100%}}
+@media(max-width:420px){.record-detail-metrics,.record-detail-grid{grid-template-columns:1fr}.record-detail-result{align-items:flex-start;flex-direction:column;gap:5px}.record-detail-head h2{font-size:18px}}
 </style>)HTML");
     uint32_t detailId = 0;
     char idText[16]{};
@@ -2410,7 +2486,7 @@ void IrrigationWeb::records() {
                                  "浇水记录暂时无法读取",
                                  "请在系统状态中检查业务记录存储。");
     } else {
-        Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='record-table'><thead><tr><th>编号</th><th>完成时间</th><th>来源</th><th>结果</th><th>实际浇水时间</th><th>历史估算水量</th><th>操作</th></tr></thead><tbody>");
+        Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='record-table'><thead><tr><th>完成时间</th><th>来源</th><th>实际水路</th><th>结果</th><th>浇水时间</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
         RecordRowsContext context{g_app->configuration(), 0};
         bool readOk = true;
         if (status.recordCount == 0) {
