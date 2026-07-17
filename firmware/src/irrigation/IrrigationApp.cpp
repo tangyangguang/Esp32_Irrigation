@@ -441,6 +441,10 @@ uint8_t IrrigationApp::pendingLearnedZoneId() const {
     return pendingLearnedZoneId_;
 }
 
+uint32_t IrrigationApp::pendingLearnedBaselinePulseRateX100() const {
+    return pendingLearnedBaselinePulseRateX100_;
+}
+
 uint32_t IrrigationApp::pendingLearnedFlowMlPerMinute() const {
     const IrrigationConfig* current = configStore_.current();
     uint32_t flowMlPerMinute = 0;

@@ -6,6 +6,15 @@ bool elapsed(uint32_t nowMs, uint32_t startedMs, uint32_t durationMs) {
     return static_cast<uint32_t>(nowMs - startedMs) >= durationMs;
 }
 
+uint32_t learningAllowedPulseRateSpreadX100(uint32_t averageRateX100) {
+    const uint32_t percentTolerance = static_cast<uint32_t>(
+        (static_cast<uint64_t>(averageRateX100) * 10U + 50U) / 100U);
+    constexpr uint32_t kOnePulseWindowToleranceX100 = 20U;
+    return percentTolerance > kOnePulseWindowToleranceX100
+               ? percentTolerance
+               : kOnePulseWindowToleranceX100;
+}
+
 }  // namespace
 
 WateringController::WateringController(WateringHardware& hardware) : hardware_(hardware) {}
@@ -223,6 +232,31 @@ WateringStatus WateringController::status() const {
     result.learningMinimumMlPerMinute = learningMinimumMlPerMinute_;
     result.learningMaximumMlPerMinute = learningMaximumMlPerMinute_;
     result.learningSampleCount = learningRateSampleCount_;
+    if (learningRateSampleCount_ != 0) {
+        uint32_t minimumRate = UINT32_MAX;
+        uint32_t maximumRate = 0;
+        uint64_t totalRate = 0;
+        for (uint8_t index = 0; index < learningRateSampleCount_; ++index) {
+            const uint32_t rate = learningPulseRatesX100_[index];
+            minimumRate = rate < minimumRate ? rate : minimumRate;
+            maximumRate = rate > maximumRate ? rate : maximumRate;
+            totalRate += rate;
+            WateringStatus::LearningWindowSample& window =
+                result.learningWindows[index];
+            window.pulseCount = learningPulseCounts_[index];
+            window.windowMs = learningWindowDurationsMs_[index];
+            window.pulseRateX100 = rate;
+            FlowMonitor::pulseRateToFlowMlPerMinute(
+                rate, flowMeter_.pulsesPerLiterX100, window.flowMlPerMinute);
+        }
+        result.learningAveragePulseRateX100 = static_cast<uint32_t>(
+            (totalRate + learningRateSampleCount_ / 2U) / learningRateSampleCount_);
+        result.learningMinimumPulseRateX100 = minimumRate;
+        result.learningMaximumPulseRateX100 = maximumRate;
+        result.learningAllowedPulseRateSpreadX100 =
+            learningAllowedPulseRateSpreadX100(
+                result.learningAveragePulseRateX100);
+    }
     result.flowHistoryGeneration = flowHistoryGeneration_;
     result.flowSampleSerial = flowSampleSerial_;
     result.zones = sessionSummary_.zones;
@@ -570,12 +604,8 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
             FlowMonitor::pulseRateToFlowMlPerMinute(
                 maximum, flowMeter_.pulsesPerLiterX100,
                 learningMaximumMlPerMinute_);
-            const uint32_t percentTolerance = static_cast<uint32_t>(
-                (static_cast<uint64_t>(averageRateX100) * 10U + 50U) / 100U);
-            constexpr uint32_t kOnePulseWindowToleranceX100 = 20U;
-            const uint32_t tolerance = percentTolerance > kOnePulseWindowToleranceX100
-                                           ? percentTolerance
-                                           : kOnePulseWindowToleranceX100;
+            const uint32_t tolerance =
+                learningAllowedPulseRateSpreadX100(averageRateX100);
             if (allWindowsHavePulses && totalWindowMs != 0 &&
                 maximum - minimum <= tolerance) {
                 const uint64_t weightedRate =

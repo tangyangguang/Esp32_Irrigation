@@ -220,7 +220,18 @@ struct WateringStatus {
     uint32_t learningAverageMlPerMinute;
     uint32_t learningMinimumMlPerMinute;
     uint32_t learningMaximumMlPerMinute;
+    uint32_t learningAveragePulseRateX100;
+    uint32_t learningMinimumPulseRateX100;
+    uint32_t learningMaximumPulseRateX100;
+    uint32_t learningAllowedPulseRateSpreadX100;
     uint8_t learningSampleCount;
+    struct LearningWindowSample {
+        uint32_t pulseCount;
+        uint32_t windowMs;
+        uint32_t pulseRateX100;
+        uint32_t flowMlPerMinute;
+    };
+    std::array<LearningWindowSample, 5> learningWindows;
     uint32_t flowHistoryGeneration;
     uint32_t flowSampleSerial;
     std::array<ZoneWateringSummary, BoardPins::kZoneCount> zones;

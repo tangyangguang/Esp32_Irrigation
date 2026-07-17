@@ -64,6 +64,7 @@ public:
     WateringStartResult startZoneFlowLearning(uint8_t zoneId);
     bool saveLearnedZoneFlow(uint32_t expectedConfigRevision);
     uint8_t pendingLearnedZoneId() const;
+    uint32_t pendingLearnedBaselinePulseRateX100() const;
     uint32_t pendingLearnedFlowMlPerMinute() const;
     bool clearLearnedZoneFlow(uint8_t zoneId, uint32_t expectedConfigRevision);
     void discardLearnedZoneFlow();

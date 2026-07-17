@@ -474,6 +474,21 @@ void test_zone_flow_learning_completes_after_five_stable_windows() {
             TEST_ASSERT_EQUAL_UINT32(1008, live.learningMinimumMlPerMinute);
             TEST_ASSERT_EQUAL_UINT32(1008, live.learningMaximumMlPerMinute);
             TEST_ASSERT_EQUAL_UINT8(4, live.learningSampleCount);
+            TEST_ASSERT_EQUAL_UINT32(420, live.learningAveragePulseRateX100);
+            TEST_ASSERT_EQUAL_UINT32(420, live.learningMinimumPulseRateX100);
+            TEST_ASSERT_EQUAL_UINT32(420, live.learningMaximumPulseRateX100);
+            TEST_ASSERT_EQUAL_UINT32(
+                42, live.learningAllowedPulseRateSpreadX100);
+            for (uint8_t index = 0; index < live.learningSampleCount; ++index) {
+                TEST_ASSERT_EQUAL_UINT32(21,
+                                         live.learningWindows[index].pulseCount);
+                TEST_ASSERT_EQUAL_UINT32(5000,
+                                         live.learningWindows[index].windowMs);
+                TEST_ASSERT_EQUAL_UINT32(
+                    420, live.learningWindows[index].pulseRateX100);
+                TEST_ASSERT_EQUAL_UINT32(
+                    1008, live.learningWindows[index].flowMlPerMinute);
+            }
         }
     }
     TEST_ASSERT_FALSE(controller.status().active);
@@ -483,7 +498,10 @@ void test_zone_flow_learning_completes_after_five_stable_windows() {
     TEST_ASSERT_NOT_NULL(summary);
     TEST_ASSERT_EQUAL_UINT32(420,
                              summary->zones[0].suggestedBaselinePulseRateX100);
-    TEST_ASSERT_EQUAL_UINT8(5, controller.status().learningSampleCount);
+    const WateringStatus completed = controller.status();
+    TEST_ASSERT_EQUAL_UINT8(5, completed.learningSampleCount);
+    TEST_ASSERT_EQUAL_UINT32(21, completed.learningWindows[4].pulseCount);
+    TEST_ASSERT_EQUAL_UINT32(5000, completed.learningWindows[4].windowMs);
 }
 
 void test_zone_flow_learning_allows_one_pulse_window_quantization() {
