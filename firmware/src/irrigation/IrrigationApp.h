@@ -65,6 +65,7 @@ public:
     bool saveLearnedZoneFlow(uint32_t expectedConfigRevision);
     uint8_t pendingLearnedZoneId() const;
     uint32_t pendingLearnedFlowMlPerMinute() const;
+    bool clearLearnedZoneFlow(uint8_t zoneId, uint32_t expectedConfigRevision);
     void discardLearnedZoneFlow();
     const IrrigationConfig* configuration() const;
     bool saveConfiguration(const IrrigationConfig& proposed,
@@ -108,7 +109,7 @@ private:
     bool rtcObservationInitialized_ = false;
     bool eventConditionsInitialized_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
-    uint32_t pendingLearnedFlowMlPerMinute_ = 0;
+    uint32_t pendingLearnedBaselinePulseRateX100_ = 0;
     IrrigationConfig parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
     FlowCalibrationService flowCalibrationService_;

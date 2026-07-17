@@ -6,7 +6,7 @@
 
 #include "BoardPins.h"
 
-constexpr uint32_t kIrrigationConfigSchemaVersion = 1;
+constexpr uint32_t kIrrigationConfigSchemaVersion = 2;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
 constexpr std::size_t kFlowHistorySampleCount = 120;
@@ -34,7 +34,6 @@ struct FlowMeterConfig {
     uint32_t pulsesPerLiterX100;
     uint32_t calibrationStartupPulseCount;
     uint32_t calibrationStartupWaterMl;
-    uint32_t calibrationSteadyFlowMlPerMinute;
 };
 
 struct CalibrationStabilityConfig {
@@ -65,7 +64,7 @@ struct ZoneConfig {
     uint8_t id;
     bool enabled;
     std::array<char, kObjectNameCapacity> name;
-    uint32_t learnedFlowMlPerMinute;
+    uint32_t baselinePulseRateX100;
 };
 
 struct WateringPlan {
@@ -179,7 +178,7 @@ struct ZoneWateringSummary {
     bool waterEstimateCapped;
     bool lowFlowDetected;
     bool highFlowDetected;
-    uint32_t suggestedFlowMlPerMinute;
+    uint32_t suggestedBaselinePulseRateX100;
     uint32_t calibrationFlowEstablishedMs;
     uint32_t calibrationSteadyStartedMs;
     uint32_t calibrationStartupPulses;

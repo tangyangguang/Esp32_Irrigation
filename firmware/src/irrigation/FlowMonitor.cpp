@@ -52,11 +52,14 @@ bool FlowMonitor::takeRateSample(uint32_t nowMs,
         return false;
     }
     const uint32_t pulses = pulseCount - rateWindowStartedPulseCount_;
-    const uint64_t numerator = static_cast<uint64_t>(pulses) * 100000ULL * 60000ULL;
-    const uint64_t denominator = static_cast<uint64_t>(pulsesPerLiterX100) * windowMs;
-    const uint64_t rounded = (numerator + denominator / 2U) / denominator;
-    sample.flowMlPerMinute = rounded > UINT32_MAX ? UINT32_MAX
-                                                  : static_cast<uint32_t>(rounded);
+    const uint64_t pulseRate =
+        (static_cast<uint64_t>(pulses) * 100000ULL + windowMs / 2U) / windowMs;
+    sample.pulseRateX100 = pulseRate > UINT32_MAX
+                               ? UINT32_MAX
+                               : static_cast<uint32_t>(pulseRate);
+    pulseRateToFlowMlPerMinute(sample.pulseRateX100,
+                              pulsesPerLiterX100,
+                              sample.flowMlPerMinute);
     sample.pulseCount = pulses;
     sample.windowMs = windowMs;
     beginRateWindow(nowMs, pulseCount);
@@ -78,5 +81,24 @@ bool FlowMonitor::estimateWaterMilliliters(uint32_t pulseCount,
         return false;
     }
     waterMl = static_cast<uint32_t>(estimate);
+    return true;
+}
+
+bool FlowMonitor::pulseRateToFlowMlPerMinute(uint32_t pulseRateX100,
+                                             uint32_t pulsesPerLiterX100,
+                                             uint32_t& flowMlPerMinute) {
+    if (pulsesPerLiterX100 == 0) {
+        flowMlPerMinute = 0;
+        return false;
+    }
+    const uint64_t numerator = static_cast<uint64_t>(pulseRateX100) * 60000ULL;
+    const uint64_t estimate =
+        (numerator + static_cast<uint64_t>(pulsesPerLiterX100) / 2U) /
+        pulsesPerLiterX100;
+    if (estimate > UINT32_MAX) {
+        flowMlPerMinute = UINT32_MAX;
+        return false;
+    }
+    flowMlPerMinute = static_cast<uint32_t>(estimate);
     return true;
 }

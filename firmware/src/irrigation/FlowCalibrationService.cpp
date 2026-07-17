@@ -26,7 +26,6 @@ void FlowCalibrationService::clear() {
     combinedPulsesPerLiterX100_ = 0;
     combinedStartupPulseCount_ = 0;
     combinedStartupWaterMl_ = 0;
-    combinedSteadyFlowMlPerMinute_ = 0;
     volumeSpanMl_ = 0;
     combinedStartupWaterMlX100_ = 0;
     resultUpdatedEpoch_ = 0;
@@ -191,10 +190,6 @@ uint32_t FlowCalibrationService::combinedStartupWaterMl() const {
     return combinedStartupWaterMl_;
 }
 
-uint32_t FlowCalibrationService::combinedSteadyFlowMlPerMinute() const {
-    return combinedSteadyFlowMlPerMinute_;
-}
-
 int64_t FlowCalibrationService::combinedStartupWaterMlX100() const {
     return combinedStartupWaterMlX100_;
 }
@@ -223,7 +218,6 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
     combinedPulsesPerLiterX100_ = 0;
     combinedStartupPulseCount_ = 0;
     combinedStartupWaterMl_ = 0;
-    combinedSteadyFlowMlPerMinute_ = 0;
     combinedStartupWaterMlX100_ = 0;
     volumeSpanMl_ = 0;
     maximumResidualPercentX100_ = 0;
@@ -251,7 +245,6 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
     uint64_t sumVolume = 0;
     uint64_t sumPulses = 0;
     uint64_t sumStartupPulses = 0;
-    uint64_t sumSteadyDurationMs = 0;
     uint64_t sumVolumeSquared = 0;
     uint64_t sumVolumePulses = 0;
     uint32_t minimumVolume = UINT32_MAX;
@@ -262,7 +255,6 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
         sumVolume += sample.measuredWaterMl;
         sumPulses += sample.steadyPulseCount;
         sumStartupPulses += sample.startupPulseCount;
-        sumSteadyDurationMs += sample.steadyDurationMs;
         sumVolumeSquared += static_cast<uint64_t>(sample.measuredWaterMl) *
                             sample.measuredWaterMl;
         sumVolumePulses += static_cast<uint64_t>(sample.measuredWaterMl) *
@@ -319,17 +311,6 @@ void FlowCalibrationService::recalculate(uint32_t resultEpoch) {
         combinedStartupWaterMl_ = roundedStartupWaterMl >= UINT32_MAX
                                       ? UINT32_MAX
                                       : static_cast<uint32_t>(roundedStartupWaterMl);
-    }
-    if (sumSteadyDurationMs != 0) {
-        const double steadyFlowMlPerMinute =
-            static_cast<double>(sumPulses) * 6000000000.0 /
-            (static_cast<double>(sumSteadyDurationMs) * coefficient);
-        if (std::isfinite(steadyFlowMlPerMinute) && steadyFlowMlPerMinute > 0.0) {
-            combinedSteadyFlowMlPerMinute_ = steadyFlowMlPerMinute >= UINT32_MAX
-                                                  ? UINT32_MAX
-                                                  : static_cast<uint32_t>(
-                                                        std::llround(steadyFlowMlPerMinute));
-        }
     }
     for (uint8_t index = 0; index < sampleCount_; ++index) {
         Sample& sample = samples_[index];

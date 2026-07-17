@@ -334,7 +334,12 @@ void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
         case EventCode::FlowCalibrationSaved:
             std::snprintf(out, length, "流量校准结果已保存"); return;
         case EventCode::ZoneFlowSaved:
-            std::snprintf(out, length, "水路 %lu 的参考流量已保存", static_cast<unsigned long>(event.objectId)); return;
+            std::snprintf(out,
+                          length,
+                          event.value1 == 0
+                              ? "水路 %lu 的基准流量已清除"
+                              : "水路 %lu 的基准流量已保存",
+                          static_cast<unsigned long>(event.objectId)); return;
         case EventCode::ConfigurationChanged:
             switch (static_cast<ReasonCode>(event.reasonCode)) {
                 case ReasonCode::PlanCreated: std::snprintf(out, length, "计划 %lu 已创建", static_cast<unsigned long>(event.objectId)); return;
@@ -385,7 +390,11 @@ void IrrigationEvents::formatSummary(const Esp32BaseAppEvents::EventRecord& even
         case EventCode::FlowCalibrationSaved:
             std::snprintf(out, length, "新的流量系数已生效。"); return;
         case EventCode::ZoneFlowSaved:
-            std::snprintf(out, length, "后续浇水将使用新的参考流量。"); return;
+            std::snprintf(out,
+                          length,
+                          event.value1 == 0
+                              ? "该水路的高低流量报警已停用。"
+                              : "后续浇水将使用新的基准流量。"); return;
         case EventCode::ConfigurationChanged:
             std::snprintf(out, length, "新设置从之后的操作生效。"); return;
         case EventCode::WateringRecordSaveFailed:

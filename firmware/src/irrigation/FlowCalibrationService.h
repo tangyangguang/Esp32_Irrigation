@@ -67,7 +67,6 @@ public:
     uint32_t combinedPulsesPerLiterX100() const;
     uint32_t combinedStartupPulseCount() const;
     uint32_t combinedStartupWaterMl() const;
-    uint32_t combinedSteadyFlowMlPerMinute() const;
     int64_t combinedStartupWaterMlX100() const;
     uint32_t volumeSpanMl() const;
     uint8_t validZoneCount() const;
@@ -86,7 +85,6 @@ private:
     uint32_t combinedPulsesPerLiterX100_ = 0;
     uint32_t combinedStartupPulseCount_ = 0;
     uint32_t combinedStartupWaterMl_ = 0;
-    uint32_t combinedSteadyFlowMlPerMinute_ = 0;
     uint32_t volumeSpanMl_ = 0;
     int64_t combinedStartupWaterMlX100_ = 0;
     uint32_t resultUpdatedEpoch_ = 0;

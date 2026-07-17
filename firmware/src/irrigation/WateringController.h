@@ -44,8 +44,10 @@ private:
     FlowMeterConfig flowMeter_{};
     FlowProtectionConfig flowProtection_{};
     CalibrationStabilityConfig calibrationStability_{};
-    std::array<uint32_t, BoardPins::kZoneCount> learnedFlowMlPerMinute_{};
-    std::array<uint32_t, 5> learningRateSamples_{};
+    std::array<uint32_t, BoardPins::kZoneCount> baselinePulseRateX100_{};
+    std::array<uint32_t, 5> learningPulseRatesX100_{};
+    std::array<uint32_t, 5> learningPulseCounts_{};
+    std::array<uint32_t, 5> learningWindowDurationsMs_{};
     std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
     FlowMonitor flowMonitor_;
     CalibrationStabilityDetector calibrationDetector_;
@@ -62,8 +64,8 @@ private:
     uint32_t wateringStartedMs_ = 0;
     uint32_t wateringEndedMs_ = 0;
     uint32_t lastHandledMs_ = 0;
-    uint32_t lowFlowStartedMs_ = 0;
-    uint32_t highFlowStartedMs_ = 0;
+    uint32_t lowFlowDurationMs_ = 0;
+    uint32_t highFlowDurationMs_ = 0;
     uint32_t currentFlowMlPerMinute_ = 0;
     uint32_t calibrationFlowEstablishedMs_ = 0;
     uint32_t calibrationStopMs_ = 0;
@@ -85,7 +87,5 @@ private:
     bool wateringEndCaptured_ = false;
     bool stopSessionAfterValveClose_ = false;
     bool finishedSessionReady_ = false;
-    bool lowFlowTiming_ = false;
-    bool highFlowTiming_ = false;
     bool calibrationStopCaptured_ = false;
 };

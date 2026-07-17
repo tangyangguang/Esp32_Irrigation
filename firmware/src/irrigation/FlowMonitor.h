@@ -5,6 +5,7 @@
 class FlowMonitor {
 public:
     struct RateSample {
+        uint32_t pulseRateX100;
         uint32_t flowMlPerMinute;
         uint32_t pulseCount;
         uint32_t windowMs;
@@ -25,6 +26,9 @@ public:
     static bool estimateWaterMilliliters(uint32_t pulseCount,
                                          uint32_t pulsesPerLiterX100,
                                          uint32_t& waterMl);
+    static bool pulseRateToFlowMlPerMinute(uint32_t pulseRateX100,
+                                          uint32_t pulsesPerLiterX100,
+                                          uint32_t& flowMlPerMinute);
 
 private:
     uint32_t waitStartedMs_ = 0;

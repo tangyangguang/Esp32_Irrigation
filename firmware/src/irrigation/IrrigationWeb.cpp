@@ -138,21 +138,15 @@ bool saveZoneFromRequest() {
     const IrrigationConfig* current = g_app->configuration();
     uint32_t zoneId = 0, revision = 0;
     char name[kObjectNameCapacity]{};
-    char learnedFlow[24]{};
     if (!current || !uintParam("zone_id", 1, BoardPins::kZoneCount, zoneId) ||
         !uintParam("revision", 1, UINT32_MAX, revision) ||
-        !getParam("name", name, sizeof(name)) ||
-        !getParam("learned_flow", learnedFlow, sizeof(learnedFlow))) {
+        !getParam("name", name, sizeof(name))) {
         return false;
     }
     IrrigationConfig next = *current;
     ZoneConfig& zone = next.zones[zoneId - 1U];
     zone.enabled = Esp32BaseWeb::hasParam("enabled");
     std::snprintf(zone.name.data(), zone.name.size(), "%s", name);
-    if (!IrrigationConfigRules::parseLitersPerMinute(
-            learnedFlow, zone.learnedFlowMlPerMinute)) {
-        return false;
-    }
     return g_app->saveConfiguration(next,
                                     revision,
                                     IrrigationEvents::ConfigurationChange::ZoneUpdated,
@@ -701,9 +695,14 @@ void sendEventDetailDialog(const Esp32BaseAppEvents::EventRecord& event,
             event.value1 < 0 ? 0 : static_cast<uint32_t>(event.value1), flow, sizeof(flow));
         Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关数据</h3><div class='event-detail-grid event-detail-business'><div><b>水路</b><span>");
         sendUnsigned(event.objectId);
-        Esp32BaseWeb::sendChunk("</span></div><div><b>参考流量</b><span>");
-        Esp32BaseWeb::sendChunk(flow);
-        Esp32BaseWeb::sendChunk(" L/min</span></div></div></section>");
+        Esp32BaseWeb::sendChunk("</span></div><div><b>基准流量</b><span>");
+        if (event.value1 == 0) {
+            Esp32BaseWeb::sendChunk("已清除");
+        } else {
+            Esp32BaseWeb::sendChunk(flow);
+            Esp32BaseWeb::sendChunk(" L/min");
+        }
+        Esp32BaseWeb::sendChunk("</span></div></div></section>");
     } else if (eventCode == IrrigationEvents::EventCode::AutomaticPlanSkipped) {
         Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关对象</h3><div class='event-detail-grid event-detail-business'><div><b>计划</b><span>");
         sendUnsigned(event.objectId);
@@ -902,7 +901,13 @@ void IrrigationWeb::overview() {
         heroHref = "/irrigation/zones";
         heroAction = "设置水路";
     }
-    if (g_app->unexpectedFlowAlarm()) {
+    if (!g_app->businessReady()) {
+        heroTone = " danger";
+        heroTitle = "灌溉配置需要重新建立";
+        heroDescription = "当前配置结构不兼容或文件无效，全部输出保持关闭。请先导出需要保留的记录，再到系统工具格式化文件系统并重新配置。";
+        heroHref = "/esp32base";
+        heroAction = "打开系统工具";
+    } else if (g_app->unexpectedFlowAlarm()) {
         heroTone = " danger";
         heroTitle = "关阀后水流异常";
         heroDescription = "所有阀门关闭后仍检测到水流，请检查阀门和管路。";
@@ -1525,7 +1530,7 @@ void IrrigationWeb::zones() {
         redirectResult("/irrigation/zones", actionIs("save") && saveZoneFromRequest());
         return;
     }
-    if (!beginPage("水路设置", "启用实际安装的水路，并设置名称和基准流量")) return;
+    if (!beginPage("水路设置", "启用实际安装的水路，并学习各水路的基准流量")) return;
     Esp32BaseWeb::sendChunk(
         "<style>"
         ".zone-meter{display:flex;align-items:center;justify-content:space-between;gap:16px}"
@@ -1550,17 +1555,23 @@ void IrrigationWeb::zones() {
         Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part zone-table'><thead><tr><th>水路</th><th>名称</th><th>启用状态</th><th>基准流量</th><th>操作</th></tr></thead><tbody>");
         for (const ZoneConfig& zone : config->zones) {
             char value[20]{};
-            if (zone.learnedFlowMlPerMinute != 0) {
+            uint32_t flowMlPerMinute = 0;
+            if (zone.baselinePulseRateX100 != 0 &&
+                FlowMonitor::pulseRateToFlowMlPerMinute(
+                    zone.baselinePulseRateX100,
+                    config->flowMeter.pulsesPerLiterX100,
+                    flowMlPerMinute)) {
                 IrrigationConfigRules::formatLitersPerMinute(
-                    zone.learnedFlowMlPerMinute, value, sizeof(value));
+                    flowMlPerMinute, value, sizeof(value));
             }
             Esp32BaseWeb::sendChunk("<tr><td>水路 "); sendUnsigned(zone.id);
             Esp32BaseWeb::sendChunk("</td><td>"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
             Esp32BaseWeb::sendChunk("</td><td><span class='tag ");
             Esp32BaseWeb::sendChunk(zone.enabled ? "ok'>已启用" : "'>未启用");
             Esp32BaseWeb::sendChunk("</span></td><td>");
-            if (zone.learnedFlowMlPerMinute == 0) Esp32BaseWeb::sendChunk("<span class='muted'>未设置</span>");
-            else { Esp32BaseWeb::writeHtmlEscaped(value); Esp32BaseWeb::sendChunk(" L/min"); }
+            if (zone.baselinePulseRateX100 == 0) Esp32BaseWeb::sendChunk("<span class='muted'>未学习</span>");
+            else if (value[0] == '\0') Esp32BaseWeb::sendChunk("<span class='muted'>超出显示范围</span>");
+            else { Esp32BaseWeb::writeHtmlEscaped(value); Esp32BaseWeb::sendChunk(" L/min（已学习）"); }
             Esp32BaseWeb::sendChunk("</td><td><div class='fsactions'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('zone-"); sendUnsigned(zone.id);
             Esp32BaseWeb::sendChunk("').showModal()\">修改</button>");
             if (zone.enabled) { Esp32BaseWeb::sendChunk("<a class='btnlink ok compact' href='/irrigation/zones/learning?zone="); sendUnsigned(zone.id); Esp32BaseWeb::sendChunk("'>学习基准流量</a>"); }
@@ -1574,17 +1585,12 @@ void IrrigationWeb::zones() {
         Esp32BaseWeb::sendChunk("</span><span class='zone-meter-unit'>P/L</span></div></div><a class='btnlink ok compact' href='/irrigation/zones/flow-calibration'>流量计校准</a></div>");
         Esp32BaseWeb::endPanel();
         for (const ZoneConfig& zone : config->zones) {
-            char learnedFlow[20]{};
-            IrrigationConfigRules::formatLitersPerMinute(
-                zone.learnedFlowMlPerMinute, learnedFlow, sizeof(learnedFlow));
             Esp32BaseWeb::sendChunk("<dialog id='zone-"); sendUnsigned(zone.id);
             Esp32BaseWeb::sendChunk("' class='panel eb-modal' data-eb-light-dismiss='1'><h2>修改水路 "); sendUnsigned(zone.id);
             Esp32BaseWeb::sendChunk("</h2><form method='post' action='/irrigation/zones' onsubmit='return once(this)'><input type='hidden' name='action' value='save'><input type='hidden' name='zone_id' value='"); sendUnsigned(zone.id);
             Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='"); sendUnsigned(config->revision);
             Esp32BaseWeb::sendChunk("'><div class='fieldgrid'><p class='field full'><label>水路名称</label><input name='name' maxlength='63' required value='"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
-            Esp32BaseWeb::sendChunk("'><small>用于计划、运行和记录页面显示。</small></p><p class='field full'><label>基准流量</label><input type='number' name='learned_flow' min='0' max='100' step='0.001' required value='");
-            Esp32BaseWeb::writeHtmlEscaped(learnedFlow);
-            Esp32BaseWeb::sendChunk("'><small>单位：L/min，范围 0～100.000；0 表示未设置。</small></p><p class='field full'><label><input type='checkbox' name='enabled' value='1' "); if (zone.enabled) Esp32BaseWeb::sendChunk("checked");
+            Esp32BaseWeb::sendChunk("'><small>用于计划、运行和记录页面显示。</small></p><p class='field full'><label><input type='checkbox' name='enabled' value='1' "); if (zone.enabled) Esp32BaseWeb::sendChunk("checked");
             Esp32BaseWeb::sendChunk("> 启用这条水路</label><small>未安装的水路保持关闭，正常使用页面不会显示。</small></p></div><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存'></div></form>");
             Esp32BaseWeb::sendChunk("</dialog>");
         }
@@ -1634,7 +1640,7 @@ void IrrigationWeb::flowCalibration() {
         } else if (actionIs("apply")) {
             success = g_app->applyFlowCalibrationResult();
         } else if (actionIs("parameters")) {
-            char coefficientText[20]{}, steadyFlowText[20]{};
+            char coefficientText[20]{};
             FlowMeterConfig parameters{};
             success = getParam("coefficient", coefficientText, sizeof(coefficientText)) &&
                       IrrigationConfigRules::parsePulsesPerLiter(
@@ -1643,10 +1649,6 @@ void IrrigationWeb::flowCalibration() {
                                 parameters.calibrationStartupPulseCount) &&
                       uintParam("startup_water_ml", 0, 1000000,
                                 parameters.calibrationStartupWaterMl) &&
-                      getParam("steady_flow", steadyFlowText, sizeof(steadyFlowText)) &&
-                      IrrigationConfigRules::parseLitersPerMinute(
-                          steadyFlowText,
-                          parameters.calibrationSteadyFlowMlPerMinute) &&
                       g_app->saveFlowCalibrationParameters(parameters);
         } else if (actionIs("clear")) {
             g_app->resetFlowCalibration();
@@ -1658,7 +1660,7 @@ void IrrigationWeb::flowCalibration() {
     if (!beginPage("流量计校准", "识别稳定出水阶段，用多组实测总水量计算稳态流量系数")) return;
     Esp32BaseWeb::sendChunk(
         "<style>"
-        ".cal-current{display:grid;grid-template-columns:repeat(4,minmax(0,1fr)) auto;gap:0;align-items:center;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff;overflow:hidden}"
+        ".cal-current{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:0;align-items:center;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff;overflow:hidden}"
         ".cal-current-fact{min-width:0;padding:10px 13px;border-right:1px solid var(--eb-line-soft)}.cal-current-label{display:block;color:var(--eb-muted);font-size:11px}.cal-current-value{display:block;margin-top:3px;color:var(--eb-text);font-size:17px;font-weight:400;line-height:1.35}.cal-current-unit{font-size:12px;color:var(--eb-muted)}.cal-current-action{padding:10px 13px}.cal-current-action button{white-space:nowrap}"
         ".cal-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}"
         ".cal-step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:9px;align-items:start;padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft);font-size:13px;line-height:1.55}"
@@ -1673,16 +1675,16 @@ void IrrigationWeb::flowCalibration() {
         ".cal-empty{padding:20px;text-align:center;border:1px dashed #c9d6dc;border-radius:9px;background:var(--eb-soft)}"
         ".cal-empty-title{margin:0;color:#344054;font-size:15px;font-weight:500}"
         ".cal-empty-text{margin:5px 0 0;color:var(--eb-muted);font-size:13px}"
-        ".cal-result{padding:12px 13px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.cal-result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.cal-result-head-left{display:flex;align-items:center;gap:8px}.cal-result-head p{margin:0;color:var(--eb-muted);font-size:12px}.cal-result-head form{margin:0}.cal-result-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--eb-line-soft);border-radius:8px;overflow:hidden}.cal-result-fact{min-width:0;padding:9px 10px;border-right:1px solid var(--eb-line-soft);background:var(--eb-soft)}.cal-result-fact:last-child{border-right:0}.cal-result-fact span{display:block;color:var(--eb-muted);font-size:11px}.cal-result-fact b{display:block;margin-top:3px;color:var(--eb-text);font-size:15px;font-weight:400}.cal-result-meta{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:8px;color:var(--eb-muted);font-size:11px;line-height:1.5}.cal-result-note{margin:8px 0 0;color:var(--eb-muted);font-size:11px;line-height:1.5}"
+        ".cal-result{padding:12px 13px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.cal-result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.cal-result-head-left{display:flex;align-items:center;gap:8px}.cal-result-head p{margin:0;color:var(--eb-muted);font-size:12px}.cal-result-head form{margin:0}.cal-result-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--eb-line-soft);border-radius:8px;overflow:hidden}.cal-result-fact{min-width:0;padding:9px 10px;border-right:1px solid var(--eb-line-soft);background:var(--eb-soft)}.cal-result-fact:last-child{border-right:0}.cal-result-fact span{display:block;color:var(--eb-muted);font-size:11px}.cal-result-fact b{display:block;margin-top:3px;color:var(--eb-text);font-size:15px;font-weight:400}.cal-result-meta{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:8px;color:var(--eb-muted);font-size:11px;line-height:1.5}.cal-result-note{margin:8px 0 0;color:var(--eb-muted);font-size:11px;line-height:1.5}"
         ".cal-sample-toolbar form{margin:0}.cal-sample-toolbar input{min-height:30px;padding:5px 10px;font-size:12px}"
         ".cal-edit{width:min(460px,calc(100vw - 28px))}.cal-edit h2{margin-bottom:4px}.cal-edit>p{margin-top:0}.cal-parameters{width:min(640px,calc(100vw - 28px))}.cal-parameter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;margin-top:14px}.cal-parameter-grid .field{min-width:0}.cal-parameter-grid label{font-weight:500}.cal-parameter-grid input{width:100%;margin:0}.cal-parameter-grid small{display:block;margin-top:4px;color:var(--eb-muted);font-size:12px;line-height:1.4}"
-        "@media(max-width:1150px){.cal-current{grid-template-columns:repeat(2,minmax(0,1fr)) auto}.cal-current-fact:nth-child(2){border-right:0}.cal-current-fact:nth-child(-n+2){border-bottom:1px solid var(--eb-line-soft)}.cal-current-action{grid-column:3;grid-row:1/span 2}.cal-sample-columns{display:none}.cal-sample{grid-template-columns:repeat(2,minmax(0,1fr)) auto}.cal-sample-actions{grid-column:3;grid-row:1/span 3}}"
+        "@media(max-width:1150px){.cal-sample-columns{display:none}.cal-sample{grid-template-columns:repeat(2,minmax(0,1fr)) auto}.cal-sample-actions{grid-column:3;grid-row:1/span 3}}"
         "@media(max-width:900px){.cal-start-form{grid-template-columns:1fr}.cal-start-controls select{width:100%;min-width:0}.cal-start-info{padding:10px 0 0;border-left:0;border-top:1px solid var(--eb-line-soft)}.cal-phase-grid{grid-template-columns:1fr}.cal-result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-result-fact:nth-child(2){border-right:0}.cal-result-fact:nth-child(-n+2){border-bottom:1px solid var(--eb-line-soft)}}"
         "@media(max-width:760px){"
         ".cal-steps{grid-template-columns:1fr}"
         ".cal-live .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-pending{grid-template-columns:1fr}.cal-sample-toolbar{align-items:flex-start}.cal-start-controls{align-items:stretch}.cal-sample{grid-template-columns:1fr auto}.cal-sample-actions{grid-column:2;grid-row:1/span 5}"
         "}"
-        "@media(max-width:560px){.cal-current{grid-template-columns:1fr auto}.cal-current-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-current-action{grid-column:2;grid-row:1/span 4}.cal-result-head{align-items:flex-start}.cal-result-grid{grid-template-columns:1fr}.cal-result-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-result-fact:last-child{border-bottom:0!important}.cal-sample{grid-template-columns:1fr}.cal-sample-actions{grid-column:1;grid-row:auto;justify-content:flex-start}.cal-parameter-grid{grid-template-columns:1fr}}"
+        "@media(max-width:560px){.cal-current{grid-template-columns:1fr auto}.cal-current-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-current-action{grid-column:2;grid-row:1/span 3}.cal-result-head{align-items:flex-start}.cal-result-grid{grid-template-columns:1fr}.cal-result-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-result-fact:last-child{border-bottom:0!important}.cal-sample{grid-template-columns:1fr}.cal-sample-actions{grid-column:1;grid-row:auto;justify-content:flex-start}.cal-parameter-grid{grid-template-columns:1fr}}"
         "</style>");
     const IrrigationConfig* config = g_app->configuration();
     if (!config) { endPage(); return; }
@@ -1693,24 +1695,17 @@ void IrrigationWeb::flowCalibration() {
     char coefficient[20]{};
     IrrigationConfigRules::formatPulsesPerLiter(
         config->flowMeter.pulsesPerLiterX100, coefficient, sizeof(coefficient));
-    char currentSteadyFlow[20]{};
-    IrrigationConfigRules::formatLitersPerMinute(
-        config->flowMeter.calibrationSteadyFlowMlPerMinute,
-        currentSteadyFlow,
-        sizeof(currentSteadyFlow));
     Esp32BaseWeb::beginPanel("设备校准参数");
     Esp32BaseWeb::sendChunk("<div class='cal-current'><div class='cal-current-fact'><span class='cal-current-label'>启动脉冲</span><span class='cal-current-value'>");
     sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>个</span>");
     Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>估算启动水量</span><span class='cal-current-value'>");
     sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>mL</span>");
-    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>稳态流量系数</span><span class='cal-current-value'>"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>P/L</span></span></div><div class='cal-current-fact'><span class='cal-current-label'>稳态参考流量</span><span class='cal-current-value'>");
-    Esp32BaseWeb::writeHtmlEscaped(currentSteadyFlow); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>L/min</span>");
-    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-action'>");
+    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>稳态流量系数</span><span class='cal-current-value'>"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>P/L</span></span></div><div class='cal-current-action'>");
     if (!managementLocked) Esp32BaseWeb::sendChunk("<button class='secondary' type='button' onclick=\"document.getElementById('cal-parameters').showModal()\">修改参数</button>");
     Esp32BaseWeb::sendChunk("</div></div>");
     Esp32BaseWeb::endPanel();
     if (!managementLocked) {
-        Esp32BaseWeb::sendChunk("<dialog id='cal-parameters' class='panel eb-modal cal-edit cal-parameters' data-eb-light-dismiss='1'><h2>修改校准参数</h2><p class='muted'>四项参数统一保存；当前只有稳态流量系数参与水量换算。</p><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='parameters'><div class='cal-parameter-grid'><p class='field'><label>启动脉冲</label><input type='number' name='startup_pulses' min='0' max='10000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk("'><small>单位：个；0 表示未设置。</small></p><p class='field'><label>估算启动水量</label><input type='number' name='startup_water_ml' min='0' max='1000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk("'><small>单位：mL；0 表示未设置。</small></p><p class='field'><label>稳态流量系数</label><input type='number' name='coefficient' min='0.01' max='100000.00' step='0.01' required value='"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk("'><small>单位：P/L。</small></p><p class='field'><label>稳态参考流量</label><input type='number' name='steady_flow' min='0' max='100.000' step='0.001' required value='"); Esp32BaseWeb::writeHtmlEscaped(currentSteadyFlow); Esp32BaseWeb::sendChunk("'><small>单位：L/min；0 表示未设置。</small></p></div><div class='actions'><button class='secondary' type='button' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存参数'></div></form></dialog>");
+        Esp32BaseWeb::sendChunk("<dialog id='cal-parameters' class='panel eb-modal cal-edit cal-parameters' data-eb-light-dismiss='1'><h2>修改校准参数</h2><p class='muted'>三项参数统一保存；稳态流量系数参与流量和水量换算。</p><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='parameters'><div class='cal-parameter-grid'><p class='field'><label>启动脉冲</label><input type='number' name='startup_pulses' min='0' max='10000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk("'><small>单位：个；0 表示未设置。</small></p><p class='field'><label>估算启动水量</label><input type='number' name='startup_water_ml' min='0' max='1000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk("'><small>单位：mL；0 表示未设置。</small></p><p class='field'><label>稳态流量系数</label><input type='number' name='coefficient' min='0.01' max='100000.00' step='0.01' required value='"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk("'><small>单位：P/L。</small></p></div><div class='actions'><button class='secondary' type='button' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存参数'></div></form></dialog>");
     }
     Esp32BaseWeb::beginPanel("开始校准");
     Esp32BaseWeb::sendChunk("<div class='cal-steps'><div class='cal-step'><span class='cal-step-num'>1</span><span>从完全停止状态开始接水，系统自动识别进入稳态的时刻。</span></div><div class='cal-step'><span class='cal-step-num'>2</span><span>停止后填写实测总水量；至少两个不同水量，建议三个样本。</span></div><div class='cal-step'><span class='cal-step-num'>3</span><span>仅用稳态阶段脉冲拟合，确认使用后才写入设备参数。</span></div></div><div class='cal-action'>");
@@ -1855,25 +1850,15 @@ void IrrigationWeb::flowCalibration() {
         char result[20]{};
         IrrigationConfigRules::formatPulsesPerLiter(
             calibration.combinedPulsesPerLiterX100(), result, sizeof(result));
-        char suggestedSteadyFlow[20]{};
-        const bool steadyFlowValid =
-            calibration.combinedSteadyFlowMlPerMinute() <= 100000U &&
-            IrrigationConfigRules::formatLitersPerMinute(
-                calibration.combinedSteadyFlowMlPerMinute(),
-                suggestedSteadyFlow,
-                sizeof(suggestedSteadyFlow));
         const bool canApply = calibration.combinedStartupPulseCount() <= 10000000U &&
-                              calibration.combinedStartupWaterMl() <= 1000000U &&
-                              steadyFlowValid;
+                              calibration.combinedStartupWaterMl() <= 1000000U;
         const bool matchesCurrent =
             config->flowMeter.pulsesPerLiterX100 ==
                 calibration.combinedPulsesPerLiterX100() &&
             config->flowMeter.calibrationStartupPulseCount ==
                 calibration.combinedStartupPulseCount() &&
             config->flowMeter.calibrationStartupWaterMl ==
-                calibration.combinedStartupWaterMl() &&
-            config->flowMeter.calibrationSteadyFlowMlPerMinute ==
-                calibration.combinedSteadyFlowMlPerMinute();
+                calibration.combinedStartupWaterMl();
         const bool appliedInSession = calibration.appliedCoefficientX100() ==
                                       calibration.combinedPulsesPerLiterX100() &&
                                       calibration.appliedEpoch() != 0;
@@ -1882,8 +1867,8 @@ void IrrigationWeb::flowCalibration() {
                                maximumResidual,
                                sizeof(maximumResidual));
         Esp32BaseWeb::sendChunk("<div class='cal-result'><div class='cal-result-head'><div class='cal-result-head-left'><p>当前样本计算结果</p><span class='tag "); Esp32BaseWeb::sendChunk(matchesCurrent ? "ok'>设备正在使用" : "warn'>尚未应用"); Esp32BaseWeb::sendChunk("</span></div>");
-        if (!matchesCurrent && canApply && !managementLocked) Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/flow-calibration' onsubmit=\"return confirm('确认保存并使用当前样本生成的四项校准参数？')&&once(this)\"><input type='hidden' name='action' value='apply'><input type='submit' value='使用此结果'></form>");
-        Esp32BaseWeb::sendChunk("</div><div class='cal-result-grid'><div class='cal-result-fact'><span>启动脉冲</span><b>"); sendUnsigned(calibration.combinedStartupPulseCount()); Esp32BaseWeb::sendChunk(" 个</b></div><div class='cal-result-fact'><span>估算启动水量</span><b>"); sendUnsigned(calibration.combinedStartupWaterMl()); Esp32BaseWeb::sendChunk(" mL</b></div><div class='cal-result-fact'><span>稳态流量系数</span><b>"); Esp32BaseWeb::writeHtmlEscaped(result); Esp32BaseWeb::sendChunk(" P/L</b></div><div class='cal-result-fact'><span>稳态参考流量</span><b>"); if (steadyFlowValid) { Esp32BaseWeb::writeHtmlEscaped(suggestedSteadyFlow); Esp32BaseWeb::sendChunk(" L/min"); } else Esp32BaseWeb::sendChunk("超出范围"); Esp32BaseWeb::sendChunk("</b></div></div><div class='cal-result-meta'><span>有效样本："); sendUnsigned(calibration.validSampleCount()); Esp32BaseWeb::sendChunk(" 个</span><span>涉及水路："); sendUnsigned(calibration.validZoneCount()); Esp32BaseWeb::sendChunk(" 条</span><span>水量跨度："); sendUnsigned(calibration.volumeSpanMl()); Esp32BaseWeb::sendChunk(" mL</span><span>最大拟合残差："); if (calibration.validSampleCount() == 2) Esp32BaseWeb::sendChunk("暂无法检验"); else { Esp32BaseWeb::writeHtmlEscaped(maximumResidual); Esp32BaseWeb::sendChunk("%"); } Esp32BaseWeb::sendChunk("</span><span>结果更新：");
+        if (!matchesCurrent && canApply && !managementLocked) Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/flow-calibration' onsubmit=\"return confirm('确认保存并使用当前样本生成的三项校准参数？')&&once(this)\"><input type='hidden' name='action' value='apply'><input type='submit' value='使用此结果'></form>");
+        Esp32BaseWeb::sendChunk("</div><div class='cal-result-grid'><div class='cal-result-fact'><span>启动脉冲</span><b>"); sendUnsigned(calibration.combinedStartupPulseCount()); Esp32BaseWeb::sendChunk(" 个</b></div><div class='cal-result-fact'><span>估算启动水量</span><b>"); sendUnsigned(calibration.combinedStartupWaterMl()); Esp32BaseWeb::sendChunk(" mL</b></div><div class='cal-result-fact'><span>稳态流量系数</span><b>"); Esp32BaseWeb::writeHtmlEscaped(result); Esp32BaseWeb::sendChunk(" P/L</b></div></div><div class='cal-result-meta'><span>有效样本："); sendUnsigned(calibration.validSampleCount()); Esp32BaseWeb::sendChunk(" 个</span><span>涉及水路："); sendUnsigned(calibration.validZoneCount()); Esp32BaseWeb::sendChunk(" 条</span><span>水量跨度："); sendUnsigned(calibration.volumeSpanMl()); Esp32BaseWeb::sendChunk(" mL</span><span>最大拟合残差："); if (calibration.validSampleCount() == 2) Esp32BaseWeb::sendChunk("暂无法检验"); else { Esp32BaseWeb::writeHtmlEscaped(maximumResidual); Esp32BaseWeb::sendChunk("%"); } Esp32BaseWeb::sendChunk("</span><span>结果更新：");
         char timeText[32]{};
         if (calibration.resultUpdatedEpoch() != 0 && Esp32BaseTime::formatEpoch(calibration.resultUpdatedEpoch(), timeText, sizeof(timeText), "%Y-%m-%d %H:%M:%S")) Esp32BaseWeb::writeHtmlEscaped(timeText); else Esp32BaseWeb::sendChunk("设备时间不可用");
         Esp32BaseWeb::sendChunk("</span>");
@@ -1926,6 +1911,7 @@ void IrrigationWeb::zoneLearning() {
         else if (actionIs("stop")) success = status.active && status.purpose == WateringPurpose::ZoneFlowLearning && status.activeZoneId == zoneId && g_app->stopWatering();
         else if (actionIs("save")) { uint32_t revision = 0; success = uintParam("revision", 1, UINT32_MAX, revision) && g_app->pendingLearnedZoneId() == zoneId && g_app->saveLearnedZoneFlow(revision); }
         else if (actionIs("discard")) { success = g_app->pendingLearnedZoneId() == zoneId; if (success) g_app->discardLearnedZoneFlow(); }
+        else if (actionIs("clear")) { uint32_t revision = 0; success = uintParam("revision", 1, UINT32_MAX, revision) && g_app->clearLearnedZoneFlow(static_cast<uint8_t>(zoneId), revision); }
         char location[96]{};
         std::snprintf(location, sizeof(location), "/irrigation/zones/learning?zone=%lu&result=%s", static_cast<unsigned long>(zoneId), success ? "ok" : "error");
         Esp32BaseWeb::redirectSeeOther(location);
@@ -1937,13 +1923,19 @@ void IrrigationWeb::zoneLearning() {
     const ZoneConfig& zone = config->zones[zoneId - 1U];
     const WateringStatus status = g_app->wateringStatus();
     const bool active = status.active && status.purpose == WateringPurpose::ZoneFlowLearning && status.activeZoneId == zoneId;
+    uint32_t learnedFlowMlPerMinute = 0;
+    FlowMonitor::pulseRateToFlowMlPerMinute(
+        zone.baselinePulseRateX100,
+        config->flowMeter.pulsesPerLiterX100,
+        learnedFlowMlPerMinute);
     char learned[20]{};
-    IrrigationConfigRules::formatLitersPerMinute(zone.learnedFlowMlPerMinute, learned, sizeof(learned));
+    IrrigationConfigRules::formatLitersPerMinute(
+        learnedFlowMlPerMinute, learned, sizeof(learned));
     char learnedWithUnit[32]{};
     std::snprintf(learnedWithUnit, sizeof(learnedWithUnit), "%s L/min", learned);
     Esp32BaseWeb::beginPanel("学习水路");
     Esp32BaseWeb::sendInfoRowCompact("水路名称", "", zone.name.data());
-    Esp32BaseWeb::sendInfoRowCompact("当前基准流量", zone.learnedFlowMlPerMinute == 0 ? "尚未设置" : "", zone.learnedFlowMlPerMinute == 0 ? "未设置" : learnedWithUnit);
+    Esp32BaseWeb::sendInfoRowCompact("当前基准流量", zone.baselinePulseRateX100 == 0 ? "尚未学习" : "", zone.baselinePulseRateX100 == 0 ? "未学习" : learnedWithUnit);
     Esp32BaseWeb::sendInfoRowCompact("安全上限", "达到上限仍不稳定时自动停止", "10 分钟");
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::beginPanel("学习状态");
@@ -1965,7 +1957,7 @@ void IrrigationWeb::zoneLearning() {
         } else {
             Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,
                                      "学习结果超出有效范围",
-                                     "基准流量必须在 0～100.000 L/min，请检查稳态流量系数后重新学习。");
+                                     "当前校准系数无法显示该结果，请检查流量计校准参数。");
         }
         Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/learning' onsubmit='return once(this)'><input type='hidden' name='action' value='discard'><input type='hidden' name='zone_id' value='"); sendUnsigned(zoneId); Esp32BaseWeb::sendChunk("'><div class='actions'><input class='danger' type='submit' value='放弃结果'></div></form>");
     } else if (g_app->pendingLearnedZoneId() != 0) {
@@ -1974,7 +1966,10 @@ void IrrigationWeb::zoneLearning() {
                                  "请先返回对应水路保存或放弃该结果。");
     } else {
         if (status.purpose == WateringPurpose::ZoneFlowLearning && status.lastZoneId == zoneId && status.lastStopReason == WateringStopReason::LearningTimeout) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "学习超时", "10 分钟内没有取得稳定流量，请检查供水和管路。");
-        Esp32BaseWeb::sendChunk("<p class='muted'>系统每 5 秒计算一次流量，最近 5 个窗口波动不超过平均值的 10%时自动完成。</p><form method='post' action='/irrigation/zones/learning' onsubmit=\"return confirm('确认开始学习基准流量？开始后这条水路会立即出水。')&&once(this)\"><input type='hidden' name='action' value='start'><input type='hidden' name='zone_id' value='"); sendUnsigned(zoneId); Esp32BaseWeb::sendChunk("'><div class='actions'><input type='submit' value='开始学习'></div></form>");
+        Esp32BaseWeb::sendChunk("<p class='muted'>系统每 5 秒统计一次原始脉冲速率；最近 5 个窗口波动不超过 10%，并容忍一个脉冲的计数误差时自动完成。</p><form method='post' action='/irrigation/zones/learning' onsubmit=\"return confirm('确认开始学习基准流量？开始后这条水路会立即出水。')&&once(this)\"><input type='hidden' name='action' value='start'><input type='hidden' name='zone_id' value='"); sendUnsigned(zoneId); Esp32BaseWeb::sendChunk("'><div class='actions'><input type='submit' value='"); Esp32BaseWeb::sendChunk(zone.baselinePulseRateX100 == 0 ? "开始学习" : "重新学习"); Esp32BaseWeb::sendChunk("'></div></form>");
+        if (zone.baselinePulseRateX100 != 0) {
+            Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/learning' onsubmit=\"return confirm('确认清除这条水路的基准流量？清除后将停用该水路的高低流量报警。')&&once(this)\"><input type='hidden' name='action' value='clear'><input type='hidden' name='zone_id' value='"); sendUnsigned(zoneId); Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='"); sendUnsigned(config->revision); Esp32BaseWeb::sendChunk("'><div class='actions'><input class='danger' type='submit' value='清除基准'></div></form>");
+        }
     }
     Esp32BaseWeb::endPanel();
     Esp32BaseWeb::sendChunk("<p><a class='btnlink secondary' href='/irrigation/zones'>返回水路设置</a></p>");

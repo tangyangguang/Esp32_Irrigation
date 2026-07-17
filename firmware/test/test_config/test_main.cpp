@@ -30,7 +30,7 @@ void test_default_config_matches_confirmed_product_defaults() {
     TEST_ASSERT_EQUAL_UINT32(25000, config.flowMeter.pulsesPerLiterX100);
     TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupPulseCount);
     TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupWaterMl);
-    TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationSteadyFlowMlPerMinute);
+    TEST_ASSERT_EQUAL_UINT32(2, config.schemaVersion);
     TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.windowSec);
     TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.requiredWindows);
     TEST_ASSERT_EQUAL_UINT8(10, config.calibrationStability.allowedVariationPercent);
@@ -88,10 +88,6 @@ void test_confirmed_parameter_ranges_are_validated() {
     config.flowMeter.calibrationStartupWaterMl = 1000001;
     TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
     config = IrrigationConfigRules::createDefault();
-    config.flowMeter.calibrationSteadyFlowMlPerMinute = 100001;
-    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
-
-    config = IrrigationConfigRules::createDefault();
     config.calibrationStability.windowSec = 0;
     TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
     config.calibrationStability.windowSec = 10;
@@ -131,31 +127,17 @@ void test_flow_coefficient_decimal_conversion_is_exact() {
     TEST_ASSERT_EQUAL_STRING("250.37", text);
 }
 
-void test_baseline_flow_liters_conversion_is_exact() {
-    uint32_t value = 0;
-    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("0", value));
-    TEST_ASSERT_EQUAL_UINT32(0, value);
-    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("1.234", value));
-    TEST_ASSERT_EQUAL_UINT32(1234, value);
-    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("100.000", value));
-    TEST_ASSERT_EQUAL_UINT32(100000, value);
-
-    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute("1.2345", value));
-    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute("100.001", value));
-    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute(" 1.000", value));
-
+void test_liters_per_minute_formatting_is_exact() {
     char text[16];
     TEST_ASSERT_TRUE(IrrigationConfigRules::formatLitersPerMinute(1234, text, sizeof(text)));
     TEST_ASSERT_EQUAL_STRING("1.234", text);
 
-    IrrigationConfig config = IrrigationConfigRules::createDefault();
-    config.zones[0].learnedFlowMlPerMinute = 100001;
-    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
 }
 
 void test_config_json_round_trip_is_exact_and_strict() {
     IrrigationConfig original = IrrigationConfigRules::createDefault();
     original.flowMeter.pulsesPerLiterX100 = 25037;
+    original.zones[0].baselinePulseRateX100 = 420;
     original.plans[0].configured = true;
     std::snprintf(original.plans[0].name.data(), original.plans[0].name.size(), "%s", "日常浇水");
     original.plans[0].zoneDurationMinutes[0] = 15;
@@ -163,12 +145,22 @@ void test_config_json_round_trip_is_exact_and_strict() {
     std::string json;
     TEST_ASSERT_TRUE(IrrigationConfigJson::encode(original, json));
     TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"pulses_per_liter_x100\":25037"));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"baseline_pulse_rate_x100\":420"));
+    TEST_ASSERT_EQUAL(std::string::npos, json.find("learned_flow_ml_per_minute"));
 
     IrrigationConfig decoded{};
     TEST_ASSERT_TRUE(IrrigationConfigJson::decode(json.data(), json.size(), decoded));
     std::string encodedAgain;
     TEST_ASSERT_TRUE(IrrigationConfigJson::encode(decoded, encodedAgain));
     TEST_ASSERT_EQUAL_STRING(json.c_str(), encodedAgain.c_str());
+
+    std::string oldSchema = json;
+    const std::size_t schema = oldSchema.find("\"schema_version\":2");
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, schema);
+    oldSchema.replace(schema, std::string("\"schema_version\":2").size(),
+                      "\"schema_version\":1");
+    TEST_ASSERT_FALSE(IrrigationConfigJson::decode(
+        oldSchema.data(), oldSchema.size(), decoded));
 
     const std::size_t field = json.find("\"revision\":1,");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, field);
@@ -199,7 +191,7 @@ int main(int, char**) {
     RUN_TEST(test_names_and_cross_field_rules_are_validated);
     RUN_TEST(test_confirmed_parameter_ranges_are_validated);
     RUN_TEST(test_flow_coefficient_decimal_conversion_is_exact);
-    RUN_TEST(test_baseline_flow_liters_conversion_is_exact);
+    RUN_TEST(test_liters_per_minute_formatting_is_exact);
     RUN_TEST(test_config_json_round_trip_is_exact_and_strict);
     return UNITY_END();
 }

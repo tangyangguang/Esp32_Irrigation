@@ -99,7 +99,7 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
 
     config.valveDrive = {3000, 20000, 75};
     config.pump = {false, 0, 1000};
-    config.flowMeter = {25000, 0, 0, 0};
+    config.flowMeter = {25000, 0, 0};
     config.calibrationStability = {3, 3, 10};
     config.flowProtection = {
         20,
@@ -122,7 +122,7 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
         char name[kObjectNameCapacity];
         std::snprintf(name, sizeof(name), "区域 %u", static_cast<unsigned>(zone.id));
         setText(zone.name, name);
-        zone.learnedFlowMlPerMinute = 0;
+        zone.baselinePulseRateX100 = 0;
     }
 
     for (std::size_t index = 0; index < config.plans.size(); ++index) {
@@ -151,7 +151,6 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
         !inRange(config.flowMeter.pulsesPerLiterX100, 1, 10000000) ||
         config.flowMeter.calibrationStartupPulseCount > 10000000U ||
         config.flowMeter.calibrationStartupWaterMl > 1000000U ||
-        config.flowMeter.calibrationSteadyFlowMlPerMinute > 100000U ||
         !inRange(config.calibrationStability.windowSec, 1, 10) ||
         !inRange(config.calibrationStability.requiredWindows, 2, 10) ||
         !inRange(config.calibrationStability.allowedVariationPercent, 1, 30) ||
@@ -175,8 +174,7 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         const ZoneConfig& zone = config.zones[index];
-        if (zone.id != index + 1 || !isValidName(zone.name, false) ||
-            zone.learnedFlowMlPerMinute > 100000U) {
+        if (zone.id != index + 1 || !isValidName(zone.name, false)) {
             return false;
         }
     }
@@ -289,40 +287,6 @@ bool IrrigationConfigRules::formatPulsesPerLiter(uint32_t valueX100, char* out, 
                                       static_cast<unsigned long>(valueX100 / 100U),
                                       static_cast<unsigned long>(valueX100 % 100U));
     return written > 0 && static_cast<std::size_t>(written) < outSize;
-}
-
-bool IrrigationConfigRules::parseLitersPerMinute(const char* text,
-                                                 uint32_t& valueMlPerMinute) {
-    if (!text || *text == '\0') return false;
-    uint32_t whole = 0;
-    std::size_t index = 0;
-    std::size_t wholeDigits = 0;
-    while (text[index] >= '0' && text[index] <= '9') {
-        whole = whole * 10U + static_cast<uint8_t>(text[index] - '0');
-        if (whole > 100U) return false;
-        ++index;
-        ++wholeDigits;
-    }
-    if (wholeDigits == 0) return false;
-
-    uint32_t fraction = 0;
-    uint32_t scale = 100;
-    if (text[index] == '.') {
-        ++index;
-        std::size_t digits = 0;
-        while (text[index] >= '0' && text[index] <= '9' && digits < 3) {
-            fraction += static_cast<uint32_t>(text[index] - '0') * scale;
-            scale /= 10U;
-            ++index;
-            ++digits;
-        }
-        if (digits == 0 || (text[index] >= '0' && text[index] <= '9')) return false;
-    }
-    if (text[index] != '\0') return false;
-    const uint32_t result = whole * 1000U + fraction;
-    if (result > 100000U) return false;
-    valueMlPerMinute = result;
-    return true;
 }
 
 bool IrrigationConfigRules::formatLitersPerMinute(uint32_t valueMlPerMinute,
