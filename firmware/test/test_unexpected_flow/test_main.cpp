@@ -18,9 +18,12 @@ void test_delay_ignores_pulses_then_rolling_window_raises_and_clears_after_zero_
                       static_cast<int>(monitor.observe(59000, 113)));
     TEST_ASSERT_TRUE(monitor.alarmActive());
     TEST_ASSERT_TRUE(monitor.observationReady(59000));
+    TEST_ASSERT_EQUAL_UINT32(29000, monitor.observedDurationMs(59000));
+    TEST_ASSERT_EQUAL_UINT32(3, monitor.observedPulseCount());
     TEST_ASSERT_EQUAL(static_cast<int>(UnexpectedFlowMonitor::Update::None),
                       static_cast<int>(monitor.observe(62000, 113)));
     TEST_ASSERT_TRUE(monitor.alarmActive());
+    TEST_ASSERT_EQUAL_UINT32(30000, monitor.observedDurationMs(62000));
     TEST_ASSERT_EQUAL(static_cast<int>(UnexpectedFlowMonitor::Update::AlarmCleared),
                       static_cast<int>(monitor.observe(90000, 113)));
     TEST_ASSERT_FALSE(monitor.alarmActive());

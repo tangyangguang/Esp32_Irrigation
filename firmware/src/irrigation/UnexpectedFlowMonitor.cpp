@@ -90,6 +90,14 @@ uint16_t UnexpectedFlowMonitor::windowRemainingSec(uint32_t nowMs) const {
     return static_cast<uint16_t>((targetMs - elapsedMs + 999U) / 1000U);
 }
 
+uint32_t UnexpectedFlowMonitor::observedDurationMs(uint32_t nowMs) const {
+    if (!monitoring_) return 0;
+    const uint32_t elapsedMs =
+        static_cast<uint32_t>(nowMs - monitoringStartedMs_);
+    const uint32_t windowMs = static_cast<uint32_t>(windowSec_) * 1000U;
+    return elapsedMs < windowMs ? elapsedMs : windowMs;
+}
+
 uint32_t UnexpectedFlowMonitor::observedPulseCount() const {
     return rollingPulseCount_;
 }

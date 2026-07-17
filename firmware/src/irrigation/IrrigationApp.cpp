@@ -298,8 +298,34 @@ uint16_t IrrigationApp::unexpectedFlowWindowRemainingSec() const {
     return unexpectedFlowMonitor_.windowRemainingSec(millis());
 }
 
+uint16_t IrrigationApp::unexpectedFlowObservedWindowSec() const {
+    const uint32_t durationMs =
+        unexpectedFlowMonitor_.observedDurationMs(millis());
+    return durationMs == 0
+               ? 0
+               : static_cast<uint16_t>((durationMs + 999U) / 1000U);
+}
+
 uint32_t IrrigationApp::unexpectedFlowObservedPulseCount() const {
     return unexpectedFlowMonitor_.observedPulseCount();
+}
+
+uint32_t IrrigationApp::unexpectedFlowEstimatedMlPerMinute() const {
+    const IrrigationConfig* config = configStore_.current();
+    const uint32_t durationMs =
+        unexpectedFlowMonitor_.observedDurationMs(millis());
+    const uint32_t pulseCount = unexpectedFlowMonitor_.observedPulseCount();
+    if (!config || durationMs == 0 || pulseCount == 0) return 0;
+    const uint64_t rate =
+        (static_cast<uint64_t>(pulseCount) * 100000ULL +
+         durationMs / 2U) /
+        durationMs;
+    uint32_t flowMlPerMinute = 0;
+    FlowMonitor::pulseRateToFlowMlPerMinute(
+        rate > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(rate),
+        config->flowMeter.pulsesPerLiterX100,
+        flowMlPerMinute);
+    return flowMlPerMinute;
 }
 
 AutomaticWateringState IrrigationApp::automaticWateringState() const {

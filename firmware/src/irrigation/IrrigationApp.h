@@ -50,7 +50,9 @@ public:
     bool unexpectedFlowObservationReady() const;
     uint16_t unexpectedFlowDelayRemainingSec() const;
     uint16_t unexpectedFlowWindowRemainingSec() const;
+    uint16_t unexpectedFlowObservedWindowSec() const;
     uint32_t unexpectedFlowObservedPulseCount() const;
+    uint32_t unexpectedFlowEstimatedMlPerMinute() const;
     AutomaticWateringState automaticWateringState() const;
     NextAutomaticWatering nextAutomaticWatering() const;
     WateringScheduler::TimeState schedulerTimeState() const;

@@ -1174,10 +1174,10 @@ void IrrigationWeb::overview() {
 .home-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:20px;border:1px solid var(--eb-line);border-radius:12px;background:linear-gradient(135deg,#f4faf7,#fff);margin:12px 0}
 .home-hero.warn{background:linear-gradient(135deg,var(--eb-warn-soft),#fff);border-color:#efcf96}.home-hero.danger{background:linear-gradient(135deg,var(--eb-danger-soft),#fff);border-color:#efc0ba}.home-hero.info{background:linear-gradient(135deg,var(--eb-info-soft),#fff);border-color:#cbdde5}
 .home-eyebrow{display:block;margin-bottom:5px;color:var(--eb-muted);font-size:12px;font-weight:750}.home-hero h1{margin:0 0 6px;font-size:24px}.home-hero p{margin:0;color:var(--eb-muted)}.home-monitor{display:block;margin-top:7px;color:var(--eb-muted);font-size:12px}.home-monitor.danger{color:var(--eb-danger)}.home-hero .btnlink{min-height:38px;padding:0 16px}.home-action.hidden{display:none}
-.home-hero-side{display:flex;align-items:center;justify-content:flex-end;gap:20px}.home-clock{width:170px}.home-clock-time{display:block;color:inherit;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}.home-clock-date{display:block;margin-top:5px;color:var(--eb-muted);font-size:12px;font-weight:400;white-space:nowrap}.home-clock.pending .home-clock-time{color:var(--eb-warn);font-size:16px}.home-clock.pending .home-clock-date{white-space:normal}
+.home-hero-side{display:flex;align-items:center;justify-content:flex-end;gap:20px}.home-clock{width:170px}.home-clock.has-warning{width:250px}.home-clock-time{display:block;color:inherit;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}.home-clock-date{display:block;margin-top:5px;color:var(--eb-muted);font-size:12px;font-weight:400;white-space:nowrap}.home-clock-warning{display:inline-flex;margin-top:7px;padding:3px 7px;border:1px solid #efcf96;border-radius:999px;background:var(--eb-warn-soft);color:#8a5708;font-size:11px;font-weight:500;line-height:1.35;text-decoration:none}.home-clock.pending .home-clock-time{color:var(--eb-warn);font-size:16px}.home-clock.pending .home-clock-date{white-space:normal}
 .home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}.home-card{display:flex;flex-direction:column;min-height:210px;padding:18px;border:1px solid var(--eb-line);border-radius:12px;background:#fff}.home-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.home-card-head h2{margin:0;font-size:17px}.home-main{font-size:22px;font-weight:760;line-height:1.3;overflow-wrap:anywhere}.home-sub{margin:6px 0 0;color:var(--eb-muted);overflow-wrap:anywhere}.home-facts{display:grid;gap:7px;margin:14px 0 0}.home-fact{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;font-size:13px}.home-fact span:first-child{color:var(--eb-muted)}.home-card-actions{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:16px}.home-card-actions form{margin:0}.home-empty{color:var(--eb-muted);line-height:1.7}.home-note{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:13px}
 .manual-modal{width:min(760px,calc(100vw - 28px));padding:20px!important}.manual-template{margin:14px 0}.manual-template-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.manual-template-head h3{margin:0;font-size:14px;font-weight:500}.manual-template-head a{font-size:12px}.manual-template-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.manual-template-card{display:block;min-width:0;min-height:76px;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);color:var(--eb-text);text-align:left}.manual-template-card:hover{border-color:#a9cbd3;background:#f5fafb}.manual-template-card.selected{border-color:var(--eb-primary);background:var(--eb-primary-soft);box-shadow:0 0 0 1px var(--eb-primary)}.manual-template-card:disabled{opacity:.58;cursor:not-allowed}.manual-template-card b,.manual-template-card span,.manual-template-card small{display:block}.manual-template-card b{font-size:14px;font-weight:500}.manual-template-card span{margin-top:4px;color:#526071;font-size:12px;line-height:1.4;overflow-wrap:anywhere}.manual-template-card small{margin-top:3px;color:var(--eb-muted);font-size:11px}.manual-template-empty{padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:13px}.manual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.manual-zone{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;gap:8px;align-items:center;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft)}.manual-zone label{margin:0;overflow-wrap:anywhere}.manual-zone input{width:100%;max-width:none;min-height:38px;margin:0}.manual-zone span{color:var(--eb-muted);font-weight:650}.manual-summary{margin-top:12px;padding:11px 13px;border:1px solid #cbdde5;border-radius:8px;background:var(--eb-info-soft)}.manual-summary b,.manual-summary span{display:block}.manual-summary span{margin-top:3px;color:var(--eb-muted);font-size:12px}.manual-modal .actions{margin-top:14px}
-@media(max-width:760px){.home-hero,.home-grid{grid-template-columns:1fr}.home-hero{padding:16px}.home-hero h1{font-size:21px}.home-hero-side{align-items:stretch;flex-direction:column;gap:14px}.home-clock{width:100%}.home-hero .btnlink{width:100%}.home-card{min-height:0;padding:15px}.home-fact{grid-template-columns:1fr;gap:2px}.manual-modal{width:calc(100vw - 20px);padding:14px!important}.manual-template-list,.manual-grid{grid-template-columns:1fr}.manual-zone{grid-template-columns:minmax(0,1fr) 86px auto}.manual-modal .actions{display:grid;grid-template-columns:1fr 1fr}.manual-modal .actions button,.manual-modal .actions input{width:100%;margin:0}}
+@media(max-width:760px){.home-hero,.home-grid{grid-template-columns:1fr}.home-hero{padding:16px}.home-hero h1{font-size:21px}.home-hero-side{align-items:stretch;flex-direction:column;gap:14px}.home-clock,.home-clock.has-warning{width:100%}.home-hero .btnlink{width:100%}.home-card{min-height:0;padding:15px}.home-fact{grid-template-columns:1fr;gap:2px}.manual-modal{width:calc(100vw - 20px);padding:14px!important}.manual-template-list,.manual-grid{grid-template-columns:1fr}.manual-zone{grid-template-columns:minmax(0,1fr) 86px auto}.manual-modal .actions{display:grid;grid-template-columns:1fr 1fr}.manual-modal .actions button,.manual-modal .actions input{width:100%;margin:0}}
 </style>)HTML");
     const AutomaticWateringState automatic = g_app->automaticWateringState();
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
@@ -1256,9 +1256,6 @@ void IrrigationWeb::overview() {
         heroDescription = "请查看系统状态；自动计划或历史记录可能受到影响。";
         heroHref = "/esp32base";
         heroAction = "查看系统状态";
-    } else if (rtcUnavailable) {
-        heroTone = " warn";
-        heroDescription = "自动计划当前可正常运行；硬件时钟不可用，断网后可能暂停。";
     }
     const char* defaultHeroTone = heroTone;
     const char* defaultHeroTitle = heroTitle;
@@ -1296,14 +1293,30 @@ void IrrigationWeb::overview() {
     if (flowAlarm) Esp32BaseWeb::sendChunk(" danger");
     Esp32BaseWeb::sendChunk("'>");
     if (flowAlarm) {
-        Esp32BaseWeb::sendChunk("关阀后水流监测已报警，水流停止后自动恢复");
+        const uint16_t observedSec =
+            g_app->unexpectedFlowObservedWindowSec();
+        const uint32_t pulseCount =
+            g_app->unexpectedFlowObservedPulseCount();
+        char estimatedFlow[20]{};
+        IrrigationConfigRules::formatLitersPerMinute(
+            g_app->unexpectedFlowEstimatedMlPerMinute(),
+            estimatedFlow,
+            sizeof(estimatedFlow));
+        Esp32BaseWeb::sendChunk("近 ");
+        sendUnsigned(observedSec == 0 ? 1 : observedSec);
+        Esp32BaseWeb::sendChunk(" 秒检测到 ");
+        sendUnsigned(pulseCount);
+        Esp32BaseWeb::sendChunk(" 个水流脉冲 · 估算平均流量 ");
+        Esp32BaseWeb::writeHtmlEscaped(estimatedFlow);
+        Esp32BaseWeb::sendChunk(" L/min");
     } else if (g_app->unexpectedFlowObservationReady()) {
         Esp32BaseWeb::sendChunk("关阀后水流监测已开启");
     } else {
-        Esp32BaseWeb::sendChunk("关阀后水流监测准备中");
+        Esp32BaseWeb::sendChunk("关阀后水流监测中");
     }
     Esp32BaseWeb::sendChunk("</span></div><div class='home-hero-side'><div id='home-clock' class='home-clock");
     if (!timeTrusted) Esp32BaseWeb::sendChunk(" pending");
+    if (rtcUnavailable) Esp32BaseWeb::sendChunk(" has-warning");
     Esp32BaseWeb::sendChunk("'");
     if (timeTrusted) {
         Esp32BaseWeb::sendChunk(" data-epoch='");
@@ -1325,7 +1338,11 @@ void IrrigationWeb::overview() {
         Esp32BaseWeb::sendChunk("等待 RTC 或 NTP 提供可信时间");
         Esp32BaseWeb::sendChunk("</span>");
     }
-    Esp32BaseWeb::sendChunk("</span></div>");
+    Esp32BaseWeb::sendChunk("</span>");
+    if (rtcUnavailable) {
+        Esp32BaseWeb::sendChunk("<a class='home-clock-warning' href='/irrigation/events'>硬件时钟不可用 · 断网后计划可能暂停</a>");
+    }
+    Esp32BaseWeb::sendChunk("</div>");
     Esp32BaseWeb::sendChunk("<span id='home-default-action' class='home-action");
     if (flowAlarm) Esp32BaseWeb::sendChunk(" hidden");
     Esp32BaseWeb::sendChunk("'>");
@@ -1353,9 +1370,6 @@ void IrrigationWeb::overview() {
     } else if (heroShowsOtherPriority && !timeTrusted) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "设备时间尚未就绪",
                                  "自动计划暂时不会运行，手动浇水仍可使用。");
-    } else if (heroShowsOtherPriority && rtcUnavailable) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "硬件时钟不可用",
-                                 "联网时自动计划仍可运行，断网后可能暂停。");
     }
     if (heroShowsOtherPriority && storageFault && !g_app->schedulerStorageFault()) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "部分数据存储异常",
@@ -1556,7 +1570,8 @@ var clear=document.getElementById('manual-clear');if(clear)clear.addEventListene
 window.submitManualWatering=function(form){update();if(!count){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认手动浇水 '+count+' 条水路，合计 '+total+' 分钟？')&&once(form)};update();
 var hero=document.getElementById('home-hero'),heroTitle=document.getElementById('home-hero-title'),heroDescription=document.getElementById('home-hero-description'),monitor=document.getElementById('home-flow-monitor'),defaultAction=document.getElementById('home-default-action'),alarmAction=document.getElementById('home-alarm-action');
 function toggleHidden(element,hidden){if(element)element.classList.toggle('hidden',hidden)}
-function updateIdleStatus(status){if(status.active||!!status.rtcUnavailable!==(hero.dataset.rtcUnavailable==='1')){location.reload();return false}var alarm=!!status.unexpectedFlowAlarm;if(hero){var tone=alarm?'danger':String(hero.dataset.defaultTone||'').trim();hero.className='home-hero'+(tone?' '+tone:'')}if(heroTitle)heroTitle.textContent=alarm?'关阀后水流异常':hero.dataset.defaultTitle;if(heroDescription)heroDescription.textContent=alarm?'水泵和全部阀门均已关闭，但仍检测到水流。请检查阀门、管路或流量计。':hero.dataset.defaultDescription;toggleHidden(defaultAction,alarm);toggleHidden(alarmAction,!alarm);if(monitor){monitor.classList.toggle('danger',alarm);if(alarm)monitor.textContent='关阀后水流监测已报警，水流停止后自动恢复';else if(status.unexpectedFlowObservationReady)monitor.textContent='关阀后水流监测已开启';else monitor.textContent='关阀后水流监测准备中'}return true}
+function alarmObservation(status){var seconds=Math.max(1,Number(status.unexpectedFlowObservedWindowSec)||1),pulses=Number(status.unexpectedFlowPulseCount)||0,flow=(Number(status.unexpectedFlowEstimatedMlPerMinute)||0)/1000;return'近 '+seconds+' 秒检测到 '+pulses+' 个水流脉冲 · 估算平均流量 '+flow.toFixed(3)+' L/min'}
+function updateIdleStatus(status){if(status.active||!!status.rtcUnavailable!==(hero.dataset.rtcUnavailable==='1')){location.reload();return false}var alarm=!!status.unexpectedFlowAlarm;if(hero){var tone=alarm?'danger':String(hero.dataset.defaultTone||'').trim();hero.className='home-hero'+(tone?' '+tone:'')}if(heroTitle)heroTitle.textContent=alarm?'关阀后水流异常':hero.dataset.defaultTitle;if(heroDescription)heroDescription.textContent=alarm?'水泵和全部阀门均已关闭，但仍检测到水流。请检查阀门、管路或流量计。':hero.dataset.defaultDescription;toggleHidden(defaultAction,alarm);toggleHidden(alarmAction,!alarm);if(monitor){monitor.classList.toggle('danger',alarm);if(alarm)monitor.textContent=alarmObservation(status);else if(status.unexpectedFlowObservationReady)monitor.textContent='关阀后水流监测已开启';else monitor.textContent='关阀后水流监测中'}return true}
 var pollTimer=0,polling=false;function schedulePoll(delay){clearTimeout(pollTimer);pollTimer=setTimeout(poll,delay)}function poll(){if(polling)return;polling=true;fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(response){return response.json()}).then(function(status){polling=false;if(updateIdleStatus(status))schedulePoll(document.hidden?15000:5000)}).catch(function(){polling=false;schedulePoll(document.hidden?15000:10000)})}
 document.addEventListener('visibilitychange',function(){schedulePoll(document.hidden?15000:0)});schedulePoll(5000);
 })();</script>)HTML");
@@ -3079,6 +3094,8 @@ void IrrigationWeb::statusApi() {
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowAlarm\":"); Esp32BaseWeb::sendChunk(g_app->unexpectedFlowAlarm() ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowObservationReady\":"); Esp32BaseWeb::sendChunk(g_app->unexpectedFlowObservationReady() ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowPulseCount\":"); sendUnsigned(g_app->unexpectedFlowObservedPulseCount());
+    Esp32BaseWeb::sendChunk(",\"unexpectedFlowObservedWindowSec\":"); sendUnsigned(g_app->unexpectedFlowObservedWindowSec());
+    Esp32BaseWeb::sendChunk(",\"unexpectedFlowEstimatedMlPerMinute\":"); sendUnsigned(g_app->unexpectedFlowEstimatedMlPerMinute());
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowDelayRemainingSec\":"); sendUnsigned(g_app->unexpectedFlowDelayRemainingSec());
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowWindowRemainingSec\":"); sendUnsigned(g_app->unexpectedFlowWindowRemainingSec());
     const IrrigationConfig* statusConfig = g_app->configuration();
