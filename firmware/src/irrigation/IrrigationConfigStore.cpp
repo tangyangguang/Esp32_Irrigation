@@ -222,8 +222,6 @@ bool IrrigationConfigStore::removeExisting(const char* path) {
     if (!Esp32BaseFs::exists(path)) {
         return true;
     }
-    if (Esp32BaseFs::removeFileWithRecovery(path) == Esp32BaseFs::REMOVE_FILE_FAILED) {
-        return false;
-    }
-    return !Esp32BaseFs::exists(path);
+    return Esp32BaseFs::removeFileWithRecovery(path) ==
+           Esp32BaseFs::REMOVE_FILE_DELETED;
 }
