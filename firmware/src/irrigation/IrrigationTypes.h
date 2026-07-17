@@ -177,7 +177,9 @@ struct ZoneWateringSummary {
     uint32_t actualWateringSec;
     uint32_t pulseCount;
     uint32_t estimatedWaterMl;
+    uint32_t averageFlowMlPerMinute;
     bool waterEstimateCapped;
+    bool flowBaselineAvailable;
     bool lowFlowDetected;
     bool highFlowDetected;
     uint32_t suggestedBaselinePulseRateX100;

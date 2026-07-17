@@ -45,6 +45,8 @@ public:
     bool checkpointStorageFault() const;
     uint32_t lastKnownAliveEpoch() const;
     bool unexpectedFlowAlarm() const;
+    bool unexpectedFlowObservationReady() const;
+    uint32_t unexpectedFlowObservedPulseCount() const;
     AutomaticWateringState automaticWateringState() const;
     NextAutomaticWatering nextAutomaticWatering() const;
     WateringScheduler::TimeState schedulerTimeState() const;

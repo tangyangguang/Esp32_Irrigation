@@ -279,6 +279,14 @@ bool IrrigationApp::unexpectedFlowAlarm() const {
     return unexpectedFlowMonitor_.alarmActive();
 }
 
+bool IrrigationApp::unexpectedFlowObservationReady() const {
+    return unexpectedFlowMonitor_.observationReady(millis());
+}
+
+uint32_t IrrigationApp::unexpectedFlowObservedPulseCount() const {
+    return unexpectedFlowMonitor_.observedPulseCount();
+}
+
 AutomaticWateringState IrrigationApp::automaticWateringState() const {
     return wateringScheduler_.automaticState();
 }

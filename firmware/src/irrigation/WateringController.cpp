@@ -57,6 +57,8 @@ WateringStartResult WateringController::start(const WateringRequest& request,
         baselinePulseRateX100_[index] =
             config.zones[BoardPins::zoneIndex(request.steps[index].zoneId)]
                 .baselinePulseRateX100;
+        sessionSummary_.zones[index].flowBaselineAvailable =
+            baselinePulseRateX100_[index] != 0;
     }
     sessionStartedMs_ = nowMs;
     lastHandledMs_ = nowMs;
@@ -84,6 +86,7 @@ bool WateringController::stop(uint32_t nowMs) {
     captureCalibrationStop(nowMs);
     if (flowMonitor_.flowEstablished()) {
         wateringEndedMs_ = nowMs;
+        wateringEndedPulseCount_ = hardware_.flowPulseCount();
         wateringEndCaptured_ = true;
     }
     pendingZoneResult_ = ZoneWateringResult::Stopped;
@@ -148,6 +151,7 @@ void WateringController::handle(uint32_t nowMs) {
                 state_ = WateringState::WateringZone;
                 stateStartedMs_ = nowMs;
                 wateringStartedMs_ = nowMs;
+                wateringStartedPulseCount_ = hardware_.flowPulseCount();
                 flowMonitor_.beginRateWindow(nowMs, hardware_.flowPulseCount());
                 if (request_.purpose == WateringPurpose::FlowCalibration) {
                     calibrationFlowEstablishedMs_ = nowMs;
@@ -367,6 +371,8 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
     currentZoneStarted_ = false;
     currentZoneFinalized_ = false;
     wateringEndCaptured_ = false;
+    wateringStartedPulseCount_ = 0;
+    wateringEndedPulseCount_ = 0;
     lowFlowDurationMs_ = 0;
     highFlowDurationMs_ = 0;
     calibrationFlowEstablishedMs_ = 0;
@@ -424,6 +430,7 @@ void WateringController::finishCurrentZone(uint32_t nowMs) {
     captureCalibrationStop(nowMs);
     const bool lastStep = currentStepIndex_ + 1U >= request_.stepCount;
     wateringEndedMs_ = nowMs;
+    wateringEndedPulseCount_ = hardware_.flowPulseCount();
     wateringEndCaptured_ = flowMonitor_.flowEstablished();
     pendingZoneResult_ = ZoneWateringResult::Completed;
     if (pump_.enabled) {
@@ -464,10 +471,26 @@ void WateringController::finalizeCurrentZone(ZoneWateringResult result, uint32_t
     if (flowMonitor_.flowEstablished()) {
         if (!wateringEndCaptured_) {
             wateringEndedMs_ = nowMs;
+            wateringEndedPulseCount_ = hardware_.flowPulseCount();
             wateringEndCaptured_ = true;
         }
         zone.actualWateringSec = static_cast<uint32_t>(wateringEndedMs_ - wateringStartedMs_) / 1000U;
         sessionSummary_.anyFlowEstablished = true;
+        const uint32_t wateringDurationMs = wateringEndedMs_ - wateringStartedMs_;
+        if (wateringDurationMs != 0) {
+            const uint32_t wateringPulses =
+                wateringEndedPulseCount_ - wateringStartedPulseCount_;
+            const uint64_t rate =
+                (static_cast<uint64_t>(wateringPulses) * 100000ULL +
+                 wateringDurationMs / 2U) /
+                wateringDurationMs;
+            const uint32_t pulseRateX100 =
+                rate > UINT32_MAX ? UINT32_MAX : static_cast<uint32_t>(rate);
+            FlowMonitor::pulseRateToFlowMlPerMinute(
+                pulseRateX100,
+                flowMeter_.pulsesPerLiterX100,
+                zone.averageFlowMlPerMinute);
+        }
     }
     zone.waterEstimateCapped = !FlowMonitor::estimateWaterMilliliters(
         zone.pulseCount, flowMeter_.pulsesPerLiterX100, zone.estimatedWaterMl);

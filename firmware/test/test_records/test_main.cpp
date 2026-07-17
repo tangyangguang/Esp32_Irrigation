@@ -14,8 +14,22 @@ WateringSessionSummary exampleSummary() {
     summary.result = WateringResult::Stopped;
     summary.stopReason = WateringStopReason::UserStopped;
     summary.anyFlowEstablished = true;
-    summary.zones[0] = {1, ZoneWateringResult::Completed, 60, 60, 15000, 60000, false};
-    summary.zones[1] = {3, ZoneWateringResult::Stopped, 120, 40, 10000, UINT32_MAX, true};
+    summary.zones[0].zoneId = 1;
+    summary.zones[0].result = ZoneWateringResult::Completed;
+    summary.zones[0].plannedDurationSec = 60;
+    summary.zones[0].actualWateringSec = 60;
+    summary.zones[0].pulseCount = 15000;
+    summary.zones[0].estimatedWaterMl = 60000;
+    summary.zones[0].averageFlowMlPerMinute = 1000;
+    summary.zones[0].flowBaselineAvailable = true;
+    summary.zones[1].zoneId = 3;
+    summary.zones[1].result = ZoneWateringResult::Stopped;
+    summary.zones[1].plannedDurationSec = 120;
+    summary.zones[1].actualWateringSec = 40;
+    summary.zones[1].pulseCount = 10000;
+    summary.zones[1].estimatedWaterMl = UINT32_MAX;
+    summary.zones[1].averageFlowMlPerMinute = 2000;
+    summary.zones[1].waterEstimateCapped = true;
     summary.zones[0].lowFlowDetected = true;
     return summary;
 }
@@ -30,24 +44,27 @@ void test_fixed_payload_round_trip_preserves_business_fields() {
 
     uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    TEST_ASSERT_EQUAL_UINT32(88, sizeof(encoded));
+    TEST_ASSERT_EQUAL_UINT32(112, sizeof(encoded));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringSource::AutomaticPlan), encoded[0]);
     TEST_ASSERT_EQUAL_UINT8(3, encoded[1]);
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[18]);  // Zone 2 fixed slot is empty.
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[19]);
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[22]);  // Zone 2 fixed slot is empty.
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[23]);
 
     WateringRecordPayload decoded{};
     TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
                       static_cast<int>(decoded.zones[0].result));
-    TEST_ASSERT_EQUAL_UINT8(WateringRecordCodec::kZoneFlagLowFlow,
+    TEST_ASSERT_EQUAL_UINT8(WateringRecordCodec::kZoneFlagLowFlow |
+                                WateringRecordCodec::kZoneFlagFlowBaselineAvailable,
                             decoded.zones[0].flags);
+    TEST_ASSERT_EQUAL_UINT32(1000, decoded.zones[0].averageFlowMlPerMinute);
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::NotStarted),
                       static_cast<int>(decoded.zones[1].result));
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Stopped),
                       static_cast<int>(decoded.zones[2].result));
     TEST_ASSERT_EQUAL_UINT32(10000, decoded.zones[2].pulseCount);
     TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, decoded.zones[2].estimatedWaterMl);
+    TEST_ASSERT_EQUAL_UINT32(2000, decoded.zones[2].averageFlowMlPerMinute);
     TEST_ASSERT_EQUAL_UINT8(WateringRecordCodec::kZoneFlagWaterEstimateCapped,
                             decoded.zones[2].flags);
 }
@@ -61,6 +78,7 @@ void test_totals_are_derived_without_overflow() {
     TEST_ASSERT_EQUAL_UINT64(25000, totals.pulseCount);
     TEST_ASSERT_EQUAL_UINT64(static_cast<uint64_t>(UINT32_MAX) + 60000ULL,
                              totals.estimatedWaterMl);
+    TEST_ASSERT_EQUAL_UINT32(1400, totals.averageFlowMlPerMinute);
 
     payload = {};
     payload.source = WateringSource::ManualZones;
@@ -73,6 +91,7 @@ void test_totals_are_derived_without_overflow() {
         zone.actualWateringSec = 7200;
         zone.pulseCount = UINT32_MAX;
         zone.estimatedWaterMl = UINT32_MAX;
+        zone.averageFlowMlPerMinute = UINT32_MAX;
     }
     uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
@@ -80,6 +99,7 @@ void test_totals_are_derived_without_overflow() {
     TEST_ASSERT_EQUAL_UINT64(static_cast<uint64_t>(UINT32_MAX) * 6ULL, totals.pulseCount);
     TEST_ASSERT_EQUAL_UINT64(static_cast<uint64_t>(UINT32_MAX) * 6ULL,
                              totals.estimatedWaterMl);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, totals.averageFlowMlPerMinute);
 }
 
 void test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone() {
@@ -94,7 +114,7 @@ void test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone() {
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    encoded[18] = static_cast<uint8_t>(ZoneWateringResult::Completed);
+    encoded[22] = static_cast<uint8_t>(ZoneWateringResult::Completed);
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 }
 
@@ -111,7 +131,10 @@ void test_only_normal_sessions_with_actual_flow_become_records() {
 
 void test_included_but_unstarted_zone_keeps_plan_and_zero_actuals() {
     WateringSessionSummary summary = exampleSummary();
-    summary.zones[1] = {3, ZoneWateringResult::NotStarted, 120, 0, 0, 0, false};
+    summary.zones[1] = {};
+    summary.zones[1].zoneId = 3;
+    summary.zones[1].result = ZoneWateringResult::NotStarted;
+    summary.zones[1].plannedDurationSec = 120;
     summary.result = WateringResult::Failed;
     summary.stopReason = WateringStopReason::HardwareFailure;
 

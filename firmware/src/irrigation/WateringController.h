@@ -62,7 +62,9 @@ private:
     uint32_t valveOpenedMs_ = 0;
     uint32_t zoneStartedPulseCount_ = 0;
     uint32_t wateringStartedMs_ = 0;
+    uint32_t wateringStartedPulseCount_ = 0;
     uint32_t wateringEndedMs_ = 0;
+    uint32_t wateringEndedPulseCount_ = 0;
     uint32_t lastHandledMs_ = 0;
     uint32_t lowFlowDurationMs_ = 0;
     uint32_t highFlowDurationMs_ = 0;

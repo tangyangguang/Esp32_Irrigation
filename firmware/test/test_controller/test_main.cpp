@@ -138,6 +138,25 @@ void test_gravity_watering_completes_and_applies_hold_duty() {
                       static_cast<int>(controller.start(requestFor(1, 1), config, 6000)));
 }
 
+void test_recorded_average_flow_uses_only_normal_watering_phase() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.zones[0].baselinePulseRateX100 = 500;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(requestFor(1, 5), config, 0)));
+    establishFlow(controller, hardware, 0);
+    hardware.pulses += 25;
+    controller.handle(5001);
+
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL_UINT32(1200, summary->zones[0].averageFlowMlPerMinute);
+    TEST_ASSERT_TRUE(summary->zones[0].flowBaselineAvailable);
+    TEST_ASSERT_EQUAL_UINT32(26, summary->zones[0].pulseCount);
+}
+
 void test_flow_start_timeout_stops_immediately() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
@@ -847,6 +866,7 @@ void test_new_flow_calibration_does_not_reuse_previous_steady_state() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_gravity_watering_completes_and_applies_hold_duty);
+    RUN_TEST(test_recorded_average_flow_uses_only_normal_watering_phase);
     RUN_TEST(test_flow_start_timeout_stops_immediately);
     RUN_TEST(test_running_no_flow_timeout_stops_immediately);
     RUN_TEST(test_user_stop_with_pump_waits_before_closing_valve);
