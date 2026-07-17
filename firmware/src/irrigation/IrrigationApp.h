@@ -63,6 +63,9 @@ public:
     const FlowCalibrationService& flowCalibration() const;
     WateringStartResult startZoneFlowLearning(uint8_t zoneId);
     bool saveLearnedZoneFlow(uint32_t expectedConfigRevision);
+    bool saveManualZoneBaselineFlow(uint8_t zoneId,
+                                    uint32_t flowMlPerMinute,
+                                    uint32_t expectedConfigRevision);
     uint8_t pendingLearnedZoneId() const;
     uint32_t pendingLearnedBaselinePulseRateX100() const;
     uint32_t pendingLearnedFlowMlPerMinute() const;
@@ -97,6 +100,9 @@ private:
     static void parameterConfigSaved(void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
+    bool saveZoneBaselinePulseRate(uint8_t zoneId,
+                                   uint32_t pulseRateX100,
+                                   uint32_t expectedConfigRevision);
     uint32_t trustedEpoch() const;
 
     bool started_ = false;

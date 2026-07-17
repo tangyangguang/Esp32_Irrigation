@@ -29,6 +29,9 @@ public:
     static bool pulseRateToFlowMlPerMinute(uint32_t pulseRateX100,
                                           uint32_t pulsesPerLiterX100,
                                           uint32_t& flowMlPerMinute);
+    static bool flowMlPerMinuteToPulseRate(uint32_t flowMlPerMinute,
+                                          uint32_t pulsesPerLiterX100,
+                                          uint32_t& pulseRateX100);
 
 private:
     uint32_t waitStartedMs_ = 0;

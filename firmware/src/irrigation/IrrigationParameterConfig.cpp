@@ -174,18 +174,46 @@ bool IrrigationParameterConfig::saveFlowCalibrationParameters(
         parameters.calibrationStartupWaterMl > 1000000U) {
         return false;
     }
-    return Esp32BaseConfig::setInt(
-               kNamespace,
-               kStartupPulses,
-               static_cast<int32_t>(parameters.calibrationStartupPulseCount)) &&
-           Esp32BaseConfig::setInt(
-               kNamespace,
-               kStartupWater,
-               static_cast<int32_t>(parameters.calibrationStartupWaterMl)) &&
-           Esp32BaseConfig::setInt(
-               kNamespace,
-               kCoefficient,
-               static_cast<int32_t>(parameters.pulsesPerLiterX100));
+    const int32_t previousStartupPulses = Esp32BaseConfig::getInt(
+        kNamespace,
+        kStartupPulses,
+        static_cast<int32_t>(g_defaults.flowMeter.calibrationStartupPulseCount));
+    const int32_t previousStartupWater = Esp32BaseConfig::getInt(
+        kNamespace,
+        kStartupWater,
+        static_cast<int32_t>(g_defaults.flowMeter.calibrationStartupWaterMl));
+    const int32_t previousCoefficient = Esp32BaseConfig::getInt(
+        kNamespace,
+        kCoefficient,
+        static_cast<int32_t>(g_defaults.flowMeter.pulsesPerLiterX100));
+
+    const bool startupPulsesSaved = Esp32BaseConfig::setInt(
+        kNamespace,
+        kStartupPulses,
+        static_cast<int32_t>(parameters.calibrationStartupPulseCount));
+    const bool startupWaterSaved = Esp32BaseConfig::setInt(
+        kNamespace,
+        kStartupWater,
+        static_cast<int32_t>(parameters.calibrationStartupWaterMl));
+    const bool coefficientSaved = Esp32BaseConfig::setInt(
+        kNamespace,
+        kCoefficient,
+        static_cast<int32_t>(parameters.pulsesPerLiterX100));
+    const bool verified =
+        Esp32BaseConfig::getInt(kNamespace, kStartupPulses, -1) ==
+            static_cast<int32_t>(parameters.calibrationStartupPulseCount) &&
+        Esp32BaseConfig::getInt(kNamespace, kStartupWater, -1) ==
+            static_cast<int32_t>(parameters.calibrationStartupWaterMl) &&
+        Esp32BaseConfig::getInt(kNamespace, kCoefficient, -1) ==
+            static_cast<int32_t>(parameters.pulsesPerLiterX100);
+    if (startupPulsesSaved && startupWaterSaved && coefficientSaved && verified) {
+        return true;
+    }
+
+    Esp32BaseConfig::setInt(kNamespace, kStartupPulses, previousStartupPulses);
+    Esp32BaseConfig::setInt(kNamespace, kStartupWater, previousStartupWater);
+    Esp32BaseConfig::setInt(kNamespace, kCoefficient, previousCoefficient);
+    return false;
 }
 
 bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {

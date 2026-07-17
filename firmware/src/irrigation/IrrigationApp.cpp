@@ -419,21 +419,61 @@ WateringStartResult IrrigationApp::startZoneFlowLearning(uint8_t zoneId) {
 }
 
 bool IrrigationApp::saveLearnedZoneFlow(uint32_t expectedConfigRevision) {
-    const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.status().active || !current ||
-        !BoardPins::isValidZoneId(pendingLearnedZoneId_) ||
+    if (!BoardPins::isValidZoneId(pendingLearnedZoneId_) ||
         pendingLearnedBaselinePulseRateX100_ == 0) {
         return false;
     }
+    if (!saveZoneBaselinePulseRate(pendingLearnedZoneId_,
+                                   pendingLearnedBaselinePulseRateX100_,
+                                   expectedConfigRevision)) {
+        return false;
+    }
+    discardLearnedZoneFlow();
+    return true;
+}
+
+bool IrrigationApp::saveManualZoneBaselineFlow(
+    uint8_t zoneId,
+    uint32_t flowMlPerMinute,
+    uint32_t expectedConfigRevision) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!current || pendingLearnedZoneId_ != 0 ||
+        flowMlPerMinute == 0 || flowMlPerMinute > 100000U) {
+        return false;
+    }
+    uint32_t pulseRateX100 = 0;
+    if (!FlowMonitor::flowMlPerMinuteToPulseRate(
+            flowMlPerMinute,
+            current->flowMeter.pulsesPerLiterX100,
+            pulseRateX100)) {
+        return false;
+    }
+    return saveZoneBaselinePulseRate(
+        zoneId, pulseRateX100, expectedConfigRevision);
+}
+
+bool IrrigationApp::saveZoneBaselinePulseRate(
+    uint8_t zoneId,
+    uint32_t pulseRateX100,
+    uint32_t expectedConfigRevision) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || wateringController_.status().active || !current ||
+        !BoardPins::isValidZoneId(zoneId) || pulseRateX100 == 0) {
+        return false;
+    }
     IrrigationConfig next = *current;
-    next.zones[BoardPins::zoneIndex(pendingLearnedZoneId_)].baselinePulseRateX100 =
-        pendingLearnedBaselinePulseRateX100_;
+    next.zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX100 =
+        pulseRateX100;
     if (!configStore_.save(next, expectedConfigRevision)) {
         return false;
     }
     wateringScheduler_.rebaseTimeCheck();
-    events_.recordZoneFlowSaved(pendingLearnedZoneId_, pendingLearnedFlowMlPerMinute());
-    discardLearnedZoneFlow();
+    uint32_t savedFlowMlPerMinute = 0;
+    FlowMonitor::pulseRateToFlowMlPerMinute(
+        pulseRateX100,
+        next.flowMeter.pulsesPerLiterX100,
+        savedFlowMlPerMinute);
+    events_.recordZoneFlowSaved(zoneId, savedFlowMlPerMinute);
     return true;
 }
 
@@ -461,6 +501,7 @@ bool IrrigationApp::clearLearnedZoneFlow(uint8_t zoneId,
                                          uint32_t expectedConfigRevision) {
     const IrrigationConfig* current = configStore_.current();
     if (!businessReady_ || wateringController_.status().active || !current ||
+        pendingLearnedZoneId_ != 0 ||
         !BoardPins::isValidZoneId(zoneId) ||
         current->zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX100 == 0) {
         return false;

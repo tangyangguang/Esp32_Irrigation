@@ -1615,10 +1615,10 @@ void IrrigationWeb::zones() {
             Esp32BaseWeb::sendChunk("</span></td><td>");
             if (zone.baselinePulseRateX100 == 0) Esp32BaseWeb::sendChunk("<span class='muted'>未学习</span>");
             else if (value[0] == '\0') Esp32BaseWeb::sendChunk("<span class='muted'>超出显示范围</span>");
-            else { Esp32BaseWeb::writeHtmlEscaped(value); Esp32BaseWeb::sendChunk(" L/min（已学习）"); }
+            else { Esp32BaseWeb::writeHtmlEscaped(value); Esp32BaseWeb::sendChunk(" L/min（已设置）"); }
             Esp32BaseWeb::sendChunk("</td><td><div class='fsactions'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('zone-"); sendUnsigned(zone.id);
             Esp32BaseWeb::sendChunk("').showModal()\">修改</button>");
-            if (zone.enabled) { Esp32BaseWeb::sendChunk("<a class='btnlink ok compact' href='/irrigation/zones/learning?zone="); sendUnsigned(zone.id); Esp32BaseWeb::sendChunk("'>学习基准流量</a>"); }
+            Esp32BaseWeb::sendChunk("<a class='btnlink ok compact' href='/irrigation/zones/learning?zone="); sendUnsigned(zone.id); Esp32BaseWeb::sendChunk("'>"); Esp32BaseWeb::sendChunk(zone.enabled ? "学习基准流量" : "设置基准流量"); Esp32BaseWeb::sendChunk("</a>");
             Esp32BaseWeb::sendChunk("</div></td></tr>");
         }
         Esp32BaseWeb::sendChunk("</tbody></table></div>");
@@ -1704,8 +1704,8 @@ void IrrigationWeb::flowCalibration() {
     if (!beginPage("流量计校准", "识别稳定出水阶段，用多组实测总水量计算稳态流量系数")) return;
     Esp32BaseWeb::sendChunk(
         "<style>"
-        ".cal-current{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:0;align-items:center;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff;overflow:hidden}"
-        ".cal-current-fact{min-width:0;padding:10px 13px;border-right:1px solid var(--eb-line-soft)}.cal-current-label{display:block;color:var(--eb-muted);font-size:11px}.cal-current-value{display:block;margin-top:3px;color:var(--eb-text);font-size:17px;font-weight:400;line-height:1.35}.cal-current-unit{font-size:12px;color:var(--eb-muted)}.cal-current-action{padding:10px 13px}.cal-current-action button{white-space:nowrap}"
+        ".cal-current-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px}.cal-current-toolbar p{margin:0;color:var(--eb-muted);font-size:12px;line-height:1.5}.cal-current-toolbar button{flex:0 0 auto;white-space:nowrap}.cal-current{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;align-items:stretch;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff;overflow:hidden}"
+        ".cal-current-fact{min-width:0;padding:10px 13px;border-right:1px solid var(--eb-line-soft)}.cal-current-fact:last-child{border-right:0}.cal-current-label{display:block;color:var(--eb-muted);font-size:11px}.cal-current-value{display:block;margin-top:3px;color:var(--eb-text);font-size:17px;font-weight:400;line-height:1.35}.cal-current-unit{font-size:12px;color:var(--eb-muted)}"
         ".cal-steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-bottom:14px}"
         ".cal-step{display:grid;grid-template-columns:28px minmax(0,1fr);gap:9px;align-items:start;padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft);font-size:13px;line-height:1.55}"
         ".cal-step-num{display:flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:50%;background:var(--eb-primary-soft);color:var(--eb-primary);font-weight:600}"
@@ -1721,14 +1721,14 @@ void IrrigationWeb::flowCalibration() {
         ".cal-empty-text{margin:5px 0 0;color:var(--eb-muted);font-size:13px}"
         ".cal-result{padding:12px 13px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.cal-result-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.cal-result-head-left{display:flex;align-items:center;gap:8px}.cal-result-head p{margin:0;color:var(--eb-muted);font-size:12px}.cal-result-head form{margin:0}.cal-result-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--eb-line-soft);border-radius:8px;overflow:hidden}.cal-result-fact{min-width:0;padding:9px 10px;border-right:1px solid var(--eb-line-soft);background:var(--eb-soft)}.cal-result-fact:last-child{border-right:0}.cal-result-fact span{display:block;color:var(--eb-muted);font-size:11px}.cal-result-fact b{display:block;margin-top:3px;color:var(--eb-text);font-size:15px;font-weight:400}.cal-result-meta{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:8px;color:var(--eb-muted);font-size:11px;line-height:1.5}.cal-result-note{margin:8px 0 0;color:var(--eb-muted);font-size:11px;line-height:1.5}"
         ".cal-sample-toolbar form{margin:0}.cal-sample-toolbar input{min-height:30px;padding:5px 10px;font-size:12px}"
-        ".cal-edit{width:min(460px,calc(100vw - 28px))}.cal-edit h2{margin-bottom:4px}.cal-edit>p{margin-top:0}.cal-parameters{width:min(640px,calc(100vw - 28px))}.cal-parameter-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px;margin-top:14px}.cal-parameter-grid .field{min-width:0}.cal-parameter-grid label{font-weight:500}.cal-parameter-grid input{width:100%;margin:0}.cal-parameter-grid small{display:block;margin-top:4px;color:var(--eb-muted);font-size:12px;line-height:1.4}"
+        ".cal-edit{width:min(460px,calc(100vw - 28px))}.cal-edit h2{margin-bottom:4px}.cal-edit>p{margin-top:0}.cal-parameters{width:min(760px,calc(100vw - 28px))}.cal-parameter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:16px}.cal-parameter-grid .field{min-width:0;margin:0;padding:12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft)}.cal-parameter-grid label{font-weight:500}.cal-parameter-grid input{width:100%;margin:6px 0 0;background:#fff}.cal-parameter-grid small{display:block;margin-top:5px;color:var(--eb-muted);font-size:11px;line-height:1.4}.cal-parameters .actions{margin-top:18px}"
         "@media(max-width:1150px){.cal-sample-columns{display:none}.cal-sample{grid-template-columns:repeat(2,minmax(0,1fr)) auto}.cal-sample-actions{grid-column:3;grid-row:1/span 3}}"
         "@media(max-width:900px){.cal-start-form{grid-template-columns:1fr}.cal-start-controls select{width:100%;min-width:0}.cal-start-info{padding:10px 0 0;border-left:0;border-top:1px solid var(--eb-line-soft)}.cal-phase-grid{grid-template-columns:1fr}.cal-result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-result-fact:nth-child(2){border-right:0}.cal-result-fact:nth-child(-n+2){border-bottom:1px solid var(--eb-line-soft)}}"
         "@media(max-width:760px){"
         ".cal-steps{grid-template-columns:1fr}"
-        ".cal-live .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-pending{grid-template-columns:1fr}.cal-sample-toolbar{align-items:flex-start}.cal-start-controls{align-items:stretch}.cal-sample{grid-template-columns:1fr auto}.cal-sample-actions{grid-column:2;grid-row:1/span 5}"
+        ".cal-live .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.cal-pending{grid-template-columns:1fr}.cal-sample-toolbar{align-items:flex-start}.cal-start-controls{align-items:stretch}.cal-sample{grid-template-columns:1fr auto}.cal-sample-actions{grid-column:2;grid-row:1/span 5}.cal-parameter-grid{grid-template-columns:1fr}"
         "}"
-        "@media(max-width:560px){.cal-current{grid-template-columns:1fr auto}.cal-current-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-current-action{grid-column:2;grid-row:1/span 3}.cal-result-head{align-items:flex-start}.cal-result-grid{grid-template-columns:1fr}.cal-result-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-result-fact:last-child{border-bottom:0!important}.cal-sample{grid-template-columns:1fr}.cal-sample-actions{grid-column:1;grid-row:auto;justify-content:flex-start}.cal-parameter-grid{grid-template-columns:1fr}}"
+        "@media(max-width:560px){.cal-current-toolbar{align-items:stretch;flex-direction:column}.cal-current-toolbar button{width:100%}.cal-current{grid-template-columns:1fr}.cal-current-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-current-fact:last-child{border-bottom:0!important}.cal-result-head{align-items:flex-start}.cal-result-grid{grid-template-columns:1fr}.cal-result-fact{border-right:0;border-bottom:1px solid var(--eb-line-soft)!important}.cal-result-fact:last-child{border-bottom:0!important}.cal-sample{grid-template-columns:1fr}.cal-sample-actions{grid-column:1;grid-row:auto;justify-content:flex-start}}"
         "</style>");
     const IrrigationConfig* config = g_app->configuration();
     if (!config) { endPage(); return; }
@@ -1740,16 +1740,16 @@ void IrrigationWeb::flowCalibration() {
     IrrigationConfigRules::formatPulsesPerLiter(
         config->flowMeter.pulsesPerLiterX100, coefficient, sizeof(coefficient));
     Esp32BaseWeb::beginPanel("设备校准参数");
-    Esp32BaseWeb::sendChunk("<div class='cal-current'><div class='cal-current-fact'><span class='cal-current-label'>启动脉冲</span><span class='cal-current-value'>");
+    Esp32BaseWeb::sendChunk("<div class='cal-current-toolbar'><p>三项设备参数统一保存；各水路的原始脉冲基准在水路学习中独立管理。</p>");
+    if (!managementLocked) Esp32BaseWeb::sendChunk("<button class='secondary' type='button' onclick=\"document.getElementById('cal-parameters').showModal()\">修改参数</button>");
+    Esp32BaseWeb::sendChunk("</div><div class='cal-current'><div class='cal-current-fact'><span class='cal-current-label'>启动脉冲</span><span class='cal-current-value'>");
     sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>个</span>");
     Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>估算启动水量</span><span class='cal-current-value'>");
     sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>mL</span>");
-    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>稳态流量系数</span><span class='cal-current-value'>"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>P/L</span></span></div><div class='cal-current-action'>");
-    if (!managementLocked) Esp32BaseWeb::sendChunk("<button class='secondary' type='button' onclick=\"document.getElementById('cal-parameters').showModal()\">修改参数</button>");
-    Esp32BaseWeb::sendChunk("</div></div>");
+    Esp32BaseWeb::sendChunk("</span></div><div class='cal-current-fact'><span class='cal-current-label'>稳态流量系数</span><span class='cal-current-value'>"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk(" <span class='cal-current-unit'>P/L</span></span></div></div>");
     Esp32BaseWeb::endPanel();
     if (!managementLocked) {
-        Esp32BaseWeb::sendChunk("<dialog id='cal-parameters' class='panel eb-modal cal-edit cal-parameters' data-eb-light-dismiss='1'><h2>修改校准参数</h2><p class='muted'>三项参数统一保存；稳态流量系数参与流量和水量换算。</p><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='parameters'><div class='cal-parameter-grid'><p class='field'><label>启动脉冲</label><input type='number' name='startup_pulses' min='0' max='10000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk("'><small>单位：个；0 表示未设置。</small></p><p class='field'><label>估算启动水量</label><input type='number' name='startup_water_ml' min='0' max='1000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk("'><small>单位：mL；0 表示未设置。</small></p><p class='field'><label>稳态流量系数</label><input type='number' name='coefficient' min='0.01' max='100000.00' step='0.01' required value='"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk("'><small>单位：P/L。</small></p></div><div class='actions'><button class='secondary' type='button' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存参数'></div></form></dialog>");
+        Esp32BaseWeb::sendChunk("<dialog id='cal-parameters' class='panel eb-modal cal-edit cal-parameters' data-eb-light-dismiss='1'><h2>修改校准参数</h2><p class='muted'>三项参数统一保存并读回核对；只有稳态流量系数参与流量和水量换算。</p><form method='post' action='/irrigation/zones/flow-calibration' onsubmit='return once(this)'><input type='hidden' name='action' value='parameters'><div class='cal-parameter-grid'><p class='field'><label>启动脉冲（个）</label><input type='number' name='startup_pulses' min='0' max='10000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupPulseCount); Esp32BaseWeb::sendChunk("'><small>0 表示未设置。</small></p><p class='field'><label>估算启动水量（mL）</label><input type='number' name='startup_water_ml' min='0' max='1000000' step='1' required value='"); sendUnsigned(config->flowMeter.calibrationStartupWaterMl); Esp32BaseWeb::sendChunk("'><small>0 表示未设置。</small></p><p class='field'><label>稳态流量系数（P/L）</label><input type='number' name='coefficient' min='0.01' max='100000.00' step='0.01' required value='"); Esp32BaseWeb::writeHtmlEscaped(coefficient); Esp32BaseWeb::sendChunk("'><small>用于脉冲、流量和水量换算。</small></p></div><div class='actions'><button class='secondary' type='button' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存参数'></div></form></dialog>");
     }
     Esp32BaseWeb::beginPanel("开始校准");
     Esp32BaseWeb::sendChunk("<div class='cal-steps'><div class='cal-step'><span class='cal-step-num'>1</span><span>从完全停止状态开始接水，系统自动识别进入稳态的时刻。</span></div><div class='cal-step'><span class='cal-step-num'>2</span><span>停止后填写实测总水量；至少两个不同水量，建议三个样本。</span></div><div class='cal-step'><span class='cal-step-num'>3</span><span>仅用稳态阶段脉冲拟合，确认使用后才写入设备参数。</span></div></div><div class='cal-action'>");
@@ -1955,6 +1955,20 @@ void IrrigationWeb::zoneLearning() {
         else if (actionIs("stop")) success = status.active && status.purpose == WateringPurpose::ZoneFlowLearning && status.activeZoneId == zoneId && g_app->stopWatering();
         else if (actionIs("save")) { uint32_t revision = 0; success = uintParam("revision", 1, UINT32_MAX, revision) && g_app->pendingLearnedZoneId() == zoneId && g_app->saveLearnedZoneFlow(revision); }
         else if (actionIs("discard")) { success = g_app->pendingLearnedZoneId() == zoneId; if (success) g_app->discardLearnedZoneFlow(); }
+        else if (actionIs("manual")) {
+            char flowText[20]{};
+            uint32_t flowMlPerMinute = 0;
+            uint32_t revision = 0;
+            success = getParam("baseline_flow", flowText, sizeof(flowText)) &&
+                      IrrigationConfigRules::parseLitersPerMinute(
+                          flowText, flowMlPerMinute) &&
+                      flowMlPerMinute != 0 &&
+                      uintParam("revision", 1, UINT32_MAX, revision) &&
+                      g_app->saveManualZoneBaselineFlow(
+                          static_cast<uint8_t>(zoneId),
+                          flowMlPerMinute,
+                          revision);
+        }
         else if (actionIs("clear")) { uint32_t revision = 0; success = uintParam("revision", 1, UINT32_MAX, revision) && g_app->clearLearnedZoneFlow(static_cast<uint8_t>(zoneId), revision); }
         char location[96]{};
         std::snprintf(location, sizeof(location), "/irrigation/zones/learning?zone=%lu&result=%s", static_cast<unsigned long>(zoneId), success ? "ok" : "error");
@@ -1977,11 +1991,16 @@ void IrrigationWeb::zoneLearning() {
         learnedFlowMlPerMinute, learned, sizeof(learned));
     char learnedWithUnit[32]{};
     std::snprintf(learnedWithUnit, sizeof(learnedWithUnit), "%s L/min", learned);
+    char learnedRate[20]{};
+    formatSignedHundredths(
+        zone.baselinePulseRateX100, learnedRate, sizeof(learnedRate));
+    const bool baselineManagementAvailable =
+        !status.active && g_app->pendingLearnedZoneId() == 0;
     Esp32BaseWeb::sendChunk(
         R"HTML(<style>
 .learning-panel{padding-bottom:16px}.learning-context{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:-2px 0 14px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.learning-context>div{min-width:0;padding:10px 12px;border-right:1px solid var(--eb-line-soft)}.learning-context>div:last-child{border-right:0}.learning-label{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.learning-context-value{display:block;margin-top:2px;font-size:14px;font-weight:400;overflow-wrap:anywhere}.learning-context-help{display:block;margin-top:2px;color:var(--eb-muted);font-size:11px;font-weight:400}
 .learning-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}.learning-head h3{margin:0;font-size:15px;font-weight:500}.learning-head .tag{font-weight:400}.learning-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.learning-metric{min-width:0;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.learning-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.learning-rule{margin:10px 0 0;padding:9px 11px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;font-weight:400;line-height:1.55}.learning-rule span{color:var(--eb-text);font-weight:400}
-.learning-debug{margin-top:14px}.learning-debug h3{margin:0 0 2px;font-size:14px;font-weight:500}.learning-debug>p{margin:0 0 7px;color:var(--eb-muted);font-size:11px}.learning-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.learning-table th,.learning-table td{padding:7px 8px;border-bottom:1px solid var(--eb-line-soft);text-align:right;font-weight:400;white-space:nowrap}.learning-table th{color:var(--eb-muted);font-size:11px}.learning-table th:first-child,.learning-table td:first-child{text-align:left}.learning-table tbody tr:last-child td{border-bottom:0}.learning-table tr.learning-decision td{background:#f6faf8}.learning-table tr.learning-decision-start td{border-top:1px solid #cfe5da}.learning-inline{display:inline-flex;align-items:baseline;justify-content:flex-end;gap:7px}.learning-change{color:var(--eb-muted);font-size:10px;font-weight:400}.learning-latest{margin-left:5px;color:#16794a;font-size:10px;font-weight:400}.learning-table .learning-empty{text-align:center;color:var(--eb-muted);padding:12px}.learning-summary{display:flex;flex-wrap:wrap;gap:5px 18px;margin:8px 0 0;color:var(--eb-muted);font-size:11px}.learning-summary span{font-weight:400}.learning-result{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.learning-result>div{padding:11px;border:1px solid var(--eb-line-soft);border-radius:8px}.learning-result-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}.learning-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.learning-actions form,.learning-actions .actions{margin:0}.learning-panel input,.learning-panel .btnlink{font-weight:500}
+.learning-debug{margin-top:14px}.learning-debug h3{margin:0 0 2px;font-size:14px;font-weight:500}.learning-debug>p{margin:0 0 7px;color:var(--eb-muted);font-size:11px}.learning-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.learning-table th,.learning-table td{padding:7px 8px;border-bottom:1px solid var(--eb-line-soft);text-align:right;font-weight:400;white-space:nowrap}.learning-table th{color:var(--eb-muted);font-size:11px}.learning-table th:first-child,.learning-table td:first-child{text-align:left}.learning-table tbody tr:last-child td{border-bottom:0}.learning-table tr.learning-decision td{background:#f6faf8}.learning-table tr.learning-decision-start td{border-top:1px solid #cfe5da}.learning-inline{display:inline-flex;align-items:baseline;justify-content:flex-end;gap:7px}.learning-change{color:var(--eb-muted);font-size:10px;font-weight:400}.learning-latest{margin-left:5px;color:#16794a;font-size:10px;font-weight:400}.learning-table .learning-empty{text-align:center;color:var(--eb-muted);padding:12px}.learning-summary{display:flex;flex-wrap:wrap;gap:5px 18px;margin:8px 0 0;color:var(--eb-muted);font-size:11px}.learning-summary span{font-weight:400}.learning-result{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.learning-result>div{padding:11px;border:1px solid var(--eb-line-soft);border-radius:8px}.learning-result-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}.learning-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.learning-actions form,.learning-actions .actions{margin:0}.learning-panel input,.learning-panel .btnlink{font-weight:500}.learning-manual{width:min(520px,calc(100vw - 28px))}.learning-manual>p{margin-top:0}.learning-manual .field{margin:14px 0 0}.learning-manual input[type=number]{width:100%;margin-top:6px}.learning-manual-preview{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px}.learning-manual-preview output{color:var(--eb-text);font-size:16px;font-variant-numeric:tabular-nums}
 @media(max-width:760px){.learning-context{grid-template-columns:1fr 1fr}.learning-context>div{border-bottom:1px solid var(--eb-line-soft)}.learning-context>div:nth-child(2){border-right:0}.learning-context>div:last-child{grid-column:1/-1;border-bottom:0}.learning-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.learning-table{display:block}.learning-table thead{display:none}.learning-table tbody{display:grid;gap:7px}.learning-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:7px 9px;border:1px solid var(--eb-line-soft);border-radius:7px}.learning-table td{display:grid;grid-template-columns:6.8em minmax(0,1fr);gap:6px;padding:3px 0;border:0;text-align:right}.learning-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:11px;text-align:left}.learning-table td:first-child{text-align:right}.learning-table .learning-empty{display:block;grid-column:1/-1;text-align:center}.learning-table .learning-empty::before{display:none}}
 @media(max-width:420px){.learning-context,.learning-metrics,.learning-result{grid-template-columns:1fr}.learning-context>div{border-right:0}.learning-context>div:last-child{grid-column:auto}.learning-value,.learning-result-value{font-size:17px}.learning-table tr{grid-template-columns:1fr}}
 </style>)HTML");
@@ -1990,6 +2009,11 @@ void IrrigationWeb::zoneLearning() {
     Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
     Esp32BaseWeb::sendChunk("</span></div><div><span class='learning-label'>当前基准流量</span><span class='learning-context-value'>");
     Esp32BaseWeb::sendChunk(zone.baselinePulseRateX100 == 0 ? "未学习" : learnedWithUnit);
+    if (zone.baselinePulseRateX100 != 0) {
+        Esp32BaseWeb::sendChunk("</span><span class='learning-context-help'>原始脉冲基准：");
+        Esp32BaseWeb::writeHtmlEscaped(learnedRate);
+        Esp32BaseWeb::sendChunk(" P/s");
+    }
     Esp32BaseWeb::sendChunk("</span></div><div><span class='learning-label'>安全上限</span><span class='learning-context-value'>10 分钟</span><span class='learning-context-help'>达到上限仍不稳定时自动停止</span></div></div>");
     if (!zone.enabled) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "这条水路尚未启用", "请先返回水路设置启用。");
@@ -2122,10 +2146,18 @@ void IrrigationWeb::zoneLearning() {
                                  "请先返回对应水路保存或放弃该结果。");
     } else {
         if (status.purpose == WateringPurpose::ZoneFlowLearning && status.lastZoneId == zoneId && status.lastStopReason == WateringStopReason::LearningTimeout) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "学习超时", "10 分钟内没有取得稳定流量，请检查供水和管路。");
-        Esp32BaseWeb::sendChunk("<p class='muted'>系统每 5 秒统计一次原始脉冲速率；最近 5 个窗口波动不超过 10%，并容忍一个脉冲的计数误差时自动完成。</p><form method='post' action='/irrigation/zones/learning' onsubmit=\"return confirm('确认开始学习基准流量？开始后这条水路会立即出水。')&&once(this)\"><input type='hidden' name='action' value='start'><input type='hidden' name='zone_id' value='"); sendUnsigned(zoneId); Esp32BaseWeb::sendChunk("'><div class='actions'><input type='submit' value='"); Esp32BaseWeb::sendChunk(zone.baselinePulseRateX100 == 0 ? "开始学习" : "重新学习"); Esp32BaseWeb::sendChunk("'></div></form>");
+        Esp32BaseWeb::sendChunk("<p class='muted'>系统每 5 秒统计一次原始脉冲速率；最近 5 个窗口波动不超过 10%，并容忍一个脉冲的计数误差时自动完成。</p>");
+    }
+    if (baselineManagementAvailable) {
+        Esp32BaseWeb::sendChunk("<div class='learning-actions'>");
+        if (zone.enabled) {
+            Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/learning' onsubmit=\"return confirm('确认开始学习基准流量？开始后这条水路会立即出水。')&&once(this)\"><input type='hidden' name='action' value='start'><input type='hidden' name='zone_id' value='"); sendUnsigned(zoneId); Esp32BaseWeb::sendChunk("'><div class='actions'><input type='submit' value='"); Esp32BaseWeb::sendChunk(zone.baselinePulseRateX100 == 0 ? "开始学习" : "重新学习"); Esp32BaseWeb::sendChunk("'></div></form>");
+        }
+        Esp32BaseWeb::sendChunk("<button class='secondary' type='button' onclick=\"document.getElementById('learning-manual').showModal()\">手工设置</button>");
         if (zone.baselinePulseRateX100 != 0) {
             Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones/learning' onsubmit=\"return confirm('确认清除这条水路的基准流量？清除后将停用该水路的高低流量报警。')&&once(this)\"><input type='hidden' name='action' value='clear'><input type='hidden' name='zone_id' value='"); sendUnsigned(zoneId); Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='"); sendUnsigned(config->revision); Esp32BaseWeb::sendChunk("'><div class='actions'><input class='danger' type='submit' value='清除基准'></div></form>");
         }
+        Esp32BaseWeb::sendChunk("</div>");
     }
     const bool showLearningWindows =
         (active || g_app->pendingLearnedZoneId() == zoneId) &&
@@ -2245,6 +2277,35 @@ void IrrigationWeb::zoneLearning() {
     }
     Esp32BaseWeb::sendChunk("</div>");
     Esp32BaseWeb::endPanel();
+    if (baselineManagementAvailable) {
+        char coefficient[20]{};
+        IrrigationConfigRules::formatPulsesPerLiter(
+            config->flowMeter.pulsesPerLiterX100,
+            coefficient,
+            sizeof(coefficient));
+        Esp32BaseWeb::sendChunk("<dialog id='learning-manual' class='panel eb-modal learning-manual' data-eb-light-dismiss='1'><h2>手工设置基准流量</h2><p class='muted'>录入便于管理的流量值，系统按当前流量计系数换算并保存对应的原始脉冲速率。</p><form method='post' action='/irrigation/zones/learning' onsubmit='return once(this)'><input type='hidden' name='action' value='manual'><input type='hidden' name='zone_id' value='");
+        sendUnsigned(zoneId);
+        Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='");
+        sendUnsigned(config->revision);
+        Esp32BaseWeb::sendChunk("'><p class='field'><label for='baseline-flow'>基准流量（L/min）</label><input id='baseline-flow' type='number' name='baseline_flow' min='0.001' max='100.000' step='0.001' inputmode='decimal' required");
+        if (zone.baselinePulseRateX100 != 0) {
+            Esp32BaseWeb::sendChunk(" value='");
+            Esp32BaseWeb::writeHtmlEscaped(learned);
+            Esp32BaseWeb::sendChunk("'");
+        }
+        Esp32BaseWeb::sendChunk("><small>允许 0.001～100.000 L/min，最多三位小数。</small></p><div class='learning-manual-preview'><span>对应原始脉冲速率</span><output id='baseline-rate'>");
+        if (zone.baselinePulseRateX100 != 0) {
+            Esp32BaseWeb::writeHtmlEscaped(learnedRate);
+            Esp32BaseWeb::sendChunk(" P/s");
+        } else {
+            Esp32BaseWeb::sendChunk("—");
+        }
+        Esp32BaseWeb::sendChunk("</output></div><p class='muted'>当前流量计系数：");
+        Esp32BaseWeb::writeHtmlEscaped(coefficient);
+        Esp32BaseWeb::sendChunk(" P/L。以后修改系数只会改变显示流量，不会改变已保存的原始脉冲基准。</p><div class='actions'><button class='secondary' type='button' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存基准'></div></form></dialog><script>(function(){var input=document.getElementById('baseline-flow'),output=document.getElementById('baseline-rate'),coefficientX100=");
+        sendUnsigned(config->flowMeter.pulsesPerLiterX100);
+        Esp32BaseWeb::sendChunk(";if(!input||!output)return;function update(){var flow=Number(input.value),rateX100=Math.round(flow*1000*coefficientX100/60000);output.textContent=Number.isFinite(flow)&&flow>0&&rateX100>0?(rateX100/100).toFixed(2)+' P/s':(flow>0?'低于可保存范围':'—')}input.addEventListener('input',update);update()})();</script>");
+    }
     Esp32BaseWeb::sendChunk("<p><a class='btnlink secondary' href='/irrigation/zones'>返回水路设置</a></p>");
     if (active) {
         Esp32BaseWeb::sendChunk(R"HTML(<script>

@@ -102,3 +102,19 @@ bool FlowMonitor::pulseRateToFlowMlPerMinute(uint32_t pulseRateX100,
     flowMlPerMinute = static_cast<uint32_t>(estimate);
     return true;
 }
+
+bool FlowMonitor::flowMlPerMinuteToPulseRate(uint32_t flowMlPerMinute,
+                                             uint32_t pulsesPerLiterX100,
+                                             uint32_t& pulseRateX100) {
+    if (flowMlPerMinute == 0 || pulsesPerLiterX100 == 0) {
+        return false;
+    }
+    const uint64_t numerator =
+        static_cast<uint64_t>(flowMlPerMinute) * pulsesPerLiterX100;
+    const uint64_t estimate = (numerator + 30000ULL) / 60000ULL;
+    if (estimate == 0 || estimate > UINT32_MAX) {
+        return false;
+    }
+    pulseRateX100 = static_cast<uint32_t>(estimate);
+    return true;
+}

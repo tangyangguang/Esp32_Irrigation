@@ -81,6 +81,23 @@ void establishFlow(WateringController& controller, FakeWateringHardware& hardwar
     controller.handle(nowMs + 1U);
 }
 
+void test_manual_flow_conversion_uses_exact_fixed_point_arithmetic() {
+    uint32_t pulseRateX100 = 0;
+    TEST_ASSERT_TRUE(FlowMonitor::flowMlPerMinuteToPulseRate(
+        23835, 61800, pulseRateX100));
+    TEST_ASSERT_EQUAL_UINT32(24550, pulseRateX100);
+
+    uint32_t displayedFlowMlPerMinute = 0;
+    TEST_ASSERT_TRUE(FlowMonitor::pulseRateToFlowMlPerMinute(
+        pulseRateX100, 61800, displayedFlowMlPerMinute));
+    TEST_ASSERT_EQUAL_UINT32(23835, displayedFlowMlPerMinute);
+
+    TEST_ASSERT_FALSE(FlowMonitor::flowMlPerMinuteToPulseRate(
+        0, 61800, pulseRateX100));
+    TEST_ASSERT_FALSE(FlowMonitor::flowMlPerMinuteToPulseRate(
+        23835, 0, pulseRateX100));
+}
+
 void test_gravity_watering_completes_and_applies_hold_duty() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
@@ -839,6 +856,7 @@ int main(int, char**) {
     RUN_TEST(test_stopped_session_keeps_unstarted_zones_explicit);
     RUN_TEST(test_water_estimate_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_rate_window_uses_fixed_point_arithmetic);
+    RUN_TEST(test_manual_flow_conversion_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_live_status_reports_plan_progress_remaining_time_and_water);
     RUN_TEST(test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone);
     RUN_TEST(test_persistent_low_flow_alert_can_stop_watering);

@@ -128,10 +128,21 @@ void test_flow_coefficient_decimal_conversion_is_exact() {
 }
 
 void test_liters_per_minute_formatting_is_exact() {
+    uint32_t value = 0;
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("0.001", value));
+    TEST_ASSERT_EQUAL_UINT32(1, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("23.835", value));
+    TEST_ASSERT_EQUAL_UINT32(23835, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseLitersPerMinute("100.000", value));
+    TEST_ASSERT_EQUAL_UINT32(100000, value);
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute(".001", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute("1.0000", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute("100.001", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseLitersPerMinute(" 1.000", value));
+
     char text[16];
     TEST_ASSERT_TRUE(IrrigationConfigRules::formatLitersPerMinute(1234, text, sizeof(text)));
     TEST_ASSERT_EQUAL_STRING("1.234", text);
-
 }
 
 void test_config_json_round_trip_is_exact_and_strict() {
