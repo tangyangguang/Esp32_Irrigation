@@ -146,6 +146,36 @@ void test_gravity_watering_completes_and_applies_hold_duty() {
                       static_cast<int>(controller.start(requestFor(1, 1), config, 6000)));
 }
 
+void test_active_watering_uses_startup_request_and_config_snapshot() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.valveDrive.holdDutyPercent = 65;
+    config.flowProtection.noFlowTimeoutSec = 10;
+    config.zones[0].baselinePulseRateX10000 = 50000;
+    WateringRequest request = requestFor(1, 5);
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    request.steps[0].targetDurationSec = 1;
+    config.valveDrive.holdDutyPercent = 10;
+    config.flowProtection.noFlowTimeoutSec = 1;
+    config.zones[0].baselinePulseRateX10000 = 0;
+
+    establishFlow(controller, hardware, 0);
+    controller.handle(2000);
+    TEST_ASSERT_TRUE(controller.status().active);
+    controller.handle(3000);
+    TEST_ASSERT_EQUAL_UINT8(65, hardware.duty);
+    TEST_ASSERT_TRUE(controller.status().zones[0].flowBaselineAvailable);
+
+    ++hardware.pulses;
+    controller.handle(5001);
+    TEST_ASSERT_FALSE(controller.status().active);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
+                      static_cast<int>(controller.status().lastStopReason));
+}
+
 void test_recorded_average_flow_uses_only_normal_watering_phase() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
@@ -927,6 +957,7 @@ void test_new_flow_calibration_does_not_reuse_previous_steady_state() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_gravity_watering_completes_and_applies_hold_duty);
+    RUN_TEST(test_active_watering_uses_startup_request_and_config_snapshot);
     RUN_TEST(test_recorded_average_flow_uses_only_normal_watering_phase);
     RUN_TEST(test_flow_start_timeout_stops_immediately);
     RUN_TEST(test_running_no_flow_timeout_stops_immediately);

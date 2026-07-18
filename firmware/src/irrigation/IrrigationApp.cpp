@@ -69,9 +69,7 @@ bool IrrigationApp::begin() {
     Esp32BaseRtc::configure(Wire);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
-    if (!IrrigationParameterConfig::registerFields(parameterConfigSaved,
-                                                   parameterConfigSaveAllowed,
-                                                   this) ||
+    if (!IrrigationParameterConfig::registerFields(parameterConfigSaved, this) ||
         !IrrigationWeb::registerRoutes(*this)) {
         hardware.safeShutdown();
         return false;
@@ -348,23 +346,20 @@ WateringScheduler::TimeState IrrigationApp::schedulerTimeState() const {
 }
 
 bool IrrigationApp::pauseAutomaticWateringIndefinitely() {
-    return businessReady_ && !wateringController_.status().active &&
-           wateringScheduler_.pauseIndefinitely();
+    return businessReady_ && wateringScheduler_.pauseIndefinitely();
 }
 
 bool IrrigationApp::pauseAutomaticWateringUntil(uint32_t resumeAtEpoch) {
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
-    return businessReady_ && !wateringController_.status().active &&
-           wateringScheduler_.pauseUntil(resumeAtEpoch,
-                                         now.synced &&
-                                             wateringScheduler_.timeState() ==
-                                                 WateringScheduler::TimeState::Ready,
-                                         now.epochSec);
+    return businessReady_ && wateringScheduler_.pauseUntil(resumeAtEpoch,
+                                                           now.synced &&
+                                                               wateringScheduler_.timeState() ==
+                                                                   WateringScheduler::TimeState::Ready,
+                                                           now.epochSec);
 }
 
 bool IrrigationApp::resumeAutomaticWatering() {
-    return businessReady_ && !wateringController_.status().active &&
-           wateringScheduler_.resumeManually();
+    return businessReady_ && wateringScheduler_.resumeManually();
 }
 
 WateringStartResult IrrigationApp::startFlowCalibration(
@@ -611,14 +606,15 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
                                       IrrigationEvents::ConfigurationChange change,
                                       uint8_t objectId) {
     const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.status().active || !current) {
+    if (!businessReady_ || !current) {
         return false;
     }
     BoardHardware& hardware = BoardHardware::instance();
+    const bool active = wateringController_.status().active;
     const bool frequencyChanged = proposed.valveDrive.pwmFrequencyHz !=
                                   current->valveDrive.pwmFrequencyHz;
     bool hardwareChanged = false;
-    if (frequencyChanged) {
+    if (frequencyChanged && !active) {
         if (!hardware.configureValvePwmFrequency(proposed.valveDrive.pwmFrequencyHz)) {
             return false;
         }
@@ -632,9 +628,11 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
         }
         return false;
     }
-    pendingPwmReconfigure_ = false;
+    pendingPwmReconfigure_ = frequencyChanged && active;
     wateringScheduler_.rebaseTimeCheck();
-    resetUnexpectedFlowMonitor(millis());
+    if (!active) {
+        resetUnexpectedFlowMonitor(millis());
+    }
     events_.recordConfigurationChanged(change, objectId);
     return true;
 }
@@ -803,11 +801,6 @@ void IrrigationApp::applyPendingHardwareConfiguration() {
 
 void IrrigationApp::parameterConfigSaved(void* user) {
     if (user) static_cast<IrrigationApp*>(user)->handleParameterConfigSaved();
-}
-
-bool IrrigationApp::parameterConfigSaveAllowed(void* user) {
-    return user &&
-           !static_cast<IrrigationApp*>(user)->wateringController_.status().active;
 }
 
 bool IrrigationApp::applyStoredParameterConfig() {

@@ -7,11 +7,8 @@
 class IrrigationParameterConfig {
 public:
     using SavedCallback = void (*)(void* user);
-    using SaveAllowedCallback = bool (*)(void* user);
 
-    static bool registerFields(SavedCallback callback,
-                               SaveAllowedCallback saveAllowed,
-                               void* user);
+    static bool registerFields(SavedCallback callback, void* user);
     static bool applyStored(IrrigationConfig& config);
     static bool saveFlowCalibrationParameters(const FlowMeterConfig& parameters);
 

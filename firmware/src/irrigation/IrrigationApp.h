@@ -106,7 +106,6 @@ private:
     void handleParameterConfigSaved();
     bool applyStoredParameterConfig();
     static void parameterConfigSaved(void* user);
-    static bool parameterConfigSaveAllowed(void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
     bool saveZoneBaselinePulseRate(uint8_t zoneId,
