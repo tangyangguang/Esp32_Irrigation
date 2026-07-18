@@ -1434,9 +1434,22 @@ void IrrigationWeb::overview() {
     }
     if (!g_app->businessReady()) {
         heroTone = " danger";
-        heroTitle = "灌溉配置需要重新建立";
-        heroDescription = "当前配置结构不兼容或文件无效，全部输出保持关闭。请先导出需要保留的记录，再到系统工具格式化文件系统并重新配置。";
-        heroHref = "/esp32base";
+        const IrrigationConfigStore::LoadResult loadResult =
+            g_app->configurationLoadResult();
+        if (loadResult == IrrigationConfigStore::LoadResult::StorageUnavailable) {
+            heroTitle = "设备存储不可用";
+            heroDescription = "新设备首次烧录后可能需要初始化文件系统。全部输出已保持关闭。确认设备中没有需要保留的数据后，请到系统工具格式化 LittleFS；如果设备此前已经使用过，请勿直接格式化。";
+        } else if (loadResult == IrrigationConfigStore::LoadResult::InvalidConfig) {
+            heroTitle = "灌溉配置需要重新建立";
+            heroDescription = "当前配置结构不兼容或配置文件没有有效副本，全部输出已保持关闭。如需保留现有数据，请勿直接格式化；完成备份后再到系统工具格式化 LittleFS 并重新配置。";
+        } else if (loadResult == IrrigationConfigStore::LoadResult::WriteFailed) {
+            heroTitle = "灌溉配置无法保存";
+            heroDescription = "文件系统可以读取，但配置写入或校验失败，全部输出已保持关闭。请先查看系统状态和日志，不要直接格式化。";
+        } else {
+            heroTitle = "灌溉功能未就绪";
+            heroDescription = "启动检查未能完成，全部输出已保持关闭。请查看系统状态和日志，不要直接格式化。";
+        }
+        heroHref = "/esp32base/system";
         heroAction = "打开系统工具";
     } else if (g_app->schedulerStorageFault()) {
         heroTone = " danger";

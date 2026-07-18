@@ -601,6 +601,10 @@ const IrrigationConfig* IrrigationApp::configuration() const {
     return configStore_.current();
 }
 
+IrrigationConfigStore::LoadResult IrrigationApp::configurationLoadResult() const {
+    return configStore_.loadResult();
+}
+
 bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
                                       uint32_t expectedRevision,
                                       IrrigationEvents::ConfigurationChange change,

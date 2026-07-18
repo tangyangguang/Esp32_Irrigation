@@ -80,6 +80,7 @@ public:
     bool clearLearnedZoneFlow(uint8_t zoneId, uint32_t expectedConfigRevision);
     void discardLearnedZoneFlow();
     const IrrigationConfig* configuration() const;
+    IrrigationConfigStore::LoadResult configurationLoadResult() const;
     bool saveConfiguration(const IrrigationConfig& proposed,
                            uint32_t expectedRevision,
                            IrrigationEvents::ConfigurationChange change,
