@@ -47,6 +47,7 @@ const Esp32BaseAppConfig::EnumOption kFlowActions[] = {
 };
 
 IrrigationParameterConfig::SavedCallback g_callback = nullptr;
+IrrigationParameterConfig::SaveAllowedCallback g_saveAllowed = nullptr;
 void* g_callbackUser = nullptr;
 IrrigationConfig g_defaults{};
 IrrigationConfig g_validationScratch{};
@@ -94,8 +95,11 @@ bool readSubmitted(IrrigationConfig& config) {
 
 }  // namespace
 
-bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* user) {
+bool IrrigationParameterConfig::registerFields(SavedCallback callback,
+                                               SaveAllowedCallback saveAllowed,
+                                               void* user) {
     g_callback = callback;
+    g_saveAllowed = saveAllowed;
     g_callbackUser = user;
     g_defaults = IrrigationConfigRules::createDefault();
     const IrrigationConfig& defaults = g_defaults;
@@ -217,6 +221,10 @@ bool IrrigationParameterConfig::saveFlowCalibrationParameters(
 }
 
 bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {
+    if (g_saveAllowed && !g_saveAllowed(g_callbackUser)) {
+        strlcpy(error, "浇水进行中不能修改系统参数，请停止浇水后重试。", errorLength);
+        return false;
+    }
     g_validationScratch = g_defaults;
     if (!readSubmitted(g_validationScratch) ||
         !IrrigationConfigRules::validate(g_validationScratch)) {

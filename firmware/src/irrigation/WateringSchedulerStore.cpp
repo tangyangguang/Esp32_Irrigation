@@ -100,12 +100,11 @@ SchedulerStorageLoadResult WateringSchedulerStore::load(
     if (!Esp32BaseConfig::isReady()) {
         return SchedulerStorageLoadResult::Error;
     }
-    if (!Esp32BaseConfig::getBool(kNamespace, kInitializedKey, false)) {
-        return SchedulerStorageLoadResult::Missing;
-    }
     uint8_t encoded[WateringSchedulerStateCodec::kEncodedSize]{};
     if (!Esp32BaseConfig::getBlob(kNamespace, kStateKey, encoded, sizeof(encoded))) {
-        return SchedulerStorageLoadResult::Invalid;
+        return Esp32BaseConfig::getBool(kNamespace, kInitializedKey, false)
+                   ? SchedulerStorageLoadResult::Invalid
+                   : SchedulerStorageLoadResult::Missing;
     }
     return WateringSchedulerStateCodec::decode(encoded, sizeof(encoded), state)
                ? SchedulerStorageLoadResult::Loaded
@@ -118,11 +117,11 @@ bool WateringSchedulerStore::save(const WateringSchedulerPersistentState& state)
         !WateringSchedulerStateCodec::encode(state, encoded, sizeof(encoded))) {
         return false;
     }
-    if (!Esp32BaseConfig::getBool(kNamespace, kInitializedKey, false) &&
-        !Esp32BaseConfig::setBool(kNamespace, kInitializedKey, true)) {
+    if (!Esp32BaseConfig::setBlob(kNamespace, kStateKey, encoded, sizeof(encoded))) {
         return false;
     }
-    return Esp32BaseConfig::setBlob(kNamespace, kStateKey, encoded, sizeof(encoded));
+    return Esp32BaseConfig::getBool(kNamespace, kInitializedKey, false) ||
+           Esp32BaseConfig::setBool(kNamespace, kInitializedKey, true);
 }
 
 bool WateringSchedulerStore::clear() {

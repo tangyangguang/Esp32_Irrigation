@@ -106,6 +106,7 @@ private:
     void handleParameterConfigSaved();
     bool applyStoredParameterConfig();
     static void parameterConfigSaved(void* user);
+    static bool parameterConfigSaveAllowed(void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
     bool saveZoneBaselinePulseRate(uint8_t zoneId,
@@ -126,8 +127,15 @@ private:
     bool eventConditionsInitialized_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
     uint32_t pendingLearnedBaselinePulseRateX10000_ = 0;
-    std::array<bool, BoardPins::kZoneCount> lowFlowEventReported_{};
-    std::array<bool, BoardPins::kZoneCount> highFlowEventReported_{};
+    struct PendingFlowDeviationEvent {
+        uint32_t detectedFlowMlPerMinute = 0;
+        uint32_t baselineFlowMlPerMinute = 0;
+        bool pending = false;
+    };
+    std::array<PendingFlowDeviationEvent, BoardPins::kZoneCount>
+        pendingLowFlowEvents_{};
+    std::array<PendingFlowDeviationEvent, BoardPins::kZoneCount>
+        pendingHighFlowEvents_{};
     IrrigationConfig parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
     FlowCalibrationService flowCalibrationService_;

@@ -18,7 +18,7 @@ public:
     static constexpr const char* kRecordTypeName = "watering";
     static constexpr uint16_t kStoreVersion = 3;
     static constexpr uint32_t kMaximumStoreBytes = 512UL * 1024UL;
-    static constexpr uint32_t kMinimumFileSystemFreeBytes = 96UL * 1024UL;
+    static constexpr uint32_t kMinimumFileSystemFreeBytes = 32UL * 1024UL;
 
     using ReadCallback = void (*)(const StoredWateringRecord& record, void* user);
 

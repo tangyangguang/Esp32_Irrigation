@@ -86,6 +86,8 @@ void test_production_watering_store_definition_loads() {
     TEST_ASSERT_EQUAL_UINT32(WateringRecordCodec::kPayloadSize + 24U, status.slotSizeBytes);
     TEST_ASSERT_EQUAL_UINT32(WateringRecordStore::kMaximumStoreBytes,
                              status.maximumStoreBytes);
+    TEST_ASSERT_EQUAL_UINT32(32UL * 1024UL,
+                             WateringRecordStore::kMinimumFileSystemFreeBytes);
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32(4500, status.capacity);
     TEST_ASSERT_TRUE(status.writable);
 }
@@ -361,7 +363,23 @@ void test_scheduler_state_nvs_round_trip_and_corruption_detection() {
     state.currentProcessedMask = 0x80000001UL;
     state.previousLocalDay = 20453;
     state.previousProcessedMask = 0x00000002UL;
+
+    uint8_t encodedWithoutMarker[WateringSchedulerStateCodec::kEncodedSize]{};
+    TEST_ASSERT_TRUE(WateringSchedulerStateCodec::encode(
+        state, encodedWithoutMarker, sizeof(encodedWithoutMarker)));
+    TEST_ASSERT_TRUE(Esp32BaseConfig::setBlob("irrigation",
+                                             "sched_state",
+                                             encodedWithoutMarker,
+                                             sizeof(encodedWithoutMarker)));
+    WateringSchedulerPersistentState loadedWithoutMarker{};
+    TEST_ASSERT_EQUAL(static_cast<int>(SchedulerStorageLoadResult::Loaded),
+                      static_cast<int>(store.load(loadedWithoutMarker)));
+    TEST_ASSERT_EQUAL_UINT32(state.resumeAtEpoch,
+                             loadedWithoutMarker.resumeAtEpoch);
+    TEST_ASSERT_TRUE(store.clear());
+
     TEST_ASSERT_TRUE(store.save(state));
+    TEST_ASSERT_TRUE(Esp32BaseConfig::getBool("irrigation", "sched_init", false));
 
     WateringSchedulerPersistentState loaded{};
     TEST_ASSERT_EQUAL(static_cast<int>(SchedulerStorageLoadResult::Loaded),
