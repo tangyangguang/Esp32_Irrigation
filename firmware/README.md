@@ -20,6 +20,16 @@ pio run -e esp32_irrigation
 pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-port>
 ```
 
+基础库 Web OTA 已配置为设备 `192.168.2.136`。认证信息不得写入仓库；需要升级时由操作者在当前终端提供设备现行 Web Auth 凭据后，显式执行 `pio run -e esp32_irrigation -t webota`。普通构建和测试不会连接设备或触发 OTA。
+
+```sh
+export ESP32BASE_WEBOTA_USER='<current-web-auth-user>'
+export ESP32BASE_WEBOTA_PASSWORD='<current-web-auth-password>'
+pio run -e esp32_irrigation -t webota
+```
+
+2026-07-20 Web OTA 配置：复用 `../../Esp32Base/scripts/esp32base_webota.py` 和基础库 FULL profile 已启用的 Web OTA，目标 IP 配置为 `192.168.2.136`。执行 `pio test -e native` 通过 79/79，执行 `pio run -e esp32_irrigation` 通过，资源占用 RAM 84028 B / 25.6%、Flash 1252969 B / 79.7%；按用户要求未执行 `webota`、串口上传或任何设备写入。
+
 2026-07-14 的实际结果：本机 55 项测试通过，正式 ESP32 构建通过（RAM 78452 B / 23.9%，Flash 1137889 B / 72.3%），核心板上的 8 项既有测试通过。实机测试覆盖业务记录分页、详情、轮换、CRC 损坏识别、应用事件、调度状态 NVS 往返和损坏识别、在线检查点节流与重载。正式固件还完成了烧录、重启、默认认证、6 个页面、状态接口、CSV、跨站 POST 拒绝、配置版本冲突、计划增删、水路保存、自动暂停/恢复和手动启停回归；系统参数修改、确认、运行时生效与恢复正常，计划和水路弹层已通过桌面及手机宽度检查。本轮新增的稳态流量计校准、基准流量学习、水路表格、行动型首页、下一次自动浇水查询和暂停时间校验已通过 Native 回归、脚本语法检查与正式构建；System 页业务记录统一接入已通过静态契约检查与正式构建。浇水记录页的空状态、空数据分页抑制、深链接缺失提示和响应式布局已在烧录后的设备上通过 1280 px 与 390 px 浏览器检查；详情弹层代码已通过正式构建，仍需在设备产生真实浇水记录后补一次实机交互检查。
 
 2026-07-15 的实际结果：执行 `pio test -e native` 通过 55/55 个测试用例，执行 `pio run -e esp32_irrigation` 通过，资源占用为 RAM 78452 B / 23.9%，Flash 1137889 B / 72.3%。
