@@ -1,3 +1,4 @@
 .DS_Store
 .pio/
 *.tmp
+firmware/platformio.local.ini
