@@ -659,7 +659,7 @@ void IrrigationApp::advanceBusiness() {
     refreshRtcCondition(nowMs, false);
     wateringController_.handle(nowMs);
     reportNewFlowDeviationEvents();
-    consumeFinishedWatering();
+    consumeFinishedWatering(nowMs);
     const IrrigationConfig* config = configStore_.current();
     if (config && !wateringController_.status().active) {
         unexpectedFlowMonitor_.observe(nowMs, BoardHardware::instance().flowPulseCount());
@@ -745,7 +745,7 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
     }
 }
 
-void IrrigationApp::consumeFinishedWatering() {
+void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
     const WateringSessionSummary* summary = wateringController_.finishedSession();
     if (!summary) {
         return;
@@ -777,7 +777,7 @@ void IrrigationApp::consumeFinishedWatering() {
     }
 
     events_.recordAbnormalWateringStop(*summary);
-    resetUnexpectedFlowMonitor(millis());
+    resetUnexpectedFlowMonitor(nowMs);
     applyPendingHardwareConfiguration();
     wateringController_.clearFinishedSession();
     wateringStartTime_ = {};
@@ -921,7 +921,7 @@ void IrrigationApp::handleSchedulerEvent(WateringScheduler::Event event,
 
 void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
                                          uint8_t planId,
-                                         int32_t) {
+                                         int32_t value) {
     switch (event) {
         case WateringScheduler::Event::PausedIndefinitely:
             events_.recordAutomaticWateringPaused(true, 0);
@@ -937,10 +937,16 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
             events_.recordAutomaticWateringResumed(true);
             break;
         case WateringScheduler::Event::PlanSkippedBusy:
-            events_.recordAutomaticPlanSkipped(planId, true);
+            events_.recordAutomaticPlanSkipped(
+                planId,
+                static_cast<WateringStartResult>(value),
+                wateringController_.status());
             break;
         case WateringScheduler::Event::PlanStartRejected:
-            events_.recordAutomaticPlanSkipped(planId, false);
+            events_.recordAutomaticPlanSkipped(
+                planId,
+                static_cast<WateringStartResult>(value),
+                wateringController_.status());
             break;
         case WateringScheduler::Event::StorageFault:
             schedulerStorageFault_ = true;

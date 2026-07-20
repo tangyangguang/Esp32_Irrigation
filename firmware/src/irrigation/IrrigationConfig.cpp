@@ -97,7 +97,7 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
     config.schemaVersion = kIrrigationConfigSchemaVersion;
     config.revision = 1;
 
-    config.valveDrive = {3000, 20000, 75};
+    config.valveDrive = {3000, 1000, 20000, 75};
     config.pump = {false, 0, 1000};
     config.flowMeter = {25000, 0, 0};
     config.calibrationStability = {3, 3, 10};
@@ -142,6 +142,7 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
         return false;
     }
     if (!inRange(config.valveDrive.pullInTimeMs, 100, 10000) ||
+        !inRange(config.valveDrive.switchDelayMs, 100, 10000) ||
         !inRange(config.valveDrive.pwmFrequencyHz, 1000, 25000) ||
         !inRange(config.valveDrive.holdDutyPercent, 1, 100)) {
         return false;

@@ -142,11 +142,44 @@ void IrrigationEvents::recordAutomaticWateringResumed(bool automatically) {
     append(event);
 }
 
-void IrrigationEvents::recordAutomaticPlanSkipped(uint8_t planId, bool busy) {
+void IrrigationEvents::recordAutomaticPlanSkipped(uint8_t planId,
+                                                  WateringStartResult result,
+                                                  const WateringStatus& status) {
+    ReasonCode reason = ReasonCode::PlanStartRejected;
+    switch (result) {
+        case WateringStartResult::Busy:
+            if (status.active && status.purpose == WateringPurpose::FlowCalibration) {
+                reason = ReasonCode::PlanBusyFlowCalibration;
+            } else if (status.active &&
+                       status.purpose == WateringPurpose::ZoneFlowLearning) {
+                reason = ReasonCode::PlanBusyZoneFlowLearning;
+            } else if (status.active &&
+                       status.source == WateringSource::AutomaticPlan) {
+                reason = ReasonCode::PlanBusyAutomaticWatering;
+            } else if (status.active) {
+                reason = ReasonCode::PlanBusyManualWatering;
+            } else {
+                reason = ReasonCode::PlanBusy;
+            }
+            break;
+        case WateringStartResult::PreviousResultPending:
+            reason = ReasonCode::PlanPreviousResultPending;
+            break;
+        case WateringStartResult::NotReady:
+            reason = ReasonCode::PlanControllerNotReady;
+            break;
+        case WateringStartResult::InvalidRequest:
+            reason = ReasonCode::PlanInvalidRequest;
+            break;
+        case WateringStartResult::HardwareFailure:
+            reason = ReasonCode::PlanHardwareFailure;
+            break;
+        case WateringStartResult::Started:
+            return;
+    }
     Esp32BaseAppEvents::EventInput event;
     event.eventCode = static_cast<uint32_t>(EventCode::AutomaticPlanSkipped);
-    event.reasonCode = static_cast<uint32_t>(busy ? ReasonCode::PlanBusy
-                                                  : ReasonCode::PlanStartRejected);
+    event.reasonCode = static_cast<uint32_t>(reason);
     event.objectId = planId;
     event.level = Esp32BaseAppEvents::Level::Warning;
     append(event);
@@ -343,6 +376,12 @@ WateringSource IrrigationEvents::wateringSource(
 
 uint8_t IrrigationEvents::wateringPlanId(
     const Esp32BaseAppEvents::EventRecord& event) {
+    if (static_cast<EventCode>(event.eventCode) ==
+        EventCode::AutomaticPlanSkipped) {
+        return event.objectId <= kWateringPlanCount
+                   ? static_cast<uint8_t>(event.objectId)
+                   : 0;
+    }
     if ((event.flags & kFlagAutomaticPlan) == 0) return 0;
     return static_cast<uint8_t>((event.flags & kPlanIdMask) >> kPlanIdShift);
 }
@@ -406,7 +445,35 @@ void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
             else std::snprintf(out, length, "自动浇水已暂停");
             return;
         case EventCode::AutomaticPlanSkipped:
-            std::snprintf(out, length, "计划 %lu 本次未执行", static_cast<unsigned long>(event.objectId)); return;
+            if (planName && planName[0] != '\0') {
+                std::snprintf(source, sizeof(source), "自动计划“%s”", planName);
+            } else {
+                std::snprintf(source, sizeof(source), "自动计划 %lu",
+                              static_cast<unsigned long>(event.objectId));
+            }
+            switch (static_cast<ReasonCode>(event.reasonCode)) {
+                case ReasonCode::PlanBusyManualWatering:
+                    std::snprintf(out, length, "%s未执行：设备正在手动浇水", source); return;
+                case ReasonCode::PlanBusyAutomaticWatering:
+                    std::snprintf(out, length, "%s未执行：另一自动计划正在运行", source); return;
+                case ReasonCode::PlanBusyFlowCalibration:
+                    std::snprintf(out, length, "%s未执行：正在校准流量计", source); return;
+                case ReasonCode::PlanBusyZoneFlowLearning:
+                    std::snprintf(out, length, "%s未执行：正在学习基准流量", source); return;
+                case ReasonCode::PlanPreviousResultPending:
+                    std::snprintf(out, length, "%s未执行：上一次任务正在结束", source); return;
+                case ReasonCode::PlanControllerNotReady:
+                    std::snprintf(out, length, "%s未执行：浇水功能尚未就绪", source); return;
+                case ReasonCode::PlanInvalidRequest:
+                    std::snprintf(out, length, "%s未执行：计划配置无效", source); return;
+                case ReasonCode::PlanHardwareFailure:
+                    std::snprintf(out, length, "%s未执行：控制输出启动失败", source); return;
+                case ReasonCode::PlanBusy:
+                    std::snprintf(out, length, "%s未执行：设备正在执行其他操作", source); return;
+                case ReasonCode::PlanStartRejected:
+                default:
+                    std::snprintf(out, length, "%s未执行：设备无法启动浇水", source); return;
+            }
         case EventCode::RtcRollback:
             std::snprintf(out, length, recovered(event) ? "设备时间已恢复正常" : "设备时间发生倒退"); return;
         case EventCode::FlowDeviation:
@@ -472,9 +539,29 @@ void IrrigationEvents::formatSummary(const Esp32BaseAppEvents::EventRecord& even
             else std::snprintf(out, length, "自动计划可以继续运行。");
             return;
         case EventCode::AutomaticPlanSkipped:
-            std::snprintf(out, length,
-                          event.reasonCode == static_cast<uint32_t>(ReasonCode::PlanBusy)
-                              ? "设备正在执行其他操作。" : "设备当前无法启动浇水。"); return;
+            switch (static_cast<ReasonCode>(event.reasonCode)) {
+                case ReasonCode::PlanBusyManualWatering:
+                    std::snprintf(out, length, "到达启动时间时设备正在手动浇水，本次已跳过且不会补执行。"); return;
+                case ReasonCode::PlanBusyAutomaticWatering:
+                    std::snprintf(out, length, "到达启动时间时另一自动计划正在运行，本次已跳过且不会补执行。"); return;
+                case ReasonCode::PlanBusyFlowCalibration:
+                    std::snprintf(out, length, "流量计校准期间不能启动浇水，本次已跳过且不会补执行。"); return;
+                case ReasonCode::PlanBusyZoneFlowLearning:
+                    std::snprintf(out, length, "基准流量学习期间不能启动浇水，本次已跳过且不会补执行。"); return;
+                case ReasonCode::PlanPreviousResultPending:
+                    std::snprintf(out, length, "设备正在完成上一次任务的记录和安全收尾，本次不会补执行。"); return;
+                case ReasonCode::PlanControllerNotReady:
+                    std::snprintf(out, length, "浇水功能当时尚未就绪；请检查首页状态和系统日志。"); return;
+                case ReasonCode::PlanInvalidRequest:
+                    std::snprintf(out, length, "计划没有形成有效的执行水路；请检查计划和水路设置。"); return;
+                case ReasonCode::PlanHardwareFailure:
+                    std::snprintf(out, length, "阀门或控制输出未能安全启动；请检查硬件和系统日志。"); return;
+                case ReasonCode::PlanBusy:
+                    std::snprintf(out, length, "设备当时正在执行其他操作，本次已跳过且不会补执行。"); return;
+                case ReasonCode::PlanStartRejected:
+                default:
+                    std::snprintf(out, length, "设备当时无法启动浇水，本次不会补执行。"); return;
+            }
         case EventCode::RtcRollback:
             std::snprintf(out, length, recovered(event)
                           ? "时间已经校正，自动计划可以继续运行。"

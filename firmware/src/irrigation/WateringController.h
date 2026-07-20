@@ -28,6 +28,7 @@ private:
     bool applyValveHoldIfDue(uint32_t nowMs);
     void finishCurrentZone(uint32_t nowMs);
     void enterStoppingZone(uint32_t nowMs, bool stopSession, WateringStopReason reason);
+    void enterSwitchingZone(uint32_t nowMs);
     void finalizeCurrentZone(ZoneWateringResult result, uint32_t nowMs);
     void finalizeTerminalFlow(ZoneWateringSummary& zone);
     void finishSession(WateringStopReason reason, uint32_t nowMs);

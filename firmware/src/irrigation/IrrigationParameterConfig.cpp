@@ -10,6 +10,7 @@ namespace {
 
 constexpr const char* kNamespace = "irr_params";
 constexpr const char* kPullIn = "pull_ms";
+constexpr const char* kSwitchDelay = "switch_ms";
 constexpr const char* kPwm = "pwm_hz";
 constexpr const char* kHold = "hold_pct";
 constexpr const char* kPumpEnabled = "pump_on";
@@ -59,6 +60,7 @@ bool readSubmitted(IrrigationConfig& config) {
     do { if (!Esp32BaseAppConfig::submittedInt(kNamespace, key, value)) return false; \
          target = static_cast<decltype(target)>(value); } while (false)
     READ_INT(kPullIn, config.valveDrive.pullInTimeMs);
+    READ_INT(kSwitchDelay, config.valveDrive.switchDelayMs);
     READ_INT(kPwm, config.valveDrive.pwmFrequencyHz);
     READ_INT(kHold, config.valveDrive.holdDutyPercent);
     if (!Esp32BaseAppConfig::submittedBool(kNamespace, kPumpEnabled, boolean)) return false;
@@ -108,6 +110,7 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* use
            Esp32BaseAppConfig::addGroup({"flow", "流量异常保护"}) &&
            Esp32BaseAppConfig::addGroup({"system", "时间与存储"}) &&
            Esp32BaseAppConfig::addInt({"valve", kNamespace, kPullIn, "全功率吸合时间", defaults.valveDrive.pullInTimeMs, 100, 10000, 100, "ms", "开阀时先以全功率驱动的时长，范围 100～10000 ms。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"valve", kNamespace, kSwitchDelay, "水路切换间隔", defaults.valveDrive.switchDelayMs, 100, 10000, 100, "ms", "上一水路关阀后等待该时长再开下一路，范围 100～10000 ms。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"valve", kNamespace, kPwm, "PWM 频率", static_cast<int32_t>(defaults.valveDrive.pwmFrequencyHz), 1000, 25000, 100, "Hz", "电磁阀维持阶段的 PWM 频率，范围 1000～25000 Hz。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"valve", kNamespace, kHold, "维持占空比", defaults.valveDrive.holdDutyPercent, 1, 100, 1, "%", "吸合结束后的维持功率，范围 1%～100%。", false, nullptr}) &&
            Esp32BaseAppConfig::addBool({"pump", kNamespace, kPumpEnabled, "启用外部水泵", defaults.pump.enabled, "仅在接有受控水泵时启用；水塔重力供水保持关闭。", false, nullptr}) &&
@@ -136,6 +139,7 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     const IrrigationConfig& defaults = g_defaults;
 #define GET_INT(key, def, target) target = static_cast<decltype(target)>(Esp32BaseConfig::getInt(kNamespace, key, def))
     GET_INT(kPullIn, defaults.valveDrive.pullInTimeMs, config.valveDrive.pullInTimeMs);
+    GET_INT(kSwitchDelay, defaults.valveDrive.switchDelayMs, config.valveDrive.switchDelayMs);
     GET_INT(kPwm, defaults.valveDrive.pwmFrequencyHz, config.valveDrive.pwmFrequencyHz);
     GET_INT(kHold, defaults.valveDrive.holdDutyPercent, config.valveDrive.holdDutyPercent);
     config.pump.enabled = Esp32BaseConfig::getBool(kNamespace, kPumpEnabled, defaults.pump.enabled);

@@ -309,13 +309,24 @@ void test_multiple_zones_run_in_order() {
     establishFlow(controller, hardware, 0);
     ++hardware.pulses;
     controller.handle(1001);
+    TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
+    TEST_ASSERT_EQUAL_UINT8(1, hardware.openCalls);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringState::SwitchingZone),
+                      static_cast<int>(controller.status().state));
+    TEST_ASSERT_EQUAL_UINT8(1, controller.status().currentStepIndex);
+    TEST_ASSERT_EQUAL_UINT32(1, controller.status().plannedRemainingSec);
+
+    hardware.pulses += 4;
+    controller.handle(2000);
+    TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
+    controller.handle(2001);
     TEST_ASSERT_EQUAL_UINT8(2, hardware.activeZone);
 
-    controller.handle(1001);
-    ++hardware.pulses;
-    controller.handle(1002);
+    controller.handle(2001);
     ++hardware.pulses;
     controller.handle(2002);
+    ++hardware.pulses;
+    controller.handle(3002);
     TEST_ASSERT_FALSE(controller.status().active);
     TEST_ASSERT_EQUAL_UINT8(2, hardware.openCalls);
 
@@ -326,6 +337,41 @@ void test_multiple_zones_run_in_order() {
                       static_cast<int>(summary->zones[0].result));
     TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
                       static_cast<int>(summary->zones[1].result));
+    TEST_ASSERT_EQUAL_UINT32(2, summary->zones[1].pulseCount);
+}
+
+void test_pump_and_valves_are_off_during_zone_switch_interval() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.pump.enabled = true;
+    config.pump.stopToValveCloseDelayMs = 500;
+    config.valveDrive.switchDelayMs = 1000;
+    WateringRequest request = requestFor(1, 1);
+    request.stepCount = 2;
+    request.steps[1] = {2, 1};
+
+    controller.start(request, config, 0);
+    establishFlow(controller, hardware, 0);
+    ++hardware.pulses;
+    controller.handle(1001);
+    TEST_ASSERT_FALSE(hardware.pump);
+    TEST_ASSERT_EQUAL_UINT8(1, hardware.activeZone);
+
+    controller.handle(1500);
+    TEST_ASSERT_EQUAL_UINT8(1, hardware.activeZone);
+    controller.handle(1501);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringState::SwitchingZone),
+                      static_cast<int>(controller.status().state));
+    TEST_ASSERT_FALSE(hardware.pump);
+    TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
+
+    controller.handle(2500);
+    TEST_ASSERT_FALSE(hardware.pump);
+    TEST_ASSERT_EQUAL_UINT8(0, hardware.activeZone);
+    controller.handle(2501);
+    TEST_ASSERT_TRUE(hardware.pump);
+    TEST_ASSERT_EQUAL_UINT8(2, hardware.activeZone);
 }
 
 void test_stopped_session_keeps_unstarted_zones_explicit() {
@@ -438,6 +484,7 @@ void test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone() {
     const uint32_t firstGeneration = controller.flowHistory().generation;
     ++hardware.pulses;
     controller.handle(5001);
+    controller.handle(6001);
     const FlowHistorySnapshot secondZone = controller.flowHistory();
     TEST_ASSERT_EQUAL_UINT8(2, secondZone.zoneId);
     TEST_ASSERT_EQUAL_UINT16(0, secondZone.sampleCount);
@@ -965,6 +1012,7 @@ int main(int, char**) {
     RUN_TEST(test_stop_delay_still_transitions_valve_to_hold_duty);
     RUN_TEST(test_pump_watering_completes_with_start_and_stop_delays);
     RUN_TEST(test_multiple_zones_run_in_order);
+    RUN_TEST(test_pump_and_valves_are_off_during_zone_switch_interval);
     RUN_TEST(test_stopped_session_keeps_unstarted_zones_explicit);
     RUN_TEST(test_water_estimate_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_rate_window_uses_fixed_point_arithmetic);

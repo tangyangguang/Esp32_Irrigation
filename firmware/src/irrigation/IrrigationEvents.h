@@ -41,6 +41,14 @@ public:
         ResumedAutomatically = 204,
         PlanBusy = 211,
         PlanStartRejected = 212,
+        PlanBusyManualWatering = 213,
+        PlanBusyAutomaticWatering = 214,
+        PlanBusyFlowCalibration = 215,
+        PlanBusyZoneFlowLearning = 216,
+        PlanPreviousResultPending = 217,
+        PlanControllerNotReady = 218,
+        PlanInvalidRequest = 219,
+        PlanHardwareFailure = 220,
         SchedulerStateStorage = 221,
         RtcRollback = 231,
         RtcUnavailable = 232,
@@ -98,7 +106,9 @@ public:
                                   uint8_t planId);
     void recordAutomaticWateringPaused(bool indefinitely, uint32_t resumeAtEpoch);
     void recordAutomaticWateringResumed(bool automatically);
-    void recordAutomaticPlanSkipped(uint8_t planId, bool busy);
+    void recordAutomaticPlanSkipped(uint8_t planId,
+                                    WateringStartResult result,
+                                    const WateringStatus& status);
     void recordFlowCalibrationSaved(uint32_t previousCoefficientX100,
                                     uint32_t coefficientX100);
     void recordZoneFlowSaved(uint8_t zoneId,

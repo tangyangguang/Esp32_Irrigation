@@ -6,7 +6,7 @@
 
 #include "BoardPins.h"
 
-constexpr uint32_t kIrrigationConfigSchemaVersion = 3;
+constexpr uint32_t kIrrigationConfigSchemaVersion = 4;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
 constexpr std::size_t kFlowHistorySampleCount = 120;
@@ -22,6 +22,7 @@ enum class FlowAlertAction : uint8_t {
 
 struct ValveDriveConfig {
     uint16_t pullInTimeMs;
+    uint16_t switchDelayMs;
     uint32_t pwmFrequencyHz;
     uint8_t holdDutyPercent;
 };
@@ -108,6 +109,7 @@ enum class WateringState : uint8_t {
     WaitingForFlow,
     WateringZone,
     StoppingZone,
+    SwitchingZone,
 };
 
 enum class WateringResult : uint8_t {

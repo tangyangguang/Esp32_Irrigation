@@ -194,10 +194,15 @@ void WateringController::handle(uint32_t nowMs) {
                 if (stopSessionAfterValveClose_) {
                     finishSession(pendingStopReason_, nowMs);
                 } else {
-                    ++currentStepIndex_;
-                    if (!beginCurrentZone(nowMs)) {
-                        finishSession(WateringStopReason::HardwareFailure, nowMs);
-                    }
+                    enterSwitchingZone(nowMs);
+                }
+            }
+            break;
+
+        case WateringState::SwitchingZone:
+            if (elapsed(nowMs, stateStartedMs_, valveDrive_.switchDelayMs)) {
+                if (!beginCurrentZone(nowMs)) {
+                    finishSession(WateringStopReason::HardwareFailure, nowMs);
                 }
             }
             break;
@@ -229,7 +234,8 @@ WateringStatus WateringController::status() const {
                                                 ? 0U
                                                 : request_.steps[currentStepIndex_].zoneId);
     result.currentStepIndex = currentStepIndex_;
-    result.flowEstablished = active_ && flowMonitor_.flowEstablished();
+    result.flowEstablished =
+        active_ && currentZoneStarted_ && flowMonitor_.flowEstablished();
     result.lastResult = lastResult_;
     result.lastStopReason = lastStopReason_;
     result.purpose = request_.purpose;
@@ -300,14 +306,17 @@ WateringStatus WateringController::status() const {
         result.currentZoneRemainingSec = limitElapsedSec < targetSec
                                              ? targetSec - limitElapsedSec
                                              : 0U;
-        ZoneWateringSummary& current = result.zones[currentStepIndex_];
-        current.actualWateringSec = result.currentZoneElapsedSec;
-        current.pulseCount = result.pulseCount;
-        current.waterEstimateCapped = !FlowMonitor::estimateWaterMilliliters(
-            current.pulseCount, flowMeter_.pulsesPerLiterX100, current.estimatedWaterMl);
-        fillCalibrationMetrics(current,
-                               lastHandledMs_,
-                               hardware_.flowPulseCount());
+        if (currentZoneStarted_) {
+            ZoneWateringSummary& current = result.zones[currentStepIndex_];
+            current.actualWateringSec = result.currentZoneElapsedSec;
+            current.pulseCount = result.pulseCount;
+            current.waterEstimateCapped = !FlowMonitor::estimateWaterMilliliters(
+                current.pulseCount, flowMeter_.pulsesPerLiterX100,
+                current.estimatedWaterMl);
+            fillCalibrationMetrics(current,
+                                   lastHandledMs_,
+                                   hardware_.flowPulseCount());
+        }
     }
 
     if (!(active_ && state_ == WateringState::StoppingZone && stopSessionAfterValveClose_ &&
@@ -423,7 +432,8 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
 }
 
 bool WateringController::applyValveHoldIfDue(uint32_t nowMs) {
-    if (valveHolding_ || state_ == WateringState::Idle) {
+    if (valveHolding_ || state_ == WateringState::Idle ||
+        state_ == WateringState::SwitchingZone) {
         return true;
     }
     if (!elapsed(nowMs, valveOpenedMs_, valveDrive_.pullInTimeMs)) {
@@ -455,10 +465,7 @@ void WateringController::finishCurrentZone(uint32_t nowMs) {
         finishSession(WateringStopReason::Completed, nowMs);
         return;
     }
-    ++currentStepIndex_;
-    if (!beginCurrentZone(nowMs)) {
-        finishSession(WateringStopReason::HardwareFailure, nowMs);
-    }
+    enterSwitchingZone(nowMs);
 }
 
 void WateringController::enterStoppingZone(uint32_t nowMs,
@@ -468,6 +475,14 @@ void WateringController::enterStoppingZone(uint32_t nowMs,
     stateStartedMs_ = nowMs;
     stopSessionAfterValveClose_ = stopSession;
     pendingStopReason_ = reason;
+}
+
+void WateringController::enterSwitchingZone(uint32_t nowMs) {
+    ++currentStepIndex_;
+    state_ = WateringState::SwitchingZone;
+    stateStartedMs_ = nowMs;
+    stopSessionAfterValveClose_ = false;
+    currentFlowMlPerMinute_ = 0;
 }
 
 void WateringController::finalizeCurrentZone(ZoneWateringResult result, uint32_t nowMs) {

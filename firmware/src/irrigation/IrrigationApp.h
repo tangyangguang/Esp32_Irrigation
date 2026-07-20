@@ -90,7 +90,7 @@ public:
 private:
     IrrigationApp();
     void advanceBusiness();
-    void consumeFinishedWatering();
+    void consumeFinishedWatering(uint32_t nowMs);
     static WateringStartResult startScheduledWatering(const WateringRequest& request,
                                                       void* user);
     static void handleSchedulerEvent(WateringScheduler::Event event,

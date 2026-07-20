@@ -52,6 +52,7 @@ bool readValveDrive(JsonObjectConst root, IrrigationConfig& config) {
     const JsonObjectConst object = root["valve_drive"].as<JsonObjectConst>();
     return !object.isNull() &&
            readUnsigned(object, "pull_in_time_ms", config.valveDrive.pullInTimeMs) &&
+           readUnsigned(object, "switch_delay_ms", config.valveDrive.switchDelayMs) &&
            readUnsigned(object, "pwm_frequency_hz", config.valveDrive.pwmFrequencyHz) &&
            readUnsigned(object, "hold_duty_percent", config.valveDrive.holdDutyPercent);
 }
@@ -166,6 +167,7 @@ bool IrrigationConfigJson::encode(const IrrigationConfig& config, std::string& j
 
     JsonObject valve = document["valve_drive"].to<JsonObject>();
     valve["pull_in_time_ms"] = config.valveDrive.pullInTimeMs;
+    valve["switch_delay_ms"] = config.valveDrive.switchDelayMs;
     valve["pwm_frequency_hz"] = config.valveDrive.pwmFrequencyHz;
     valve["hold_duty_percent"] = config.valveDrive.holdDutyPercent;
 

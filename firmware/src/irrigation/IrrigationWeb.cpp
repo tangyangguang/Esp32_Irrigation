@@ -199,6 +199,7 @@ const char* wateringStateName(WateringState state) {
         case WateringState::WaitingForFlow: return "等待水流";
         case WateringState::WateringZone: return "正在浇水";
         case WateringState::StoppingZone: return "区域停止中";
+        case WateringState::SwitchingZone: return "水路切换中";
     }
     return "未知";
 }
@@ -1222,7 +1223,15 @@ void sendEventDetailDialog(const Esp32BaseAppEvents::EventRecord& event,
         Esp32BaseWeb::sendChunk("</span></div></div></section>");
     } else if (eventCode == IrrigationEvents::EventCode::AutomaticPlanSkipped) {
         Esp32BaseWeb::sendChunk("<section class='event-detail-section'><h3>相关对象</h3><div class='event-detail-grid event-detail-business'><div><b>计划</b><span>");
-        sendUnsigned(event.objectId);
+        if (eventPlanName) {
+            Esp32BaseWeb::writeHtmlEscaped(eventPlanName);
+            Esp32BaseWeb::sendChunk("（计划 ");
+            sendUnsigned(event.objectId);
+            Esp32BaseWeb::sendChunk("）");
+        } else {
+            Esp32BaseWeb::sendChunk("计划 ");
+            sendUnsigned(event.objectId);
+        }
         Esp32BaseWeb::sendChunk("</span></div></div></section>");
     } else if (eventCode == IrrigationEvents::EventCode::ConfigurationChanged &&
                event.objectId != 0) {
@@ -1852,16 +1861,60 @@ void IrrigationWeb::activeTask() {
     if (!beginPage("首页", "查看当前任务的实时状态")) return;
     Esp32BaseWeb::sendChunk(R"HTML(<style>
 .run-idle-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid #cfe1e5;border-radius:10px;background:linear-gradient(135deg,#f4faf7,#fff)}.run-idle-hero h3{margin:0 0 4px;font-size:19px}.run-idle-hero p{margin:0;color:var(--eb-muted)}
+.run-context{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:12px 0;padding:11px 14px;border:1px solid var(--eb-line);border-radius:10px;background:#fff}.run-context-status{display:flex;align-items:center;gap:8px}.run-context-status b{font-size:14px;font-weight:600}.run-clock{text-align:right}.run-clock-time{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.1}.run-clock-date{display:block;margin-top:4px;color:var(--eb-muted);font-size:11px}.run-clock-warning{display:inline-flex;margin-top:5px;padding:2px 6px;border:1px solid #efcf96;border-radius:999px;background:var(--eb-warn-soft);color:#8a5708;font-size:10px;text-decoration:none}
 .run-live-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 14px;border:1px solid #cbdde5;border-radius:10px;background:linear-gradient(135deg,var(--eb-info-soft),#fff)}.run-live-title{display:flex;align-items:center;gap:9px;min-width:0}.run-live-title h3{margin:0;font-size:18px;font-weight:600;overflow-wrap:anywhere}.run-live-title .tag{flex:0 0 auto;font-size:11px;font-weight:500}.run-live-head p{margin:3px 0 0;color:var(--eb-muted);font-size:13px}.run-live-head form{flex:0 0 auto;margin:0}.run-live-head input{min-height:36px;font-weight:500}
 .run-live-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:12px}.run-live-metric{padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.run-live-metric span{display:block;color:var(--eb-muted);font-size:12px;font-weight:400}.run-live-metric b{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.run-live-metric small{display:block;margin-top:3px;color:var(--eb-muted);font-size:10px;font-weight:400;line-height:1.35}
 .run-live-grid{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(0,1.4fr);gap:12px;margin-top:12px}.run-current,.run-chart-card{padding:15px;border:1px solid var(--eb-line);border-radius:10px;background:#fff}.run-section-label{display:block;margin-bottom:5px;color:var(--eb-muted);font-size:12px;font-weight:400}.run-current-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.run-current-head h3{margin:0;font-size:19px;font-weight:500}.run-current-head .tag{flex:0 0 auto;font-weight:500}.run-progress{height:10px;margin:13px 0 8px;border-radius:999px;background:var(--eb-line-soft);overflow:hidden}.run-progress span{display:block;height:100%;width:0;border-radius:inherit;background:var(--eb-primary);transition:width .25s ease}.run-current-detail{display:flex;justify-content:space-between;gap:10px;color:var(--eb-muted);font-size:13px;font-variant-numeric:tabular-nums}.run-flow-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}.run-flow-fact{padding:9px 10px;border-radius:8px;background:var(--eb-soft)}.run-flow-fact span{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.run-flow-fact b{display:block;margin-top:2px;font-size:14px;font-weight:500;font-variant-numeric:tabular-nums}.run-chart-card{min-width:0}.run-chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.run-chart-head h3{margin:0;font-size:16px;font-weight:500}.run-chart-head span{color:var(--eb-muted);font-size:12px;font-weight:400}.run-chart-wrap{position:relative;min-height:205px}.run-chart-wrap canvas{display:block;width:100%;height:205px}.run-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--eb-muted);font-size:13px;pointer-events:none}
 .run-steps{display:grid;gap:8px;margin-top:12px}.run-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.run-step-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;font-weight:500}.run-step.current{border-color:#9fc8d0;background:var(--eb-primary-soft)}.run-step.current .run-step-icon{background:var(--eb-primary);color:#fff}.run-step.complete .run-step-icon{background:var(--eb-ok);color:#fff}.run-step-main b,.run-step-main small{display:block}.run-step-main b{font-weight:400}.run-step.current .run-step-main b{font-weight:500}.run-step-main small,.run-step-detail{color:var(--eb-muted);font-size:12px;font-weight:400}.run-step-detail{text-align:right}.run-note{margin:10px 0 0;color:var(--eb-muted);font-size:12px;font-weight:400}
 @media(max-width:900px){.run-live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-live-grid{grid-template-columns:1fr}}
-@media(max-width:760px){.run-live-head{align-items:stretch;flex-direction:column;gap:10px}.run-live-head form input{width:100%}.run-live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-live-grid{grid-template-columns:1fr}.run-step{grid-template-columns:30px minmax(0,1fr)}.run-step-detail{grid-column:2;text-align:left}}
+@media(max-width:760px){.run-context{align-items:flex-start}.run-context-status{align-items:flex-start;flex-direction:column;gap:4px}.run-clock{max-width:62%}.run-live-head{align-items:stretch;flex-direction:column;gap:10px}.run-live-head form input{width:100%}.run-live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-live-grid{grid-template-columns:1fr}.run-step{grid-template-columns:30px minmax(0,1fr)}.run-step-detail{grid-column:2;text-align:left}}
 @media(max-width:420px){.run-live-metrics,.run-flow-facts{grid-template-columns:1fr}}
 </style>)HTML");
     const IrrigationConfig* config = g_app->configuration();
     const WateringStatus status = g_app->wateringStatus();
+    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+    const bool timeTrusted =
+        now.synced &&
+        g_app->schedulerTimeState() == WateringScheduler::TimeState::Ready;
+    const IrrigationEvents::ConditionDisplayState rtcCondition =
+        g_app->eventConditionState(1);
+    const bool rtcUnavailable =
+        rtcCondition == IrrigationEvents::ConditionDisplayState::Active ||
+        rtcCondition == IrrigationEvents::ConditionDisplayState::ConfirmingRecovery;
+    char clockValue[24]{};
+    char clockDate[32]{};
+    Esp32BaseWeb::sendChunk("<section class='run-context'><div class='run-context-status'><span class='tag info'>任务运行中</span><b>");
+    Esp32BaseWeb::writeHtmlEscaped(wateringStateName(status.state));
+    Esp32BaseWeb::sendChunk("</b></div><div id='run-clock' class='run-clock'");
+    if (timeTrusted) {
+        Esp32BaseWeb::sendChunk(" data-epoch='");
+        sendUnsigned(now.epochSec);
+        Esp32BaseWeb::sendChunk("'");
+    }
+    Esp32BaseWeb::sendChunk("><b id='run-clock-time' class='run-clock-time'>");
+    if (timeTrusted &&
+        Esp32BaseTime::formatEpoch(now.epochSec, clockValue,
+                                   sizeof(clockValue), "%H:%M:%S")) {
+        Esp32BaseWeb::writeHtmlEscaped(clockValue);
+    } else {
+        Esp32BaseWeb::sendChunk("时间尚未就绪");
+    }
+    Esp32BaseWeb::sendChunk("</b><span class='run-clock-date'><span id='run-clock-date'>");
+    if (timeTrusted &&
+        formatChineseDate(now.epochSec, clockDate, sizeof(clockDate))) {
+        Esp32BaseWeb::writeHtmlEscaped(clockDate);
+        Esp32BaseWeb::sendChunk("</span>");
+        Esp32BaseWeb::sendChunk(
+            now.source == Esp32BaseTime::SOURCE_NTP ? " · NTP 校时"
+                                                     : " · RTC 时间");
+    } else {
+        Esp32BaseWeb::sendChunk("等待 RTC 或 NTP 提供可信时间</span>");
+    }
+    Esp32BaseWeb::sendChunk("</span>");
+    if (rtcUnavailable) {
+        Esp32BaseWeb::sendChunk("<a class='run-clock-warning' href='/irrigation/events'>硬件时钟不可用 · 断网后计划可能暂停</a>");
+    }
+    Esp32BaseWeb::sendChunk("</div></section><script>(function(){var clock=document.getElementById('run-clock'),time=document.getElementById('run-clock-time'),date=document.getElementById('run-clock-date');if(!clock||!clock.dataset.epoch)return;var base=Number(clock.dataset.epoch),started=performance.now();function pad(v){return String(v).padStart(2,'0')}function update(){var epoch=base+Math.floor((performance.now()-started)/1000),d=new Date((epoch+28800)*1000);if(time)time.textContent=pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());if(date)date.textContent=d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日'}update();setInterval(update,1000)})();</script>");
     if (status.purpose != WateringPurpose::Normal) {
         const bool calibration = status.purpose == WateringPurpose::FlowCalibration;
         Esp32BaseWeb::beginPanel("当前维护任务");
@@ -1943,7 +1996,10 @@ void IrrigationWeb::activeTask() {
                 : nullptr;
         const char* flowStateTone = "warn";
         const char* flowStateText = "等待水流";
-        if (status.flowEstablished && status.expectedFlowMlPerMinute == 0) {
+        if (status.state == WateringState::SwitchingZone) {
+            flowStateTone = "info";
+            flowStateText = "水路切换中";
+        } else if (status.flowEstablished && status.expectedFlowMlPerMinute == 0) {
             flowStateTone = "info";
             flowStateText = "水流已建立";
         } else if (status.flowEstablished && currentZone && currentZone->lowFlowActive) {
@@ -2013,7 +2069,7 @@ samples.forEach(function(value,index){var x=left+plotW*((index+1)/count),y=top+p
 c.stroke();
 var latest=samples[count-1]/1000,latestX=w-right,latestY=top+plotH*(1-latest/scale);c.fillStyle='#117b8b';c.beginPath();c.arc(latestX,latestY,3.5,0,Math.PI*2);c.fill()
 }
-function loadHistory(){fetch('/irrigation/api/flow-history',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(h){samples=Array.isArray(h.samples)?h.samples.slice(-120):[];generation=Number(h.generation||0);serial=Number(h.latestSerial||0);draw()}).catch(function(){setTimeout(loadHistory,2000)})}function update(s){set('run-elapsed',duration(s.elapsedSec));set('run-remaining',duration(s.plannedRemainingSec));set('run-water',liters(s.totalEstimatedWaterMl));set('run-step-count','第 '+(Number(s.currentStepIndex)+1)+' / '+s.stepCount+' 条水路');set('run-current-elapsed','实际浇水 '+duration(s.currentZoneElapsedSec)+' / '+duration((s.zones[s.currentStepIndex]||{}).plannedDurationSec));set('run-current-remaining','剩余 '+duration(s.currentZoneRemainingSec));set('run-flow',flow(s.currentFlowMlPerMinute));expectedFlow=Number(s.expectedFlowMlPerMinute||0);set('run-expected-flow',expectedFlow?flow(expectedFlow):'未设置');set('run-pulses',s.pulseCount);var activeZone=s.zones[s.currentStepIndex]||{};set('run-zone-water',liters(activeZone.estimatedWaterMl));var current=document.querySelector('[data-step-index=\"'+s.currentStepIndex+'\"]'),zoneName='水路 '+s.zoneId;if(current){var name=current.querySelector('.run-step-name');if(name)zoneName=name.textContent;set('run-current-zone',zoneName)}var states=['空闲','区域启动中','等待水流','正在浇水','区域停止中'],phase=Number(s.state)===3?(s.flowEstablished?'水流已建立':'等待水流建立'):(states[s.state]||'未知');set('run-state',zoneName+' · '+phase);var target=Number(activeZone.plannedDurationSec)||0,percent=target?Math.min(100,Math.round(Number(s.currentZoneElapsedSec)*100/target)):0,bar=document.getElementById('run-current-progress');if(bar)bar.style.width=percent+'%';var flowState=document.getElementById('run-flow-state');if(flowState){var flowTone='warn',flowLabel='等待水流';if(s.flowEstablished&&!expectedFlow){flowTone='info';flowLabel='水流已建立'}else if(s.flowEstablished&&activeZone.lowFlowActive){flowTone='warn';flowLabel='低流量'}else if(s.flowEstablished&&activeZone.highFlowActive){flowTone='danger';flowLabel='高流量'}else if(s.flowEstablished){flowTone='info';flowLabel='流量监测中'}flowState.textContent=flowLabel;flowState.className='tag '+flowTone}document.querySelectorAll('.run-step').forEach(function(row){var i=Number(row.dataset.stepIndex),z=s.zones[i]||{},icon=row.querySelector('.run-step-icon'),detail=row.querySelector('.run-step-detail');row.classList.toggle('complete',i<s.currentStepIndex);row.classList.toggle('current',i===s.currentStepIndex);if(icon)icon.textContent=i<s.currentStepIndex?'✓':String(i+1);if(detail){if(i<s.currentStepIndex)detail.textContent='实际 '+duration(z.actualWateringSec)+' · '+liters(z.estimatedWaterMl);else if(i===s.currentStepIndex)detail.textContent='正在执行 · 剩余 '+duration(s.currentZoneRemainingSec);else detail.textContent='等待执行'}});var nextGeneration=Number(s.flowHistoryGeneration||0),nextSerial=Number(s.flowSampleSerial||0);if(nextGeneration!==generation){generation=nextGeneration;loadHistory()}else if(nextSerial!==serial){if(nextSerial===serial+1){samples.push(Number(s.currentFlowMlPerMinute)||0);if(samples.length>120)samples.shift();serial=nextSerial;draw()}else loadHistory()}}function finished(){try{sessionStorage.setItem('irrigationJustFinished','1')}catch(ignore){}location.reload()}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active){finished();return}update(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}window.addEventListener('resize',draw);loadHistory();setTimeout(poll,1000)})();</script>)HTML");
+function loadHistory(){fetch('/irrigation/api/flow-history',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(h){samples=Array.isArray(h.samples)?h.samples.slice(-120):[];generation=Number(h.generation||0);serial=Number(h.latestSerial||0);draw()}).catch(function(){setTimeout(loadHistory,2000)})}function update(s){set('run-elapsed',duration(s.elapsedSec));set('run-remaining',duration(s.plannedRemainingSec));set('run-water',liters(s.totalEstimatedWaterMl));set('run-step-count','第 '+(Number(s.currentStepIndex)+1)+' / '+s.stepCount+' 条水路');set('run-current-elapsed','实际浇水 '+duration(s.currentZoneElapsedSec)+' / '+duration((s.zones[s.currentStepIndex]||{}).plannedDurationSec));set('run-current-remaining','剩余 '+duration(s.currentZoneRemainingSec));set('run-flow',flow(s.currentFlowMlPerMinute));expectedFlow=Number(s.expectedFlowMlPerMinute||0);set('run-expected-flow',expectedFlow?flow(expectedFlow):'未设置');set('run-pulses',s.pulseCount);var activeZone=s.zones[s.currentStepIndex]||{};set('run-zone-water',liters(activeZone.estimatedWaterMl));var current=document.querySelector('[data-step-index=\"'+s.currentStepIndex+'\"]'),zoneName='水路 '+s.zoneId;if(current){var name=current.querySelector('.run-step-name');if(name)zoneName=name.textContent;set('run-current-zone',zoneName)}var states=['空闲','区域启动中','等待水流','正在浇水','区域停止中','水路切换中'],phase=Number(s.state)===3?(s.flowEstablished?'水流已建立':'等待水流建立'):(states[s.state]||'未知');set('run-state',zoneName+' · '+phase);var target=Number(activeZone.plannedDurationSec)||0,percent=target?Math.min(100,Math.round(Number(s.currentZoneElapsedSec)*100/target)):0,bar=document.getElementById('run-current-progress');if(bar)bar.style.width=percent+'%';var flowState=document.getElementById('run-flow-state');if(flowState){var flowTone='warn',flowLabel='等待水流';if(Number(s.state)===5){flowTone='info';flowLabel='水路切换中'}else if(s.flowEstablished&&!expectedFlow){flowTone='info';flowLabel='水流已建立'}else if(s.flowEstablished&&activeZone.lowFlowActive){flowTone='warn';flowLabel='低流量'}else if(s.flowEstablished&&activeZone.highFlowActive){flowTone='danger';flowLabel='高流量'}else if(s.flowEstablished){flowTone='info';flowLabel='流量监测中'}flowState.textContent=flowLabel;flowState.className='tag '+flowTone}document.querySelectorAll('.run-step').forEach(function(row){var i=Number(row.dataset.stepIndex),z=s.zones[i]||{},icon=row.querySelector('.run-step-icon'),detail=row.querySelector('.run-step-detail');row.classList.toggle('complete',i<s.currentStepIndex);row.classList.toggle('current',i===s.currentStepIndex);if(icon)icon.textContent=i<s.currentStepIndex?'✓':String(i+1);if(detail){if(i<s.currentStepIndex)detail.textContent='实际 '+duration(z.actualWateringSec)+' · '+liters(z.estimatedWaterMl);else if(i===s.currentStepIndex)detail.textContent=Number(s.state)===5?'等待开阀':'正在执行 · 剩余 '+duration(s.currentZoneRemainingSec);else detail.textContent='等待执行'}});var nextGeneration=Number(s.flowHistoryGeneration||0),nextSerial=Number(s.flowSampleSerial||0);if(nextGeneration!==generation){generation=nextGeneration;loadHistory()}else if(nextSerial!==serial){if(nextSerial===serial+1){samples.push(Number(s.currentFlowMlPerMinute)||0);if(samples.length>120)samples.shift();serial=nextSerial;draw()}else loadHistory()}}function finished(){try{sessionStorage.setItem('irrigationJustFinished','1')}catch(ignore){}location.reload()}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active){finished();return}update(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}window.addEventListener('resize',draw);loadHistory();setTimeout(poll,1000)})();</script>)HTML");
     endPage();
 }
 
@@ -2041,12 +2097,15 @@ void IrrigationWeb::plans() {
     Esp32BaseWeb::sendChunk(
         "<style>"
         ".plan-toolbar{display:flex;align-items:center;justify-content:flex-end;margin:-4px 0 12px}"
-        ".plan-auto{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px;border:1px solid #cfe1e5;border-radius:10px;background:var(--eb-soft)}"
+        ".plan-auto{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 14px 14px 16px;border:1px solid #cfe1e5;border-left:4px solid var(--eb-ok);border-radius:10px;background:linear-gradient(135deg,#f4faf7,#fff)}"
+        ".plan-auto.paused{border-color:#efcf96;border-left-color:var(--eb-warn);background:linear-gradient(135deg,var(--eb-warn-soft),#fff)}"
         ".plan-auto h3{margin:0 0 4px;font-size:17px}.plan-auto p{margin:0;color:var(--eb-muted)}.plan-auto-actions{display:flex;gap:8px;flex:0 0 auto}.plan-auto-actions form{margin:0}"
         ".plan-pause-modal{width:min(620px,calc(100vw - 28px))}.plan-pause-options{display:grid;gap:10px;margin-top:14px}.plan-pause-option{padding:14px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.plan-pause-option h3{margin:0 0 3px;font-size:15px}.plan-pause-option>small{display:block;margin-bottom:12px;color:var(--eb-muted)}.plan-pause-fields{display:grid;gap:12px}.plan-pause-field{margin:0}.plan-pause-field input{width:100%;max-width:none;margin:5px 0 0}.plan-pause-shortcuts{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px}.plan-pause-shortcuts button{min-height:32px;padding:5px 10px}.plan-pause-shortcuts button.selected{border-color:var(--eb-primary);background:var(--eb-primary-soft);color:var(--eb-primary)}.plan-pause-unavailable{margin:0;padding:9px 11px;border-radius:7px;background:var(--eb-warn-soft);color:var(--eb-warn);font-size:13px}.plan-pause-submit{display:flex;justify-content:flex-end;margin-top:12px}.plan-pause-indefinite{display:flex;align-items:center;justify-content:space-between;gap:14px}.plan-pause-indefinite h3{margin-bottom:3px}.plan-pause-indefinite p{margin:0}.plan-pause-indefinite form{margin:0;flex:0 0 auto}"
         ".plan-toolbar .btnlink{min-height:36px}"
         ".plan-list{display:grid;gap:12px}"
-        ".plan-card{padding:16px;border:1px solid #cfe1e5;border-radius:10px;background:linear-gradient(135deg,#f6fbfc 0,#fff 58%)}"
+        ".plan-card{padding:16px;border:1px solid #cfe1e5;border-left:4px solid var(--eb-ok);border-radius:10px;background:linear-gradient(135deg,#f6fbfc 0,#fff 58%)}"
+        ".plan-card.disabled{border-color:#d8dee5;border-left-color:#8b96a6;background:linear-gradient(135deg,#f3f5f7 0,#fff 62%)}"
+        ".plan-card.disabled .plan-card-body{border-top-color:#dfe3e8}.plan-card.disabled .plan-time-chip{border-color:#d8dee5;background:#f7f8f9;color:#667085}.plan-card.disabled .plan-zone-item{background:#f7f8f9}.plan-status-off{border-color:#d1d6dd!important;background:#eef1f4!important;color:#566170!important}"
         ".plan-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}"
         ".plan-card-title{min-width:0}.plan-card-title-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}"
         ".plan-card-title h3{margin:0;font-size:18px;line-height:1.35;overflow-wrap:anywhere}"
@@ -2097,25 +2156,34 @@ void IrrigationWeb::plans() {
         const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
         const bool timeTrusted = now.synced &&
                                  g_app->schedulerTimeState() == WateringScheduler::TimeState::Ready;
-        char automaticDetail[96]{};
+        char automaticDetail[128]{};
         if (automatic.mode == AutomaticWateringMode::Enabled) {
             std::snprintf(automaticDetail, sizeof(automaticDetail), "已启用的计划会在设定时间自动执行。");
         } else if (automatic.mode == AutomaticWateringMode::PausedIndefinitely) {
             std::snprintf(automaticDetail, sizeof(automaticDetail), "已暂停，等待手动恢复；手动浇水不受影响。");
-        } else if (!formatFullDateTime(automatic.resumeAtEpoch,
-                                       automaticDetail,
-                                       sizeof(automaticDetail))) {
-            std::snprintf(automaticDetail, sizeof(automaticDetail), "已定时暂停，设备时间就绪后自动恢复。");
+        } else {
+            char resumeTime[40]{};
+            if (formatFullDateTime(automatic.resumeAtEpoch,
+                                   resumeTime,
+                                   sizeof(resumeTime))) {
+                std::snprintf(automaticDetail, sizeof(automaticDetail),
+                              "已暂停，将于 %s 自动恢复；手动浇水不受影响。",
+                              resumeTime);
+            } else {
+                std::snprintf(automaticDetail, sizeof(automaticDetail),
+                              "已定时暂停，设备时间就绪后自动恢复。");
+            }
         }
         Esp32BaseWeb::beginPanel("自动浇水");
-        Esp32BaseWeb::sendChunk("<div class='plan-auto'><div><h3><span class='tag ");
-        Esp32BaseWeb::sendChunk(automatic.mode == AutomaticWateringMode::Enabled
-                                    ? "ok'>正常运行"
-                                    : "warn'>已暂停");
-        Esp32BaseWeb::sendChunk("</span></h3><p>");
-        if (automatic.mode == AutomaticWateringMode::PausedUntil && automaticDetail[0] != '\0') {
-            Esp32BaseWeb::sendChunk("自动浇水将在 ");
+        Esp32BaseWeb::sendChunk("<div class='plan-auto");
+        if (automatic.mode != AutomaticWateringMode::Enabled) {
+            Esp32BaseWeb::sendChunk(" paused");
         }
+        Esp32BaseWeb::sendChunk("'><div><h3><span class='tag ");
+        Esp32BaseWeb::sendChunk(automatic.mode == AutomaticWateringMode::Enabled
+                                    ? "ok'>自动浇水正常运行"
+                                    : "warn'>自动浇水已暂停");
+        Esp32BaseWeb::sendChunk("</span></h3><p>");
         Esp32BaseWeb::writeHtmlEscaped(automaticDetail);
         Esp32BaseWeb::sendChunk("</p></div><div class='plan-auto-actions'>");
         if (automatic.mode == AutomaticWateringMode::Enabled) {
@@ -2183,11 +2251,18 @@ hours.addEventListener('input',function(){updateFromHours(Number(hours.value))})
         if (anyConfigured) Esp32BaseWeb::sendChunk("<div class='plan-list'>");
         for (const WateringPlan& plan : config->plans) {
             if (!plan.configured) continue;
-            Esp32BaseWeb::sendChunk("<article class='plan-card'><div class='plan-card-head'><div class='plan-card-title'><div class='plan-card-title-row'><h3>");
+            Esp32BaseWeb::sendChunk("<article class='plan-card");
+            if (!plan.scheduleEnabled) Esp32BaseWeb::sendChunk(" disabled");
+            Esp32BaseWeb::sendChunk("'><div class='plan-card-head'><div class='plan-card-title'><div class='plan-card-title-row'><h3>");
             Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
             Esp32BaseWeb::sendChunk("</h3><span class='tag ");
-            Esp32BaseWeb::sendChunk(plan.scheduleEnabled ? "ok'>自动执行" : "'>不自动执行");
+            Esp32BaseWeb::sendChunk(plan.scheduleEnabled
+                                        ? "ok'>自动执行已开启"
+                                        : "plan-status-off'>自动执行已关闭");
             Esp32BaseWeb::sendChunk("</span></div><small>计划 "); sendUnsigned(plan.id);
+            if (!plan.scheduleEnabled) {
+                Esp32BaseWeb::sendChunk(" · 仍可用于手动浇水");
+            }
             Esp32BaseWeb::sendChunk("</small></div><button type='button' class='btnlink info compact plan-card-edit' onclick=\"document.getElementById('plan-"); sendUnsigned(plan.id);
             Esp32BaseWeb::sendChunk("').showModal()\">编辑</button></div><div class='plan-card-body'><section><span class='plan-summary-label'>每日启动时间</span><div class='plan-time-list'>");
             bool hasStartTime = false;

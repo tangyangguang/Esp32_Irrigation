@@ -285,6 +285,40 @@ void test_irrigation_event_mapping_and_latest_read() {
     TEST_ASSERT_EQUAL_UINT8(
         3, IrrigationEvents::wateringPlanId(wateringPresentation));
 
+    WateringStatus busyStatus{};
+    busyStatus.active = true;
+    busyStatus.purpose = WateringPurpose::Normal;
+    busyStatus.source = WateringSource::ManualZones;
+    events.recordAutomaticPlanSkipped(
+        2, WateringStartResult::Busy, busyStatus);
+    EventCapture skippedCapture;
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(
+        0, 1, captureEvent, &skippedCapture));
+    TEST_ASSERT_EQUAL_UINT32(
+        static_cast<uint32_t>(
+            IrrigationEvents::ReasonCode::PlanBusyManualWatering),
+        skippedCapture.reasonCode);
+    Esp32BaseAppEvents::EventRecord skippedPresentation{};
+    skippedPresentation.eventCode = skippedCapture.eventCode;
+    skippedPresentation.reasonCode = skippedCapture.reasonCode;
+    skippedPresentation.objectId = skippedCapture.objectId;
+    char skippedTitle[128]{};
+    char skippedSummary[160]{};
+    IrrigationEvents::formatTitle(skippedPresentation,
+                                  skippedTitle,
+                                  sizeof(skippedTitle),
+                                  "午后花园");
+    IrrigationEvents::formatSummary(
+        skippedPresentation, skippedSummary, sizeof(skippedSummary));
+    TEST_ASSERT_EQUAL_STRING(
+        "自动计划“午后花园”未执行：设备正在手动浇水",
+        skippedTitle);
+    TEST_ASSERT_EQUAL_STRING(
+        "到达启动时间时设备正在手动浇水，本次已跳过且不会补执行。",
+        skippedSummary);
+    TEST_ASSERT_EQUAL_UINT8(
+        2, IrrigationEvents::wateringPlanId(skippedPresentation));
+
     const uint32_t afterWateringEvent = Esp32BaseAppEvents::eventCount();
     summary.purpose = WateringPurpose::FlowCalibration;
     events.recordAbnormalWateringStop(summary);
