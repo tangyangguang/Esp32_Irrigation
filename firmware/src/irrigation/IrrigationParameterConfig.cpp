@@ -9,6 +9,9 @@
 namespace {
 
 constexpr const char* kNamespace = "irr_params";
+constexpr std::size_t kRegisteredFieldCount = 23;
+static_assert(ESP32BASE_APP_CONFIG_MAX_FIELDS >= kRegisteredFieldCount,
+              "Increase ESP32BASE_APP_CONFIG_MAX_FIELDS when adding a parameter");
 constexpr const char* kPullIn = "pull_ms";
 constexpr const char* kSwitchDelay = "switch_ms";
 constexpr const char* kPwm = "pwm_hz";
