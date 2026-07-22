@@ -11,6 +11,7 @@ struct ZoneWateringRecord {
     uint8_t flags;
     uint16_t plannedDurationSec;
     uint16_t actualWateringSec;
+    uint32_t targetWaterMl;
     uint32_t pulseCount;
     uint32_t estimatedWaterMl;
     uint32_t averageFlowMlPerMinute;
@@ -38,7 +39,7 @@ struct WateringRecordTotals {
 
 class WateringRecordCodec {
 public:
-    static constexpr std::size_t kPayloadSize = 208;
+    static constexpr std::size_t kPayloadSize = 232;
     static constexpr uint8_t kZoneFlagWaterEstimateCapped = 1U << 0U;
     static constexpr uint8_t kZoneFlagLowFlow = 1U << 1U;
     static constexpr uint8_t kZoneFlagHighFlow = 1U << 2U;

@@ -23,6 +23,9 @@ public:
     WateringStartResult startWatering(const WateringRequest& request);
     WateringStartResult startManualWatering(
         const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes);
+    WateringStartResult startSingleOutput(uint8_t zoneId,
+                                          uint32_t targetDurationSec,
+                                          uint32_t targetWaterMl);
     bool stopWatering();
     WateringStatus wateringStatus() const;
     FlowHistorySnapshot wateringFlowHistory() const;
@@ -109,6 +112,10 @@ private:
     void handleParameterConfigSaved();
     bool applyStoredParameterConfig();
     static void parameterConfigSaved(void* user);
+    static bool validateParameterConfig(const IrrigationConfig& proposed,
+                                        char* error,
+                                        size_t errorLength,
+                                        void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
     bool saveZoneBaselinePulseRate(uint8_t zoneId,

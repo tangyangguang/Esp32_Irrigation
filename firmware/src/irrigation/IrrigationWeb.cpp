@@ -121,7 +121,10 @@ bool savePlanFromRequest() {
         char field[8];
         uint32_t duration = 0;
         std::snprintf(field, sizeof(field), "zone%u", index + 1U);
-        if (!uintParam(field, 0, 120, duration)) {
+        if (!uintParam(field,
+                       0,
+                       current->runLimits.maximumZoneDurationMinutes,
+                       duration)) {
             return false;
         }
         plan.zoneDurationMinutes[index] = static_cast<uint16_t>(duration);
@@ -215,6 +218,7 @@ const char* stopReasonName(WateringStopReason reason) {
         case WateringStopReason::LearningTimeout: return "流量学习超时";
         case WateringStopReason::HardwareFailure: return "硬件故障";
         case WateringStopReason::MaintenanceInterrupted: return "维护操作中断";
+        case WateringStopReason::TargetVolumeTimeout: return "达到最长运行时间，未达到目标水量";
         default: return "未知原因";
     }
 }
@@ -231,6 +235,7 @@ const char* zoneResultName(ZoneWateringResult result) {
 const char* sourceName(WateringSource source) {
     switch (source) {
         case WateringSource::ManualZones: return "手动浇水";
+        case WateringSource::SingleOutput: return "单次出水";
         case WateringSource::AutomaticPlan: return "自动计划";
     }
     return "未知";
@@ -543,6 +548,13 @@ uint8_t recordPlannedZoneCount(const WateringRecordPayload& payload) {
     return count;
 }
 
+uint32_t recordTargetWaterMl(const WateringRecordPayload& payload) {
+    for (const ZoneWateringRecord& zone : payload.zones) {
+        if (zone.targetWaterMl != 0) return zone.targetWaterMl;
+    }
+    return 0;
+}
+
 uint8_t recordStartedZoneCount(const WateringRecordPayload& payload) {
     uint8_t count = 0;
     for (const ZoneWateringRecord& zone : payload.zones) {
@@ -615,6 +627,8 @@ void sendRecordOutcomeSummary(const WateringRecordPayload& payload,
         if (recordHasFlowAlert(payload)) {
             Esp32BaseWeb::sendChunk("，");
             sendRecordFlowAlertSummary(payload, config);
+        } else if (payload.source == WateringSource::SingleOutput) {
+            Esp32BaseWeb::sendChunk("，按目标结束");
         } else {
             Esp32BaseWeb::sendChunk("，均按计划结束");
         }
@@ -640,6 +654,9 @@ void sendRecordOutcomeSummary(const WateringRecordPayload& payload,
                 break;
             case WateringStopReason::MaintenanceInterrupted:
                 Esp32BaseWeb::sendChunk("因维护操作中断");
+                break;
+            case WateringStopReason::TargetVolumeTimeout:
+                Esp32BaseWeb::sendChunk("达到最长运行时间，未达到目标水量");
                 break;
             default:
                 Esp32BaseWeb::sendChunk("执行时异常停止");
@@ -815,11 +832,13 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
     sendUnsigned(startedZoneCount);
     Esp32BaseWeb::sendChunk(" 路设置了基准</small></div></div><div class='record-detail-section'><h3>执行时间</h3><div class='record-detail-grid'><div class='record-time-range'><b>开始 — 完成</b><span>");
     sendRecordTimeRange(record.timing);
-    Esp32BaseWeb::sendChunk("</span></div><div><b>计划浇水</b><span>");
-    sendDuration(totals.plannedDurationSec);
+    Esp32BaseWeb::sendChunk("</span></div><div><b>执行目标</b><span>");
+    const uint32_t targetWaterMl = recordTargetWaterMl(record.payload);
+    if (targetWaterMl != 0) sendWaterVolume(targetWaterMl);
+    else sendDuration(totals.plannedDurationSec);
     Esp32BaseWeb::sendChunk("</span></div><div><b>任务总历时</b><span>");
     sendDuration(record.timing.durationSec);
-    Esp32BaseWeb::sendChunk("</span></div></div></div><div class='record-detail-section'><h3>水路明细</h3><p>计划和水路名称按当前设置显示；流量、基准和用水量均保留浇水当时的记录。</p><div class='tablewrap'><table class='record-zone-table'><thead><tr><th>水路</th><th>执行结果</th><th>实际 / 计划</th><th>估算用水量</th><th>当时基准流量</th><th>流量表现</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("</span></div></div></div><div class='record-detail-section'><h3>水路明细</h3><p>计划和水路名称按当前设置显示；流量、基准和用水量均保留浇水当时的记录。</p><div class='tablewrap'><table class='record-zone-table'><thead><tr><th>水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>当时基准流量</th><th>流量表现</th></tr></thead><tbody>");
     for (uint8_t index = 0; index < record.payload.zones.size(); ++index) {
         const ZoneWateringRecord& zone = record.payload.zones[index];
         if (zone.plannedDurationSec == 0) continue;
@@ -832,10 +851,11 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
         }
         Esp32BaseWeb::sendChunk("</b></td><td data-label='执行结果'>");
         Esp32BaseWeb::sendChunk(zoneResultName(zone.result));
-        Esp32BaseWeb::sendChunk("</td><td data-label='实际 / 计划' class='record-duration-pair'><b>");
+        Esp32BaseWeb::sendChunk("</td><td data-label='实际 / 目标' class='record-duration-pair'><b>");
         sendDuration(zone.actualWateringSec);
         Esp32BaseWeb::sendChunk("</b><span>/</span><small>");
-        sendDuration(zone.plannedDurationSec);
+        if (zone.targetWaterMl != 0) sendWaterVolume(zone.targetWaterMl);
+        else sendDuration(zone.plannedDurationSec);
         Esp32BaseWeb::sendChunk("</small></td><td data-label='估算用水量'>");
         if ((zone.flags & WateringRecordCodec::kZoneFlagWaterEstimateCapped) != 0) {
             Esp32BaseWeb::sendChunk("至少 ");
@@ -966,10 +986,12 @@ void sendRecordRow(const StoredWateringRecord& record, void* user) {
             record.payload, context ? context->config : nullptr);
         Esp32BaseWeb::sendChunk("</small>");
     }
-    Esp32BaseWeb::sendChunk("</td><td data-label='实际 / 计划' class='record-number record-list-duration'><span>");
+    Esp32BaseWeb::sendChunk("</td><td data-label='实际 / 目标' class='record-number record-list-duration'><span>");
     sendDuration(totals.actualWateringSec);
     Esp32BaseWeb::sendChunk("</span><small>/ ");
-    sendDuration(totals.plannedDurationSec);
+    const uint32_t targetWaterMl = recordTargetWaterMl(record.payload);
+    if (targetWaterMl != 0) sendCompactWaterVolume(targetWaterMl);
+    else sendDuration(totals.plannedDurationSec);
     Esp32BaseWeb::sendChunk("</small></td><td data-label='估算用水量' class='record-number'>");
     if (recordHasCappedEstimate(record.payload)) Esp32BaseWeb::sendChunk("至少 ");
     sendCompactWaterVolume(totals.estimatedWaterMl);
@@ -1108,7 +1130,7 @@ void sendEventDetailDialog(const Esp32BaseAppEvents::EventRecord& event,
                 Esp32BaseWeb::sendChunk("（已删除）");
             }
         } else {
-            Esp32BaseWeb::sendChunk("手动浇水");
+            Esp32BaseWeb::sendChunk(sourceName(IrrigationEvents::wateringSource(event)));
         }
         Esp32BaseWeb::sendChunk("</span></div><div><b>发生问题的水路</b><span>");
         if (event.objectId == 0) {
@@ -1146,7 +1168,7 @@ void sendEventDetailDialog(const Esp32BaseAppEvents::EventRecord& event,
                 sendUnsigned(planId);
             }
         } else {
-            Esp32BaseWeb::sendChunk("手动浇水");
+            Esp32BaseWeb::sendChunk(sourceName(IrrigationEvents::wateringSource(event)));
         }
         Esp32BaseWeb::sendChunk("</span></div><div><b>水路</b><span>");
         if (eventZoneName) {
@@ -1365,7 +1387,12 @@ void IrrigationWeb::overview() {
                 char name[8];
                 std::snprintf(name, sizeof(name), "zone%u", index + 1U);
                 uint32_t duration = 0;
-                if (Esp32BaseWeb::hasParam(name) && !uintParam(name, 0, 120, duration)) {
+                if (Esp32BaseWeb::hasParam(name) &&
+                    (!g_app->configuration() ||
+                     !uintParam(name,
+                                0,
+                                g_app->configuration()->runLimits.maximumZoneDurationMinutes,
+                                duration))) {
                     success = false;
                     break;
                 }
@@ -1743,9 +1770,10 @@ void IrrigationWeb::overview() {
         sendRecordTimeRange(latest.record.timing);
         Esp32BaseWeb::sendChunk("</p><p class='home-outcome'>");
         sendRecordOutcomeSummary(latest.record.payload, config);
-        Esp32BaseWeb::sendChunk("</p><div class='home-facts'><div class='home-fact'><span>计划浇水</span><b>");
-        formatElapsed(totals.plannedDurationSec, value, sizeof(value));
-        Esp32BaseWeb::writeHtmlEscaped(value);
+        Esp32BaseWeb::sendChunk("</p><div class='home-facts'><div class='home-fact'><span>执行目标</span><b>");
+        const uint32_t latestTargetWaterMl = recordTargetWaterMl(latest.record.payload);
+        if (latestTargetWaterMl != 0) sendCompactWaterVolume(latestTargetWaterMl);
+        else { formatElapsed(totals.plannedDurationSec, value, sizeof(value)); Esp32BaseWeb::writeHtmlEscaped(value); }
         Esp32BaseWeb::sendChunk("</b></div><div class='home-fact'><span>实际浇水</span><b>");
         formatElapsed(totals.actualWateringSec, value, sizeof(value));
         Esp32BaseWeb::writeHtmlEscaped(value);
@@ -1830,10 +1858,10 @@ void IrrigationWeb::overview() {
             Esp32BaseWeb::sendChunk("<div class='manual-zone'><label>");
             Esp32BaseWeb::writeHtmlEscaped(config->zones[index].name.data());
             Esp32BaseWeb::sendChunk("</label><input class='manual-duration' data-zone-index='"); sendUnsigned(index);
-            Esp32BaseWeb::sendChunk("' type='number' min='0' max='120' name='zone"); sendUnsigned(index + 1U);
+            Esp32BaseWeb::sendChunk("' type='number' min='0' max='"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk("' name='zone"); sendUnsigned(index + 1U);
             Esp32BaseWeb::sendChunk("' value='0' inputmode='numeric'><span>分钟</span></div>");
         }
-        Esp32BaseWeb::sendChunk("</div><div class='manual-summary'><b id='manual-summary'>尚未选择水路</b><span id='manual-template-note'>每条水路范围 0～120 分钟，0 表示本次不执行。</span></div><div class='actions'><button id='manual-clear' type='button' class='secondary'>全部清零</button><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>取消</button><input id='manual-submit' type='submit' value='确认并开始浇水' disabled></div></form></dialog>");
+        Esp32BaseWeb::sendChunk("</div><div class='manual-summary'><b id='manual-summary'>尚未选择水路</b><span id='manual-template-note'>每条水路范围 0～"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk(" 分钟，0 表示本次不执行。</span></div><div class='actions'><button id='manual-clear' type='button' class='secondary'>全部清零</button><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>取消</button><input id='manual-submit' type='submit' value='确认并开始浇水' disabled></div></form></dialog>");
     } else if (config) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "还没有启用水路", "请先到水路页面启用实际安装的水路。");
         Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink info' href='/irrigation/zones'>前往水路设置</a></div>");
@@ -1842,7 +1870,7 @@ void IrrigationWeb::overview() {
 var recentCard=document.getElementById('home-recent-card');try{if(recentCard&&sessionStorage.getItem('irrigationJustFinished')==='1'){sessionStorage.removeItem('irrigationJustFinished');recentCard.classList.add('just-finished');setTimeout(function(){recentCard.classList.remove('just-finished')},3600)}}catch(ignore){}
 var clock=document.getElementById('home-clock'),clockTime=document.getElementById('home-clock-time'),clockDate=document.getElementById('home-clock-date');if(clock&&clock.dataset.epoch){var clockBase=Number(clock.dataset.epoch),clockStarted=performance.now();function clockPad(v){return String(v).padStart(2,'0')}function updateClock(){var epoch=clockBase+Math.floor((performance.now()-clockStarted)/1000),d=new Date((epoch+28800)*1000);if(clockTime)clockTime.textContent=clockPad(d.getUTCHours())+':'+clockPad(d.getUTCMinutes())+':'+clockPad(d.getUTCSeconds());if(clockDate)clockDate.textContent=d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日'}updateClock();setInterval(updateClock,1000)}
 var inputs=Array.prototype.slice.call(document.querySelectorAll('.manual-duration')),submit=document.getElementById('manual-submit'),summary=document.getElementById('manual-summary'),note=document.getElementById('manual-template-note'),cards=Array.prototype.slice.call(document.querySelectorAll('.manual-template-card')),applyingTemplate=false,count=0,total=0;
-function update(){count=0;total=0;inputs.forEach(function(input){var value=Math.max(0,Math.min(120,Number(input.value)||0));if(value>0){count++;total+=value}});if(summary)summary.textContent=count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路';if(submit)submit.disabled=count===0}
+function update(){count=0;total=0;inputs.forEach(function(input){var value=Math.max(0,Math.min(Number(input.max)||0,Number(input.value)||0));if(value>0){count++;total+=value}});if(summary)summary.textContent=count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路';if(submit)submit.disabled=count===0}
 inputs.forEach(function(input){input.addEventListener('input',function(){update();if(applyingTemplate)return;cards.forEach(function(card){card.classList.remove('selected')});if(note)note.textContent='当前时长已手动调整，不会修改任何计划。'})});
 cards.forEach(function(card){card.addEventListener('click',function(){if(card.disabled)return;var values=(card.dataset.durations||'').split(',');applyingTemplate=true;inputs.forEach(function(input){input.value=values[Number(input.dataset.zoneIndex)]||0});applyingTemplate=false;cards.forEach(function(item){item.classList.toggle('selected',item===card)});if(note)note.textContent='已从“'+(card.dataset.planName||'计划')+'”填入，可继续修改；本次修改不会保存到计划。';update()})});
 var clear=document.getElementById('manual-clear');if(clear)clear.addEventListener('click',function(){inputs.forEach(function(input){input.value=0});cards.forEach(function(card){card.classList.remove('selected')});if(note)note.textContent='已全部清零。';update()});
@@ -1951,6 +1979,9 @@ void IrrigationWeb::activeTask() {
             taskSource = "维护任务";
         } else if (activePlan) {
             taskName = activePlan->name.data();
+        } else if (status.source == WateringSource::SingleOutput) {
+            taskName = "单次出水";
+            taskSource = "单次出水";
         }
         const char* activeZoneName = "—";
         if (config && status.activeZoneId >= 1 && status.activeZoneId <= config->zones.size()) {
@@ -1959,11 +1990,21 @@ void IrrigationWeb::activeTask() {
         const uint32_t currentTargetSec = status.currentStepIndex < status.stepCount
                                               ? status.zones[status.currentStepIndex].plannedDurationSec
                                               : 0U;
-        const uint32_t progress = currentTargetSec == 0
+        const uint32_t currentTargetWaterMl = status.currentStepIndex < status.stepCount
+                                                   ? status.zones[status.currentStepIndex].targetWaterMl
+                                                   : 0U;
+        const uint32_t progressTarget = currentTargetWaterMl != 0
+                                            ? currentTargetWaterMl
+                                            : currentTargetSec;
+        const uint32_t progressValue = currentTargetWaterMl != 0 &&
+                                               status.currentStepIndex < status.stepCount
+                                           ? status.zones[status.currentStepIndex].estimatedWaterMl
+                                           : status.currentZoneElapsedSec;
+        const uint32_t progress = progressTarget == 0
                                       ? 0U
-                                      : (status.currentZoneElapsedSec >= currentTargetSec
+                                      : (progressValue >= progressTarget
                                              ? 100U
-                                             : status.currentZoneElapsedSec * 100U / currentTargetSec);
+                                             : progressValue * 100U / progressTarget);
         Esp32BaseWeb::beginPanel("当前运行");
         Esp32BaseWeb::sendChunk("<div id='run-live' data-generation='"); sendUnsigned(status.flowHistoryGeneration);
         Esp32BaseWeb::sendChunk("' data-serial='"); sendUnsigned(status.flowSampleSerial);
@@ -2018,8 +2059,13 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::sendChunk(flowStateText);
         Esp32BaseWeb::sendChunk("</span></div><div class='run-progress'><span id='run-current-progress' style='width:"); sendUnsigned(progress);
         Esp32BaseWeb::sendChunk("%'></span></div><div class='run-current-detail'><span id='run-current-elapsed'>实际浇水 "); sendDuration(status.currentZoneElapsedSec);
-        Esp32BaseWeb::sendChunk(" / "); sendDuration(currentTargetSec);
-        Esp32BaseWeb::sendChunk("</span><span id='run-current-remaining'>剩余 "); sendDuration(status.currentZoneRemainingSec);
+        if (currentTargetWaterMl != 0) {
+            Esp32BaseWeb::sendChunk(" / 目标 "); sendLiters(currentTargetWaterMl);
+        } else {
+            Esp32BaseWeb::sendChunk(" / "); sendDuration(currentTargetSec);
+        }
+        Esp32BaseWeb::sendChunk("</span><span id='run-current-remaining'>");
+        Esp32BaseWeb::sendChunk(currentTargetWaterMl != 0 ? "安全时限剩余 " : "剩余 "); sendDuration(status.currentZoneRemainingSec);
         Esp32BaseWeb::sendChunk("</span></div><div class='run-flow-facts'><div class='run-flow-fact'><span>当前流量</span><b id='run-flow'>");
         char flowText[20]{}; IrrigationConfigRules::formatLitersPerMinute(status.currentFlowMlPerMinute, flowText, sizeof(flowText)); Esp32BaseWeb::writeHtmlEscaped(flowText);
         Esp32BaseWeb::sendChunk(" L/min</b></div><div class='run-flow-fact'><span>基准流量</span><b id='run-expected-flow'>");
@@ -2037,7 +2083,10 @@ void IrrigationWeb::activeTask() {
             if (index < status.currentStepIndex) Esp32BaseWeb::sendChunk("&#10003;"); else sendUnsigned(index + 1U);
             Esp32BaseWeb::sendChunk("</span><div class='run-step-main'><b class='run-step-name'>");
             if (config && zone.zoneId >= 1 && zone.zoneId <= config->zones.size()) Esp32BaseWeb::writeHtmlEscaped(config->zones[zone.zoneId - 1U].name.data()); else { Esp32BaseWeb::sendChunk("水路 "); sendUnsigned(zone.zoneId); }
-            Esp32BaseWeb::sendChunk("</b><small>计划 "); sendDuration(zone.plannedDurationSec); Esp32BaseWeb::sendChunk("</small></div><span class='run-step-detail'>");
+            Esp32BaseWeb::sendChunk("</b><small>");
+            if (zone.targetWaterMl != 0) { Esp32BaseWeb::sendChunk("目标 "); sendLiters(zone.targetWaterMl); }
+            else { Esp32BaseWeb::sendChunk("计划 "); sendDuration(zone.plannedDurationSec); }
+            Esp32BaseWeb::sendChunk("</small></div><span class='run-step-detail'>");
             if (index < status.currentStepIndex) { Esp32BaseWeb::sendChunk("实际 "); sendDuration(zone.actualWateringSec); Esp32BaseWeb::sendChunk(" · "); sendLiters(zone.estimatedWaterMl); }
             else if (index == status.currentStepIndex) { Esp32BaseWeb::sendChunk("正在执行 · 剩余 "); sendDuration(status.currentZoneRemainingSec); }
             else Esp32BaseWeb::sendChunk("等待执行");
@@ -2046,7 +2095,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::sendChunk("</div><p class='run-note'>预计剩余时间只计算计划浇水时长，不包含等待水流和设备启停延时。</p></div>");
         Esp32BaseWeb::endPanel();
     }
-    Esp32BaseWeb::sendChunk(R"HTML(<script>(function(){var live=document.getElementById('run-live'),initialActive=!!live;function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';if(v<3600)return Math.floor(v/60)+' 分 '+(v%60)+' 秒';return Math.floor(v/3600)+' 小时 '+Math.floor((v%3600)/60)+' 分'}function liters(v){return((Number(v)||0)/1000).toFixed(3)+' L'}function flow(v){return((Number(v)||0)/1000).toFixed(3)+' L/min'}function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}var inputs=document.querySelectorAll('.run-custom-duration'),submit=document.getElementById('run-custom-submit');function updateCustom(){var count=0,total=0;inputs.forEach(function(i){var v=Math.max(0,Math.min(120,Number(i.value)||0));if(v>0){count++;total+=v}});set('run-custom-summary',count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路');if(submit)submit.disabled=count===0}inputs.forEach(function(i){i.addEventListener('input',updateCustom)});window.runCustomSubmit=function(form){updateCustom();if(!submit||submit.disabled){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认按当前自定义时长立即开始浇水？')&&once(form)};updateCustom();if(!initialActive){function idlePoll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(s.active)location.reload();else setTimeout(idlePoll,5000)}).catch(function(){setTimeout(idlePoll,10000)})}setTimeout(idlePoll,5000);return}var canvas=document.getElementById('run-flow-chart'),empty=document.getElementById('run-chart-empty'),samples=[],generation=Number(live.dataset.generation||0),serial=Number(live.dataset.serial||0),expectedFlow=Number(live.dataset.expectedFlow||0);
+    Esp32BaseWeb::sendChunk(R"HTML(<script>(function(){var live=document.getElementById('run-live'),initialActive=!!live;function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';if(v<3600)return Math.floor(v/60)+' 分 '+(v%60)+' 秒';return Math.floor(v/3600)+' 小时 '+Math.floor((v%3600)/60)+' 分'}function liters(v){return((Number(v)||0)/1000).toFixed(3)+' L'}function flow(v){return((Number(v)||0)/1000).toFixed(3)+' L/min'}function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}var inputs=document.querySelectorAll('.run-custom-duration'),submit=document.getElementById('run-custom-submit');function updateCustom(){var count=0,total=0;inputs.forEach(function(i){var v=Math.max(0,Math.min(Number(i.max)||0,Number(i.value)||0));if(v>0){count++;total+=v}});set('run-custom-summary',count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路');if(submit)submit.disabled=count===0}inputs.forEach(function(i){i.addEventListener('input',updateCustom)});window.runCustomSubmit=function(form){updateCustom();if(!submit||submit.disabled){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认按当前自定义时长立即开始浇水？')&&once(form)};updateCustom();if(!initialActive){function idlePoll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(s.active)location.reload();else setTimeout(idlePoll,5000)}).catch(function(){setTimeout(idlePoll,10000)})}setTimeout(idlePoll,5000);return}var canvas=document.getElementById('run-flow-chart'),empty=document.getElementById('run-chart-empty'),samples=[],generation=Number(live.dataset.generation||0),serial=Number(live.dataset.serial||0),expectedFlow=Number(live.dataset.expectedFlow||0);
 function rangeDuration(value){if(value<60)return value+' 秒';if(value%60===0)return value/60+' 分钟';return Math.floor(value/60)+' 分 '+value%60+' 秒'}
 function draw(){
 if(!canvas)return;
@@ -2069,7 +2118,7 @@ samples.forEach(function(value,index){var x=left+plotW*((index+1)/count),y=top+p
 c.stroke();
 var latest=samples[count-1]/1000,latestX=w-right,latestY=top+plotH*(1-latest/scale);c.fillStyle='#117b8b';c.beginPath();c.arc(latestX,latestY,3.5,0,Math.PI*2);c.fill()
 }
-function loadHistory(){fetch('/irrigation/api/flow-history',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(h){samples=Array.isArray(h.samples)?h.samples.slice(-120):[];generation=Number(h.generation||0);serial=Number(h.latestSerial||0);draw()}).catch(function(){setTimeout(loadHistory,2000)})}function update(s){set('run-elapsed',duration(s.elapsedSec));set('run-remaining',duration(s.plannedRemainingSec));set('run-water',liters(s.totalEstimatedWaterMl));set('run-step-count','第 '+(Number(s.currentStepIndex)+1)+' / '+s.stepCount+' 条水路');set('run-current-elapsed','实际浇水 '+duration(s.currentZoneElapsedSec)+' / '+duration((s.zones[s.currentStepIndex]||{}).plannedDurationSec));set('run-current-remaining','剩余 '+duration(s.currentZoneRemainingSec));set('run-flow',flow(s.currentFlowMlPerMinute));expectedFlow=Number(s.expectedFlowMlPerMinute||0);set('run-expected-flow',expectedFlow?flow(expectedFlow):'未设置');set('run-pulses',s.pulseCount);var activeZone=s.zones[s.currentStepIndex]||{};set('run-zone-water',liters(activeZone.estimatedWaterMl));var current=document.querySelector('[data-step-index=\"'+s.currentStepIndex+'\"]'),zoneName='水路 '+s.zoneId;if(current){var name=current.querySelector('.run-step-name');if(name)zoneName=name.textContent;set('run-current-zone',zoneName)}var states=['空闲','区域启动中','等待水流','正在浇水','区域停止中','水路切换中'],phase=Number(s.state)===3?(s.flowEstablished?'水流已建立':'等待水流建立'):(states[s.state]||'未知');set('run-state',zoneName+' · '+phase);var target=Number(activeZone.plannedDurationSec)||0,percent=target?Math.min(100,Math.round(Number(s.currentZoneElapsedSec)*100/target)):0,bar=document.getElementById('run-current-progress');if(bar)bar.style.width=percent+'%';var flowState=document.getElementById('run-flow-state');if(flowState){var flowTone='warn',flowLabel='等待水流';if(Number(s.state)===5){flowTone='info';flowLabel='水路切换中'}else if(s.flowEstablished&&!expectedFlow){flowTone='info';flowLabel='水流已建立'}else if(s.flowEstablished&&activeZone.lowFlowActive){flowTone='warn';flowLabel='低流量'}else if(s.flowEstablished&&activeZone.highFlowActive){flowTone='danger';flowLabel='高流量'}else if(s.flowEstablished){flowTone='info';flowLabel='流量监测中'}flowState.textContent=flowLabel;flowState.className='tag '+flowTone}document.querySelectorAll('.run-step').forEach(function(row){var i=Number(row.dataset.stepIndex),z=s.zones[i]||{},icon=row.querySelector('.run-step-icon'),detail=row.querySelector('.run-step-detail');row.classList.toggle('complete',i<s.currentStepIndex);row.classList.toggle('current',i===s.currentStepIndex);if(icon)icon.textContent=i<s.currentStepIndex?'✓':String(i+1);if(detail){if(i<s.currentStepIndex)detail.textContent='实际 '+duration(z.actualWateringSec)+' · '+liters(z.estimatedWaterMl);else if(i===s.currentStepIndex)detail.textContent=Number(s.state)===5?'等待开阀':'正在执行 · 剩余 '+duration(s.currentZoneRemainingSec);else detail.textContent='等待执行'}});var nextGeneration=Number(s.flowHistoryGeneration||0),nextSerial=Number(s.flowSampleSerial||0);if(nextGeneration!==generation){generation=nextGeneration;loadHistory()}else if(nextSerial!==serial){if(nextSerial===serial+1){samples.push(Number(s.currentFlowMlPerMinute)||0);if(samples.length>120)samples.shift();serial=nextSerial;draw()}else loadHistory()}}function finished(){try{sessionStorage.setItem('irrigationJustFinished','1')}catch(ignore){}location.reload()}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active){finished();return}update(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}window.addEventListener('resize',draw);loadHistory();setTimeout(poll,1000)})();</script>)HTML");
+function loadHistory(){fetch('/irrigation/api/flow-history',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(h){samples=Array.isArray(h.samples)?h.samples.slice(-120):[];generation=Number(h.generation||0);serial=Number(h.latestSerial||0);draw()}).catch(function(){setTimeout(loadHistory,2000)})}function update(s){set('run-elapsed',duration(s.elapsedSec));set('run-remaining',duration(s.plannedRemainingSec));set('run-water',liters(s.totalEstimatedWaterMl));set('run-step-count','第 '+(Number(s.currentStepIndex)+1)+' / '+s.stepCount+' 条水路');var activeZone=s.zones[s.currentStepIndex]||{},waterTarget=Number(activeZone.targetWaterMl)||0;set('run-current-elapsed','实际浇水 '+duration(s.currentZoneElapsedSec)+(waterTarget?' / 目标 '+liters(waterTarget):' / '+duration(activeZone.plannedDurationSec)));set('run-current-remaining',(waterTarget?'安全时限剩余 ':'剩余 ')+duration(s.currentZoneRemainingSec));set('run-flow',flow(s.currentFlowMlPerMinute));expectedFlow=Number(s.expectedFlowMlPerMinute||0);set('run-expected-flow',expectedFlow?flow(expectedFlow):'未设置');set('run-pulses',s.pulseCount);set('run-zone-water',liters(activeZone.estimatedWaterMl));var current=document.querySelector('[data-step-index=\"'+s.currentStepIndex+'\"]'),zoneName='水路 '+s.zoneId;if(current){var name=current.querySelector('.run-step-name');if(name)zoneName=name.textContent;set('run-current-zone',zoneName)}var states=['空闲','区域启动中','等待水流','正在浇水','区域停止中','水路切换中'],phase=Number(s.state)===3?(s.flowEstablished?'水流已建立':'等待水流建立'):(states[s.state]||'未知');set('run-state',zoneName+' · '+phase);var target=waterTarget||Number(activeZone.plannedDurationSec)||0,value=waterTarget?Number(activeZone.estimatedWaterMl):Number(s.currentZoneElapsedSec),percent=target?Math.min(100,Math.round(value*100/target)):0,bar=document.getElementById('run-current-progress');if(bar)bar.style.width=percent+'%';var flowState=document.getElementById('run-flow-state');if(flowState){var flowTone='warn',flowLabel='等待水流';if(Number(s.state)===5){flowTone='info';flowLabel='水路切换中'}else if(s.flowEstablished&&!expectedFlow){flowTone='info';flowLabel='水流已建立'}else if(s.flowEstablished&&activeZone.lowFlowActive){flowTone='warn';flowLabel='低流量'}else if(s.flowEstablished&&activeZone.highFlowActive){flowTone='danger';flowLabel='高流量'}else if(s.flowEstablished){flowTone='info';flowLabel='流量监测中'}flowState.textContent=flowLabel;flowState.className='tag '+flowTone}document.querySelectorAll('.run-step').forEach(function(row){var i=Number(row.dataset.stepIndex),z=s.zones[i]||{},icon=row.querySelector('.run-step-icon'),detail=row.querySelector('.run-step-detail');row.classList.toggle('complete',i<s.currentStepIndex);row.classList.toggle('current',i===s.currentStepIndex);if(icon)icon.textContent=i<s.currentStepIndex?'✓':String(i+1);if(detail){if(i<s.currentStepIndex)detail.textContent='实际 '+duration(z.actualWateringSec)+' · '+liters(z.estimatedWaterMl);else if(i===s.currentStepIndex)detail.textContent=Number(s.state)===5?'等待开阀':'正在执行 · '+(Number(z.targetWaterMl)?'已出 '+liters(z.estimatedWaterMl):'剩余 '+duration(s.currentZoneRemainingSec));else detail.textContent='等待执行'}});var nextGeneration=Number(s.flowHistoryGeneration||0),nextSerial=Number(s.flowSampleSerial||0);if(nextGeneration!==generation){generation=nextGeneration;loadHistory()}else if(nextSerial!==serial){if(nextSerial===serial+1){samples.push(Number(s.currentFlowMlPerMinute)||0);if(samples.length>120)samples.shift();serial=nextSerial;draw()}else loadHistory()}}function finished(){try{sessionStorage.setItem('irrigationJustFinished','1')}catch(ignore){}location.reload()}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active){finished();return}update(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}window.addEventListener('resize',draw);loadHistory();setTimeout(poll,1000)})();</script>)HTML");
     endPage();
 }
 
@@ -2314,8 +2363,8 @@ hours.addEventListener('input',function(){updateFromHours(Number(hours.value))})
                 if (!config->zones[index].enabled) continue;
                 Esp32BaseWeb::sendChunk("<p class='plan-zone'><label>"); Esp32BaseWeb::writeHtmlEscaped(config->zones[index].name.data());
                 Esp32BaseWeb::sendChunk("</label><input type='number' name='zone"); sendUnsigned(index + 1U);
-                Esp32BaseWeb::sendChunk("' min='0' max='120' value='"); sendUnsigned(plan.zoneDurationMinutes[index]);
-                Esp32BaseWeb::sendChunk("'><small>单位：分钟，范围 0～120。</small></p>");
+                Esp32BaseWeb::sendChunk("' min='0' max='"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk("' value='"); sendUnsigned(plan.zoneDurationMinutes[index]);
+                Esp32BaseWeb::sendChunk("'><small>单位：分钟，范围 0～"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk("。</small></p>");
             }
             Esp32BaseWeb::sendChunk("</div></section></div><div class='actions plan-form-actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存计划'></div></form>");
             if (plan.configured) { Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/plans' onsubmit=\"return confirm('确认删除该计划？')&&once(this)\"><input type='hidden' name='action' value='delete'><input type='hidden' name='plan_id' value='"); sendUnsigned(plan.id); Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='"); sendUnsigned(config->revision); Esp32BaseWeb::sendChunk("'><div class='actions'><input class='danger' type='submit' value='删除计划'></div></form>"); }
@@ -2328,7 +2377,61 @@ hours.addEventListener('input',function(){updateFromHours(Number(hours.value))})
 void IrrigationWeb::zones() {
     if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
         if (!Esp32BaseWeb::checkPostAllowed("irrigation_zone_save")) return;
-        redirectResult("/irrigation/zones", actionIs("save") && saveZoneFromRequest());
+        bool success = false;
+        if (actionIs("save")) {
+            success = saveZoneFromRequest();
+        } else if (actionIs("start_single_output")) {
+            const IrrigationConfig* config = g_app->configuration();
+            uint32_t zoneId = 0;
+            char mode[12]{};
+            if (config &&
+                uintParam("zone_id", 1, BoardPins::kZoneCount, zoneId) &&
+                getParam("target_mode", mode, sizeof(mode))) {
+                uint32_t targetDurationSec = 0;
+                uint32_t targetWaterMl = 0;
+                if (std::strcmp(mode, "time") == 0) {
+                    uint32_t minutes = 0;
+                    uint32_t seconds = 0;
+                    if (uintParam("duration_minutes",
+                                  0,
+                                  config->runLimits.maximumZoneDurationMinutes,
+                                  minutes) &&
+                        uintParam("duration_seconds", 0, 59, seconds)) {
+                        targetDurationSec = minutes * 60U + seconds;
+                        if (targetDurationSec == 0 ||
+                            targetDurationSec >
+                                static_cast<uint32_t>(config->runLimits.maximumZoneDurationMinutes) * 60U) {
+                            targetDurationSec = 0;
+                        }
+                    }
+                } else if (std::strcmp(mode, "volume") == 0) {
+                    char liters[24]{};
+                    if (getParam("target_liters", liters, sizeof(liters)) &&
+                        IrrigationConfigRules::parseWaterVolumeLiters(
+                            liters, targetWaterMl) &&
+                        targetWaterMl % 100U == 0 &&
+                        targetWaterMl <=
+                            static_cast<uint32_t>(config->runLimits.maximumSingleOutputLiters) * 1000U) {
+                        targetDurationSec =
+                            static_cast<uint32_t>(config->runLimits.maximumZoneDurationMinutes) * 60U;
+                    } else {
+                        targetWaterMl = 0;
+                    }
+                }
+                success = targetDurationSec != 0 &&
+                          g_app->startSingleOutput(static_cast<uint8_t>(zoneId),
+                                                   targetDurationSec,
+                                                   targetWaterMl) ==
+                              WateringStartResult::Started;
+            }
+        } else if (actionIs("stop_single_output")) {
+            const WateringStatus status = g_app->wateringStatus();
+            success = status.active &&
+                      status.source == WateringSource::SingleOutput &&
+                      status.purpose == WateringPurpose::Normal &&
+                      g_app->stopWatering();
+        }
+        redirectResult("/irrigation/zones", success);
         return;
     }
     if (!beginPage("水路设置", "启用实际安装的水路，并学习各水路的基准流量")) return;
@@ -2343,8 +2446,21 @@ void IrrigationWeb::zones() {
         ".zone-table th{font-weight:600}.zone-table td{font-weight:400}"
         ".zone-table .tag{font-weight:500}"
         ".zone-table .btnlink{font-weight:500}"
+        ".single-output-intro{margin:0 0 15px;color:var(--eb-muted);font-size:13px;line-height:1.6}"
+        ".single-output-group{margin:0 0 16px}.single-output-group>span{display:block;margin-bottom:7px;font-size:13px;font-weight:600}"
+        ".single-output-zones,.single-output-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}"
+        ".single-output-option{position:relative;display:block;margin:0}.single-output-option input{position:absolute;opacity:0;pointer-events:none}"
+        ".single-output-card{display:block;height:100%;padding:12px;border:1px solid var(--eb-line);border-radius:9px;background:#fff;cursor:pointer}"
+        ".single-output-card b,.single-output-card small{display:block}.single-output-card small{margin-top:3px;color:var(--eb-muted);font-size:11px;line-height:1.45}"
+        ".single-output-option input:checked+.single-output-card{border-color:var(--eb-primary);background:var(--eb-primary-soft);box-shadow:0 0 0 1px var(--eb-primary)}"
+        ".single-output-option input:focus-visible+.single-output-card{outline:2px solid var(--eb-primary);outline-offset:2px}"
+        ".single-output-target{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.single-output-target .field{margin:0}.single-output-target input{width:100%;max-width:none}"
+        ".single-output-estimate{min-height:24px;margin:12px 0 0;padding:9px 11px;border-radius:7px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px}"
+        ".single-output-live{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.single-output-live>div{padding:11px;border-radius:8px;background:var(--eb-soft)}.single-output-live span,.single-output-live b{display:block}.single-output-live span{color:var(--eb-muted);font-size:11px}.single-output-live b{margin-top:3px;font-size:15px;font-weight:550}"
+        ".single-output-progress{height:8px;margin-top:14px;border-radius:999px;background:var(--eb-soft);overflow:hidden}.single-output-progress>span{display:block;height:100%;width:0;background:var(--eb-primary);transition:width .3s}"
         "@media(max-width:760px){"
         ".zone-meter{align-items:stretch;flex-direction:column;gap:10px}.zone-meter .btnlink{width:100%}"
+        ".single-output-zones,.single-output-modes,.single-output-live{grid-template-columns:repeat(2,minmax(0,1fr))}.single-output-target{grid-template-columns:1fr}"
         "}"
         "</style>");
     const IrrigationConfig* config = g_app->configuration();
@@ -2384,6 +2500,56 @@ void IrrigationWeb::zones() {
         Esp32BaseWeb::sendChunk("<div class='zone-meter'><div class='zone-meter-main'><p class='zone-meter-label'>稳态流量系数</p><div class='zone-meter-value'><span class='zone-meter-number'>");
         Esp32BaseWeb::writeHtmlEscaped(coefficient);
         Esp32BaseWeb::sendChunk("</span><span class='zone-meter-unit'>P/L</span></div></div><a class='btnlink ok compact' href='/irrigation/zones/flow-calibration'>流量计校准</a></div>");
+        Esp32BaseWeb::endPanel();
+        const WateringStatus outputStatus = g_app->wateringStatus();
+        Esp32BaseWeb::beginPanel("单次出水");
+        if (outputStatus.active &&
+            outputStatus.source == WateringSource::SingleOutput &&
+            outputStatus.purpose == WateringPurpose::Normal) {
+            const ZoneWateringSummary& zone = outputStatus.zones[outputStatus.currentStepIndex];
+            Esp32BaseWeb::sendChunk("<p class='single-output-intro'>正在执行单次出水；保留无流量、流量异常和最长运行时间保护。</p><div id='single-output-live' class='single-output-live' data-target-water='");
+            sendUnsigned(zone.targetWaterMl);
+            Esp32BaseWeb::sendChunk("' data-target-time='"); sendUnsigned(zone.plannedDurationSec);
+            Esp32BaseWeb::sendChunk("'><div><span>当前水路</span><b>");
+            if (zone.zoneId >= 1 && zone.zoneId <= config->zones.size()) {
+                Esp32BaseWeb::writeHtmlEscaped(config->zones[zone.zoneId - 1U].name.data());
+            } else {
+                Esp32BaseWeb::sendChunk("水路 "); sendUnsigned(zone.zoneId);
+            }
+            Esp32BaseWeb::sendChunk("</b></div><div><span>目标</span><b id='single-live-target'>—</b></div><div><span>实际出水</span><b id='single-live-time'>—</b></div><div><span>估算水量</span><b id='single-live-water'>—</b></div></div><div class='single-output-progress'><span id='single-live-progress'></span></div><div class='actions'><form method='post' action='/irrigation/zones' onsubmit=\"return confirm('确认停止当前单次出水？')&&once(this)\"><input type='hidden' name='action' value='stop_single_output'><input class='danger' type='submit' value='停止出水'></form></div><script>(function(){var live=document.getElementById('single-output-live'),bar=document.getElementById('single-live-progress');if(!live)return;function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';return Math.floor(v/60)+' 分 '+v%60+' 秒'}function liters(v){return(Math.max(0,Number(v)||0)/1000).toFixed(1)+' L'}var targetWater=Number(live.dataset.targetWater)||0,targetTime=Number(live.dataset.targetTime)||0;set('single-live-target',targetWater?liters(targetWater):duration(targetTime));function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active||Number(s.source)!==1){location.reload();return}var z=s.zones&&s.zones[s.currentStepIndex]||{};set('single-live-time',duration(s.currentZoneElapsedSec));set('single-live-water',liters(z.estimatedWaterMl));var value=targetWater?Number(z.estimatedWaterMl):Number(s.currentZoneElapsedSec),target=targetWater||targetTime;if(bar)bar.style.width=(target?Math.min(100,Math.round(value*100/target)):0)+'%';setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}poll()})();</script>");
+        } else if (outputStatus.active) {
+            Esp32BaseWeb::sendChunk("<p class='single-output-intro'>设备正在执行其他浇水或维护任务，结束后才能开始单次出水。</p><a class='btnlink secondary compact' href='/irrigation'>查看当前任务</a>");
+        } else {
+            Esp32BaseWeb::sendChunk("<p class='single-output-intro'>选择一条已启用水路，按时长或目标估算水量自动停止；不会修改浇水计划。</p><form id='single-output-form' method='post' action='/irrigation/zones' onsubmit='return submitSingleOutput(this)'><input type='hidden' name='action' value='start_single_output'><div class='single-output-group'><span>选择水路</span><div class='single-output-zones'>");
+            bool firstEnabledZone = true;
+            for (const ZoneConfig& zone : config->zones) {
+                if (!zone.enabled) continue;
+                uint32_t baselineMlPerMinute = 0;
+                FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
+                    zone.baselinePulseRateX10000,
+                    config->flowMeter.pulsesPerLiterX100,
+                    baselineMlPerMinute);
+                Esp32BaseWeb::sendChunk("<label class='single-output-option'><input type='radio' name='zone_id' value='"); sendUnsigned(zone.id);
+                Esp32BaseWeb::sendChunk("' data-flow='"); sendUnsigned(baselineMlPerMinute); Esp32BaseWeb::sendChunk("'");
+                if (firstEnabledZone) Esp32BaseWeb::sendChunk(" checked");
+                Esp32BaseWeb::sendChunk("><span class='single-output-card'><b>"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
+                Esp32BaseWeb::sendChunk("</b><small>水路 "); sendUnsigned(zone.id);
+                if (baselineMlPerMinute != 0) {
+                    Esp32BaseWeb::sendChunk(" · 基准 ");
+                    char baseline[20]{};
+                    IrrigationConfigRules::formatLitersPerMinute(
+                        baselineMlPerMinute, baseline, sizeof(baseline));
+                    Esp32BaseWeb::writeHtmlEscaped(baseline);
+                    Esp32BaseWeb::sendChunk(" L/min");
+                }
+                Esp32BaseWeb::sendChunk("</small></span></label>");
+                firstEnabledZone = false;
+            }
+            if (firstEnabledZone) {
+                Esp32BaseWeb::sendChunk("<p class='muted'>当前没有已启用水路，请先在上方水路列表中启用实际水路。</p>");
+            }
+            Esp32BaseWeb::sendChunk("</div></div><div class='single-output-group'><span>目标方式</span><div class='single-output-modes'><label class='single-output-option'><input type='radio' name='target_mode' value='time' checked><span class='single-output-card'><b>按时长</b><small>到达设定时间后自动停止</small></span></label><label class='single-output-option'><input type='radio' name='target_mode' value='volume'><span class='single-output-card'><b>按水量</b><small>达到目标估算水量后自动停止</small></span></label></div><div id='single-time-target' class='single-output-target'><p class='field'><label>分钟</label><input type='number' name='duration_minutes' min='0' max='"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk("' step='1' value='1' inputmode='numeric'></p><p class='field'><label>秒</label><input type='number' name='duration_seconds' min='0' max='59' step='1' value='0' inputmode='numeric'></p></div><div id='single-volume-target' class='single-output-target' hidden><p class='field'><label>目标水量（L）</label><input type='number' name='target_liters' min='0.1' max='"); sendUnsigned(config->runLimits.maximumSingleOutputLiters); Esp32BaseWeb::sendChunk("' step='0.1' value='5.0' inputmode='decimal' disabled></p></div><p id='single-output-estimate' class='single-output-estimate' hidden></p></div><p class='muted'>按水量停止使用当前流量计系数估算，实际结果可能受校准、阀门响应和管路余流影响；所有模式最长运行 "); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk(" 分钟。</p><div class='actions'><input type='submit' value='开始出水'></div></form><script>(function(){var form=document.getElementById('single-output-form'),time=document.getElementById('single-time-target'),volume=document.getElementById('single-volume-target'),estimate=document.getElementById('single-output-estimate');if(!form)return;function selected(name){return form.querySelector('input[name=\"'+name+'\"]:checked')}function update(){var mode=selected('target_mode'),byVolume=mode&&mode.value==='volume',timeInputs=time.querySelectorAll('input'),volumeInput=volume.querySelector('input');time.hidden=byVolume;volume.hidden=!byVolume;timeInputs.forEach(function(i){i.disabled=byVolume});volumeInput.disabled=!byVolume;var zone=selected('zone_id'),flow=zone?Number(zone.dataset.flow)||0:0;if(!flow){estimate.hidden=true;estimate.textContent='';return}if(byVolume){var liters=Number(volumeInput.value)||0;if(liters<=0){estimate.hidden=true;return}var seconds=Math.ceil(liters*60000/flow),maximum="); sendUnsigned(static_cast<uint32_t>(config->runLimits.maximumZoneDurationMinutes) * 60U); Esp32BaseWeb::sendChunk(";estimate.textContent='按当前基准流量估算：约需 '+(seconds<60?seconds+' 秒':Math.floor(seconds/60)+' 分 '+seconds%60+' 秒')+(seconds>maximum?'；可能无法在最长运行时间内达到目标水量':'');estimate.hidden=false}else{var minutes=Number(timeInputs[0].value)||0,seconds=Number(timeInputs[1].value)||0,total=minutes*60+seconds;if(total<=0){estimate.hidden=true;return}estimate.textContent='按当前基准流量估算：约出水 '+(flow*total/60000).toFixed(1)+' L';estimate.hidden=false}}form.querySelectorAll('input').forEach(function(i){i.addEventListener('input',update);i.addEventListener('change',update)});window.submitSingleOutput=function(){var mode=selected('target_mode'),zone=selected('zone_id');if(!mode||!zone)return false;var detail;if(mode.value==='volume'){detail='目标估算水量 '+Number(form.target_liters.value).toFixed(1)+' L'}else{var total=(Number(form.duration_minutes.value)||0)*60+(Number(form.duration_seconds.value)||0);if(total<1){alert('出水时长至少为 1 秒。');return false}detail='目标时长 '+(total<60?total+' 秒':Math.floor(total/60)+' 分 '+total%60+' 秒')}return confirm('确认从所选水路开始出水，'+detail+'？')&&once(form)};update()})();</script>");
+        }
         Esp32BaseWeb::endPanel();
         for (const ZoneConfig& zone : config->zones) {
             Esp32BaseWeb::sendChunk("<dialog id='zone-"); sendUnsigned(zone.id);
@@ -3180,7 +3346,7 @@ void IrrigationWeb::records() {
                                  "浇水记录暂时无法读取",
                                  "请在系统状态中检查业务记录存储。");
     } else {
-        Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='record-table'><thead><tr><th>完成时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 计划</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
+        Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='record-table'><thead><tr><th>完成时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
         RecordRowsContext context{g_app->configuration(), 0};
         bool readOk = true;
         if (status.recordCount == 0) {
@@ -3477,6 +3643,7 @@ void IrrigationWeb::statusApi() {
         Esp32BaseWeb::sendChunk("{\"zoneId\":"); sendUnsigned(zone.zoneId);
         Esp32BaseWeb::sendChunk(",\"result\":"); sendUnsigned(static_cast<uint32_t>(zone.result));
         Esp32BaseWeb::sendChunk(",\"plannedDurationSec\":"); sendUnsigned(zone.plannedDurationSec);
+        Esp32BaseWeb::sendChunk(",\"targetWaterMl\":"); sendUnsigned(zone.targetWaterMl);
         Esp32BaseWeb::sendChunk(",\"actualWateringSec\":"); sendUnsigned(zone.actualWateringSec);
         Esp32BaseWeb::sendChunk(",\"pulseCount\":"); sendUnsigned(zone.pulseCount);
         Esp32BaseWeb::sendChunk(",\"estimatedWaterMl\":"); sendUnsigned(zone.estimatedWaterMl);

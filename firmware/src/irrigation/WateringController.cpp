@@ -54,6 +54,7 @@ WateringStartResult WateringController::start(const WateringRequest& request,
         sessionSummary_.zones[index].zoneId = request.steps[index].zoneId;
         sessionSummary_.zones[index].result = ZoneWateringResult::NotStarted;
         sessionSummary_.zones[index].plannedDurationSec = request.steps[index].targetDurationSec;
+        sessionSummary_.zones[index].targetWaterMl = request.steps[index].targetWaterMl;
         baselinePulseRateX10000_[index] =
             config.zones[BoardPins::zoneIndex(request.steps[index].zoneId)]
                 .baselinePulseRateX10000;
@@ -178,8 +179,7 @@ void WateringController::handle(uint32_t nowMs) {
                 break;
             }
             const WateringStep& step = request_.steps[currentStepIndex_];
-            if (request_.purpose == WateringPurpose::FlowCalibration &&
-                step.targetWaterMl != 0) {
+            if (step.targetWaterMl != 0) {
                 const uint32_t pulseCount = static_cast<uint32_t>(
                     hardware_.flowPulseCount() - zoneStartedPulseCount_);
                 uint32_t estimatedWaterMl = 0;
@@ -196,7 +196,12 @@ void WateringController::handle(uint32_t nowMs) {
                 break;
             }
             if (elapsed(nowMs, stateStartedMs_, step.targetDurationSec * 1000U)) {
-                finishCurrentZone(nowMs);
+                if (request_.source == WateringSource::SingleOutput &&
+                    step.targetWaterMl != 0) {
+                    finishSession(WateringStopReason::TargetVolumeTimeout, nowMs);
+                } else {
+                    finishCurrentZone(nowMs);
+                }
             }
             break;
         }
@@ -367,15 +372,22 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
         return false;
     }
     if ((request.source != WateringSource::ManualZones &&
+         request.source != WateringSource::SingleOutput &&
          request.source != WateringSource::AutomaticPlan) ||
         (request.purpose != WateringPurpose::Normal &&
          request.purpose != WateringPurpose::FlowCalibration &&
          request.purpose != WateringPurpose::ZoneFlowLearning)) {
         return false;
     }
-    if ((request.source == WateringSource::ManualZones && request.planId != 0) ||
-        (request.source != WateringSource::ManualZones &&
+    const bool manualSource = request.source == WateringSource::ManualZones ||
+                              request.source == WateringSource::SingleOutput;
+    if ((manualSource && request.planId != 0) ||
+        (!manualSource &&
          (request.planId == 0 || request.planId > kWateringPlanCount))) {
+        return false;
+    }
+    if (request.source == WateringSource::SingleOutput &&
+        (request.purpose != WateringPurpose::Normal || request.stepCount != 1)) {
         return false;
     }
 
@@ -386,11 +398,19 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
             step.zoneId <= previousZoneId ||
             !config.zones[BoardPins::zoneIndex(step.zoneId)].enabled ||
             step.targetDurationSec == 0 ||
-            step.targetDurationSec > 120U * 60U ||
+            (request.purpose == WateringPurpose::Normal &&
+             step.targetDurationSec >
+                 static_cast<uint32_t>(config.runLimits.maximumZoneDurationMinutes) * 60U) ||
             (request.purpose == WateringPurpose::FlowCalibration &&
              step.targetDurationSec > 10U * 60U) ||
             (request.purpose != WateringPurpose::FlowCalibration &&
+             request.source != WateringSource::SingleOutput &&
              step.targetWaterMl != 0) ||
+            (request.source == WateringSource::SingleOutput &&
+             step.targetWaterMl != 0 &&
+             (step.targetWaterMl < 100U ||
+              step.targetWaterMl >
+                  static_cast<uint32_t>(config.runLimits.maximumSingleOutputLiters) * 1000U)) ||
             (request.purpose == WateringPurpose::FlowCalibration &&
              step.targetWaterMl != 0 &&
              (step.targetWaterMl < 1000U || step.targetWaterMl > 1000000U))) {

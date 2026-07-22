@@ -369,8 +369,11 @@ bool IrrigationEvents::hasWateringContext(
 
 WateringSource IrrigationEvents::wateringSource(
     const Esp32BaseAppEvents::EventRecord& event) {
-    return (event.flags & kFlagAutomaticPlan) != 0
-               ? WateringSource::AutomaticPlan
+    if ((event.flags & kFlagAutomaticPlan) != 0) {
+        return WateringSource::AutomaticPlan;
+    }
+    return (event.flags & kFlagSingleOutput) != 0
+               ? WateringSource::SingleOutput
                : WateringSource::ManualZones;
 }
 
@@ -402,6 +405,8 @@ void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
         } else {
             std::snprintf(source, sizeof(source), "自动计划 %u", planId);
         }
+    } else if (wateringSource(event) == WateringSource::SingleOutput) {
+        std::snprintf(source, sizeof(source), "单次出水");
     } else {
         std::snprintf(source, sizeof(source), "手动浇水");
     }
@@ -425,6 +430,8 @@ void IrrigationEvents::formatTitle(const Esp32BaseAppEvents::EventRecord& event,
                     std::snprintf(out, length, "%s失败：%s因流量过高停止", source, zone); return;
                 case ReasonCode::MaintenanceInterrupted:
                     std::snprintf(out, length, "%s因维护操作中断", source); return;
+                case ReasonCode::TargetVolumeTimeout:
+                    std::snprintf(out, length, "%s未完成：%s达到最长运行时间", source, zone); return;
                 default:
                     std::snprintf(out, length, "%s因设备故障停止", source); return;
             }
@@ -518,6 +525,10 @@ void IrrigationEvents::addWateringContext(
     WateringSource source,
     uint8_t planId) {
     event.flags |= kFlagWateringContextPresent;
+    if (source == WateringSource::SingleOutput) {
+        event.flags |= kFlagSingleOutput;
+        return;
+    }
     if (source != WateringSource::AutomaticPlan ||
         planId == 0 || planId > kWateringPlanCount) {
         return;
@@ -755,6 +766,7 @@ IrrigationEvents::ReasonCode IrrigationEvents::wateringReason(WateringStopReason
         case WateringStopReason::LowFlow: return ReasonCode::LowFlow;
         case WateringStopReason::HighFlow: return ReasonCode::HighFlow;
         case WateringStopReason::MaintenanceInterrupted: return ReasonCode::MaintenanceInterrupted;
+        case WateringStopReason::TargetVolumeTimeout: return ReasonCode::TargetVolumeTimeout;
         case WateringStopReason::HardwareFailure:
         default: return ReasonCode::HardwareFailure;
     }

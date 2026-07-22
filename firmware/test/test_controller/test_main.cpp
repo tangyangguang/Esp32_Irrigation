@@ -1035,6 +1035,60 @@ void test_new_flow_calibration_does_not_reuse_previous_steady_state() {
     TEST_ASSERT_EQUAL_UINT32(0, summary->zones[0].calibrationSteadyPulses);
 }
 
+void test_single_output_stops_at_target_volume() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.flowMeter.pulsesPerLiterX100 = 25000;
+    WateringRequest request = requestFor(1, 60);
+    request.source = WateringSource::SingleOutput;
+    request.steps[0].targetWaterMl = 400;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    controller.handle(0);
+    hardware.pulses = 1;
+    controller.handle(1);
+    TEST_ASSERT_EQUAL_UINT32(400, controller.status().zones[0].targetWaterMl);
+    hardware.pulses = 99;
+    controller.handle(2);
+    TEST_ASSERT_TRUE(controller.status().active);
+    hardware.pulses = 100;
+    controller.handle(3);
+    TEST_ASSERT_FALSE(controller.status().active);
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
+                      static_cast<int>(summary->stopReason));
+    TEST_ASSERT_EQUAL_UINT32(400, summary->zones[0].targetWaterMl);
+}
+
+void test_single_output_volume_fails_at_configured_time_limit() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.runLimits.maximumZoneDurationMinutes = 1;
+    config.flowProtection.noFlowTimeoutSec = 120;
+    WateringRequest request = requestFor(1, 60);
+    request.source = WateringSource::SingleOutput;
+    request.steps[0].targetWaterMl = 1000;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    controller.handle(0);
+    hardware.pulses = 1;
+    controller.handle(1);
+    hardware.pulses = 2;
+    controller.handle(60001);
+    TEST_ASSERT_FALSE(controller.status().active);
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringResult::Failed),
+                      static_cast<int>(summary->result));
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::TargetVolumeTimeout),
+                      static_cast<int>(summary->stopReason));
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -1075,5 +1129,7 @@ int main(int, char**) {
     RUN_TEST(test_flow_calibration_detects_and_records_steady_phases);
     RUN_TEST(test_flow_calibration_allows_one_pulse_window_quantization);
     RUN_TEST(test_new_flow_calibration_does_not_reuse_previous_steady_state);
+    RUN_TEST(test_single_output_stops_at_target_volume);
+    RUN_TEST(test_single_output_volume_fails_at_configured_time_limit);
     return UNITY_END();
 }

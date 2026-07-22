@@ -50,11 +50,11 @@ void test_fixed_payload_round_trip_preserves_business_fields() {
 
     uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    TEST_ASSERT_EQUAL_UINT32(208, sizeof(encoded));
+    TEST_ASSERT_EQUAL_UINT32(232, sizeof(encoded));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringSource::AutomaticPlan), encoded[0]);
     TEST_ASSERT_EQUAL_UINT8(3, encoded[1]);
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[38]);  // Zone 2 fixed slot is empty.
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[39]);
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[42]);  // Zone 2 fixed slot is empty.
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[43]);
 
     WateringRecordPayload decoded{};
     TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
@@ -128,8 +128,49 @@ void test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone() {
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    encoded[38] = static_cast<uint8_t>(ZoneWateringResult::Completed);
+    encoded[42] = static_cast<uint8_t>(ZoneWateringResult::Completed);
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
+}
+
+void test_single_output_record_preserves_volume_target() {
+    WateringSessionSummary summary{};
+    summary.source = WateringSource::SingleOutput;
+    summary.purpose = WateringPurpose::Normal;
+    summary.zoneCount = 1;
+    summary.result = WateringResult::Completed;
+    summary.stopReason = WateringStopReason::Completed;
+    summary.zones[0].zoneId = 2;
+    summary.zones[0].result = ZoneWateringResult::Completed;
+    summary.zones[0].plannedDurationSec = 7200;
+    summary.zones[0].targetWaterMl = 5000;
+    summary.zones[0].actualWateringSec = 42;
+    summary.zones[0].pulseCount = 1250;
+    summary.zones[0].estimatedWaterMl = 5000;
+    WateringRecordPayload payload{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::SingleOutput),
+                      static_cast<int>(payload.source));
+    TEST_ASSERT_EQUAL_UINT32(5000, payload.zones[1].targetWaterMl);
+    uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
+    WateringRecordPayload decoded{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
+    TEST_ASSERT_EQUAL_UINT32(5000, decoded.zones[1].targetWaterMl);
+
+    summary.result = WateringResult::Failed;
+    summary.stopReason = WateringStopReason::TargetVolumeTimeout;
+    summary.zones[0].result = ZoneWateringResult::Failed;
+    summary.zones[0].actualWateringSec = summary.zones[0].plannedDurationSec;
+    summary.zones[0].estimatedWaterMl = 4900;
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::TargetVolumeTimeout),
+                      static_cast<int>(decoded.stopReason));
+
+    payload.source = WateringSource::ManualZones;
+    payload.zones[1].targetWaterMl = 0;
+    TEST_ASSERT_FALSE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
 }
 
 void test_all_started_normal_sessions_become_records() {
@@ -198,6 +239,7 @@ int main(int, char**) {
     RUN_TEST(test_fixed_payload_round_trip_preserves_business_fields);
     RUN_TEST(test_totals_are_derived_without_overflow);
     RUN_TEST(test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone);
+    RUN_TEST(test_single_output_record_preserves_volume_target);
     RUN_TEST(test_all_started_normal_sessions_become_records);
     RUN_TEST(test_included_but_unstarted_zone_keeps_plan_and_zero_actuals);
     RUN_TEST(test_manual_records_have_no_plan);

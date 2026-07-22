@@ -33,6 +33,7 @@ public:
         LowFlow = 5,
         HighFlow = 6,
         ClosedValveFlow = 7,
+        TargetVolumeTimeout = 8,
         RecordStartTimeUnavailable = 103,
         RecordAppendFailed = 104,
         PausedIndefinitely = 201,
@@ -155,6 +156,7 @@ private:
     static constexpr uint8_t kFlagValue1Capped = 1U << 0U;
     static constexpr uint8_t kFlagWateringStopped = 1U << 1U;
     static constexpr uint8_t kFlagAutomaticPlan = 1U << 2U;
+    static constexpr uint8_t kFlagSingleOutput = 1U << 3U;
     static constexpr uint8_t kPlanIdShift = 3U;
     static constexpr uint8_t kPlanIdMask = 0x78U;
     static constexpr uint8_t kFlagWateringContextPresent = 1U << 7U;

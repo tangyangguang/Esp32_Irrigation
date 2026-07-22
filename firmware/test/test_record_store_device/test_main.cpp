@@ -285,6 +285,39 @@ void test_irrigation_event_mapping_and_latest_read() {
     TEST_ASSERT_EQUAL_UINT8(
         3, IrrigationEvents::wateringPlanId(wateringPresentation));
 
+    summary.source = WateringSource::SingleOutput;
+    summary.planId = 0;
+    summary.stopReason = WateringStopReason::TargetVolumeTimeout;
+    events.recordAbnormalWateringStop(summary);
+    EventCapture singleOutputCapture;
+    TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(
+        0, 1, captureEvent, &singleOutputCapture));
+    TEST_ASSERT_EQUAL_UINT32(
+        static_cast<uint32_t>(IrrigationEvents::ReasonCode::TargetVolumeTimeout),
+        singleOutputCapture.reasonCode);
+    TEST_ASSERT_EQUAL_UINT8((1U << 7U) | (1U << 3U),
+                            singleOutputCapture.flags);
+    Esp32BaseAppEvents::EventRecord singleOutputPresentation{};
+    singleOutputPresentation.eventCode = singleOutputCapture.eventCode;
+    singleOutputPresentation.reasonCode = singleOutputCapture.reasonCode;
+    singleOutputPresentation.objectId = singleOutputCapture.objectId;
+    singleOutputPresentation.flags = singleOutputCapture.flags;
+    char singleOutputTitle[96]{};
+    IrrigationEvents::formatTitle(singleOutputPresentation,
+                                  singleOutputTitle,
+                                  sizeof(singleOutputTitle),
+                                  nullptr,
+                                  "菜地");
+    TEST_ASSERT_EQUAL_STRING(
+        "单次出水未完成：菜地达到最长运行时间",
+        singleOutputTitle);
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(WateringSource::SingleOutput),
+        static_cast<int>(IrrigationEvents::wateringSource(
+            singleOutputPresentation)));
+    TEST_ASSERT_EQUAL_UINT8(
+        0, IrrigationEvents::wateringPlanId(singleOutputPresentation));
+
     WateringStatus busyStatus{};
     busyStatus.active = true;
     busyStatus.purpose = WateringPurpose::Normal;

@@ -105,7 +105,7 @@ bool IrrigationConfigStore::save(const IrrigationConfig& proposed, uint32_t expe
     saveScratch_ = proposed;
     saveScratch_.schemaVersion = kIrrigationConfigSchemaVersion;
     saveScratch_.revision = config_.revision + 1U;
-    if (!IrrigationConfigRules::validate(saveScratch_)) {
+    if (!IrrigationConfigRules::validateRuntimeConstraints(saveScratch_)) {
         lastError_ = "config_validation_failed";
         return false;
     }
@@ -126,7 +126,8 @@ bool IrrigationConfigStore::applyRuntimeParameters(const IrrigationConfig& sourc
     saveScratch_.flowMeter = source.flowMeter;
     saveScratch_.flowProtection = source.flowProtection;
     saveScratch_.timeSafety = source.timeSafety;
-    if (!IrrigationConfigRules::validate(saveScratch_)) return false;
+    saveScratch_.runLimits = source.runLimits;
+    if (!IrrigationConfigRules::validateRuntimeConstraints(saveScratch_)) return false;
     config_ = saveScratch_;
     return true;
 }

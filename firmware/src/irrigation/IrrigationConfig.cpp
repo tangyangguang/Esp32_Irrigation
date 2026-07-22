@@ -114,6 +114,8 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
         FlowAlertAction::AlertOnly,
     };
     config.timeSafety = {5, 12};
+    config.runLimits = {kDefaultMaximumZoneDurationMinutes,
+                        kDefaultMaximumSingleOutputLiters};
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         ZoneConfig& zone = config.zones[index];
@@ -172,6 +174,14 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
         config.timeSafety.aliveCheckpointHours > 168) {
         return false;
     }
+    if (!inRange(config.runLimits.maximumZoneDurationMinutes,
+                 1,
+                 kMaximumConfigurableZoneDurationMinutes) ||
+        !inRange(config.runLimits.maximumSingleOutputLiters,
+                 1,
+                 kMaximumConfigurableSingleOutputLiters)) {
+        return false;
+    }
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         const ZoneConfig& zone = config.zones[index];
@@ -210,7 +220,7 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
         bool hasEnabledZoneDuration = false;
         for (std::size_t zoneIndex = 0; zoneIndex < plan.zoneDurationMinutes.size(); ++zoneIndex) {
             const uint16_t duration = plan.zoneDurationMinutes[zoneIndex];
-            if (duration > 120) {
+            if (duration > kMaximumConfigurableZoneDurationMinutes) {
                 return false;
             }
             if (duration > 0) {
@@ -223,6 +233,19 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
         }
         if (plan.scheduleEnabled && (!hasStartTime || !hasEnabledZoneDuration)) {
             return false;
+        }
+    }
+    return true;
+}
+
+bool IrrigationConfigRules::validateRuntimeConstraints(
+    const IrrigationConfig& config) {
+    if (!validate(config)) return false;
+    for (const WateringPlan& plan : config.plans) {
+        for (const uint16_t duration : plan.zoneDurationMinutes) {
+            if (duration > config.runLimits.maximumZoneDurationMinutes) {
+                return false;
+            }
         }
     }
     return true;
@@ -358,7 +381,7 @@ bool IrrigationConfigRules::parseWaterVolumeLiters(const char* text,
     }
     if (text[index] != '\0') return false;
     const uint32_t result = whole * 1000U + fraction;
-    if (result < 1000U || result > 1000000U) return false;
+    if (result < 100U || result > 1000000U) return false;
     valueMl = result;
     return true;
 }

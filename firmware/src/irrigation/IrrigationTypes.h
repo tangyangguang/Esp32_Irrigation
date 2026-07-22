@@ -14,6 +14,10 @@ constexpr std::size_t kLearningDecisionWindowCount = 5;
 constexpr std::size_t kLearningHistoryWindowCount = 10;
 constexpr uint16_t kUnusedStartMinute = 0xFFFF;
 constexpr std::size_t kObjectNameCapacity = 64;
+constexpr uint16_t kDefaultMaximumZoneDurationMinutes = 120;
+constexpr uint16_t kMaximumConfigurableZoneDurationMinutes = 720;
+constexpr uint16_t kDefaultMaximumSingleOutputLiters = 100;
+constexpr uint16_t kMaximumConfigurableSingleOutputLiters = 1000;
 
 enum class FlowAlertAction : uint8_t {
     AlertOnly = 0,
@@ -63,6 +67,11 @@ struct TimeSafetyConfig {
     uint8_t aliveCheckpointHours;
 };
 
+struct RunLimitsConfig {
+    uint16_t maximumZoneDurationMinutes;
+    uint16_t maximumSingleOutputLiters;
+};
+
 struct ZoneConfig {
     uint8_t id;
     bool enabled;
@@ -88,12 +97,14 @@ struct IrrigationConfig {
     CalibrationStabilityConfig calibrationStability;
     FlowProtectionConfig flowProtection;
     TimeSafetyConfig timeSafety;
+    RunLimitsConfig runLimits;
     std::array<ZoneConfig, BoardPins::kZoneCount> zones;
     std::array<WateringPlan, kWateringPlanCount> plans;
 };
 
 enum class WateringSource : uint8_t {
     ManualZones = 0,
+    SingleOutput = 1,
     AutomaticPlan = 2,
 };
 
@@ -130,6 +141,7 @@ enum class WateringStopReason : uint8_t {
     LearningTimeout,
     HardwareFailure,
     MaintenanceInterrupted,
+    TargetVolumeTimeout,
 };
 
 enum class WateringStartResult : uint8_t {
@@ -177,6 +189,7 @@ struct ZoneWateringSummary {
     uint8_t zoneId;
     ZoneWateringResult result;
     uint32_t plannedDurationSec;
+    uint32_t targetWaterMl;
     uint32_t actualWateringSec;
     uint32_t pulseCount;
     uint32_t estimatedWaterMl;

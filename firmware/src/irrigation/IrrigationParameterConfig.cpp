@@ -9,7 +9,7 @@
 namespace {
 
 constexpr const char* kNamespace = "irr_params";
-constexpr std::size_t kRegisteredFieldCount = 23;
+constexpr std::size_t kRegisteredFieldCount = 25;
 static_assert(ESP32BASE_APP_CONFIG_MAX_FIELDS >= kRegisteredFieldCount,
               "Increase ESP32BASE_APP_CONFIG_MAX_FIELDS when adding a parameter");
 constexpr const char* kPullIn = "pull_ms";
@@ -37,6 +37,8 @@ constexpr const char* kLowAction = "low_action";
 constexpr const char* kHighAction = "high_action";
 constexpr const char* kRtcRollback = "rtc_rollback";
 constexpr const char* kAliveHours = "alive_hours";
+constexpr const char* kMaximumZoneMinutes = "max_zone_min";
+constexpr const char* kMaximumOutputLiters = "max_output_l";
 constexpr char kCoefficientLabel[] = "稳态流量系数";
 constexpr char kCoefficientHelp[] =
     "稳定出水时每升水的脉冲数；校准用多组水量拟合扣除启动影响。";
@@ -51,6 +53,7 @@ const Esp32BaseAppConfig::EnumOption kFlowActions[] = {
 };
 
 IrrigationParameterConfig::SavedCallback g_callback = nullptr;
+IrrigationParameterConfig::ValidateCallback g_validateCallback = nullptr;
 void* g_callbackUser = nullptr;
 IrrigationConfig g_defaults{};
 IrrigationConfig g_validationScratch{};
@@ -93,14 +96,19 @@ bool readSubmitted(IrrigationConfig& config) {
                                                : FlowAlertAction::AlertOnly;
     READ_INT(kRtcRollback, config.timeSafety.rtcRollbackThresholdMinutes);
     READ_INT(kAliveHours, config.timeSafety.aliveCheckpointHours);
+    READ_INT(kMaximumZoneMinutes, config.runLimits.maximumZoneDurationMinutes);
+    READ_INT(kMaximumOutputLiters, config.runLimits.maximumSingleOutputLiters);
 #undef READ_INT
     return true;
 }
 
 }  // namespace
 
-bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* user) {
+bool IrrigationParameterConfig::registerFields(SavedCallback callback,
+                                               ValidateCallback validateCallback,
+                                               void* user) {
     g_callback = callback;
+    g_validateCallback = validateCallback;
     g_callbackUser = user;
     g_defaults = IrrigationConfigRules::createDefault();
     const IrrigationConfig& defaults = g_defaults;
@@ -111,6 +119,7 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* use
            Esp32BaseAppConfig::addGroup({"pump", "水泵控制"}) &&
            Esp32BaseAppConfig::addGroup({"meter", "流量计与停水保护"}) &&
            Esp32BaseAppConfig::addGroup({"flow", "流量异常保护"}) &&
+           Esp32BaseAppConfig::addGroup({"limits", "运行限制"}) &&
            Esp32BaseAppConfig::addGroup({"system", "时间与存储"}) &&
            Esp32BaseAppConfig::addInt({"valve", kNamespace, kPullIn, "全功率吸合时间", defaults.valveDrive.pullInTimeMs, 100, 10000, 100, "ms", "开阀时先以全功率驱动的时长，范围 100～10000 ms。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"valve", kNamespace, kSwitchDelay, "水路切换间隔", defaults.valveDrive.switchDelayMs, 100, 10000, 100, "ms", "上一水路关阀后等待该时长再开下一路，范围 100～10000 ms。", false, nullptr}) &&
@@ -133,6 +142,8 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback, void* use
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kHighPercent, "高流量阈值", defaults.flowProtection.highFlowPercent, 101, 1000, 1, "%", "高于已学习基准流量的该百分比时判为偏高，范围 101%～1000%。", false, nullptr}) &&
            Esp32BaseAppConfig::addEnum({"flow", kNamespace, kLowAction, "低流量动作", "alert", kFlowActions, 2, "异常确认后只报警，或同时停止整次浇水。", false, nullptr}) &&
            Esp32BaseAppConfig::addEnum({"flow", kNamespace, kHighAction, "高流量动作", "alert", kFlowActions, 2, "异常确认后只报警，或同时停止整次浇水。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"limits", kNamespace, kMaximumZoneMinutes, "单水路最长运行时间", defaults.runLimits.maximumZoneDurationMinutes, 1, kMaximumConfigurableZoneDurationMinutes, 1, "min", "限制计划、手动浇水和单次出水的单路运行时长，范围 1～720 min。", false, nullptr}) &&
+           Esp32BaseAppConfig::addInt({"limits", kNamespace, kMaximumOutputLiters, "单次出水量上限", defaults.runLimits.maximumSingleOutputLiters, 1, kMaximumConfigurableSingleOutputLiters, 1, "L", "限制单次出水按水量模式可提交的目标，范围 1～1000 L。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"system", kNamespace, kRtcRollback, "RTC 倒退阈值", defaults.timeSafety.rtcRollbackThresholdMinutes, 1, 60, 1, "min", "RTC 比最后可信时间倒退超过该值时暂停自动计划，范围 1～60 min。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"system", kNamespace, kAliveHours, "在线检查点间隔", defaults.timeSafety.aliveCheckpointHours, 0, 168, 1, "h", "空闲达到该时长才写检查点；0 表示关闭，范围 0～168 h。", false, nullptr});
 }
@@ -164,6 +175,8 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     GET_INT(kHighPercent, defaults.flowProtection.highFlowPercent, config.flowProtection.highFlowPercent);
     GET_INT(kRtcRollback, defaults.timeSafety.rtcRollbackThresholdMinutes, config.timeSafety.rtcRollbackThresholdMinutes);
     GET_INT(kAliveHours, defaults.timeSafety.aliveCheckpointHours, config.timeSafety.aliveCheckpointHours);
+    GET_INT(kMaximumZoneMinutes, defaults.runLimits.maximumZoneDurationMinutes, config.runLimits.maximumZoneDurationMinutes);
+    GET_INT(kMaximumOutputLiters, defaults.runLimits.maximumSingleOutputLiters, config.runLimits.maximumSingleOutputLiters);
 #undef GET_INT
     char action[16]{};
     Esp32BaseConfig::getStr(kNamespace, kLowAction, action, sizeof(action), "alert");
@@ -228,6 +241,13 @@ bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {
     if (!readSubmitted(g_validationScratch) ||
         !IrrigationConfigRules::validate(g_validationScratch)) {
         strlcpy(error, "参数组合无效，请检查范围和相互关系。", errorLength);
+        return false;
+    }
+    if (g_validateCallback &&
+        !g_validateCallback(g_validationScratch,
+                            error,
+                            errorLength,
+                            g_callbackUser)) {
         return false;
     }
     return true;

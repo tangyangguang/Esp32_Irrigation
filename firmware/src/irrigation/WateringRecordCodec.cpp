@@ -3,14 +3,15 @@
 namespace {
 
 constexpr std::size_t kHeaderSize = 4;
-constexpr std::size_t kZoneSize = 34;
+constexpr std::size_t kZoneSize = 38;
 constexpr uint8_t kKnownZoneFlags = WateringRecordCodec::kZoneFlagWaterEstimateCapped |
                                     WateringRecordCodec::kZoneFlagLowFlow |
                                     WateringRecordCodec::kZoneFlagHighFlow |
                                     WateringRecordCodec::kZoneFlagFlowBaselineAvailable |
                                     WateringRecordCodec::kZoneFlagTerminalFlowAvailable |
                                     WateringRecordCodec::kZoneFlagTerminalFlowStable;
-constexpr uint16_t kMaximumZoneDurationSec = 120U * 60U;
+constexpr uint16_t kMaximumZoneDurationSec =
+    kMaximumConfigurableZoneDurationMinutes * 60U;
 
 void put16(uint8_t*& cursor, uint16_t value) {
     *cursor++ = static_cast<uint8_t>(value);
@@ -40,7 +41,9 @@ uint32_t get32(const uint8_t*& cursor) {
 }
 
 bool validSource(WateringSource value) {
-    return value == WateringSource::ManualZones || value == WateringSource::AutomaticPlan;
+    return value == WateringSource::ManualZones ||
+           value == WateringSource::SingleOutput ||
+           value == WateringSource::AutomaticPlan;
 }
 
 bool validResult(WateringResult value) {
@@ -50,7 +53,7 @@ bool validResult(WateringResult value) {
 
 bool validReason(WateringStopReason value) {
     return value >= WateringStopReason::Completed &&
-           value <= WateringStopReason::MaintenanceInterrupted;
+           value <= WateringStopReason::TargetVolumeTimeout;
 }
 
 bool validZoneResult(ZoneWateringResult value) {
@@ -73,8 +76,10 @@ bool validResultPair(WateringResult result, WateringStopReason reason) {
 bool validPayload(const WateringRecordPayload& payload) {
     if (!validSource(payload.source) || !validResult(payload.result) ||
         !validReason(payload.stopReason) || !validResultPair(payload.result, payload.stopReason) ||
-        (payload.source == WateringSource::ManualZones && payload.planId != 0) ||
-        (payload.source != WateringSource::ManualZones &&
+        ((payload.source == WateringSource::ManualZones ||
+          payload.source == WateringSource::SingleOutput) &&
+         payload.planId != 0) ||
+        (payload.source == WateringSource::AutomaticPlan &&
          (payload.planId == 0 || payload.planId > kWateringPlanCount))) {
         return false;
     }
@@ -90,7 +95,7 @@ bool validPayload(const WateringRecordPayload& payload) {
         }
         if (zone.plannedDurationSec == 0) {
             if (zone.result != ZoneWateringResult::NotStarted || zone.flags != 0 ||
-                zone.actualWateringSec != 0 || zone.pulseCount != 0 ||
+                zone.actualWateringSec != 0 || zone.targetWaterMl != 0 || zone.pulseCount != 0 ||
                 zone.estimatedWaterMl != 0 || zone.averageFlowMlPerMinute != 0 ||
                 zone.baselineFlowMlPerMinute != 0 ||
                 zone.terminalFlowMlPerMinute != 0 ||
@@ -105,7 +110,7 @@ bool validPayload(const WateringRecordPayload& payload) {
             hasStartedZone = true;
         }
         if (zone.result == ZoneWateringResult::NotStarted &&
-            (zone.flags != 0 || zone.actualWateringSec != 0 ||
+            (zone.flags != 0 || zone.actualWateringSec != 0 || zone.targetWaterMl != 0 ||
              zone.pulseCount != 0 || zone.estimatedWaterMl != 0 ||
              zone.averageFlowMlPerMinute != 0 ||
              zone.baselineFlowMlPerMinute != 0 ||
@@ -143,6 +148,31 @@ bool validPayload(const WateringRecordPayload& payload) {
             return false;
         }
         totalPulses += zone.pulseCount;
+    }
+    bool hasTargetWater = false;
+    if (payload.source == WateringSource::SingleOutput) {
+        uint8_t included = 0;
+        for (const ZoneWateringRecord& zone : payload.zones) {
+            if (zone.plannedDurationSec != 0) {
+                ++included;
+                if (zone.targetWaterMl != 0 &&
+                    (zone.targetWaterMl < 100U ||
+                     zone.targetWaterMl >
+                         static_cast<uint32_t>(kMaximumConfigurableSingleOutputLiters) * 1000U)) {
+                    return false;
+                }
+                hasTargetWater = zone.targetWaterMl != 0;
+            }
+        }
+        if (included != 1) return false;
+    } else {
+        for (const ZoneWateringRecord& zone : payload.zones) {
+            if (zone.targetWaterMl != 0) return false;
+        }
+    }
+    if (payload.stopReason == WateringStopReason::TargetVolumeTimeout &&
+        (payload.source != WateringSource::SingleOutput || !hasTargetWater)) {
+        return false;
     }
     return hasIncludedZone && hasStartedZone &&
            (payload.result != WateringResult::Completed || totalPulses != 0);
@@ -192,6 +222,7 @@ bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
                             : 0;
         target.plannedDurationSec = static_cast<uint16_t>(source.plannedDurationSec);
         target.actualWateringSec = static_cast<uint16_t>(source.actualWateringSec);
+        target.targetWaterMl = source.targetWaterMl;
         target.pulseCount = source.pulseCount;
         target.estimatedWaterMl = source.estimatedWaterMl;
         target.averageFlowMlPerMinute = source.averageFlowMlPerMinute;
@@ -227,6 +258,7 @@ bool WateringRecordCodec::encode(const WateringRecordPayload& payload,
         *cursor++ = zone.flags;
         put16(cursor, zone.plannedDurationSec);
         put16(cursor, zone.actualWateringSec);
+        put32(cursor, zone.targetWaterMl);
         put32(cursor, zone.pulseCount);
         put32(cursor, zone.estimatedWaterMl);
         put32(cursor, zone.averageFlowMlPerMinute);
@@ -255,6 +287,7 @@ bool WateringRecordCodec::decode(const uint8_t* data,
         zone.flags = *cursor++;
         zone.plannedDurationSec = get16(cursor);
         zone.actualWateringSec = get16(cursor);
+        zone.targetWaterMl = get32(cursor);
         zone.pulseCount = get32(cursor);
         zone.estimatedWaterMl = get32(cursor);
         zone.averageFlowMlPerMinute = get32(cursor);

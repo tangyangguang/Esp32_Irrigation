@@ -69,7 +69,9 @@ bool IrrigationApp::begin() {
     Esp32BaseRtc::configure(Wire);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
-    if (!IrrigationParameterConfig::registerFields(parameterConfigSaved, this) ||
+    if (!IrrigationParameterConfig::registerFields(parameterConfigSaved,
+                                                   validateParameterConfig,
+                                                   this) ||
         !IrrigationWeb::registerRoutes(*this)) {
         hardware.safeShutdown();
         return false;
@@ -205,7 +207,8 @@ WateringStartResult IrrigationApp::startManualWatering(
         if (zoneDurationMinutes[index] == 0) {
             continue;
         }
-        if (!config->zones[index].enabled || zoneDurationMinutes[index] > 120) {
+        if (!config->zones[index].enabled ||
+            zoneDurationMinutes[index] > config->runLimits.maximumZoneDurationMinutes) {
             return WateringStartResult::InvalidRequest;
         }
         request.steps[request.stepCount++] = {
@@ -213,6 +216,31 @@ WateringStartResult IrrigationApp::startManualWatering(
             static_cast<uint32_t>(zoneDurationMinutes[index]) * 60U,
         };
     }
+    return startWatering(request);
+}
+
+WateringStartResult IrrigationApp::startSingleOutput(uint8_t zoneId,
+                                                     uint32_t targetDurationSec,
+                                                     uint32_t targetWaterMl) {
+    const IrrigationConfig* config = configStore_.current();
+    const uint32_t maximumDurationSec = config
+        ? static_cast<uint32_t>(config->runLimits.maximumZoneDurationMinutes) * 60U
+        : 0U;
+    const uint32_t maximumWaterMl = config
+        ? static_cast<uint32_t>(config->runLimits.maximumSingleOutputLiters) * 1000U
+        : 0U;
+    if (!config || !BoardPins::isValidZoneId(zoneId) ||
+        !config->zones[BoardPins::zoneIndex(zoneId)].enabled ||
+        targetDurationSec == 0 || targetDurationSec > maximumDurationSec ||
+        (targetWaterMl != 0 &&
+         (targetWaterMl < 100U || targetWaterMl > maximumWaterMl))) {
+        return WateringStartResult::InvalidRequest;
+    }
+    WateringRequest request{};
+    request.source = WateringSource::SingleOutput;
+    request.purpose = WateringPurpose::Normal;
+    request.stepCount = 1;
+    request.steps[0] = {zoneId, targetDurationSec, targetWaterMl};
     return startWatering(request);
 }
 
@@ -825,6 +853,31 @@ bool IrrigationApp::applyStoredParameterConfig() {
     parameterConfigScratch_ = *current;
     return IrrigationParameterConfig::applyStored(parameterConfigScratch_) &&
            configStore_.applyRuntimeParameters(parameterConfigScratch_);
+}
+
+bool IrrigationApp::validateParameterConfig(const IrrigationConfig& proposed,
+                                            char* error,
+                                            size_t errorLength,
+                                            void* user) {
+    const auto* app = static_cast<IrrigationApp*>(user);
+    const IrrigationConfig* current = app ? app->configStore_.current() : nullptr;
+    if (!current) return true;
+    for (const WateringPlan& plan : current->plans) {
+        if (!plan.configured) continue;
+        for (uint8_t zoneIndex = 0; zoneIndex < plan.zoneDurationMinutes.size(); ++zoneIndex) {
+            if (plan.zoneDurationMinutes[zoneIndex] >
+                proposed.runLimits.maximumZoneDurationMinutes) {
+                std::snprintf(error,
+                              errorLength,
+                              "计划“%s”的水路 %u 为 %u 分钟，请先调整计划。",
+                              plan.name.data(),
+                              static_cast<unsigned>(zoneIndex + 1U),
+                              static_cast<unsigned>(plan.zoneDurationMinutes[zoneIndex]));
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 void IrrigationApp::handleParameterConfigSaved() {
