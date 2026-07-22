@@ -327,6 +327,42 @@ bool IrrigationConfigRules::parseLitersPerMinute(const char* text,
     return true;
 }
 
+bool IrrigationConfigRules::parseWaterVolumeLiters(const char* text,
+                                                    uint32_t& valueMl) {
+    if (!text || *text == '\0') return false;
+    uint32_t whole = 0;
+    std::size_t index = 0;
+    std::size_t wholeDigits = 0;
+    while (text[index] >= '0' && text[index] <= '9') {
+        whole = whole * 10U + static_cast<uint8_t>(text[index] - '0');
+        if (whole > 1000U) return false;
+        ++index;
+        ++wholeDigits;
+    }
+    if (wholeDigits == 0) return false;
+
+    uint32_t fraction = 0;
+    uint32_t scale = 100;
+    if (text[index] == '.') {
+        ++index;
+        std::size_t digits = 0;
+        while (text[index] >= '0' && text[index] <= '9' && digits < 3) {
+            fraction += static_cast<uint32_t>(text[index] - '0') * scale;
+            scale /= 10U;
+            ++index;
+            ++digits;
+        }
+        if (digits == 0 || (text[index] >= '0' && text[index] <= '9')) {
+            return false;
+        }
+    }
+    if (text[index] != '\0') return false;
+    const uint32_t result = whole * 1000U + fraction;
+    if (result < 1000U || result > 1000000U) return false;
+    valueMl = result;
+    return true;
+}
+
 bool IrrigationConfigRules::formatLitersPerMinute(uint32_t valueMlPerMinute,
                                                   char* out,
                                                   std::size_t outSize) {

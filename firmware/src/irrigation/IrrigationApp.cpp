@@ -364,18 +364,25 @@ bool IrrigationApp::resumeAutomaticWatering() {
 
 WateringStartResult IrrigationApp::startFlowCalibration(
     uint8_t zoneId,
-    uint16_t maximumDurationMinutes) {
+    uint16_t maximumDurationMinutes,
+    uint32_t targetWaterMl) {
     if (flowCalibrationService_.hasPendingMeasurement() ||
         flowCalibrationService_.sampleCount() >= FlowCalibrationService::kMaximumSamples ||
         !BoardPins::isValidZoneId(zoneId) || maximumDurationMinutes == 0 ||
-        maximumDurationMinutes > 10) {
+        maximumDurationMinutes > 10 ||
+        (targetWaterMl != 0 &&
+         (maximumDurationMinutes != 10 ||
+          targetWaterMl < FlowCalibrationService::kMinimumMeasuredWaterMl ||
+          targetWaterMl > FlowCalibrationService::kMaximumMeasuredWaterMl))) {
         return WateringStartResult::InvalidRequest;
     }
     WateringRequest request{};
     request.source = WateringSource::ManualZones;
     request.purpose = WateringPurpose::FlowCalibration;
     request.stepCount = 1;
-    request.steps[0] = {zoneId, static_cast<uint32_t>(maximumDurationMinutes) * 60U};
+    request.steps[0] = {zoneId,
+                        static_cast<uint32_t>(maximumDurationMinutes) * 60U,
+                        targetWaterMl};
     return startWatering(request);
 }
 
@@ -387,6 +394,11 @@ bool IrrigationApp::submitFlowCalibrationMeasurement(uint32_t measuredWaterMl) {
 bool IrrigationApp::markFlowCalibrationSampleInvalid() {
     return businessReady_ && !wateringController_.status().active &&
            flowCalibrationService_.markPendingInvalid();
+}
+
+bool IrrigationApp::discardFlowCalibrationMeasurement() {
+    return businessReady_ && !wateringController_.status().active &&
+           flowCalibrationService_.discardPendingMeasurement();
 }
 
 bool IrrigationApp::updateFlowCalibrationMeasurement(uint8_t index,

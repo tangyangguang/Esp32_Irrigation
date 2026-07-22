@@ -50,6 +50,7 @@ public:
     bool captureFinishedSession(const WateringSessionSummary& summary, uint32_t resultEpoch);
     bool addPendingMeasurement(uint32_t measuredWaterMl, uint32_t resultEpoch);
     bool markPendingInvalid();
+    bool discardPendingMeasurement();
     bool updateMeasurement(uint8_t index, uint32_t measuredWaterMl, uint32_t resultEpoch);
     bool deleteSample(uint8_t index, uint32_t resultEpoch);
     void markResultApplied(uint32_t appliedEpoch, uint32_t coefficientX100);

@@ -154,6 +154,20 @@ void test_liters_per_minute_formatting_is_exact() {
     TEST_ASSERT_EQUAL_STRING("1.234", text);
 }
 
+void test_calibration_target_volume_parsing_is_exact() {
+    uint32_t value = 0;
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseWaterVolumeLiters("1", value));
+    TEST_ASSERT_EQUAL_UINT32(1000, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseWaterVolumeLiters("5.125", value));
+    TEST_ASSERT_EQUAL_UINT32(5125, value);
+    TEST_ASSERT_TRUE(IrrigationConfigRules::parseWaterVolumeLiters("1000.000", value));
+    TEST_ASSERT_EQUAL_UINT32(1000000, value);
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseWaterVolumeLiters("0.999", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseWaterVolumeLiters("1.0000", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseWaterVolumeLiters("1000.001", value));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::parseWaterVolumeLiters(" 5.000", value));
+}
+
 void test_config_json_round_trip_is_exact_and_strict() {
     IrrigationConfig original = IrrigationConfigRules::createDefault();
     original.flowMeter.pulsesPerLiterX100 = 25037;
@@ -214,6 +228,7 @@ int main(int, char**) {
     RUN_TEST(test_confirmed_parameter_ranges_are_validated);
     RUN_TEST(test_flow_coefficient_decimal_conversion_is_exact);
     RUN_TEST(test_liters_per_minute_formatting_is_exact);
+    RUN_TEST(test_calibration_target_volume_parsing_is_exact);
     RUN_TEST(test_config_json_round_trip_is_exact_and_strict);
     return UNITY_END();
 }

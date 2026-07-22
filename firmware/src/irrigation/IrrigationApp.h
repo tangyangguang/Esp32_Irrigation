@@ -60,9 +60,11 @@ public:
     bool pauseAutomaticWateringUntil(uint32_t resumeAtEpoch);
     bool resumeAutomaticWatering();
     WateringStartResult startFlowCalibration(uint8_t zoneId,
-                                             uint16_t maximumDurationMinutes);
+                                             uint16_t maximumDurationMinutes,
+                                             uint32_t targetWaterMl = 0);
     bool submitFlowCalibrationMeasurement(uint32_t measuredWaterMl);
     bool markFlowCalibrationSampleInvalid();
+    bool discardFlowCalibrationMeasurement();
     bool updateFlowCalibrationMeasurement(uint8_t index, uint32_t measuredWaterMl);
     bool deleteFlowCalibrationSample(uint8_t index);
     bool applyFlowCalibrationResult();

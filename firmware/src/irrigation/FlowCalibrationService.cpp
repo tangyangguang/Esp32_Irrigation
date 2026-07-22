@@ -96,6 +96,14 @@ bool FlowCalibrationService::markPendingInvalid() {
     return pendingMeasurement_ && appendPending(false, 0, 0);
 }
 
+bool FlowCalibrationService::discardPendingMeasurement() {
+    if (!pendingMeasurement_) return false;
+    pendingSample_ = {};
+    pendingStopReason_ = WateringStopReason::None;
+    pendingMeasurement_ = false;
+    return true;
+}
+
 bool FlowCalibrationService::updateMeasurement(uint8_t index,
                                                uint32_t measuredWaterMl,
                                                uint32_t resultEpoch) {

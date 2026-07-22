@@ -162,6 +162,7 @@ enum class ZoneWateringResult : uint8_t {
 struct WateringStep {
     uint8_t zoneId;
     uint32_t targetDurationSec;
+    uint32_t targetWaterMl;
 };
 
 struct WateringRequest {
@@ -228,6 +229,7 @@ struct WateringStatus {
     uint32_t elapsedSec;
     uint32_t currentZoneElapsedSec;
     uint32_t currentZoneRemainingSec;
+    uint32_t currentZoneTargetWaterMl;
     uint32_t plannedRemainingSec;
     uint32_t pulseCount;
     uint32_t currentFlowMlPerMinute;

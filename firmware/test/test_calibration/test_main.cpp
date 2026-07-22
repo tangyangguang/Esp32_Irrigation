@@ -195,6 +195,20 @@ void test_pending_sample_can_be_saved_or_marked_invalid() {
     TEST_ASSERT_EQUAL_UINT8(1, service.validSampleCount());
 }
 
+void test_pending_sample_can_be_discarded_without_using_a_slot() {
+    FlowCalibrationService service;
+    TEST_ASSERT_TRUE(service.captureFinishedSession(calibrationSummary(270), 1000));
+    TEST_ASSERT_TRUE(service.hasPendingMeasurement());
+    TEST_ASSERT_TRUE(service.discardPendingMeasurement());
+    TEST_ASSERT_FALSE(service.hasPendingMeasurement());
+    TEST_ASSERT_EQUAL_UINT8(0, service.sampleCount());
+    TEST_ASSERT_FALSE(service.discardPendingMeasurement());
+
+    TEST_ASSERT_TRUE(service.captureFinishedSession(calibrationSummary(520), 1010));
+    TEST_ASSERT_TRUE(service.addPendingMeasurement(2000, 1010));
+    TEST_ASSERT_EQUAL_UINT8(1, service.sampleCount());
+}
+
 void test_edit_and_delete_recalculate() {
     FlowCalibrationService service;
     addSample(service, 520, 2000, 1, 1000);
@@ -248,6 +262,7 @@ int main(int, char**) {
     RUN_TEST(test_zero_and_abnormal_sessions_become_invalid_without_measurement);
     RUN_TEST(test_session_rejected_before_output_does_not_create_sample);
     RUN_TEST(test_pending_sample_can_be_saved_or_marked_invalid);
+    RUN_TEST(test_pending_sample_can_be_discarded_without_using_a_slot);
     RUN_TEST(test_edit_and_delete_recalculate);
     RUN_TEST(test_zone_switch_ten_sample_limit_and_application_metadata);
     return UNITY_END();

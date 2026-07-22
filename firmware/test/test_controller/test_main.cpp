@@ -802,6 +802,11 @@ void test_invalid_request_and_hardware_failure_are_rejected_safely() {
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::InvalidRequest),
                       static_cast<int>(controller.start(invalidPurpose, config, 0)));
 
+    WateringRequest unsafeCalibration = requestFor(1, 601);
+    unsafeCalibration.purpose = WateringPurpose::FlowCalibration;
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::InvalidRequest),
+                      static_cast<int>(controller.start(unsafeCalibration, config, 0)));
+
     hardware.failOpen = true;
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::HardwareFailure),
                       static_cast<int>(controller.start(requestFor(1, 60), config, 0)));
@@ -877,6 +882,37 @@ void test_flow_calibration_limit_counts_from_valve_open() {
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
                       static_cast<int>(summary->stopReason));
     TEST_ASSERT_EQUAL_UINT32(600, summary->elapsedSec);
+}
+
+void test_flow_calibration_stops_at_target_volume() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.flowMeter.pulsesPerLiterX100 = 25000;
+    config.flowProtection.noFlowTimeoutSec = 120;
+    WateringRequest request = requestFor(1, 600);
+    request.purpose = WateringPurpose::FlowCalibration;
+    request.steps[0].targetWaterMl = 2000;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    controller.handle(0);
+    hardware.pulses = 1;
+    controller.handle(1);
+    TEST_ASSERT_EQUAL_UINT32(2000, controller.status().currentZoneTargetWaterMl);
+
+    hardware.pulses = 499;
+    controller.handle(2);
+    TEST_ASSERT_TRUE(controller.status().active);
+    hardware.pulses = 500;
+    controller.handle(3);
+    TEST_ASSERT_FALSE(controller.status().active);
+
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
+                      static_cast<int>(summary->stopReason));
+    TEST_ASSERT_EQUAL_UINT32(2000, summary->zones[0].estimatedWaterMl);
 }
 
 void test_flow_calibration_detects_and_records_steady_phases() {
@@ -1035,6 +1071,7 @@ int main(int, char**) {
     RUN_TEST(test_timers_work_across_millis_wraparound);
     RUN_TEST(test_maintenance_abort_immediately_closes_outputs_and_keeps_result);
     RUN_TEST(test_flow_calibration_limit_counts_from_valve_open);
+    RUN_TEST(test_flow_calibration_stops_at_target_volume);
     RUN_TEST(test_flow_calibration_detects_and_records_steady_phases);
     RUN_TEST(test_flow_calibration_allows_one_pulse_window_quantization);
     RUN_TEST(test_new_flow_calibration_does_not_reuse_previous_steady_state);

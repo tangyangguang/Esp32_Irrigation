@@ -177,10 +177,24 @@ void WateringController::handle(uint32_t nowMs) {
                 finishSession(WateringStopReason::NoFlowTimeout, nowMs);
                 break;
             }
+            const WateringStep& step = request_.steps[currentStepIndex_];
+            if (request_.purpose == WateringPurpose::FlowCalibration &&
+                step.targetWaterMl != 0) {
+                const uint32_t pulseCount = static_cast<uint32_t>(
+                    hardware_.flowPulseCount() - zoneStartedPulseCount_);
+                uint32_t estimatedWaterMl = 0;
+                if (FlowMonitor::estimateWaterMilliliters(
+                        pulseCount,
+                        flowMeter_.pulsesPerLiterX100,
+                        estimatedWaterMl) &&
+                    estimatedWaterMl >= step.targetWaterMl) {
+                    finishCurrentZone(nowMs);
+                    break;
+                }
+            }
             if (!checkFlowRate(nowMs)) {
                 break;
             }
-            const WateringStep& step = request_.steps[currentStepIndex_];
             if (elapsed(nowMs, stateStartedMs_, step.targetDurationSec * 1000U)) {
                 finishCurrentZone(nowMs);
             }
@@ -300,6 +314,8 @@ WateringStatus WateringController::status() const {
                 static_cast<uint32_t>(endedMs - wateringStartedMs_) / 1000U;
         }
         const uint32_t targetSec = request_.steps[currentStepIndex_].targetDurationSec;
+        result.currentZoneTargetWaterMl =
+            request_.steps[currentStepIndex_].targetWaterMl;
         const uint32_t limitElapsedSec = request_.purpose == WateringPurpose::FlowCalibration
                                              ? result.elapsedSec
                                              : result.currentZoneElapsedSec;
@@ -370,7 +386,14 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
             step.zoneId <= previousZoneId ||
             !config.zones[BoardPins::zoneIndex(step.zoneId)].enabled ||
             step.targetDurationSec == 0 ||
-            step.targetDurationSec > 120U * 60U) {
+            step.targetDurationSec > 120U * 60U ||
+            (request.purpose == WateringPurpose::FlowCalibration &&
+             step.targetDurationSec > 10U * 60U) ||
+            (request.purpose != WateringPurpose::FlowCalibration &&
+             step.targetWaterMl != 0) ||
+            (request.purpose == WateringPurpose::FlowCalibration &&
+             step.targetWaterMl != 0 &&
+             (step.targetWaterMl < 1000U || step.targetWaterMl > 1000000U))) {
             return false;
         }
         previousZoneId = step.zoneId;
