@@ -2390,20 +2390,13 @@ void IrrigationWeb::zones() {
                 uint32_t targetDurationSec = 0;
                 uint32_t targetWaterMl = 0;
                 if (std::strcmp(mode, "time") == 0) {
-                    uint32_t minutes = 0;
-                    uint32_t seconds = 0;
-                    if (uintParam("duration_minutes",
-                                  0,
-                                  config->runLimits.maximumZoneDurationMinutes,
-                                  minutes) &&
-                        uintParam("duration_seconds", 0, 59, seconds)) {
-                        targetDurationSec = minutes * 60U + seconds;
-                        if (targetDurationSec == 0 ||
-                            targetDurationSec >
-                                static_cast<uint32_t>(config->runLimits.maximumZoneDurationMinutes) * 60U) {
-                            targetDurationSec = 0;
-                        }
-                    }
+                    uintParam(
+                        "duration_seconds",
+                        1,
+                        static_cast<uint32_t>(
+                            config->runLimits.maximumZoneDurationMinutes) *
+                            60U,
+                        targetDurationSec);
                 } else if (std::strcmp(mode, "volume") == 0) {
                     char liters[24]{};
                     if (getParam("target_liters", liters, sizeof(liters)) &&
@@ -2446,21 +2439,27 @@ void IrrigationWeb::zones() {
         ".zone-table th{font-weight:600}.zone-table td{font-weight:400}"
         ".zone-table .tag{font-weight:500}"
         ".zone-table .btnlink{font-weight:500}"
-        ".single-output-intro{margin:0 0 15px;color:var(--eb-muted);font-size:13px;line-height:1.6}"
-        ".single-output-group{margin:0 0 16px}.single-output-group>span{display:block;margin-bottom:7px;font-size:13px;font-weight:600}"
-        ".single-output-zones,.single-output-modes{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}"
-        ".single-output-option{position:relative;display:block;margin:0}.single-output-option input{position:absolute;opacity:0;pointer-events:none}"
-        ".single-output-card{display:block;height:100%;padding:12px;border:1px solid var(--eb-line);border-radius:9px;background:#fff;cursor:pointer}"
-        ".single-output-card b,.single-output-card small{display:block}.single-output-card small{margin-top:3px;color:var(--eb-muted);font-size:11px;line-height:1.45}"
-        ".single-output-option input:checked+.single-output-card{border-color:var(--eb-primary);background:var(--eb-primary-soft);box-shadow:0 0 0 1px var(--eb-primary)}"
-        ".single-output-option input:focus-visible+.single-output-card{outline:2px solid var(--eb-primary);outline-offset:2px}"
-        ".single-output-target{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:10px}.single-output-target .field{margin:0}.single-output-target input{width:100%;max-width:none}"
-        ".single-output-estimate{min-height:24px;margin:12px 0 0;padding:9px 11px;border-radius:7px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px}"
+        ".single-output-intro{margin:0 0 18px;color:var(--eb-muted);font-size:13px;line-height:1.6}"
+        ".single-output-step{margin:0 0 20px}.single-output-step-title{display:flex;align-items:center;gap:8px;margin:0 0 9px;font-size:13px;font-weight:650}.single-output-step-title span{display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--eb-primary-soft);color:var(--eb-primary);font-size:12px}"
+        ".single-output-zones{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}"
+        ".single-output-option{position:relative;display:block;margin:0}.single-output-option>input{position:absolute;width:1px;height:1px;opacity:0}"
+        ".single-output-zone-card{position:relative;display:block;height:100%;min-height:68px;padding:11px 34px 11px 12px;border:1px solid var(--eb-line);border-radius:9px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s,box-shadow .15s}"
+        ".single-output-zone-card b,.single-output-zone-card small{display:block}.single-output-zone-card b{font-weight:550}.single-output-zone-card small{margin-top:3px;color:var(--eb-muted);font-size:11px;line-height:1.45}.single-output-zone-check{position:absolute;right:11px;top:11px;display:flex;align-items:center;justify-content:center;width:18px;height:18px;border:1px solid var(--eb-line);border-radius:50%;color:transparent;font-size:12px}"
+        ".single-output-option>input:checked+.single-output-zone-card{border-color:var(--eb-primary);background:var(--eb-primary-soft);box-shadow:0 0 0 1px var(--eb-primary)}.single-output-option>input:checked+.single-output-zone-card .single-output-zone-check{border-color:var(--eb-primary);background:var(--eb-primary);color:#fff}.single-output-option>input:focus-visible+span{outline:2px solid var(--eb-primary);outline-offset:2px}"
+        ".single-output-workspace{display:grid;grid-template-columns:minmax(260px,360px) minmax(320px,560px);gap:18px;align-items:start}.single-output-mode-group{min-width:0;margin:0;padding:0;border:0}.single-output-mode-group legend{margin:0 0 9px;padding:0;font-size:13px;font-weight:650}.single-output-modes{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding:4px;border-radius:10px;background:var(--eb-soft)}"
+        ".single-output-mode-card{display:block;padding:10px 12px;border:1px solid transparent;border-radius:7px;color:var(--eb-muted);text-align:center;cursor:pointer}.single-output-mode-card b{display:block;font-size:13px;font-weight:550}.single-output-mode-card small{display:block;margin-top:2px;font-size:10px}.single-output-option>input:checked+.single-output-mode-card{border-color:var(--eb-line);background:#fff;color:var(--eb-primary);box-shadow:0 1px 2px rgba(16,24,40,.06)}"
+        ".single-output-editor{min-width:0;padding:15px 16px;border:1px solid var(--eb-line-soft);border-radius:10px;background:var(--eb-soft)}.single-output-target[hidden]{display:none!important}.single-output-target-label{display:block;margin-bottom:7px;font-size:12px;font-weight:600}.single-output-value-row{display:grid;grid-template-columns:42px minmax(150px,230px) 42px;gap:7px;align-items:center}.single-output-stepper{width:42px;min-width:42px;height:42px;min-height:42px;padding:0;border-color:var(--eb-button-border);background:#fff;color:var(--eb-primary);font-size:20px;line-height:1}.single-output-stepper:hover{background:var(--eb-primary-soft);color:var(--eb-primary)}.single-output-value{position:relative}.single-output-value input{width:100%;max-width:none;height:42px;margin:0;padding:8px 44px 8px 12px;background:#fff;font-size:18px;font-variant-numeric:tabular-nums}.single-output-value input[type=number]{-moz-appearance:textfield}.single-output-value input[type=number]::-webkit-inner-spin-button,.single-output-value input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}.single-output-value input.single-output-duration-input{padding-right:12px;text-align:center;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.04em}.single-output-unit{position:absolute;right:12px;top:50%;transform:translateY(-50%);color:var(--eb-muted);font-size:12px;pointer-events:none}.single-output-help{display:block;margin-top:6px;color:var(--eb-muted);font-size:11px;line-height:1.45}.single-output-presets{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.single-output-presets button{min-height:30px;padding:4px 9px;border-color:var(--eb-button-border);background:#fff;color:#526071;font-size:11px}.single-output-presets button:hover{background:var(--eb-button-soft-hover)}"
+        ".single-output-estimate{margin:12px 0 0;padding:9px 11px;border:1px solid var(--eb-line-soft);border-radius:7px;background:#fff;color:var(--eb-muted);font-size:12px;line-height:1.5}.single-output-estimate.warn{border-color:#efd7b5;background:var(--eb-warn-soft);color:var(--eb-warn)}"
+        ".single-output-note{margin:14px 0 0;color:var(--eb-muted);font-size:12px;line-height:1.55}.single-output-submit{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px;padding-top:14px;border-top:1px solid var(--eb-line-soft)}.single-output-summary{color:var(--eb-muted);font-size:12px}.single-output-submit input{margin:0}"
         ".single-output-live{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.single-output-live>div{padding:11px;border-radius:8px;background:var(--eb-soft)}.single-output-live span,.single-output-live b{display:block}.single-output-live span{color:var(--eb-muted);font-size:11px}.single-output-live b{margin-top:3px;font-size:15px;font-weight:550}"
         ".single-output-progress{height:8px;margin-top:14px;border-radius:999px;background:var(--eb-soft);overflow:hidden}.single-output-progress>span{display:block;height:100%;width:0;background:var(--eb-primary);transition:width .3s}"
+        "@media(max-width:900px){.single-output-workspace{grid-template-columns:1fr}.single-output-mode-group{max-width:420px}.single-output-editor{max-width:560px}}"
         "@media(max-width:760px){"
         ".zone-meter{align-items:stretch;flex-direction:column;gap:10px}.zone-meter .btnlink{width:100%}"
-        ".single-output-zones,.single-output-modes,.single-output-live{grid-template-columns:repeat(2,minmax(0,1fr))}.single-output-target{grid-template-columns:1fr}"
+        ".single-output-zones,.single-output-live{grid-template-columns:repeat(2,minmax(0,1fr))}.single-output-submit{align-items:stretch;flex-direction:column}.single-output-submit input{width:100%}"
+        "}"
+        "@media(max-width:420px){"
+        ".single-output-zones{grid-template-columns:1fr}.single-output-value-row{grid-template-columns:40px minmax(0,1fr) 40px}.single-output-stepper{width:40px;min-width:40px}"
         "}"
         "</style>");
     const IrrigationConfig* config = g_app->configuration();
@@ -2520,35 +2519,196 @@ void IrrigationWeb::zones() {
         } else if (outputStatus.active) {
             Esp32BaseWeb::sendChunk("<p class='single-output-intro'>设备正在执行其他浇水或维护任务，结束后才能开始单次出水。</p><a class='btnlink secondary compact' href='/irrigation'>查看当前任务</a>");
         } else {
-            Esp32BaseWeb::sendChunk("<p class='single-output-intro'>选择一条已启用水路，按时长或目标估算水量自动停止；不会修改浇水计划。</p><form id='single-output-form' method='post' action='/irrigation/zones' onsubmit='return submitSingleOutput(this)'><input type='hidden' name='action' value='start_single_output'><div class='single-output-group'><span>选择水路</span><div class='single-output-zones'>");
-            bool firstEnabledZone = true;
+            bool hasEnabledZone = false;
             for (const ZoneConfig& zone : config->zones) {
-                if (!zone.enabled) continue;
-                uint32_t baselineMlPerMinute = 0;
-                FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
-                    zone.baselinePulseRateX10000,
-                    config->flowMeter.pulsesPerLiterX100,
-                    baselineMlPerMinute);
-                Esp32BaseWeb::sendChunk("<label class='single-output-option'><input type='radio' name='zone_id' value='"); sendUnsigned(zone.id);
-                Esp32BaseWeb::sendChunk("' data-flow='"); sendUnsigned(baselineMlPerMinute); Esp32BaseWeb::sendChunk("'");
-                if (firstEnabledZone) Esp32BaseWeb::sendChunk(" checked");
-                Esp32BaseWeb::sendChunk("><span class='single-output-card'><b>"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
-                Esp32BaseWeb::sendChunk("</b><small>水路 "); sendUnsigned(zone.id);
-                if (baselineMlPerMinute != 0) {
-                    Esp32BaseWeb::sendChunk(" · 基准 ");
-                    char baseline[20]{};
-                    IrrigationConfigRules::formatLitersPerMinute(
-                        baselineMlPerMinute, baseline, sizeof(baseline));
-                    Esp32BaseWeb::writeHtmlEscaped(baseline);
-                    Esp32BaseWeb::sendChunk(" L/min");
+                hasEnabledZone = hasEnabledZone || zone.enabled;
+            }
+            Esp32BaseWeb::sendChunk("<p class='single-output-intro'>用于临时取水或测试水路，一次只运行一条已启用水路，不会修改浇水计划。</p>");
+            if (!hasEnabledZone) {
+                Esp32BaseWeb::sendChunk("<div class='notice info'><b>还没有可用水路</b><p>请先在上方水路列表中启用实际安装的水路，然后再设置单次出水。</p></div>");
+            } else {
+                Esp32BaseWeb::sendChunk("<form id='single-output-form' method='post' action='/irrigation/zones' data-max-duration-seconds='");
+                sendUnsigned(static_cast<uint32_t>(
+                    config->runLimits.maximumZoneDurationMinutes) * 60U);
+                Esp32BaseWeb::sendChunk("' data-max-volume-liters='");
+                sendUnsigned(config->runLimits.maximumSingleOutputLiters);
+                Esp32BaseWeb::sendChunk("' onsubmit='return submitSingleOutput(this)'><input type='hidden' name='action' value='start_single_output'><section class='single-output-step'><h3 class='single-output-step-title'><span>1</span>选择水路</h3><div class='single-output-zones'>");
+                bool firstEnabledZone = true;
+                for (const ZoneConfig& zone : config->zones) {
+                    if (!zone.enabled) continue;
+                    uint32_t baselineMlPerMinute = 0;
+                    FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
+                        zone.baselinePulseRateX10000,
+                        config->flowMeter.pulsesPerLiterX100,
+                        baselineMlPerMinute);
+                    Esp32BaseWeb::sendChunk("<label class='single-output-option'><input type='radio' name='zone_id' value='");
+                    sendUnsigned(zone.id);
+                    Esp32BaseWeb::sendChunk("' data-flow='");
+                    sendUnsigned(baselineMlPerMinute);
+                    Esp32BaseWeb::sendChunk("'");
+                    if (firstEnabledZone) Esp32BaseWeb::sendChunk(" checked");
+                    Esp32BaseWeb::sendChunk("><span class='single-output-zone-card'><span class='single-output-zone-check'>✓</span><b>");
+                    Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
+                    Esp32BaseWeb::sendChunk("</b><small>水路 ");
+                    sendUnsigned(zone.id);
+                    if (baselineMlPerMinute != 0) {
+                        Esp32BaseWeb::sendChunk(" · 基准 ");
+                        char baseline[20]{};
+                        IrrigationConfigRules::formatLitersPerMinute(
+                            baselineMlPerMinute, baseline, sizeof(baseline));
+                        Esp32BaseWeb::writeHtmlEscaped(baseline);
+                        Esp32BaseWeb::sendChunk(" L/min");
+                    }
+                    Esp32BaseWeb::sendChunk("</small></span></label>");
+                    firstEnabledZone = false;
                 }
-                Esp32BaseWeb::sendChunk("</small></span></label>");
-                firstEnabledZone = false;
+                Esp32BaseWeb::sendChunk(R"HTML(
+                    </div>
+                </section>
+                <div class="single-output-workspace">
+                    <fieldset class="single-output-mode-group">
+                        <legend>2. 选择停止方式</legend>
+                        <div class="single-output-modes">
+                            <label class="single-output-option">
+                                <input type="radio" name="target_mode" value="time" checked>
+                                <span class="single-output-mode-card"><b>按时长</b><small>精确到秒</small></span>
+                            </label>
+                            <label class="single-output-option">
+                                <input type="radio" name="target_mode" value="volume">
+                                <span class="single-output-mode-card"><b>按水量</b><small>流量计估算</small></span>
+                            </label>
+                        </div>
+                    </fieldset>
+                    <div class="single-output-editor">
+                        <div id="single-time-target" class="single-output-target">
+                            <label class="single-output-target-label" for="single-duration-text">出水时长</label>
+                            <div class="single-output-value-row">
+                                <button type="button" class="single-output-stepper" data-duration-delta="-1" aria-label="减少 1 秒">−</button>
+                                <div class="single-output-value">
+                                    <input id="single-duration-text" class="single-output-duration-input" type="text" value="00:01:00" inputmode="numeric" maxlength="8" autocomplete="off" spellcheck="false" aria-describedby="single-duration-help">
+                                    <input id="single-duration-seconds" type="hidden" name="duration_seconds" value="60">
+                                </div>
+                                <button type="button" class="single-output-stepper" data-duration-delta="1" aria-label="增加 1 秒">+</button>
+                            </div>
+                            <small id="single-duration-help" class="single-output-help">可输入时:分:秒或总秒数，也可按 1 秒微调。</small>
+                            <div class="single-output-presets" aria-label="常用时长">
+                                <button type="button" data-duration="60">1 分钟</button>
+                                <button type="button" data-duration="300">5 分钟</button>
+                                <button type="button" data-duration="600">10 分钟</button>
+                                <button type="button" data-duration="1800">30 分钟</button>
+                            </div>
+                        </div>
+                        <div id="single-volume-target" class="single-output-target" hidden>
+                            <label class="single-output-target-label" for="single-volume-input">目标水量</label>
+                            <div class="single-output-value-row">
+                                <button type="button" class="single-output-stepper" data-volume-delta="-0.1" aria-label="减少 0.1 升">−</button>
+                                <div class="single-output-value">
+                                    <input id="single-volume-input" type="number" name="target_liters" min="0.1" step="0.1" value="5.0" inputmode="decimal" disabled>
+                                    <span class="single-output-unit">L</span>
+                                </div>
+                                <button type="button" class="single-output-stepper" data-volume-delta="0.1" aria-label="增加 0.1 升">+</button>
+                            </div>
+                            <small class="single-output-help">按流量计脉冲估算，支持 0.1 L 步进。</small>
+                            <div class="single-output-presets" aria-label="常用水量">
+                                <button type="button" data-volume="1">1 L</button>
+                                <button type="button" data-volume="5">5 L</button>
+                                <button type="button" data-volume="10">10 L</button>
+                                <button type="button" data-volume="20">20 L</button>
+                            </div>
+                        </div>
+                        <p id="single-output-estimate" class="single-output-estimate" hidden></p>
+                    </div>
+                </div>
+                <p id="single-output-note" class="single-output-note"></p>
+                <div class="single-output-submit">
+                    <span id="single-output-summary" class="single-output-summary"></span>
+                    <input id="single-output-submit" type="submit" value="开始出水">
+                </div>
+                </form>
+                <script>
+                (function(){
+                    var form=document.getElementById('single-output-form');
+                    if(!form)return;
+                    var timePanel=document.getElementById('single-time-target');
+                    var volumePanel=document.getElementById('single-volume-target');
+                    var durationText=document.getElementById('single-duration-text');
+                    var durationSeconds=document.getElementById('single-duration-seconds');
+                    var volumeInput=document.getElementById('single-volume-input');
+                    var estimate=document.getElementById('single-output-estimate');
+                    var note=document.getElementById('single-output-note');
+                    var summary=document.getElementById('single-output-summary');
+                    var submit=document.getElementById('single-output-submit');
+                    var maximumDuration=Number(form.dataset.maxDurationSeconds)||0;
+                    var maximumVolume=Number(form.dataset.maxVolumeLiters)||0;
+                    volumeInput.max=String(maximumVolume);
+                    function selected(name){return form.querySelector('input[name="'+name+'"]:checked')}
+                    function pad(value){return String(value).padStart(2,'0')}
+                    function formatClock(seconds){seconds=Math.max(0,Math.round(Number(seconds)||0));return pad(Math.floor(seconds/3600))+':'+pad(Math.floor(seconds%3600/60))+':'+pad(seconds%60)}
+                    function formatDuration(seconds){seconds=Math.max(0,Math.round(Number(seconds)||0));if(seconds<60)return seconds+' 秒';var hours=Math.floor(seconds/3600),minutes=Math.floor(seconds%3600/60),rest=seconds%60;if(!hours)return rest?minutes+' 分 '+rest+' 秒':minutes+' 分钟';var text=hours+' 小时';if(minutes)text+=' '+minutes+' 分';if(rest)text+=' '+rest+' 秒';return text}
+                    function parseClock(value){value=String(value||'').trim();var seconds=0;if(/^\d+$/.test(value)){seconds=Number(value)}else{var match=value.match(/^(\d{1,2}):([0-5]\d):([0-5]\d)$/);if(!match)return 0;seconds=Number(match[1])*3600+Number(match[2])*60+Number(match[3])}return seconds>=1&&seconds<=maximumDuration?seconds:0}
+                    function setDuration(seconds){seconds=Math.max(1,Math.min(maximumDuration,Math.round(Number(seconds)||0)));durationText.value=formatClock(seconds);durationSeconds.value=String(seconds)}
+                    function volumeTenths(){var value=Number(volumeInput.value),tenths=Math.round(value*10);return value>=0.1&&value<=maximumVolume&&Math.abs(value*10-tenths)<0.000001?tenths:0}
+                    function setVolume(value){var tenths=Math.max(1,Math.min(maximumVolume*10,Math.round((Number(value)||0)*10)));volumeInput.value=(tenths/10).toFixed(1)}
+                    function zoneName(zone){var label=zone&&zone.closest('label'),name=label&&label.querySelector('b');return name?name.textContent:'所选水路'}
+                    function update(){
+                        var mode=selected('target_mode');
+                        var zone=selected('zone_id');
+                        var byVolume=mode&&mode.value==='volume';
+                        var seconds=parseClock(durationText.value);
+                        var tenths=volumeTenths();
+                        timePanel.hidden=byVolume;
+                        volumePanel.hidden=!byVolume;
+                        durationSeconds.disabled=byVolume;
+                        volumeInput.disabled=!byVolume;
+                        durationText.setCustomValidity(!byVolume&&!seconds?'请输入有效时长，可使用时:分:秒或总秒数，且不能超过系统上限。':'');
+                        volumeInput.setCustomValidity(byVolume&&!tenths?'请输入 0.1 L 步进且不超过系统上限的水量。':'');
+                        if(seconds)durationSeconds.value=String(seconds);
+                        estimate.hidden=true;
+                        estimate.className='single-output-estimate';
+                        var flow=zone?Number(zone.dataset.flow)||0:0;
+                        if(flow&&((byVolume&&tenths)||(!byVolume&&seconds))){
+                            if(byVolume){
+                                var targetLiters=tenths/10;
+                                var estimatedSeconds=Math.ceil(targetLiters*60000/flow);
+                                estimate.textContent='按当前水路基准估算，约需 '+formatDuration(estimatedSeconds)+(estimatedSeconds>maximumDuration?'；预计超过最长运行时间，可能无法完成':'');
+                                if(estimatedSeconds>maximumDuration)estimate.classList.add('warn');
+                            }else{
+                                var estimatedLiters=flow*seconds/60000;
+                                estimate.textContent='按当前水路基准估算，约出水 '+estimatedLiters.toFixed(estimatedLiters<1?2:1)+' L';
+                            }
+                            estimate.hidden=false;
+                        }
+                        note.textContent=byVolume?'水量由流量计脉冲估算，校准误差、阀门响应和管路余流会影响实际结果；最长运行 '+formatDuration(maximumDuration)+'。':'到达设定时长后自动停止；最长可设置 '+formatDuration(maximumDuration)+'。';
+                        var valid=!!zone&&(byVolume?!!tenths:!!seconds);
+                        var targetText=byVolume?(tenths?(tenths/10).toFixed(1)+' L':'水量格式有误'):(seconds?formatDuration(seconds):'时长格式有误');
+                        summary.textContent=zone?(zoneName(zone)+' · '+targetText):'请选择水路';
+                        submit.disabled=!valid;
+                    }
+                    durationText.addEventListener('input',update);
+                    durationText.addEventListener('change',function(){var seconds=parseClock(durationText.value);if(seconds)setDuration(seconds);update()});
+                    volumeInput.addEventListener('input',update);
+                    volumeInput.addEventListener('change',function(){if(volumeTenths())setVolume(Number(volumeInput.value));update()});
+                    form.querySelectorAll('input[type="radio"]').forEach(function(input){input.addEventListener('change',update)});
+                    form.querySelectorAll('[data-duration-delta]').forEach(function(button){button.addEventListener('click',function(){setDuration((parseClock(durationText.value)||Number(durationSeconds.value)||60)+Number(button.dataset.durationDelta));update()})});
+                    form.querySelectorAll('[data-duration]').forEach(function(button){var value=Number(button.dataset.duration)||0;button.disabled=value>maximumDuration;button.addEventListener('click',function(){setDuration(value);update()})});
+                    form.querySelectorAll('[data-volume-delta]').forEach(function(button){button.addEventListener('click',function(){setVolume((volumeTenths()||50)/10+Number(button.dataset.volumeDelta));update()})});
+                    form.querySelectorAll('[data-volume]').forEach(function(button){var value=Number(button.dataset.volume)||0;button.disabled=value>maximumVolume;button.addEventListener('click',function(){setVolume(value);update()})});
+                    window.submitSingleOutput=function(){
+                        update();
+                        if(submit.disabled){
+                            var mode=selected('target_mode');
+                            if(mode&&mode.value==='volume')volumeInput.reportValidity();else durationText.reportValidity();
+                            return false;
+                        }
+                        return confirm('确认按“'+summary.textContent+'”开始单次出水？')&&once(form);
+                    };
+                    setDuration(60);
+                    setVolume(5);
+                    update();
+                })();
+                </script>
+                )HTML");
             }
-            if (firstEnabledZone) {
-                Esp32BaseWeb::sendChunk("<p class='muted'>当前没有已启用水路，请先在上方水路列表中启用实际水路。</p>");
-            }
-            Esp32BaseWeb::sendChunk("</div></div><div class='single-output-group'><span>目标方式</span><div class='single-output-modes'><label class='single-output-option'><input type='radio' name='target_mode' value='time' checked><span class='single-output-card'><b>按时长</b><small>到达设定时间后自动停止</small></span></label><label class='single-output-option'><input type='radio' name='target_mode' value='volume'><span class='single-output-card'><b>按水量</b><small>达到目标估算水量后自动停止</small></span></label></div><div id='single-time-target' class='single-output-target'><p class='field'><label>分钟</label><input type='number' name='duration_minutes' min='0' max='"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk("' step='1' value='1' inputmode='numeric'></p><p class='field'><label>秒</label><input type='number' name='duration_seconds' min='0' max='59' step='1' value='0' inputmode='numeric'></p></div><div id='single-volume-target' class='single-output-target' hidden><p class='field'><label>目标水量（L）</label><input type='number' name='target_liters' min='0.1' max='"); sendUnsigned(config->runLimits.maximumSingleOutputLiters); Esp32BaseWeb::sendChunk("' step='0.1' value='5.0' inputmode='decimal' disabled></p></div><p id='single-output-estimate' class='single-output-estimate' hidden></p></div><p class='muted'>按水量停止使用当前流量计系数估算，实际结果可能受校准、阀门响应和管路余流影响；所有模式最长运行 "); sendUnsigned(config->runLimits.maximumZoneDurationMinutes); Esp32BaseWeb::sendChunk(" 分钟。</p><div class='actions'><input type='submit' value='开始出水'></div></form><script>(function(){var form=document.getElementById('single-output-form'),time=document.getElementById('single-time-target'),volume=document.getElementById('single-volume-target'),estimate=document.getElementById('single-output-estimate');if(!form)return;function selected(name){return form.querySelector('input[name=\"'+name+'\"]:checked')}function update(){var mode=selected('target_mode'),byVolume=mode&&mode.value==='volume',timeInputs=time.querySelectorAll('input'),volumeInput=volume.querySelector('input');time.hidden=byVolume;volume.hidden=!byVolume;timeInputs.forEach(function(i){i.disabled=byVolume});volumeInput.disabled=!byVolume;var zone=selected('zone_id'),flow=zone?Number(zone.dataset.flow)||0:0;if(!flow){estimate.hidden=true;estimate.textContent='';return}if(byVolume){var liters=Number(volumeInput.value)||0;if(liters<=0){estimate.hidden=true;return}var seconds=Math.ceil(liters*60000/flow),maximum="); sendUnsigned(static_cast<uint32_t>(config->runLimits.maximumZoneDurationMinutes) * 60U); Esp32BaseWeb::sendChunk(";estimate.textContent='按当前基准流量估算：约需 '+(seconds<60?seconds+' 秒':Math.floor(seconds/60)+' 分 '+seconds%60+' 秒')+(seconds>maximum?'；可能无法在最长运行时间内达到目标水量':'');estimate.hidden=false}else{var minutes=Number(timeInputs[0].value)||0,seconds=Number(timeInputs[1].value)||0,total=minutes*60+seconds;if(total<=0){estimate.hidden=true;return}estimate.textContent='按当前基准流量估算：约出水 '+(flow*total/60000).toFixed(1)+' L';estimate.hidden=false}}form.querySelectorAll('input').forEach(function(i){i.addEventListener('input',update);i.addEventListener('change',update)});window.submitSingleOutput=function(){var mode=selected('target_mode'),zone=selected('zone_id');if(!mode||!zone)return false;var detail;if(mode.value==='volume'){detail='目标估算水量 '+Number(form.target_liters.value).toFixed(1)+' L'}else{var total=(Number(form.duration_minutes.value)||0)*60+(Number(form.duration_seconds.value)||0);if(total<1){alert('出水时长至少为 1 秒。');return false}detail='目标时长 '+(total<60?total+' 秒':Math.floor(total/60)+' 分 '+total%60+' 秒')}return confirm('确认从所选水路开始出水，'+detail+'？')&&once(form)};update()})();</script>");
         }
         Esp32BaseWeb::endPanel();
         for (const ZoneConfig& zone : config->zones) {
