@@ -13,7 +13,7 @@
 namespace {
 
 constexpr const char* kFirmwareName = "esp32-irrigation";
-constexpr const char* kFirmwareVersion = "0.6.0";
+constexpr const char* kFirmwareVersion = "0.6.1";
 constexpr const char* kDefaultWebUser = "admin";
 constexpr const char* kDefaultWebPassword = "admin";
 
@@ -82,6 +82,7 @@ bool IrrigationApp::begin() {
         hardware.safeShutdown();
         return false;
     }
+    Esp32BaseWiFi::setPowerSave(true);
     if (!configStore_.begin()) {
         hardware.safeShutdown();
         return false;

@@ -12,6 +12,8 @@
 
 启动时只有加载到有效配置或成功创建默认配置后才继续；存在配置文件但所有副本均无效时保持输出关闭，不用默认值覆盖。RTC 倒退判断会参考最近浇水记录、应用事件和在线检查点。在线检查点仅在达到配置间隔且期间没有业务写入时保存，避免不必要的 Flash 磨损。
 
+固件在 `Esp32Base` 启动成功后固定启用 WiFi modem sleep。该策略保持 Web、定时任务、流量监测和 OTA 可用，只降低 WiFi 空闲期功耗；不使用会断开网络的 Deep-sleep，也不改变 CPU 频率和浇水控制时序。
+
 常用验证命令：
 
 ```sh
@@ -27,6 +29,8 @@ cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 custom_esp32base_webota_host/user/password
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-07-26 空闲功耗优化：固件版本升级为 0.6.1，在 `Esp32Base::begin()` 成功后启用基础库公开的 WiFi modem sleep。设备继续保持 STA、Web、NTP、自动调度、流量脉冲中断和完整业务循环在线；不进入手动 Light-sleep 或 Deep-sleep，不关闭 WiFi，不降低 CPU 频率，不改变浇水和保护时序。首次 Web 请求可能增加一个 DTIM 周期内的短暂延迟，OTA 沿用基础库现有的临时关闭并恢复 power save 流程。执行 `pio test -e native` 通过 86/86，执行 `pio run -e esp32_irrigation` 通过，资源占用 RAM 84452 B / 25.8%、Flash 1295997 B / 82.4%。本轮未烧录设备，仍需实机确认 System 状态页显示 Power save 为 on，并对比修改前后的 12V 输入平均电流、ESP32 温度和首次 Web 响应。
 
 2026-07-22 点灯科技界面原型与私有配置预留：在 Git 忽略的 `platformio.local.ini` 中预留设备识别码和密钥字段，仓库仅保留空默认值和无凭据示例；生成 Layouter 2.0 导入文本及可读 JSON 原型，使用示例已确认的文本、数字和按钮组件，覆盖六区统一手动浇水、每日记录和 8 套自动计划编辑。Zipson 压缩文本回读后与源 JSON 完全一致，89 个组件键名唯一、均在 8 列网格内且无重叠。执行 `pio test -e native` 通过 82/82；执行 `pio run -e esp32_irrigation` 通过，资源占用 RAM 84148 B / 25.7%、Flash 1258253 B / 80.0%。本轮没有接入点灯科技 SDK、没有写入真实凭据或烧录设备；仍需用户在点灯科技 APP 导入并确认组件数量、页面高度和实际交互排版是否受平台限制。
 
