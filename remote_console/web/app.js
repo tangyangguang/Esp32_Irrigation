@@ -41,6 +41,20 @@ function automaticLabel(mode) {
   }[mode] || "状态未知";
 }
 
+function readinessLabel(reason) {
+  return {
+    base_not_ready: "基础服务启动失败",
+    filesystem_unavailable: "设备文件系统不可用",
+    no_valid_config_copy: "灌溉配置版本不兼容或配置副本损坏",
+    default_config_write_failed: "默认灌溉配置创建失败",
+    config_recovery_write_failed: "灌溉配置恢复写入失败",
+    config_not_ready: "灌溉配置尚未就绪",
+    config_write_failed: "灌溉配置保存失败",
+    startup_check_failed: "设备启动检查失败",
+    not_loaded: "灌溉配置尚未加载",
+  }[reason] || (reason && reason !== "none" ? `设备启动错误：${reason}` : "设备启动检查未完成");
+}
+
 function resultLabel(result) {
   if (!result) return "暂无控制命令";
   const labels = {
@@ -97,7 +111,7 @@ function renderConnection() {
     notice.textContent = "设备已在线，正在读取业务状态……";
     notice.className = "notice warn";
   } else if (!snapshot.state.ready) {
-    notice.textContent = "设备已联网，但灌溉业务尚未就绪；请先处理设备本地配置或故障。";
+    notice.textContent = `${readinessLabel(snapshot.state.ready_reason)}。为保护水泵和阀门，远程控制已锁定。`;
     notice.className = "notice warn";
   } else {
     notice.textContent = snapshot.state.watering?.active
@@ -244,6 +258,9 @@ function renderControls() {
 }
 
 function render() {
+  all("[data-zone-label]").forEach((element) => {
+    element.textContent = zoneName(Number(element.dataset.zoneLabel));
+  });
   renderConnection();
   renderWatering();
   renderAutomatic();
@@ -326,25 +343,29 @@ function resumeEpoch(value) {
 function initializeInputs() {
   for (let index = 1; index <= 6; index += 1) {
     const manualLabel = document.createElement("label");
-    manualLabel.textContent = zoneName(index);
+    const manualName = document.createElement("span");
+    manualName.dataset.zoneLabel = String(index);
+    manualName.textContent = zoneName(index);
     const manualInput = document.createElement("input");
     manualInput.type = "number";
     manualInput.min = "0";
     manualInput.max = "720";
     manualInput.value = "0";
     manualInput.className = "manual-duration";
-    manualLabel.append(manualInput);
+    manualLabel.append(manualName, manualInput);
     byId("manualDurations").append(manualLabel);
 
     const planLabel = document.createElement("label");
-    planLabel.textContent = zoneName(index);
+    const planName = document.createElement("span");
+    planName.dataset.zoneLabel = String(index);
+    planName.textContent = zoneName(index);
     const planInput = document.createElement("input");
     planInput.type = "number";
     planInput.min = "0";
     planInput.max = "720";
     planInput.value = "0";
     planInput.className = "plan-duration";
-    planLabel.append(planInput);
+    planLabel.append(planName, planInput);
     byId("planDurations").append(planLabel);
   }
   for (let index = 0; index < 4; index += 1) {

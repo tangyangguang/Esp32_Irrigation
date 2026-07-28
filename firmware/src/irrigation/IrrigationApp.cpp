@@ -5,6 +5,7 @@
 #include <Wire.h>
 
 #include <climits>
+#include <cstring>
 
 #include "BoardHardware.h"
 #include "BoardPins.h"
@@ -169,6 +170,21 @@ bool IrrigationApp::baseReady() const {
 
 bool IrrigationApp::businessReady() const {
     return businessReady_;
+}
+
+const char* IrrigationApp::readinessReason() const {
+    if (businessReady_) {
+        return "none";
+    }
+    if (!baseReady_) {
+        return "base_not_ready";
+    }
+    const char* configError = configStore_.lastError();
+    if (configError && configError[0] != '\0' &&
+        std::strcmp(configError, "none") != 0) {
+        return configError;
+    }
+    return "startup_check_failed";
 }
 
 WateringStartResult IrrigationApp::startWatering(const WateringRequest& request) {

@@ -551,6 +551,7 @@ bool IrrigationMqtt::publishState() {
     g_mqttJson.clear();
     g_mqttJson["v"] = IrrigationMqttProtocol::kVersion;
     g_mqttJson["ready"] = app_->businessReady();
+    g_mqttJson["ready_reason"] = app_->readinessReason();
     g_mqttJson["revision"] = config ? config->revision : 0;
     JsonObject wateringJson = g_mqttJson["watering"].to<JsonObject>();
     wateringJson["active"] = watering.active;
