@@ -5,3 +5,4 @@
 local_private/
 firmware/platformio.local.ini
 firmware/mqtt-ca.local.crt
+remote_console/node_modules/

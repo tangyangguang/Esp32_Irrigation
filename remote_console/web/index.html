@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="irrigation-token" content="__SESSION_TOKEN__">
+  <title>灌溉控制台</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="eyebrow">智能浇水控制器</p>
+      <h1>屋顶花园</h1>
+    </div>
+    <div class="connection">
+      <span id="brokerBadge" class="badge muted">Broker 连接中</span>
+      <span id="deviceBadge" class="badge muted">设备状态未知</span>
+    </div>
+  </header>
+
+  <nav class="tabs" aria-label="控制台页面">
+    <button class="tab active" data-view="overview">首页</button>
+    <button class="tab" data-view="plans">计划</button>
+  </nav>
+
+  <main>
+    <section id="overviewView" class="view">
+      <div id="blockingNotice" class="notice warn">正在等待设备状态……</div>
+
+      <section class="hero panel">
+        <div>
+          <p class="section-label">当前状态</p>
+          <h2 id="wateringTitle">等待设备</h2>
+          <p id="wateringDetail" class="secondary">连接成功后显示浇水状态</p>
+        </div>
+        <button id="stopButton" class="button danger" disabled>停止浇水</button>
+      </section>
+
+      <div class="metric-grid">
+        <article class="metric"><span>当前水路</span><b id="activeZone">—</b></article>
+        <article class="metric"><span>剩余时间</span><b id="remaining">—</b></article>
+        <article class="metric"><span>当前流量</span><b id="flow">—</b></article>
+        <article class="metric"><span>估算水量</span><b id="water">—</b></article>
+      </div>
+
+      <div class="two-column">
+        <section class="panel">
+          <div class="panel-head">
+            <div><p class="section-label">自动浇水</p><h2 id="automaticMode">—</h2></div>
+            <span id="nextPlan" class="badge soft">下一计划 —</span>
+          </div>
+          <div class="actions">
+            <button id="pauseButton" class="button secondary" disabled>无限期暂停</button>
+            <button id="timedPauseButton" class="button secondary" disabled>定时暂停</button>
+            <button id="resumeButton" class="button primary" disabled>恢复自动浇水</button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <p class="section-label">执行已保存计划</p>
+          <div class="inline-form">
+            <select id="startPlanSelect" aria-label="选择计划"></select>
+            <button id="startPlanButton" class="button primary" disabled>开始浇水</button>
+          </div>
+          <p class="hint">这是手动执行，不受自动浇水暂停状态影响。</p>
+        </section>
+      </div>
+
+      <section class="panel">
+        <div class="panel-head">
+          <div><p class="section-label">六路手动浇水</p><h2>本次临时时长</h2></div>
+          <button id="startManualButton" class="button primary" disabled>确认并开始</button>
+        </div>
+        <div id="manualDurations" class="duration-grid"></div>
+      </section>
+
+      <section class="panel">
+        <p class="section-label">设备信息</p>
+        <div id="faults" class="fault-list"></div>
+        <p id="lastResult" class="result-line">暂无控制命令</p>
+      </section>
+    </section>
+
+    <section id="plansView" class="view hidden">
+      <div class="page-head">
+        <div><p class="section-label">每日计划</p><h2>最多保存8个计划</h2></div>
+        <p class="secondary">修改只影响之后启动的任务</p>
+      </div>
+      <div id="planGrid" class="plan-grid"></div>
+    </section>
+  </main>
+
+  <dialog id="planDialog">
+    <form id="planForm" method="dialog">
+      <div class="dialog-head">
+        <div><p class="section-label">计划设置</p><h2 id="planDialogTitle">编辑计划</h2></div>
+        <button id="closePlanDialog" type="button" class="icon-button" aria-label="关闭">×</button>
+      </div>
+      <input id="planId" type="hidden">
+      <input id="planRevision" type="hidden">
+      <label>计划名称<input id="planName" maxlength="32" required></label>
+      <label class="check"><input id="planEnabled" type="checkbox">自动执行</label>
+      <fieldset>
+        <legend>每日启动时间（最多4个）</legend>
+        <div id="planStarts" class="time-grid"></div>
+      </fieldset>
+      <fieldset>
+        <legend>各水路时长（分钟）</legend>
+        <div id="planDurations" class="duration-grid"></div>
+      </fieldset>
+      <div class="dialog-actions">
+        <button id="cancelPlanDialog" type="button" class="button secondary">取消</button>
+        <button id="deletePlanButton" type="button" class="button danger">删除计划</button>
+        <button id="savePlanButton" type="submit" class="button primary">保存计划</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="pauseDialog">
+    <form id="pauseForm" method="dialog">
+      <div class="dialog-head"><h2>暂停到指定时间</h2><button id="closePauseDialog" type="button" class="icon-button" aria-label="关闭">×</button></div>
+      <label>恢复时间<input id="pauseUntil" type="datetime-local" required></label>
+      <div class="dialog-actions">
+        <button id="cancelPauseDialog" type="button" class="button secondary">取消</button>
+        <button class="button primary" type="submit">确认暂停</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
