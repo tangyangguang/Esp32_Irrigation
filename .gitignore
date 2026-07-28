@@ -1,4 +1,7 @@
 .DS_Store
 .pio/
+**/__pycache__/
 *.tmp
+local_private/
 firmware/platformio.local.ini
+firmware/mqtt-ca.local.crt

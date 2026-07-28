@@ -8,7 +8,7 @@
 - `../pcb_irrigation/` 下的定稿 BOM 和网表。
 - `../../Esp32Base` 已核实的公共能力。
 
-当前已经实现配置安全保存、定稿 PCB 硬件层、浇水控制与保护、自动调度、流量计校准、水路流量学习、业务记录、应用事件、在线检查点和业务 Web 页面。标量系统参数统一使用 `Esp32Base` App Config，水路和计划使用列表加响应式弹层编辑。默认 Web 账号和密码均为 `admin`，用户可使用 `Esp32Base` 的 Web Auth 页面修改。
+当前已经实现配置安全保存、定稿 PCB 硬件层、浇水控制与保护、自动调度、流量计校准、水路流量学习、业务记录、应用事件、在线检查点、业务 Web 页面和 MQTT 日常远程入口。MQTT 只映射现有状态、普通手动浇水、停止、自动总控和计划管理，继续复用 `IrrigationApp`、配置 revision、完整校验和原子保存，不增加第二套业务状态。
 
 启动时只有加载到有效配置或成功创建默认配置后才继续；存在配置文件但所有副本均无效时保持输出关闭，不用默认值覆盖。RTC 倒退判断会参考最近浇水记录、应用事件和在线检查点。在线检查点仅在达到配置间隔且期间没有业务写入时保存，避免不必要的 Flash 磨损。
 
@@ -22,13 +22,16 @@ pio run -e esp32_irrigation
 pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-port>
 ```
 
-基础库 Web OTA 使用本地 `platformio.local.ini` 保存设备地址和现行 Web Auth 凭据，该文件被 Git 忽略且不得提交。仓库中的 `platformio.example.ini` 只提供无凭据模板；首次配置时复制模板并填写本机实际值。需要升级时由操作者显式执行 `pio run -e esp32_irrigation -t webota`，普通构建和测试不会连接设备或触发 OTA。
+基础库 Web OTA 和 MQTT 使用本地 `platformio.local.ini` 保存设备地址、Web Auth 及 Broker 凭据，该文件被 Git 忽略且不得提交。MQTT CA 保存在同样忽略的 `mqtt-ca.local.crt`。仓库中的 `platformio.example.ini` 只提供无凭据模板；构建前脚本在 `.pio` 内生成固件私密头文件且只报告是否配置，不输出值。需要升级时由操作者显式执行 `pio run -e esp32_irrigation -t webota`，普通构建和测试不会触发 OTA。
 
 ```sh
 cp platformio.example.ini platformio.local.ini
-# 编辑 platformio.local.ini，填写 custom_esp32base_webota_host/user/password
+# 编辑 platformio.local.ini，填写 Web OTA 和 custom_irrigation_mqtt_* 配置
+# 将 Broker CA 保存为 mqtt-ca.local.crt
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-07-28 MQTT 日常远程入口：启用 `Esp32BaseMqtt`，通过真实公网 MQTTS Broker 映射已经存在的设备状态、计划读取与原子保存、普通手动浇水、停止及自动总控暂停/恢复。设备只订阅单个 command Topic；状态、设备元数据和 8 个计划使用 retained QoS 1 分批重发，命令结果独立返回。计划写入继续使用全局 revision、完整配置校验、临时文件回读和原子替换；MQTT 失败不阻止本地业务。私密连接信息统一由 Git 忽略的 `platformio.local.ini` 和 `mqtt-ca.local.crt` 提供，构建脚本不输出值。桌面真实 Broker 检查通过 TLS 主机名/SNI/CA、正确及错误认证、QoS 0/1、retain 和 LWT；`pio test -e native` 通过 92/92，正式构建通过，RAM 92964 B / 28.4%、Flash 1453737 B / 92.4%。尚未烧录设备；仍需实机验证 MQTT 连接、命令、重连状态重发、modem sleep、OTA、TLS heap 和长稳。
 
 2026-07-26 空闲功耗优化：固件版本升级为 0.6.1，在 `Esp32Base::begin()` 成功后启用基础库公开的 WiFi modem sleep。设备继续保持 STA、Web、NTP、自动调度、流量脉冲中断和完整业务循环在线；不进入手动 Light-sleep 或 Deep-sleep，不关闭 WiFi，不降低 CPU 频率，不改变浇水和保护时序。首次 Web 请求可能增加一个 DTIM 周期内的短暂延迟，OTA 沿用基础库现有的临时关闭并恢复 power save 流程。执行 `pio test -e native` 通过 86/86，执行 `pio run -e esp32_irrigation` 通过，资源占用 RAM 84452 B / 25.8%、Flash 1295997 B / 82.4%。本轮未烧录设备，仍需实机确认 System 状态页显示 Power save 为 on，并对比修改前后的 12V 输入平均电流、ESP32 温度和首次 Web 响应。
 

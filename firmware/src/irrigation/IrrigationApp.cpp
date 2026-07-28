@@ -8,12 +8,13 @@
 
 #include "BoardHardware.h"
 #include "BoardPins.h"
+#include "IrrigationMqtt.h"
 #include "IrrigationWeb.h"
 
 namespace {
 
 constexpr const char* kFirmwareName = "esp32-irrigation";
-constexpr const char* kFirmwareVersion = "0.6.1";
+constexpr const char* kFirmwareVersion = "0.7.0";
 constexpr const char* kDefaultWebUser = "admin";
 constexpr const char* kDefaultWebPassword = "admin";
 
@@ -76,6 +77,7 @@ bool IrrigationApp::begin() {
         hardware.safeShutdown();
         return false;
     }
+    IrrigationMqtt::instance().configure(*this);
 
     baseReady_ = Esp32Base::begin();
     if (!baseReady_) {
@@ -158,6 +160,7 @@ void IrrigationApp::handle() {
 
     advanceBusiness();
     Esp32Base::handle();
+    IrrigationMqtt::instance().handle();
 }
 
 bool IrrigationApp::baseReady() const {
