@@ -6,7 +6,7 @@ import { loadConfig, consoleRoot } from "./config.js";
 import { MqttService } from "./mqtt-service.js";
 import {
   ProtocolError,
-  validateDurations,
+  validateDeviceDurations,
   validatePlan,
   validatePlanId,
   validateResumeAt,
@@ -130,7 +130,7 @@ async function handleApi(request, response, url) {
   ) {
     assertReady();
     result = await mqttService.execute("start_manual", {
-      durations: validateDurations(body.durations),
+      durations: validateDeviceDurations(body.durations, store.snapshot.meta),
     });
   } else if (
     request.method === "POST" &&
@@ -157,6 +157,10 @@ async function handleApi(request, response, url) {
     }
     if (request.method === "PUT") {
       const plan = validatePlan(planId, body);
+      plan.args.durations = validateDeviceDurations(
+        plan.args.durations,
+        store.snapshot.meta,
+      );
       result = await mqttService.execute(
         "set_plan",
         plan.args,

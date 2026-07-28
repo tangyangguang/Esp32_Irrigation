@@ -4,6 +4,7 @@ import {
   ProtocolError,
   createCommand,
   parseJsonPayload,
+  validateDeviceDurations,
   validateDurations,
   validatePlan,
 } from "../src/protocol.js";
@@ -44,6 +45,32 @@ test("拒绝越界时长和不完整的六路输入", () => {
   assert.throws(
     () => validateDurations([1, 2, 3, 4, 5, 721]),
     /水路时长超出允许范围/,
+  );
+});
+
+test("按设备当前上限校验时长并拒绝已禁用水路", () => {
+  const meta = {
+    maximum_zone_duration_minutes: 120,
+    zones: [
+      { id: 1, enabled: true },
+      { id: 2, enabled: false },
+      { id: 3, enabled: true },
+      { id: 4, enabled: true },
+      { id: 5, enabled: true },
+      { id: 6, enabled: true },
+    ],
+  };
+  assert.deepEqual(
+    validateDeviceDurations([120, 0, 1, 0, 0, 0], meta),
+    [120, 0, 1, 0, 0, 0],
+  );
+  assert.throws(
+    () => validateDeviceDurations([121, 0, 0, 0, 0, 0], meta),
+    /不能超过 120 分钟/,
+  );
+  assert.throws(
+    () => validateDeviceDurations([0, 1, 0, 0, 0, 0], meta),
+    /水路 2 已禁用/,
   );
 });
 

@@ -26,8 +26,8 @@ MQTT 远程入口允许：
 | Topic | 方向 | QoS | retain | 内容 |
 | --- | --- | --- | --- | --- |
 | `irrigation/{deviceId}/availability` | 设备→Broker | 1 | 是 | `online`；LWT 为 `offline` |
-| `irrigation/{deviceId}/meta` | 设备→Broker | 1 | 是 | 设备 ID、六路名称和启用状态 |
-| `irrigation/{deviceId}/state` | 设备→Broker | 1 | 是 | 当前业务、浇水、自动调度和故障状态 |
+| `irrigation/{deviceId}/meta` | 设备→Broker | 1 | 是 | 设备 ID、六路名称和启用状态、当前单路时长上限 |
+| `irrigation/{deviceId}/state` | 设备→Broker | 1 | 是 | 当前业务、浇水进度、设备时间、自动调度、异常水流观测和故障状态 |
 | `irrigation/{deviceId}/plan/{id}` | 设备→Broker | 1 | 是 | 单个计划完整状态和配置 revision |
 | `irrigation/{deviceId}/command` | 客户端→设备 | 1 | 否 | 唯一命令入口 |
 | `irrigation/{deviceId}/result` | 设备→Broker | 1 | 否 | 命令结果和最新 revision |
@@ -35,6 +35,8 @@ MQTT 远程入口允许：
 设备只订阅一个 `command` Topic。重连后分批发布当前 state、meta 和 8 个计划；不保存过时遥测，不建立第二套离线队列。浇水活动期间 state 最多每 5 秒更新一次，其它状态按变化发布。
 
 `state.ready` 表示灌溉业务能否安全接受控制命令；`state.ready_reason` 在就绪时固定为 `none`，未就绪时提供稳定、非敏感的机器可读原因，例如文件系统不可用、没有有效配置副本、默认配置写入失败或启动检查失败。远程客户端必须展示该原因并锁定控制操作，不能把未就绪误报为漏水，也不能通过 MQTT 暴露格式化文件系统等维护能力。
+
+远程交互必须遵守本地 Web 的同一套用户规则：只展示已启用水路；计划和手动时长使用 `meta.maximum_zone_duration_minutes`；手动浇水可从已配置计划填入临时副本但不修改原计划；停止整次浇水、手动启动、无限期暂停、定时暂停和删除计划均显示明确确认。`state.watering` 提供运行阶段、水路步骤、任务和当前水路用时、剩余时间、水流建立状态、当前/预期流量、脉冲和估算水量；`state.time` 提供可信状态、来源和 RTC 降级；`state.unexpected_flow` 提供报警、观测就绪、窗口时长、脉冲和窗口平均估算流量。客户端不能因为状态未获取而自行猜测或启用操作。
 
 ## 命令信封
 

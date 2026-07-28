@@ -526,6 +526,8 @@ bool IrrigationMqtt::publishMeta() {
     g_mqttJson["device_id"] = deviceId_.data();
     JsonArray zones = g_mqttJson["zones"].to<JsonArray>();
     if (config) {
+        g_mqttJson["maximum_zone_duration_minutes"] =
+            config->runLimits.maximumZoneDurationMinutes;
         for (const ZoneConfig& zone : config->zones) {
             JsonObject object = zones.add<JsonObject>();
             object["id"] = zone.id;
@@ -559,7 +561,19 @@ bool IrrigationMqtt::publishState() {
     wateringJson["source"] = wateringSourceName(watering.source);
     wateringJson["plan_id"] = watering.planId;
     wateringJson["zone_id"] = watering.activeZoneId;
+    wateringJson["step"] =
+        watering.active ? watering.currentStepIndex + 1U : 0U;
+    wateringJson["step_count"] = watering.stepCount;
+    wateringJson["elapsed_s"] = watering.elapsedSec;
+    wateringJson["zone_elapsed_s"] =
+        watering.currentZoneElapsedSec;
     wateringJson["remaining_s"] = watering.currentZoneRemainingSec;
+    wateringJson["planned_remaining_s"] =
+        watering.plannedRemainingSec;
+    wateringJson["flow_established"] = watering.flowEstablished;
+    wateringJson["expected_flow_ml_min"] =
+        watering.expectedFlowMlPerMinute;
+    wateringJson["pulse_count"] = watering.pulseCount;
     wateringJson["flow_ml_min"] = watering.currentFlowMlPerMinute;
     wateringJson["water_ml"] = watering.totalEstimatedWaterMl;
     wateringJson["last_result"] =
@@ -575,6 +589,29 @@ bool IrrigationMqtt::publishState() {
         nextWateringStatusName(next.status);
     automaticJson["next_plan_id"] = next.planId;
     automaticJson["next_at"] = next.scheduledEpoch;
+
+    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+    const IrrigationEvents::ConditionDisplayState rtcCondition =
+        app_->eventConditionState(1);
+    JsonObject timeJson = g_mqttJson["time"].to<JsonObject>();
+    timeJson["trusted"] = Esp32BaseTime::isRealTime();
+    timeJson["source"] = Esp32BaseTime::sourceName(now.source);
+    timeJson["rtc_unavailable"] =
+        rtcCondition == IrrigationEvents::ConditionDisplayState::Active ||
+        rtcCondition ==
+            IrrigationEvents::ConditionDisplayState::ConfirmingRecovery;
+
+    JsonObject flowMonitor =
+        g_mqttJson["unexpected_flow"].to<JsonObject>();
+    flowMonitor["alarm"] = app_->unexpectedFlowAlarm();
+    flowMonitor["observation_ready"] =
+        app_->unexpectedFlowObservationReady();
+    flowMonitor["observed_s"] =
+        app_->unexpectedFlowObservedWindowSec();
+    flowMonitor["pulse_count"] =
+        app_->unexpectedFlowObservedPulseCount();
+    flowMonitor["estimated_ml_min"] =
+        app_->unexpectedFlowEstimatedMlPerMinute();
 
     JsonObject faults = g_mqttJson["faults"].to<JsonObject>();
     faults["unexpected_flow"] = app_->unexpectedFlowAlarm();
@@ -762,7 +799,18 @@ uint32_t IrrigationMqtt::stateFingerprint() const {
     hashValue(hash, static_cast<uint32_t>(next.status));
     hashValue(hash, next.planId);
     hashValue(hash, next.scheduledEpoch);
+    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+    hashValue(hash, Esp32BaseTime::isRealTime());
+    hashValue(hash, static_cast<uint32_t>(now.source));
+    const IrrigationEvents::ConditionDisplayState rtcCondition =
+        app_->eventConditionState(1);
+    hashValue(
+        hash,
+        rtcCondition == IrrigationEvents::ConditionDisplayState::Active ||
+            rtcCondition ==
+                IrrigationEvents::ConditionDisplayState::ConfirmingRecovery);
     hashValue(hash, app_->unexpectedFlowAlarm());
+    hashValue(hash, app_->unexpectedFlowObservationReady());
     hashValue(hash, app_->recordStorageFault());
     hashValue(hash, app_->eventStorageFault());
     hashValue(hash, app_->schedulerStorageFault());

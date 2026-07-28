@@ -63,6 +63,25 @@ export function validateDurations(value) {
   return value.map((item) => integer(item, "水路时长", 0, 720));
 }
 
+export function validateDeviceDurations(value, meta) {
+  const durations = validateDurations(value);
+  const maximum = meta?.maximum_zone_duration_minutes;
+  if (!Number.isInteger(maximum) || maximum < 1 || maximum > 720) {
+    throw new ProtocolError("设备时长限制尚未就绪，请稍后重试");
+  }
+  const zones = Array.isArray(meta?.zones) ? meta.zones : [];
+  for (let index = 0; index < durations.length; index += 1) {
+    if (durations[index] > maximum) {
+      throw new ProtocolError(`水路时长不能超过 ${maximum} 分钟`);
+    }
+    const zone = zones.find((item) => Number(item.id) === index + 1);
+    if (!zone?.enabled && durations[index] !== 0) {
+      throw new ProtocolError(`水路 ${index + 1} 已禁用，不能设置浇水时长`);
+    }
+  }
+  return durations;
+}
+
 export function validatePlanId(value) {
   return integer(value, "计划编号", 1, 8);
 }
