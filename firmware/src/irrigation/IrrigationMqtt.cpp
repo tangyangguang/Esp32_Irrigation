@@ -138,6 +138,19 @@ bool serializeCurrentJson(std::size_t& length) {
     return length == required;
 }
 
+struct LatestRecordContext {
+    bool found = false;
+    StoredWateringRecord record{};
+};
+
+void collectLatestRecord(const StoredWateringRecord& record, void* user) {
+    auto* context = static_cast<LatestRecordContext*>(user);
+    if (context && !context->found) {
+        context->record = record;
+        context->found = true;
+    }
+}
+
 }  // namespace
 
 IrrigationMqtt& IrrigationMqtt::instance() {
@@ -182,6 +195,14 @@ bool IrrigationMqtt::configure(IrrigationApp& app) {
         !formatTopic(stateTopic_.data(),
                      stateTopic_.size(),
                      "%s/state",
+                     rootTopic_.data()) ||
+        !formatTopic(runTopic_.data(),
+                     runTopic_.size(),
+                     "%s/run",
+                     rootTopic_.data()) ||
+        !formatTopic(latestRecordTopic_.data(),
+                     latestRecordTopic_.size(),
+                     "%s/latest",
                      rootTopic_.data()) ||
         !formatTopic(commandTopic_.data(),
                      commandTopic_.size(),
@@ -270,6 +291,18 @@ void IrrigationMqtt::handle() {
         if (publishState()) {
             stateDirty_ = false;
             lastStatePublishMs_ = now;
+        }
+        return;
+    }
+    if (runDirty_) {
+        if (publishRun()) {
+            runDirty_ = false;
+        }
+        return;
+    }
+    if (latestRecordDirty_) {
+        if (publishLatestRecord()) {
+            latestRecordDirty_ = false;
         }
         return;
     }
@@ -596,6 +629,7 @@ bool IrrigationMqtt::publishState() {
     JsonObject timeJson = g_mqttJson["time"].to<JsonObject>();
     timeJson["trusted"] = Esp32BaseTime::isRealTime();
     timeJson["source"] = Esp32BaseTime::sourceName(now.source);
+    timeJson["epoch"] = now.epochSec;
     timeJson["rtc_unavailable"] =
         rtcCondition == IrrigationEvents::ConditionDisplayState::Active ||
         rtcCondition ==
@@ -623,6 +657,136 @@ bool IrrigationMqtt::publishState() {
     std::size_t length = 0;
     return serializeCurrentJson(length) &&
            publishPayload(stateTopic_.data(),
+                          g_mqttPayload.data(),
+                          length,
+                          true);
+}
+
+bool IrrigationMqtt::publishRun() {
+    const WateringStatus watering = app_->wateringStatus();
+    g_mqttJson.clear();
+    g_mqttJson["v"] = IrrigationMqttProtocol::kVersion;
+    g_mqttJson["active"] = watering.active;
+    if (watering.active) {
+        g_mqttJson["state"] = wateringStateName(watering.state);
+        g_mqttJson["source"] = wateringSourceName(watering.source);
+        g_mqttJson["plan_id"] = watering.planId;
+        g_mqttJson["step"] = watering.currentStepIndex + 1U;
+        g_mqttJson["step_count"] = watering.stepCount;
+        g_mqttJson["zone_id"] = watering.activeZoneId;
+        g_mqttJson["elapsed_s"] = watering.elapsedSec;
+        g_mqttJson["planned_remaining_s"] =
+            watering.plannedRemainingSec;
+        g_mqttJson["zone_elapsed_s"] =
+            watering.currentZoneElapsedSec;
+        g_mqttJson["zone_remaining_s"] =
+            watering.currentZoneRemainingSec;
+        g_mqttJson["flow_established"] = watering.flowEstablished;
+        g_mqttJson["flow_ml_min"] =
+            watering.currentFlowMlPerMinute;
+        g_mqttJson["expected_flow_ml_min"] =
+            watering.expectedFlowMlPerMinute;
+        g_mqttJson["pulse_count"] = watering.pulseCount;
+        g_mqttJson["water_ml"] = watering.totalEstimatedWaterMl;
+        JsonArray steps = g_mqttJson["steps"].to<JsonArray>();
+        for (uint8_t index = 0; index < watering.stepCount; ++index) {
+            const ZoneWateringSummary& zone = watering.zones[index];
+            JsonObject object = steps.add<JsonObject>();
+            object["zone_id"] = zone.zoneId;
+            object["planned_s"] = zone.plannedDurationSec;
+            if (zone.targetWaterMl != 0) {
+                object["target_ml"] = zone.targetWaterMl;
+            }
+            if (zone.actualWateringSec != 0) {
+                object["actual_s"] = zone.actualWateringSec;
+            }
+            if (zone.estimatedWaterMl != 0) {
+                object["water_ml"] = zone.estimatedWaterMl;
+            }
+            if (zone.lowFlowDetected || zone.highFlowDetected) {
+                object["flow_alert"] =
+                    zone.lowFlowDetected && zone.highFlowDetected
+                        ? "both"
+                        : zone.lowFlowDetected ? "low" : "high";
+            }
+        }
+    }
+    std::size_t length = 0;
+    return serializeCurrentJson(length) &&
+           publishPayload(runTopic_.data(),
+                          g_mqttPayload.data(),
+                          length,
+                          true);
+}
+
+bool IrrigationMqtt::publishLatestRecord() {
+    LatestRecordContext latest;
+    const bool readable =
+        app_->readLatestWateringRecords(0, 1, collectLatestRecord, &latest);
+    g_mqttJson.clear();
+    g_mqttJson["v"] = IrrigationMqttProtocol::kVersion;
+    g_mqttJson["available"] = readable;
+    g_mqttJson["found"] = readable && latest.found;
+    if (readable && latest.found) {
+        const WateringRecordPayload& payload = latest.record.payload;
+        const WateringRecordTotals totals =
+            WateringRecordCodec::calculateTotals(payload);
+        uint32_t startedEpoch = 0;
+        uint32_t completedEpoch = 0;
+        Esp32BaseRecordStore::resolveStartedEpoch(
+            latest.record.timing, startedEpoch);
+        Esp32BaseRecordStore::resolveCompletedEpoch(
+            latest.record.timing, completedEpoch);
+        uint8_t plannedZones = 0;
+        uint8_t startedZones = 0;
+        uint8_t completedZones = 0;
+        uint8_t affectedZoneId = 0;
+        uint32_t targetWaterMl = 0;
+        bool flowAlert = false;
+        for (uint8_t index = 0; index < payload.zones.size(); ++index) {
+            const ZoneWateringRecord& zone = payload.zones[index];
+            if (zone.plannedDurationSec != 0) ++plannedZones;
+            if (zone.result != ZoneWateringResult::NotStarted) {
+                ++startedZones;
+            }
+            if (zone.result == ZoneWateringResult::Completed) {
+                ++completedZones;
+            }
+            if (affectedZoneId == 0 &&
+                (zone.result == ZoneWateringResult::Failed ||
+                 zone.result == ZoneWateringResult::Stopped)) {
+                affectedZoneId = static_cast<uint8_t>(index + 1U);
+            }
+            if (targetWaterMl == 0 && zone.targetWaterMl != 0) {
+                targetWaterMl = zone.targetWaterMl;
+            }
+            flowAlert =
+                flowAlert ||
+                (zone.flags &
+                 (WateringRecordCodec::kZoneFlagLowFlow |
+                  WateringRecordCodec::kZoneFlagHighFlow)) != 0;
+        }
+        g_mqttJson["record_id"] = latest.record.recordId;
+        g_mqttJson["started_at"] = startedEpoch;
+        g_mqttJson["completed_at"] = completedEpoch;
+        g_mqttJson["source"] = wateringSourceName(payload.source);
+        g_mqttJson["plan_id"] = payload.planId;
+        g_mqttJson["result"] = wateringResultName(payload.result);
+        g_mqttJson["stop_reason"] =
+            wateringStopReasonName(payload.stopReason);
+        g_mqttJson["planned_s"] = totals.plannedDurationSec;
+        g_mqttJson["actual_s"] = totals.actualWateringSec;
+        g_mqttJson["water_ml"] = totals.estimatedWaterMl;
+        g_mqttJson["target_ml"] = targetWaterMl;
+        g_mqttJson["planned_zones"] = plannedZones;
+        g_mqttJson["started_zones"] = startedZones;
+        g_mqttJson["completed_zones"] = completedZones;
+        g_mqttJson["affected_zone_id"] = affectedZoneId;
+        g_mqttJson["flow_alert"] = flowAlert;
+    }
+    std::size_t length = 0;
+    return serializeCurrentJson(length) &&
+           publishPayload(latestRecordTopic_.data(),
                           g_mqttPayload.data(),
                           length,
                           true);
@@ -728,6 +892,8 @@ bool IrrigationMqtt::publishPayload(const char* topic,
 void IrrigationMqtt::markAllDirty() {
     metaDirty_ = true;
     stateDirty_ = true;
+    runDirty_ = true;
+    latestRecordDirty_ = true;
     plansDirty_ = kAllPlansDirty;
     observedRevision_ = 0;
     observedStateFingerprint_ = 0;
@@ -747,10 +913,18 @@ void IrrigationMqtt::observeChanges() {
         stateDirty_ = true;
     }
     const WateringStatus status = app_->wateringStatus();
+    if (status.active != observedWateringActive_) {
+        if (observedWateringActive_ && !status.active) {
+            latestRecordDirty_ = true;
+        }
+        observedWateringActive_ = status.active;
+        runDirty_ = true;
+    }
     if (status.active &&
         static_cast<uint32_t>(millis() - lastStatePublishMs_) >=
             kActiveStateIntervalMs) {
         stateDirty_ = true;
+        runDirty_ = true;
     }
 }
 
@@ -802,6 +976,7 @@ uint32_t IrrigationMqtt::stateFingerprint() const {
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     hashValue(hash, Esp32BaseTime::isRealTime());
     hashValue(hash, static_cast<uint32_t>(now.source));
+    hashValue(hash, now.epochSec / 60U);
     const IrrigationEvents::ConditionDisplayState rtcCondition =
         app_->eventConditionState(1);
     hashValue(

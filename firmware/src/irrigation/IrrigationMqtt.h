@@ -37,6 +37,8 @@ private:
     bool publishAvailability();
     bool publishMeta();
     bool publishState();
+    bool publishRun();
+    bool publishLatestRecord();
     bool publishPlan(uint8_t planId);
     bool publishResult(const char* commandId,
                        bool success,
@@ -56,6 +58,9 @@ private:
     bool connected_ = false;
     bool metaDirty_ = false;
     bool stateDirty_ = false;
+    bool runDirty_ = false;
+    bool latestRecordDirty_ = false;
+    bool observedWateringActive_ = false;
     uint8_t plansDirty_ = 0;
     uint8_t nextRecentCommand_ = 0;
     uint32_t observedRevision_ = 0;
@@ -66,6 +71,8 @@ private:
     std::array<char, kTopicCapacity> availabilityTopic_{};
     std::array<char, kTopicCapacity> metaTopic_{};
     std::array<char, kTopicCapacity> stateTopic_{};
+    std::array<char, kTopicCapacity> runTopic_{};
+    std::array<char, kTopicCapacity> latestRecordTopic_{};
     std::array<char, kTopicCapacity> commandTopic_{};
     std::array<char, kTopicCapacity> resultTopic_{};
     std::array<char, 40> deviceId_{};

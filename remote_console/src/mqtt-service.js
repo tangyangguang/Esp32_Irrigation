@@ -41,6 +41,8 @@ export class MqttService {
           `${this.rootTopic}/availability`,
           `${this.rootTopic}/meta`,
           `${this.rootTopic}/state`,
+          `${this.rootTopic}/run`,
+          `${this.rootTopic}/latest`,
           `${this.rootTopic}/plan/+`,
           `${this.rootTopic}/result`,
         ],

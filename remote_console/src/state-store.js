@@ -9,6 +9,8 @@ export class StateStore {
       availability: "unknown",
       meta: null,
       state: null,
+      run: null,
+      latest: null,
       plans: {},
       lastResult: null,
       receivedAt: {},
@@ -33,6 +35,10 @@ export class StateStore {
       this.#snapshot.meta = value;
     } else if (relativeTopic === "state") {
       this.#snapshot.state = value;
+    } else if (relativeTopic === "run") {
+      this.#snapshot.run = value;
+    } else if (relativeTopic === "latest") {
+      this.#snapshot.latest = value;
     } else if (relativeTopic === "result") {
       this.#snapshot.lastResult = value;
     } else {

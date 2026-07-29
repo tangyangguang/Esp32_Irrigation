@@ -27,16 +27,20 @@ MQTT 远程入口允许：
 | --- | --- | --- | --- | --- |
 | `irrigation/{deviceId}/availability` | 设备→Broker | 1 | 是 | `online`；LWT 为 `offline` |
 | `irrigation/{deviceId}/meta` | 设备→Broker | 1 | 是 | 设备 ID、六路名称和启用状态、当前单路时长上限 |
-| `irrigation/{deviceId}/state` | 设备→Broker | 1 | 是 | 当前业务、浇水进度、设备时间、自动调度、异常水流观测和故障状态 |
+| `irrigation/{deviceId}/state` | 设备→Broker | 1 | 是 | 当前业务摘要、设备时间、自动调度、异常水流观测和故障状态 |
+| `irrigation/{deviceId}/run` | 设备→Broker | 1 | 是 | 当前普通浇水的完整步骤、进度、流量和水量；空闲时为 `active=false` |
+| `irrigation/{deviceId}/latest` | 设备→Broker | 1 | 是 | 最近一次普通浇水的来源、时间、结果、停止原因和汇总 |
 | `irrigation/{deviceId}/plan/{id}` | 设备→Broker | 1 | 是 | 单个计划完整状态和配置 revision |
 | `irrigation/{deviceId}/command` | 客户端→设备 | 1 | 否 | 唯一命令入口 |
 | `irrigation/{deviceId}/result` | 设备→Broker | 1 | 否 | 命令结果和最新 revision |
 
-设备只订阅一个 `command` Topic。重连后分批发布当前 state、meta 和 8 个计划；不保存过时遥测，不建立第二套离线队列。浇水活动期间 state 最多每 5 秒更新一次，其它状态按变化发布。
+设备只订阅一个 `command` Topic。重连后分批发布当前 state、run、latest、meta 和 8 个计划；不保存过时遥测，不建立第二套离线队列。浇水活动期间 state 和 run 最多每 5 秒更新一次，任务结束后立即把 run 置为空闲并更新 latest；其它状态按变化发布。run 省略为零的步骤统计和没有发生的流量报警，避免六路任务超过 1024 字节业务 payload，不改变字段语义。
 
 `state.ready` 表示灌溉业务能否安全接受控制命令；`state.ready_reason` 在就绪时固定为 `none`，未就绪时提供稳定、非敏感的机器可读原因，例如文件系统不可用、没有有效配置副本、默认配置写入失败或启动检查失败。远程客户端必须展示该原因并锁定控制操作，不能把未就绪误报为漏水，也不能通过 MQTT 暴露格式化文件系统等维护能力。
 
-远程交互必须遵守本地 Web 的同一套用户规则：只展示已启用水路；计划和手动时长使用 `meta.maximum_zone_duration_minutes`；手动浇水可从已配置计划填入临时副本但不修改原计划；停止整次浇水、手动启动、无限期暂停、定时暂停和删除计划均显示明确确认。`state.watering` 提供运行阶段、水路步骤、任务和当前水路用时、剩余时间、水流建立状态、当前/预期流量、脉冲和估算水量；`state.time` 提供可信状态、来源和 RTC 降级；`state.unexpected_flow` 提供报警、观测就绪、窗口时长、脉冲和窗口平均估算流量。客户端不能因为状态未获取而自行猜测或启用操作。
+远程交互必须遵守本地 Web 的同一套用户规则和日常页面认知：只展示已启用水路；计划和手动时长使用 `meta.maximum_zone_duration_minutes`；手动浇水可从已配置计划填入临时副本但不修改原计划；停止整次浇水、手动启动、恢复自动浇水、无限期暂停、定时暂停和删除计划均显示明确确认。Mac 控制台的首页、运行态、手动浇水和计划管理直接采用本地 Web 的标题、状态优先级、说明、字段、禁用规则与响应式结构，不另建一套产品逻辑；校准、区域基准、系统设置、日志、OTA 和完整记录列表仍不进入远程日常入口。
+
+`state.watering` 提供当前运行摘要；`run` 提供任务和当前水路用时、剩余时间、水流建立状态、当前/预期流量、脉冲、估算水量和步骤顺序；`latest` 提供首页最近一次结果所需的确定信息。`state.time` 提供可信状态、来源、当前 epoch 和 RTC 降级，远程页面以设备 epoch 为锚点在本机连续走秒；`state.unexpected_flow` 提供报警、观测就绪、窗口时长、脉冲和窗口平均估算流量。客户端不能因为状态未获取而自行猜测或启用操作。
 
 ## 命令信封
 
@@ -102,7 +106,7 @@ MQTT 远程入口允许：
 ## 资源与验收
 
 - 不增加业务任务、锁、动态离线队列和第二套状态机。
-- 命令 JSON 上限 1024 字节；状态、meta、单计划和结果分别发布。
+- 命令和每条状态 JSON 上限 1024 字节；state、run、latest、meta、单计划和结果分别发布。
 - 后台状态发布在 QoS 1 in-flight 少于 3 时每轮最多提交一条，给命令结果保留容量。
 - 真实发布必须验证 Flash、静态 RAM、MQTT task stack、TLS 握手峰值、稳定连接 heap 和连续重连后的 minimum heap。
 - 必须实机验证 Broker/WiFi 重启、modem sleep、重复命令、Web/MQTT revision 冲突、OTA 暂停恢复和 MQTT 故障下本地计划继续执行。

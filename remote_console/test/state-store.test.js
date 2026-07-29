@@ -7,12 +7,16 @@ test("汇总设备在线、状态、计划和结果", () => {
   store.setBrokerConnected(true);
   store.update("availability", "online");
   store.update("state", { v: 1, ready: true, revision: 3 });
+  store.update("run", { v: 1, active: true, step: 1 });
+  store.update("latest", { v: 1, found: true, record_id: 9 });
   store.update("plan/2", { v: 1, id: 2, configured: true });
   store.update("result", { v: 1, id: "one", ok: true });
   const value = store.snapshot;
   assert.equal(value.brokerConnected, true);
   assert.equal(value.availability, "online");
   assert.equal(value.state.revision, 3);
+  assert.equal(value.run.step, 1);
+  assert.equal(value.latest.record_id, 9);
   assert.equal(value.plans["2"].configured, true);
   assert.equal(value.lastResult.id, "one");
 });
