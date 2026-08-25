@@ -26,6 +26,17 @@ pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-po
 
 ## 统一 IoT 平台本机配置
 
+### 共享命令契约向量
+
+命令契约测试以 `iot-device-lab/device-types/irrigation-controller/test/fixtures/platform-command-vectors.json` 为唯一人工维护来源。固件仓库只提交确定性生成的 native 测试头文件；生成物携带源 fixture SHA-256，测试逐条调用正式固件共用的 Topic、QoS/retain 和 command parser。同步脚本不查找固定本机目录，必须显式提供实验室仓库根目录：
+
+```sh
+python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-lab
+python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-lab --check
+```
+
+协议或 fixture 更新后先同步，再提交生成物；CI 或本地验收使用 `--check`，源内容与已提交生成物不一致时直接失败。本仓库不复制 fixture JSON 或协议正文，也不自行维护另一组 33 条向量。
+
 平台能力与本地权威入口的固定映射：
 
 | 平台能力 | 现有业务入口或证据 |
@@ -64,6 +75,8 @@ cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 Web OTA 配置
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-08-25 权威命令向量与 UUID 漂移修复：新增显式 `--lab-root` 的最小 fixture 同步脚本和 `--check` 漂移检测，提交的测试专用头文件记录源 SHA-256 `809871d04661e19a81f5df755fa9256d702e0b01f4f3f7cb843bca19ad4382a0`。当前 33 条 fixture 全部属于平台下发到固件的 command，测试 33/33 消费、跳过 0 条，并通过正式适配器共用路径覆盖五项 capability、Topic、QoS/retain、UTF-8、JSON、UUID、TTL 和未知字段。UUID 校验与权威正则对齐为版本 1～8、variant 8/9/a/b 且十六进制大小写均可，版本 0/9 和其它 variant 拒绝。`iot-device-lab` preflight 确认 definition checksum 仍为 `e09e0e9e649d6b7d618c3ab849fd0c3695e557c9e2e920fedf91b55e91cd92f8`，固件公开常量和私有配置示例一致。执行 `/opt/homebrew/bin/pio test -e native` 通过 106/106；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录测试固件，未在板卡运行；执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466777 B / 93.3%。实际 app0/app1 均为 1572864 B，ELF 程序余 106087 B / 6.74%；`firmware.bin` 为 1473360 B，余 99504 B / 6.33%，尺寸检查按预期告警但构建成功。本轮未烧录、未使用串口、未发送 MQTT 业务命令，也未操作任何物理执行器。
 
 2026-08-25 MQTT 安全停止、持久证据与 OTA 尺寸门槛：复用适配器已有可信 epoch/`millis()` 锚点，使时间同步瞬时下降后仍能按 TTL 接受正常浇水 stop；从未可信、命令过期、定时暂停时间不可信和维护活动 stop 继续拒绝。容量满或首次证据 NVS 写入失败改为静默丢弃，所有 receipt/progress 在发布前持久化，失败时回滚未落盘 RAM 状态；固定 8 条容量保持不变。新增正式构建后尺寸检查，直接读取当前分区 CSV，超槽失败、低于 10% 仅告警。执行 `/opt/homebrew/bin/pio test -e native` 通过 104/104，其中 MQTT 核心 12/12；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录测试固件，未在板卡运行；执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466605 B / 93.2%。实际 app0/app1 均为 1572864 B，ELF 程序余 106259 B / 6.76%；`firmware.bin` 为 1473184 B，余 99680 B / 6.34%，尺寸检查输出低余量告警但构建成功。本轮未烧录、未使用串口、未发送 MQTT 业务命令，也未操作泵阀、流量计或 RTC。
 

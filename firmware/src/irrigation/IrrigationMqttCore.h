@@ -30,6 +30,9 @@ struct PublicationPolicy {
 const char* channelName(Channel channel);
 PublicationPolicy publicationPolicy(Channel channel);
 bool acceptsCommandTransport(uint8_t qos, bool retain);
+bool matchesCommandTopic(const char* topic,
+                         std::size_t length,
+                         const char* deviceId);
 bool isStopCommandEnvelope(const char* payload, std::size_t length);
 
 class TrustedTimeAnchor {

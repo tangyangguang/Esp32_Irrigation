@@ -94,6 +94,18 @@ bool acceptsCommandTransport(uint8_t qos, bool retain) {
     return qos == 1 && !retain;
 }
 
+bool matchesCommandTopic(const char* topic,
+                         std::size_t length,
+                         const char* deviceId) {
+    if (!topic || !deviceId) return false;
+    char expected[192]{};
+    if (!IrrigationPlatformProtocol::formatTopic(
+            deviceId, "command", expected, sizeof(expected))) return false;
+    const std::size_t expectedLength = std::strlen(expected);
+    return length == expectedLength &&
+           std::memcmp(topic, expected, expectedLength) == 0;
+}
+
 void TrustedTimeAnchor::observe(bool synced,
                                 uint32_t epochSec,
                                 uint32_t currentMillis) {

@@ -328,11 +328,10 @@ void IrrigationMqttAdapter::stopClient() {
 
 void IrrigationMqttAdapter::queueIncoming(const esp_mqtt_event_t& event) {
     if (event.current_data_offset == 0) {
-        char expectedTopic[192]{};
-        makeTopic(IrrigationMqttCore::Channel::Command,
-                  expectedTopic, sizeof(expectedTopic));
-        if (!event.topic || event.topic_len != static_cast<int>(std::strlen(expectedTopic)) ||
-            std::memcmp(event.topic, expectedTopic, event.topic_len) != 0 ||
+        if (!event.topic || event.topic_len < 0 ||
+            !IrrigationMqttCore::matchesCommandTopic(
+                event.topic, static_cast<std::size_t>(event.topic_len),
+                IRRIGATION_MQTT_DEVICE_ID) ||
             event.total_data_len <= 0 ||
             event.total_data_len > static_cast<int>(IrrigationPlatformProtocol::kMaximumCommandBytes)) {
             assemblyExpected_ = 0;

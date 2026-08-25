@@ -398,7 +398,11 @@ bool isUuid(const char* value) {
             return false;
         }
     }
-    return true;
+    const char version = value[14];
+    if (version < '1' || version > '8') return false;
+    const char variant = value[19];
+    return variant == '8' || variant == '9' || variant == 'a' ||
+           variant == 'b' || variant == 'A' || variant == 'B';
 }
 
 bool isValidUtf8(const uint8_t* data, std::size_t length) {

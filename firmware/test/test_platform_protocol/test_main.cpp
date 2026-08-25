@@ -1,15 +1,70 @@
 #include <unity.h>
 
+#include <array>
 #include <cstring>
 
+#include "generated/platform_command_vectors.h"
+#include "irrigation/IrrigationMqttCore.h"
 #include "irrigation/IrrigationPlatformProtocol.h"
 
 namespace {
 
 using namespace IrrigationPlatformProtocol;
+namespace Fixtures = IrrigationPlatformCommandFixtures;
 
 const char* manualCommand =
     R"JSON({"protocol":"irrigation-controller/v1","commandId":"7d1898cd-adbf-4fc2-a8f0-dfa5748774fe","capabilityKey":"operation.start-manual","parameters":{"zones":[{"zoneId":2,"durationMinutes":5},{"zoneId":1,"durationMinutes":3}]},"issuedAt":"2026-08-25T02:00:00.000Z","expiresAt":"2026-08-25T02:00:30.000Z"})JSON";
+
+void test_consumes_controlled_platform_command_vectors() {
+    TEST_ASSERT_EQUAL_STRING("1", Fixtures::kSchemaVersion);
+    TEST_ASSERT_EQUAL_STRING(kTypeKey, Fixtures::kTypeKey);
+    TEST_ASSERT_EQUAL_STRING(kModelKey, Fixtures::kModelKey);
+    TEST_ASSERT_EQUAL_UINT32(33, Fixtures::kCaseCount);
+    TEST_ASSERT_EQUAL_UINT32(64, std::strlen(Fixtures::kSourceFixtureSha256));
+    uint8_t acceptedCapabilities = 0;
+    for (const auto& vector : Fixtures::kCases) {
+        bool accepted = IrrigationMqttCore::matchesCommandTopic(
+                            vector.topic, std::strlen(vector.topic),
+                            Fixtures::kDeviceId) &&
+                        IrrigationMqttCore::acceptsCommandTransport(
+                            vector.qos, vector.retain);
+        Command command;
+        if (accepted) {
+            accepted = parseCommand(
+                           reinterpret_cast<const char*>(vector.payload),
+                           vector.payloadLength, command) == ParseResult::Ok;
+        }
+        TEST_ASSERT_EQUAL_MESSAGE(vector.accepted, accepted, vector.id);
+        if (accepted) {
+            acceptedCapabilities |=
+                static_cast<uint8_t>(1U << static_cast<uint8_t>(command.capability));
+        }
+    }
+    TEST_ASSERT_EQUAL_HEX8(0x1FU, acceptedCapabilities);
+}
+
+void test_uuid_versions_variants_and_case_match_platform_rule() {
+    char value[] = "7d1898cd-adbf-1fc2-88f0-dfa5748774fe";
+    constexpr char variants[] = {'8', '9', 'a', 'b', 'A', 'B'};
+    for (char version = '1'; version <= '8'; ++version) {
+        value[14] = version;
+        for (char variant : variants) {
+            value[19] = variant;
+            TEST_ASSERT_TRUE(isUuid(value));
+        }
+    }
+    TEST_ASSERT_TRUE(isUuid("7D1898CD-ADBF-8FC2-B8F0-DFA5748774FE"));
+    value[14] = '0';
+    value[19] = '8';
+    TEST_ASSERT_FALSE(isUuid(value));
+    value[14] = '9';
+    TEST_ASSERT_FALSE(isUuid(value));
+    value[14] = '4';
+    value[19] = '7';
+    TEST_ASSERT_FALSE(isUuid(value));
+    value[19] = 'c';
+    TEST_ASSERT_FALSE(isUuid(value));
+}
 
 void test_parses_current_manual_command_and_canonicalizes_fields() {
     Command command;
@@ -88,6 +143,8 @@ void test_formats_only_fixed_platform_topics() {
 
 int main(int, char**) {
     UNITY_BEGIN();
+    RUN_TEST(test_consumes_controlled_platform_command_vectors);
+    RUN_TEST(test_uuid_versions_variants_and_case_match_platform_rule);
     RUN_TEST(test_parses_current_manual_command_and_canonicalizes_fields);
     RUN_TEST(test_rejects_unknown_fields_retained_shape_and_ttl_overflow);
     RUN_TEST(test_validates_plan_schema_uuid_and_utf8);
