@@ -20,7 +20,6 @@ public:
 
     bool baseReady() const;
     bool businessReady() const;
-    const char* readinessReason() const;
     WateringStartResult startWatering(const WateringRequest& request);
     WateringStartResult startManualWatering(
         const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes);
