@@ -114,10 +114,7 @@ bool savePlanFromRequest() {
         }
     }
     for (uint8_t index = 0; index < plan.zoneDurationMinutes.size(); ++index) {
-        if (!current->zones[index].enabled) {
-            plan.zoneDurationMinutes[index] = 0;
-            continue;
-        }
+        if (!current->zones[index].enabled) continue;
         char field[8];
         uint32_t duration = 0;
         std::snprintf(field, sizeof(field), "zone%u", index + 1U);

@@ -1,9 +1,11 @@
 #include "WateringRecordCodec.h"
 
+#include <cstdio>
+
 namespace {
 
 constexpr std::size_t kHeaderSize = 4;
-constexpr std::size_t kZoneSize = 38;
+constexpr std::size_t kZoneSize = 102;
 constexpr uint8_t kKnownZoneFlags = WateringRecordCodec::kZoneFlagWaterEstimateCapped |
                                     WateringRecordCodec::kZoneFlagLowFlow |
                                     WateringRecordCodec::kZoneFlagHighFlow |
@@ -60,6 +62,18 @@ bool validZoneResult(ZoneWateringResult value) {
     return value >= ZoneWateringResult::NotStarted && value <= ZoneWateringResult::Failed;
 }
 
+bool validName(const std::array<char, kObjectNameCapacity>& name, bool allowEmpty) {
+    bool terminated = false;
+    std::size_t length = 0;
+    for (; length < name.size(); ++length) {
+        if (name[length] == '\0') {
+            terminated = true;
+            break;
+        }
+    }
+    return terminated && (allowEmpty || length != 0);
+}
+
 bool validResultPair(WateringResult result, WateringStopReason reason) {
     if (result == WateringResult::Completed) {
         return reason == WateringStopReason::Completed;
@@ -88,13 +102,16 @@ bool validPayload(const WateringRecordPayload& payload) {
     bool hasStartedZone = false;
     uint64_t totalPulses = 0;
     for (const ZoneWateringRecord& zone : payload.zones) {
-        if (!validZoneResult(zone.result) || (zone.flags & ~kKnownZoneFlags) != 0 ||
+        if (!validZoneResult(zone.result) ||
+            !validName(zone.name, zone.plannedDurationSec == 0) ||
+            (zone.flags & ~kKnownZoneFlags) != 0 ||
             zone.plannedDurationSec > kMaximumZoneDurationSec ||
             zone.actualWateringSec > zone.plannedDurationSec) {
             return false;
         }
         if (zone.plannedDurationSec == 0) {
             if (zone.result != ZoneWateringResult::NotStarted || zone.flags != 0 ||
+                zone.name[0] != '\0' ||
                 zone.actualWateringSec != 0 || zone.targetWaterMl != 0 || zone.pulseCount != 0 ||
                 zone.estimatedWaterMl != 0 || zone.averageFlowMlPerMinute != 0 ||
                 zone.baselineFlowMlPerMinute != 0 ||
@@ -206,6 +223,13 @@ bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
         }
         previousZoneId = source.zoneId;
         ZoneWateringRecord& target = payload.zones[BoardPins::zoneIndex(source.zoneId)];
+        if (source.zoneName[0] != '\0') {
+            std::snprintf(target.name.data(), target.name.size(), "%s",
+                          source.zoneName.data());
+        } else {
+            std::snprintf(target.name.data(), target.name.size(), "区域 %u",
+                          static_cast<unsigned>(source.zoneId));
+        }
         target.result = source.result;
         target.flags = source.waterEstimateCapped ? kZoneFlagWaterEstimateCapped : 0;
         target.flags |= source.lowFlowDetected ? kZoneFlagLowFlow : 0;
@@ -254,6 +278,7 @@ bool WateringRecordCodec::encode(const WateringRecordPayload& payload,
     *cursor++ = static_cast<uint8_t>(payload.result);
     *cursor++ = static_cast<uint8_t>(payload.stopReason);
     for (const ZoneWateringRecord& zone : payload.zones) {
+        for (char ch : zone.name) *cursor++ = static_cast<uint8_t>(ch);
         *cursor++ = static_cast<uint8_t>(zone.result);
         *cursor++ = zone.flags;
         put16(cursor, zone.plannedDurationSec);
@@ -283,6 +308,7 @@ bool WateringRecordCodec::decode(const uint8_t* data,
     payload.result = static_cast<WateringResult>(*cursor++);
     payload.stopReason = static_cast<WateringStopReason>(*cursor++);
     for (ZoneWateringRecord& zone : payload.zones) {
+        for (char& ch : zone.name) ch = static_cast<char>(*cursor++);
         zone.result = static_cast<ZoneWateringResult>(*cursor++);
         zone.flags = *cursor++;
         zone.plannedDurationSec = get16(cursor);

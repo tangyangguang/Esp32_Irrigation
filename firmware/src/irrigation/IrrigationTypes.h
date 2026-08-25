@@ -187,6 +187,7 @@ struct WateringRequest {
 
 struct ZoneWateringSummary {
     uint8_t zoneId;
+    std::array<char, kObjectNameCapacity> zoneName;
     ZoneWateringResult result;
     uint32_t plannedDurationSec;
     uint32_t targetWaterMl;

@@ -7,6 +7,7 @@
 #include "IrrigationTypes.h"
 
 struct ZoneWateringRecord {
+    std::array<char, kObjectNameCapacity> name;
     ZoneWateringResult result;
     uint8_t flags;
     uint16_t plannedDurationSec;
@@ -39,7 +40,7 @@ struct WateringRecordTotals {
 
 class WateringRecordCodec {
 public:
-    static constexpr std::size_t kPayloadSize = 232;
+    static constexpr std::size_t kPayloadSize = 616;
     static constexpr uint8_t kZoneFlagWaterEstimateCapped = 1U << 0U;
     static constexpr uint8_t kZoneFlagLowFlow = 1U << 1U;
     static constexpr uint8_t kZoneFlagHighFlow = 1U << 2U;

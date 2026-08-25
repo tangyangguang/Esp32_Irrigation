@@ -3,6 +3,7 @@
 #include "IrrigationConfigStore.h"
 #include "IrrigationEvents.h"
 #include "IrrigationParameterConfig.h"
+#include "IrrigationMqttAdapter.h"
 #include "FlowCalibrationService.h"
 #include "DeviceAliveCheckpoint.h"
 #include "WateringRecordStore.h"
@@ -155,6 +156,7 @@ private:
     WateringSchedulerStore wateringSchedulerStore_;
     WateringScheduler wateringScheduler_;
     UnexpectedFlowMonitor unexpectedFlowMonitor_;
+    IrrigationMqttAdapter mqttAdapter_;
     Esp32BaseRecordStore::RecordStartTime wateringStartTime_{};
     uint32_t lastRtcRefreshMs_ = 0;
 };

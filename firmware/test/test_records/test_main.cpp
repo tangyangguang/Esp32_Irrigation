@@ -1,5 +1,7 @@
 #include <unity.h>
 
+#include <cstdio>
+
 #include "irrigation/WateringRecordCodec.h"
 
 namespace {
@@ -15,6 +17,8 @@ WateringSessionSummary exampleSummary() {
     summary.stopReason = WateringStopReason::UserStopped;
     summary.anyFlowEstablished = true;
     summary.zones[0].zoneId = 1;
+    std::snprintf(summary.zones[0].zoneName.data(),
+                  summary.zones[0].zoneName.size(), "%s", "前院");
     summary.zones[0].result = ZoneWateringResult::Completed;
     summary.zones[0].plannedDurationSec = 60;
     summary.zones[0].actualWateringSec = 60;
@@ -29,6 +33,8 @@ WateringSessionSummary exampleSummary() {
     summary.zones[0].terminalMinimumFlowMlPerMinute = 984;
     summary.zones[0].terminalMaximumFlowMlPerMinute = 1032;
     summary.zones[1].zoneId = 3;
+    std::snprintf(summary.zones[1].zoneName.data(),
+                  summary.zones[1].zoneName.size(), "%s", "后院");
     summary.zones[1].result = ZoneWateringResult::Stopped;
     summary.zones[1].plannedDurationSec = 120;
     summary.zones[1].actualWateringSec = 40;
@@ -50,11 +56,13 @@ void test_fixed_payload_round_trip_preserves_business_fields() {
 
     uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    TEST_ASSERT_EQUAL_UINT32(232, sizeof(encoded));
+    TEST_ASSERT_EQUAL_UINT32(616, sizeof(encoded));
     TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringSource::AutomaticPlan), encoded[0]);
     TEST_ASSERT_EQUAL_UINT8(3, encoded[1]);
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[42]);  // Zone 2 fixed slot is empty.
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[43]);
+    TEST_ASSERT_EQUAL_STRING("前院", payload.zones[0].name.data());
+    TEST_ASSERT_EQUAL_STRING("后院", payload.zones[2].name.data());
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[170]);  // Zone 2 fixed slot is empty.
+    TEST_ASSERT_EQUAL_UINT8(0, encoded[171]);
 
     WateringRecordPayload decoded{};
     TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
@@ -99,6 +107,7 @@ void test_totals_are_derived_without_overflow() {
     payload.result = WateringResult::Completed;
     payload.stopReason = WateringStopReason::Completed;
     for (ZoneWateringRecord& zone : payload.zones) {
+        std::snprintf(zone.name.data(), zone.name.size(), "%s", "水路");
         zone.result = ZoneWateringResult::Completed;
         zone.flags = WateringRecordCodec::kZoneFlagWaterEstimateCapped;
         zone.plannedDurationSec = 7200;
@@ -124,11 +133,11 @@ void test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone() {
 
     WateringRecordPayload decoded{};
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded) - 1U, decoded));
-    encoded[5] = 0x80;
+    encoded[69] = 0x80;
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    encoded[42] = static_cast<uint8_t>(ZoneWateringResult::Completed);
+    encoded[170] = static_cast<uint8_t>(ZoneWateringResult::Completed);
     TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
 }
 
@@ -140,6 +149,8 @@ void test_single_output_record_preserves_volume_target() {
     summary.result = WateringResult::Completed;
     summary.stopReason = WateringStopReason::Completed;
     summary.zones[0].zoneId = 2;
+    std::snprintf(summary.zones[0].zoneName.data(),
+                  summary.zones[0].zoneName.size(), "%s", "花坛");
     summary.zones[0].result = ZoneWateringResult::Completed;
     summary.zones[0].plannedDurationSec = 7200;
     summary.zones[0].targetWaterMl = 5000;
@@ -209,6 +220,8 @@ void test_included_but_unstarted_zone_keeps_plan_and_zero_actuals() {
     WateringSessionSummary summary = exampleSummary();
     summary.zones[1] = {};
     summary.zones[1].zoneId = 3;
+    std::snprintf(summary.zones[1].zoneName.data(),
+                  summary.zones[1].zoneName.size(), "%s", "后院");
     summary.zones[1].result = ZoneWateringResult::NotStarted;
     summary.zones[1].plannedDurationSec = 120;
     summary.result = WateringResult::Failed;

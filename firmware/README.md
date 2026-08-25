@@ -8,9 +8,9 @@
 - `../pcb_irrigation/` 下的定稿 BOM 和网表。
 - `../../Esp32Base` 已核实的公共能力。
 
-当前已经实现配置安全保存、定稿 PCB 硬件层、浇水控制与保护、自动调度、流量计校准、水路流量学习、业务记录、应用事件、在线检查点和业务 Web 页面。当前有效的设备控制入口是本地 Web；本项目当前没有应用层 MQTT 协议或远程控制实现。
+当前已经实现配置安全保存、定稿 PCB 硬件层、浇水控制与保护、自动调度、流量计校准、水路流量学习、业务记录、应用事件、在线检查点、业务 Web 页面和统一 IoT 平台 MQTT 适配。设备本地 Web、RTC 自动调度和 MQTT 平台命令调用同一个业务入口；MQTT 断网不阻断本地业务。
 
-旧 MQTT 远程控制方案、Mac 测试控制台和 N1/Cloudflare 直连设备 Web 方案已删除。设备未来会接入统一 IoT 平台，但具体协议、能力映射和适配本轮尚未实现。未来设备类型契约以 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 为权威位置，本项目不复制协议正文。
+旧 MQTT 远程控制方案、Mac 测试控制台和 N1/Cloudflare 直连设备 Web 方案保持删除且不兼容。当前实现只服从 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 和 `/Users/tyg/workspace/iot-device-lab/docs/02-公共通信规则.md`，本项目不复制协议正文。
 
 启动时只有加载到有效配置或成功创建默认配置后才继续；存在配置文件但所有副本均无效时保持输出关闭，不用默认值覆盖。RTC 倒退判断会参考最近浇水记录、应用事件和在线检查点。在线检查点仅在达到配置间隔且期间没有业务写入时保存，避免不必要的 Flash 磨损。
 
@@ -24,6 +24,33 @@ pio run -e esp32_irrigation
 pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-port>
 ```
 
+## 统一 IoT 平台本机配置
+
+平台能力与本地权威入口的固定映射：
+
+| 平台能力 | 现有业务入口或证据 |
+| --- | --- |
+| `operation.start-manual` | `IrrigationApp::startManualWatering()` |
+| `operation.stop` | `IrrigationApp::stopWatering()` |
+| `operation.single-output` | `IrrigationApp::startSingleOutput()` |
+| `parameter.plans` | 合并为当前 `IrrigationConfig` 后经 `saveConfiguration()` 完整校验和原子保存 |
+| `parameter.automatic-watering` | 现有暂停、定时暂停和恢复入口 |
+| 当前只读 state | 从 `WateringStatus`、当前配置、调度、RTC 和存储状态投影，不建立第二业务模型 |
+| 业务 event | 从本地浇水 Store v5 和 App Events 补发，PUBACK 后推进各自游标 |
+
+复制无凭据模板到 Git 忽略目录，填写真实设备独立的 `deviceId`、Client ID、用户名和密码。Broker 可以与其它设备共用，但不得复用模拟器或服务端身份；构建日志和回复中不得回显真实值。
+
+```sh
+mkdir -p local_private
+cp include/IrrigationMqttPrivate.example.h local_private/IrrigationMqttPrivate.h
+```
+
+`IRRIGATION_MQTT_DEFINITION_SHA256` 必须与当前受控定义一致，否则适配器拒绝启动。没有私有文件或显式设置 `IRRIGATION_MQTT_ENABLED 0` 时，仅禁用平台连接，本地 Web、RTC 计划、手动停止和现场保护继续工作。MQTT 使用 TLS、独立连接周期/LWT、QoS 1 和非 retained command；命令经过有界队列在主循环串行执行。浇水历史在本地持久化后生成稳定 eventId，并在 PUBACK 后推进补发游标。
+
+本轮浇水记录采用当前唯一的 Store v5，固化发生时水路名称用于历史平台事件；不读取或迁移旧 Store。安装到已有旧 Store 的设备前，应在确认维护窗口及数据取舍后按现有 System 流程处理，不能仅因版本提示擅自格式化。
+
+分层验收顺序：先运行 native 契约与业务回归，再编译设备记录测试固件和正式固件；随后在维护窗口烧录，检查写入校验和启动日志；最后使用真实设备专属凭据验证 EMQX 连接、LWT、重连、状态新鲜度、命令幂等、断网期间本地计划与停止、浇水事件补发。未完成最后两层时不得宣称实机或真实平台通过。
+
 基础库 Web OTA 使用本地 `platformio.local.ini` 保存设备地址和 Web Auth，该文件被 Git 忽略且不得提交。仓库中的 `platformio.example.ini` 只提供无凭据模板。需要升级时由操作者显式执行 `pio run -e esp32_irrigation -t webota`，普通构建和测试不会触发 OTA。
 
 ```sh
@@ -31,6 +58,8 @@ cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 Web OTA 配置
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-08-25 统一 IoT MQTT 平台接入：新增严格的当前受控命令解析、TLS 连接与独立 LWT 周期、有界命令队列、持久幂等记录、receipt/progress、完整状态投影和业务事件补发；本地 Web、RTC 调度及平台命令继续共用现有业务入口。浇水 Store 使用当前唯一 v5 格式保存发生时水路名称，计划编辑不再清除已停用水路的隐藏历史配置。执行 `pio test -e native` 通过 92/92；执行 `pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录/事件测试固件，未在板卡运行；执行 `pio run -e esp32_irrigation` 成功，RAM 95788 B / 29.2%、Flash 1464965 B / 93.1%。本轮未烧录、未操作泵阀，也未连接真实 EMQX；这些结果只证明主机契约/业务回归和目标固件可编译。
 
 2026-08-25 旧远程方案清理：删除旧 MQTT 业务实现、协议测试、私有配置生成、Mac 测试控制台以及 N1/Cloudflare 直连设备 Web 方案。本地 Web、浇水控制、自动调度、配置、RTC、记录、事件、流量保护和校准继续保留。执行 `pio test -e native` 通过 86/86；执行 `pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备端记录/事件测试固件，未在硬件上运行；执行 `pio run -e esp32_irrigation` 成功，RAM 80460 B / 24.6%、Flash 1298369 B / 82.5%。本轮没有烧录、OTA、操作泵阀或进行真实 MQTT/服务器联调，也没有实现新 MQTT 协议或平台适配。实际硬件 RTC 已接通并测试正常。
 

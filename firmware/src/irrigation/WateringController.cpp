@@ -1,5 +1,7 @@
 #include "WateringController.h"
 
+#include <cstdio>
+
 namespace {
 
 bool elapsed(uint32_t nowMs, uint32_t startedMs, uint32_t durationMs) {
@@ -52,6 +54,11 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     sessionSummary_.zoneCount = request.stepCount;
     for (uint8_t index = 0; index < request.stepCount; ++index) {
         sessionSummary_.zones[index].zoneId = request.steps[index].zoneId;
+        std::snprintf(
+            sessionSummary_.zones[index].zoneName.data(),
+            sessionSummary_.zones[index].zoneName.size(),
+            "%s",
+            config.zones[BoardPins::zoneIndex(request.steps[index].zoneId)].name.data());
         sessionSummary_.zones[index].result = ZoneWateringResult::NotStarted;
         sessionSummary_.zones[index].plannedDurationSec = request.steps[index].targetDurationSec;
         sessionSummary_.zones[index].targetWaterMl = request.steps[index].targetWaterMl;

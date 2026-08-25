@@ -142,6 +142,7 @@ bool IrrigationApp::begin() {
 
     businessReady_ = true;
     resetUnexpectedFlowMonitor(millis());
+    mqttAdapter_.begin(*this);
     ESP32BASE_LOG_I("irrigation", "business_ready records_fault=%s events_fault=%s scheduler_fault=%s",
                     recordStorageFault_ ? "yes" : "no",
                     Esp32BaseAppEvents::isEventStoreReady() ? "no" : "yes",
@@ -156,6 +157,7 @@ void IrrigationApp::handle() {
     }
 
     advanceBusiness();
+    mqttAdapter_.handle();
     Esp32Base::handle();
 }
 
