@@ -94,6 +94,72 @@ bool acceptsCommandTransport(uint8_t qos, bool retain) {
     return qos == 1 && !retain;
 }
 
+void TrustedTimeAnchor::observe(bool synced,
+                                uint32_t epochSec,
+                                uint32_t currentMillis) {
+    if (available()) {
+        const uint32_t elapsedSec =
+            static_cast<uint32_t>(currentMillis - anchorMillis_) / 1000U;
+        epochSec_ += elapsedSec;
+        anchorMillis_ += elapsedSec * 1000U;
+    }
+    if (synced && epochSec != 0) {
+        if (!available() || epochSec > epochSec_) {
+            epochSec_ = epochSec;
+            anchorMillis_ = currentMillis;
+        }
+    }
+}
+
+bool TrustedTimeAnchor::available() const { return epochSec_ != 0; }
+
+uint64_t TrustedTimeAnchor::currentTimeMs(uint32_t currentMillis) const {
+    if (!available()) return 0;
+    return static_cast<uint64_t>(epochSec_) * 1000ULL +
+           static_cast<uint32_t>(currentMillis - anchorMillis_);
+}
+
+uint32_t TrustedTimeAnchor::currentEpochSec(uint32_t currentMillis) const {
+    return static_cast<uint32_t>(currentTimeMs(currentMillis) / 1000ULL);
+}
+
+CommandGuardRejection evaluateCommandGuard(const CommandGuardContext& context) {
+    if (context.currentTimeMs == 0)
+        return CommandGuardRejection::TimeUntrusted;
+    if (context.expiresAtMs <= context.currentTimeMs)
+        return CommandGuardRejection::Expired;
+    if (!context.businessReady || !context.configurationReady)
+        return CommandGuardRejection::NotReady;
+    if (context.capability == IrrigationPlatformProtocol::Capability::Stop) {
+        return context.wateringActive && !context.normalWatering
+                   ? CommandGuardRejection::MaintenanceActivity
+                   : CommandGuardRejection::None;
+    }
+    if (context.capability ==
+            IrrigationPlatformProtocol::Capability::AutomaticWatering &&
+        context.automaticMode == AutomaticWateringMode::PausedUntil) {
+        if (!context.calendarTimeTrusted)
+            return CommandGuardRejection::TimeUntrusted;
+        if (context.resumeAtEpoch <= context.currentTimeMs / 1000ULL)
+            return CommandGuardRejection::InvalidResumeTime;
+    }
+    return CommandGuardRejection::None;
+}
+
+const char* commandGuardReason(CommandGuardRejection rejection) {
+    switch (rejection) {
+        case CommandGuardRejection::None: return nullptr;
+        case CommandGuardRejection::TimeUntrusted: return "time_untrusted";
+        case CommandGuardRejection::Expired: return "expired";
+        case CommandGuardRejection::NotReady: return "not_ready";
+        case CommandGuardRejection::MaintenanceActivity:
+            return "maintenance_activity";
+        case CommandGuardRejection::InvalidResumeTime:
+            return "invalid_resume_time";
+    }
+    return "not_ready";
+}
+
 bool shouldReplayProgress(EvidenceStatus status) {
     return status == EvidenceStatus::Running ||
            status == EvidenceStatus::Succeeded ||
@@ -209,6 +275,39 @@ bool EvidenceStore::markTerminal(EvidenceEntry& entry,
     entry.reason = {};
     if (reason) std::snprintf(entry.reason.data(), entry.reason.size(), "%s", reason);
     return true;
+}
+
+EvidenceCommitResult EvidenceStore::commitReceipt(
+    EvidenceEntry& entry,
+    EvidenceStatus receipt,
+    const char* reason,
+    EvidencePersistCallback persist,
+    void* context) {
+    const bool changed = receipt == EvidenceStatus::Accepted
+                             ? markAccepted(entry)
+                             : receipt == EvidenceStatus::Rejected
+                                   ? markRejected(entry, reason)
+                                   : false;
+    if (!changed) return EvidenceCommitResult::InvalidTransition;
+    if (persist && persist(context)) return EvidenceCommitResult::Persisted;
+    entry = {};
+    return EvidenceCommitResult::PersistenceFailed;
+}
+
+EvidenceCommitResult EvidenceStore::commitProgress(
+    EvidenceEntry& entry,
+    EvidenceStatus progress,
+    const char* reason,
+    EvidencePersistCallback persist,
+    void* context) {
+    const EvidenceEntry previous = entry;
+    const bool changed = progress == EvidenceStatus::Running
+                             ? markRunning(entry)
+                             : markTerminal(entry, progress, reason);
+    if (!changed) return EvidenceCommitResult::InvalidTransition;
+    if (persist && persist(context)) return EvidenceCommitResult::Persisted;
+    entry = previous;
+    return EvidenceCommitResult::PersistenceFailed;
 }
 
 bool EvidenceStore::validate() const {

@@ -36,8 +36,10 @@ private:
     bool popIncoming(QueuedPacket& packet);
     void processPacket(const QueuedPacket& packet);
     void execute(const IrrigationPlatformProtocol::Command& command,
-                 HistoryEntry& history);
-    const char* evaluate(const IrrigationPlatformProtocol::Command& command) const;
+                 HistoryEntry& history,
+                 uint64_t currentTimeMs);
+    const char* evaluate(const IrrigationPlatformProtocol::Command& command,
+                         uint64_t currentTimeMs) const;
     const char* buildPlans(const IrrigationPlatformProtocol::Command& command,
                            IrrigationConfig& next) const;
     bool applyPlans(const IrrigationPlatformProtocol::Command& command);
@@ -46,6 +48,7 @@ private:
     HistoryEntry* findHistory(const char* commandId);
     bool loadHistory();
     bool saveHistory();
+    static bool persistHistory(void* context);
     bool commandSignature(const IrrigationPlatformProtocol::Command& command,
                           std::array<uint8_t, 32>& signature) const;
     void replay(const HistoryEntry& entry);
@@ -81,7 +84,8 @@ private:
     void publishAvailability(bool online, const char* reason = nullptr);
     bool enqueue(IrrigationMqttCore::Channel channel, const char* payload);
     bool observedAt(char* output, std::size_t size);
-    uint64_t nowMs() const;
+    void refreshTrustedTime(uint32_t currentMillis);
+    uint64_t nowMs();
     void makeConnectionId();
     void makeTopic(IrrigationMqttCore::Channel channel,
                    char* output,
@@ -113,8 +117,7 @@ private:
     uint32_t lastProgressPublishMs_ = 0;
     uint32_t lastConfigRevision_ = 0;
     uint32_t lastRuntimeFingerprint_ = 0;
-    uint32_t lastTrustedEpoch_ = 0;
-    uint32_t lastTrustedMillis_ = 0;
+    IrrigationMqttCore::TrustedTimeAnchor trustedTime_{};
     uint32_t lastWateringEventPollMs_ = 0;
     IrrigationMqttCore::EventCursor wateringEventCursor_{};
     uint32_t lastAppEventPollMs_ = 0;

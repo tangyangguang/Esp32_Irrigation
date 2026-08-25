@@ -47,17 +47,25 @@ cp include/IrrigationMqttPrivate.example.h local_private/IrrigationMqttPrivate.h
 
 `IRRIGATION_MQTT_DEFINITION_SHA256` 必须与当前受控定义一致，否则适配器拒绝启动。没有私有文件或显式设置 `IRRIGATION_MQTT_ENABLED 0` 时，仅禁用平台连接，本地 Web、RTC 计划、手动停止和现场保护继续工作。MQTT 使用 TLS、独立连接周期/LWT、QoS 1 和非 retained command；命令经过有界队列在主循环串行执行，普通命令只有一个待处理槽，另保留一个专用 stop 槽且优先取出，避免普通命令占满队列后饿死远程停止。浇水历史在本地持久化后生成稳定 eventId；只有匹配消息且游标成功持久化的 PUBACK 才推进补发游标，断线、错误消息 ID 或 NVS 写入失败均不推进。
 
+平台适配器只在本次启动曾取得可信 RTC/NTP 快照后，使用该 epoch 与 `millis()` 单调外推命令 TTL 和消息观测时间；瞬时失去同步不会阻断仍在有效期内的普通浇水 stop，但重启后从未取得可信时间时仍不连接平台、不接受远程命令。定时暂停仍同时要求当前时间同步和调度器时间状态 Ready，维护校准或水路学习活动仍不能由平台 stop 中断。本地 Web、现场停止和控制器安全入口不经过这层 MQTT 时间判断。
+
+命令证据固定保存 8 条。当前定义 TTL 为 10～30 秒，适配器同时最多排队一个普通命令和一个 stop，正常串行命令流不会必然耗尽该容量；异常突发仍可能填满，此时新命令静默丢弃并由服务端进入 timeout/unknown，不发布未持久化的拒绝，也不执行动作。receipt 和 progress 只有在完整证据成功写入 NVS 后才发布，写入失败会回滚 RAM 中未持久化的状态。
+
 本轮浇水记录采用当前唯一的 Store v5，固化发生时水路名称用于历史平台事件；不读取或迁移旧 Store。安装到已有旧 Store 的设备前，应在确认维护窗口及数据取舍后按现有 System 流程处理，不能仅因版本提示擅自格式化。
 
 分层验收顺序：先运行 native 契约与业务回归，再编译设备记录测试固件和正式固件；随后在维护窗口烧录，检查写入校验和启动日志；最后使用真实设备专属凭据验证 EMQX 连接、LWT、重连、状态新鲜度、命令幂等、断网期间本地计划与停止、浇水事件补发。未完成最后两层时不得宣称实机或真实平台通过。
 
 基础库 Web OTA 使用本地 `platformio.local.ini` 保存设备地址和 Web Auth，该文件被 Git 忽略且不得提交。仓库中的 `platformio.example.ini` 只提供无凭据模板。需要升级时由操作者显式执行 `pio run -e esp32_irrigation -t webota`，普通构建和测试不会触发 OTA。
 
+正式构建会由 `scripts/check_ota_image_size.py` 读取 `board_build.partitions` 指向的实际 CSV，并在生成 `firmware.bin` 后输出两个 OTA app slot、镜像大小和剩余字节/百分比。镜像超过最小 OTA slot 时构建失败；剩余低于 10% 只产生明确告警，不阻止当前构建，也不通过修改分区或删除现有功能规避空间风险。
+
 ```sh
 cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 Web OTA 配置
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-08-25 MQTT 安全停止、持久证据与 OTA 尺寸门槛：复用适配器已有可信 epoch/`millis()` 锚点，使时间同步瞬时下降后仍能按 TTL 接受正常浇水 stop；从未可信、命令过期、定时暂停时间不可信和维护活动 stop 继续拒绝。容量满或首次证据 NVS 写入失败改为静默丢弃，所有 receipt/progress 在发布前持久化，失败时回滚未落盘 RAM 状态；固定 8 条容量保持不变。新增正式构建后尺寸检查，直接读取当前分区 CSV，超槽失败、低于 10% 仅告警。执行 `/opt/homebrew/bin/pio test -e native` 通过 104/104，其中 MQTT 核心 12/12；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录测试固件，未在板卡运行；执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466605 B / 93.2%。实际 app0/app1 均为 1572864 B，ELF 程序余 106259 B / 6.76%；`firmware.bin` 为 1473184 B，余 99680 B / 6.34%，尺寸检查输出低余量告警但构建成功。本轮未烧录、未使用串口、未发送 MQTT 业务命令，也未操作泵阀、流量计或 RTC。
 
 2026-08-25 MQTT 适配器状态证据加固：抽取由正式适配器直接调用的最小纯 C++ 决策组件，native 可执行测试新增覆盖同签名幂等重放、冲突静默丢弃、receipt/progress 顺序、远程浇水被 stop 中断、空闲 stop、重启不推断无证据终态、连接周期完整状态与已知 progress 重放、QoS/retain、有界 stop 专用槽、事件 PUBACK 游标及固定发布策略。修复普通命令占满队列时 stop 无声饿死，以及 PUBACK 后即使游标 NVS 保存失败仍在 RAM 推进的两个实际缺陷。执行 `pio test -e native` 通过 100/100；执行 `pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录/事件测试固件，未在板卡运行；执行 `pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466365 B / 93.2%。实际 `esp32-4mb-ota-balanced.csv` 的 `app0`、`app1` 均为 1572864 B：当前 ELF 程序占用余 106499 B / 6.77%，生成的 `firmware.bin` 为 1472944 B、距单槽上限余 99920 B / 6.35%；`cd55fba^` 为 1298369 B、余 274495 B / 17.45%。双槽布局和当前镜像仍满足 OTA 装载条件，但余量已经偏紧，后续协议微调必须持续检查最终 binary，不能视为无风险。本轮没有为减重删除本地 Web、OTA、RTC 或安全能力，也没有发现可在不牺牲现有能力的前提下显著收回约 168 KB 的低风险重复实现。
 

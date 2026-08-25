@@ -1,6 +1,7 @@
 #include <unity.h>
 
 #include <array>
+#include <cstdio>
 #include <cstring>
 
 #include "irrigation/IrrigationMqttCore.h"
@@ -29,6 +30,193 @@ EvidenceEntry& admitted(EvidenceStore& store,
                       static_cast<int>(result.result));
     TEST_ASSERT_NOT_NULL(result.entry);
     return *result.entry;
+}
+
+struct PersistenceHarness {
+    EvidenceStore* live = nullptr;
+    EvidenceStore durable{};
+    bool succeed = true;
+    uint8_t calls = 0;
+};
+
+bool persistEvidence(void* context) {
+    auto& harness = *static_cast<PersistenceHarness*>(context);
+    ++harness.calls;
+    if (!harness.succeed) return false;
+    harness.durable.entries() = harness.live->entries();
+    return true;
+}
+
+CommandGuardContext stopContext(uint64_t currentTimeMs, uint64_t expiresAtMs) {
+    CommandGuardContext context{};
+    context.capability = Capability::Stop;
+    context.currentTimeMs = currentTimeMs;
+    context.expiresAtMs = expiresAtMs;
+    context.businessReady = true;
+    context.configurationReady = true;
+    context.normalWatering = true;
+    return context;
+}
+
+void test_trusted_anchor_allows_only_safe_commands_after_sync_loss() {
+    TrustedTimeAnchor anchor;
+    constexpr uint32_t kEpoch = 1700000000U;
+    anchor.observe(true, kEpoch, 1000U);
+    anchor.observe(false, 0, 6500U);
+    const uint64_t projected = anchor.currentTimeMs(6500U);
+    TEST_ASSERT_EQUAL_UINT64(1700000005500ULL, projected);
+    anchor.observe(true, kEpoch - 10U, 7000U);
+    TEST_ASSERT_EQUAL_UINT64(1700000006000ULL, anchor.currentTimeMs(7000U));
+
+    CommandGuardContext stop = stopContext(projected, projected + 5000U);
+    TEST_ASSERT_EQUAL(static_cast<int>(CommandGuardRejection::None),
+                      static_cast<int>(evaluateCommandGuard(stop)));
+    stop.expiresAtMs = projected;
+    TEST_ASSERT_EQUAL(static_cast<int>(CommandGuardRejection::Expired),
+                      static_cast<int>(evaluateCommandGuard(stop)));
+
+    TrustedTimeAnchor neverTrusted;
+    stop = stopContext(neverTrusted.currentTimeMs(7000U), projected + 5000U);
+    TEST_ASSERT_EQUAL(static_cast<int>(CommandGuardRejection::TimeUntrusted),
+                      static_cast<int>(evaluateCommandGuard(stop)));
+
+    CommandGuardContext paused = stopContext(projected, projected + 5000U);
+    paused.capability = Capability::AutomaticWatering;
+    paused.automaticMode = AutomaticWateringMode::PausedUntil;
+    paused.resumeAtEpoch = static_cast<uint32_t>(projected / 1000ULL) + 60U;
+    paused.calendarTimeTrusted = false;
+    TEST_ASSERT_EQUAL(static_cast<int>(CommandGuardRejection::TimeUntrusted),
+                      static_cast<int>(evaluateCommandGuard(paused)));
+
+    stop = stopContext(projected, projected + 5000U);
+    stop.wateringActive = true;
+    stop.normalWatering = false;
+    TEST_ASSERT_EQUAL(static_cast<int>(CommandGuardRejection::MaintenanceActivity),
+                      static_cast<int>(evaluateCommandGuard(stop)));
+}
+
+void test_receipt_persistence_gates_publish_action_retry_and_restart() {
+    EvidenceStore store;
+    PersistenceHarness persistence{&store};
+    uint8_t publishedReceipts = 0;
+    uint8_t businessActions = 0;
+
+    EvidenceEntry& first = admitted(store, kCommandA, 0x01);
+    persistence.succeed = false;
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::PersistenceFailed),
+        static_cast<int>(store.commitReceipt(
+            first, EvidenceStatus::Accepted, nullptr, persistEvidence, &persistence)));
+    TEST_ASSERT_NULL(store.find(kCommandA));
+    TEST_ASSERT_EQUAL_UINT8(0, publishedReceipts);
+    TEST_ASSERT_EQUAL_UINT8(0, businessActions);
+
+    EvidenceEntry& retry = admitted(store, kCommandA, 0x01);
+    persistence.succeed = true;
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::Persisted),
+        static_cast<int>(store.commitReceipt(
+            retry, EvidenceStatus::Accepted, nullptr, persistEvidence, &persistence)));
+    ++publishedReceipts;
+    ++businessActions;
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::Persisted),
+        static_cast<int>(store.commitProgress(
+            retry, EvidenceStatus::Running, nullptr, persistEvidence, &persistence)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::Persisted),
+        static_cast<int>(store.commitProgress(
+            retry, EvidenceStatus::Succeeded, nullptr, persistEvidence, &persistence)));
+
+    const auto duplicate = store.admit(kCommandA, signature(0x01), 2000,
+                                       Capability::StartManual, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(Admission::Replay),
+                      static_cast<int>(duplicate.result));
+    ++publishedReceipts;
+    TEST_ASSERT_EQUAL_UINT8(1, businessActions);
+
+    EvidenceStore restarted;
+    restarted.entries() = persistence.durable.entries();
+    TEST_ASSERT_TRUE(restarted.validate());
+    const auto afterRestart = restarted.admit(kCommandA, signature(0x01), 2000,
+                                               Capability::StartManual, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(Admission::Replay),
+                      static_cast<int>(afterRestart.result));
+    TEST_ASSERT_EQUAL(static_cast<int>(EvidenceStatus::Succeeded),
+                      static_cast<int>(afterRestart.entry->progress));
+    TEST_ASSERT_EQUAL_UINT8(1, businessActions);
+    TEST_ASSERT_EQUAL_UINT8(2, publishedReceipts);
+}
+
+void test_unpersisted_rejection_and_terminal_are_never_replayed() {
+    EvidenceStore store;
+    PersistenceHarness persistence{&store};
+    EvidenceEntry& rejected = admitted(store, kCommandA, 0x51);
+    persistence.succeed = false;
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::PersistenceFailed),
+        static_cast<int>(store.commitReceipt(
+            rejected, EvidenceStatus::Rejected, "expired", persistEvidence,
+            &persistence)));
+    TEST_ASSERT_NULL(store.find(kCommandA));
+
+    EvidenceEntry& running = admitted(store, kCommandB, 0x52);
+    persistence.succeed = true;
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::Persisted),
+        static_cast<int>(store.commitReceipt(
+            running, EvidenceStatus::Accepted, nullptr, persistEvidence, &persistence)));
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::Persisted),
+        static_cast<int>(store.commitProgress(
+            running, EvidenceStatus::Running, nullptr, persistEvidence, &persistence)));
+    persistence.succeed = false;
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::PersistenceFailed),
+        static_cast<int>(store.commitProgress(
+            running, EvidenceStatus::Succeeded, nullptr, persistEvidence,
+            &persistence)));
+    TEST_ASSERT_EQUAL(static_cast<int>(EvidenceStatus::Running),
+                      static_cast<int>(running.progress));
+    TEST_ASSERT_EQUAL(static_cast<int>(EvidenceStatus::Running),
+                      static_cast<int>(persistence.durable.find(kCommandB)->progress));
+}
+
+void test_full_evidence_store_silently_retries_without_action() {
+    EvidenceStore store;
+    PersistenceHarness persistence{&store};
+    char commandId[37]{};
+    for (uint8_t index = 0; index < kEvidenceCapacity; ++index) {
+        std::snprintf(commandId, sizeof(commandId),
+                      "%08x-0000-4000-8000-%012x", index + 1U, index + 1U);
+        const auto result = store.admit(commandId, signature(index), 60000,
+                                        Capability::StartManual, 1000);
+        TEST_ASSERT_EQUAL(static_cast<int>(Admission::New),
+                          static_cast<int>(result.result));
+        TEST_ASSERT_EQUAL(
+            static_cast<int>(EvidenceCommitResult::Persisted),
+            static_cast<int>(store.commitReceipt(
+                *result.entry, EvidenceStatus::Rejected, "busy", persistEvidence,
+                &persistence)));
+    }
+    const auto full = store.admit(kStopCommand, signature(0x61), 60000,
+                                  Capability::Stop, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(Admission::Full),
+                      static_cast<int>(full.result));
+    TEST_ASSERT_NULL(full.entry);
+    const auto retried = store.admit(kStopCommand, signature(0x61), 60000,
+                                     Capability::Stop, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(Admission::Full),
+                      static_cast<int>(retried.result));
+    TEST_ASSERT_NULL(store.find(kStopCommand));
+
+    EvidenceStore restarted;
+    restarted.entries() = persistence.durable.entries();
+    TEST_ASSERT_TRUE(restarted.validate());
+    const auto afterRestart = restarted.admit(kStopCommand, signature(0x61),
+                                               60000, Capability::Stop, 1000);
+    TEST_ASSERT_EQUAL(static_cast<int>(Admission::Full),
+                      static_cast<int>(afterRestart.result));
 }
 
 void test_duplicate_replays_latest_evidence_without_second_action() {
@@ -228,6 +416,10 @@ void test_fixed_channel_qos_and_retain_policy_matches_adapter_contract() {
 
 int main(int, char**) {
     UNITY_BEGIN();
+    RUN_TEST(test_trusted_anchor_allows_only_safe_commands_after_sync_loss);
+    RUN_TEST(test_receipt_persistence_gates_publish_action_retry_and_restart);
+    RUN_TEST(test_unpersisted_rejection_and_terminal_are_never_replayed);
+    RUN_TEST(test_full_evidence_store_silently_retries_without_action);
     RUN_TEST(test_duplicate_replays_latest_evidence_without_second_action);
     RUN_TEST(test_conflicting_signature_is_silent_and_keeps_original_evidence);
     RUN_TEST(test_stop_finishes_original_before_stop_and_idle_stop_succeeds);

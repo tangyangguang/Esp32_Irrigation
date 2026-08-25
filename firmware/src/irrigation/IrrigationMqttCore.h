@@ -32,6 +32,44 @@ PublicationPolicy publicationPolicy(Channel channel);
 bool acceptsCommandTransport(uint8_t qos, bool retain);
 bool isStopCommandEnvelope(const char* payload, std::size_t length);
 
+class TrustedTimeAnchor {
+public:
+    void observe(bool synced, uint32_t epochSec, uint32_t currentMillis);
+    bool available() const;
+    uint64_t currentTimeMs(uint32_t currentMillis) const;
+    uint32_t currentEpochSec(uint32_t currentMillis) const;
+
+private:
+    uint32_t epochSec_ = 0;
+    uint32_t anchorMillis_ = 0;
+};
+
+enum class CommandGuardRejection : uint8_t {
+    None,
+    TimeUntrusted,
+    Expired,
+    NotReady,
+    MaintenanceActivity,
+    InvalidResumeTime,
+};
+
+struct CommandGuardContext {
+    IrrigationPlatformProtocol::Capability capability =
+        IrrigationPlatformProtocol::Capability::Stop;
+    AutomaticWateringMode automaticMode = AutomaticWateringMode::Enabled;
+    uint64_t expiresAtMs = 0;
+    uint32_t resumeAtEpoch = 0;
+    uint64_t currentTimeMs = 0;
+    bool businessReady = false;
+    bool configurationReady = false;
+    bool wateringActive = false;
+    bool normalWatering = true;
+    bool calendarTimeTrusted = false;
+};
+
+CommandGuardRejection evaluateCommandGuard(const CommandGuardContext& context);
+const char* commandGuardReason(CommandGuardRejection rejection);
+
 enum class EvidenceStatus : uint8_t {
     None,
     Accepted,
@@ -69,6 +107,14 @@ struct AdmissionResult {
         : result(valueResult), entry(valueEntry) {}
 };
 
+using EvidencePersistCallback = bool (*)(void* context);
+
+enum class EvidenceCommitResult : uint8_t {
+    Persisted,
+    PersistenceFailed,
+    InvalidTransition,
+};
+
 class EvidenceStore {
 public:
     AdmissionResult admit(const char* commandId,
@@ -84,6 +130,16 @@ public:
     bool markTerminal(EvidenceEntry& entry,
                       EvidenceStatus terminal,
                       const char* reason = nullptr);
+    EvidenceCommitResult commitReceipt(EvidenceEntry& entry,
+                                       EvidenceStatus receipt,
+                                       const char* reason,
+                                       EvidencePersistCallback persist,
+                                       void* context);
+    EvidenceCommitResult commitProgress(EvidenceEntry& entry,
+                                        EvidenceStatus progress,
+                                        const char* reason,
+                                        EvidencePersistCallback persist,
+                                        void* context);
     bool validate() const;
     bool reconcileAfterRestart();
     std::array<EvidenceEntry, kEvidenceCapacity>& entries();

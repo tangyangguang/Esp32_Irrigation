@@ -152,13 +152,14 @@ bool IrrigationMqttAdapter::begin(IrrigationApp& app) {
 void IrrigationMqttAdapter::handle() {
     if (!enabled_ || !app_) return;
     const uint32_t now = millis();
+    refreshTrustedTime(now);
     if (restartPending_ && static_cast<int32_t>(now - reconnectAtMs_) >= 0) {
         stopClient();
         restartPending_ = false;
     }
     if (!client_ && !restartPending_ &&
         static_cast<int32_t>(now - reconnectAtMs_) >= 0 &&
-        Esp32BaseTime::snapshot().synced) {
+        trustedTime_.available()) {
         if (!startClient()) reconnectAtMs_ = now + kReconnectDelayMs;
     }
 
@@ -390,49 +391,34 @@ void IrrigationMqttAdapter::processPacket(const QueuedPacket& packet) {
     }
     std::array<uint8_t, 32> signature{};
     if (!commandSignature(command, signature)) return;
+    const uint64_t currentTimeMs = nowMs();
     const auto admission = history_.admit(
         command.commandId.data(), signature, command.expiresAtMs,
-        command.capability, nowMs());
+        command.capability, currentTimeMs);
     if (admission.result == IrrigationMqttCore::Admission::Replay) {
         replay(*admission.entry);
         return;
     }
     if (admission.result == IrrigationMqttCore::Admission::Conflict) return;
-    if (admission.result == IrrigationMqttCore::Admission::Full) {
-        HistoryEntry temporary{};
-        temporary.used = true;
-        temporary.capability = command.capability;
-        temporary.receipt = EvidenceStatus::Rejected;
-        std::snprintf(temporary.commandId.data(), temporary.commandId.size(), "%s",
-                      command.commandId.data());
-        std::snprintf(temporary.reason.data(), temporary.reason.size(), "%s",
-                      "persistence_error");
-        publishReceipt(temporary);
-        return;
-    }
-    execute(command, *admission.entry);
+    if (admission.result == IrrigationMqttCore::Admission::Full) return;
+    execute(command, *admission.entry, currentTimeMs);
 }
 
 void IrrigationMqttAdapter::execute(
     const IrrigationPlatformProtocol::Command& command,
-    HistoryEntry& history) {
-    const char* rejection = evaluate(command);
+    HistoryEntry& history,
+    uint64_t currentTimeMs) {
+    const char* rejection = evaluate(command, currentTimeMs);
     if (rejection) {
-        history_.markRejected(history, rejection);
-        if (!saveHistory()) return;
+        if (history_.commitReceipt(history, EvidenceStatus::Rejected, rejection,
+                                   persistHistory, this) !=
+            IrrigationMqttCore::EvidenceCommitResult::Persisted) return;
         publishReceipt(history);
         return;
     }
-    history_.markAccepted(history);
-    if (!saveHistory()) {
-        HistoryEntry temporary = history;
-        temporary.receipt = EvidenceStatus::Rejected;
-        std::snprintf(temporary.reason.data(), temporary.reason.size(), "%s",
-                      "persistence_error");
-        history = {};
-        publishReceipt(temporary);
-        return;
-    }
+    if (history_.commitReceipt(history, EvidenceStatus::Accepted, nullptr,
+                               persistHistory, this) !=
+        IrrigationMqttCore::EvidenceCommitResult::Persisted) return;
     publishReceipt(history);
     setProgress(history, EvidenceStatus::Running);
 
@@ -509,31 +495,35 @@ void IrrigationMqttAdapter::execute(
 }
 
 const char* IrrigationMqttAdapter::evaluate(
-    const IrrigationPlatformProtocol::Command& command) const {
+    const IrrigationPlatformProtocol::Command& command,
+    uint64_t currentTimeMs) const {
     const Esp32BaseTime::Snapshot time = Esp32BaseTime::snapshot();
-    if (!time.synced) return "time_untrusted";
-    if (command.expiresAtMs <= static_cast<uint64_t>(time.epochSec) * 1000ULL)
-        return "expired";
-    if (!app_->businessReady()) return "not_ready";
     const IrrigationConfig* config = app_->configuration();
-    if (!config) return "not_ready";
     const WateringStatus status = app_->wateringStatus();
-    if (command.capability == IrrigationPlatformProtocol::Capability::Stop) {
-        if (status.active && status.purpose != WateringPurpose::Normal)
-            return "maintenance_activity";
+    IrrigationMqttCore::CommandGuardContext context{};
+    context.capability = command.capability;
+    context.automaticMode = command.automaticMode;
+    context.expiresAtMs = command.expiresAtMs;
+    context.resumeAtEpoch = command.resumeAtEpoch;
+    context.currentTimeMs = currentTimeMs;
+    context.businessReady = app_->businessReady();
+    context.configurationReady = config != nullptr;
+    context.wateringActive = status.active;
+    context.normalWatering = status.purpose == WateringPurpose::Normal;
+    context.calendarTimeTrusted =
+        time.synced &&
+        app_->schedulerTimeState() == WateringScheduler::TimeState::Ready;
+    const auto guard = IrrigationMqttCore::evaluateCommandGuard(context);
+    if (guard != IrrigationMqttCore::CommandGuardRejection::None)
+        return IrrigationMqttCore::commandGuardReason(guard);
+    if (command.capability == IrrigationPlatformProtocol::Capability::Stop)
         return nullptr;
-    }
     if (command.capability == IrrigationPlatformProtocol::Capability::Plans) {
         IrrigationConfig next{};
         return buildPlans(command, next);
     }
     if (command.capability ==
         IrrigationPlatformProtocol::Capability::AutomaticWatering) {
-        if (command.automaticMode == AutomaticWateringMode::PausedUntil) {
-            if (app_->schedulerTimeState() != WateringScheduler::TimeState::Ready)
-                return "time_untrusted";
-            if (command.resumeAtEpoch <= time.epochSec) return "invalid_resume_time";
-        }
         return nullptr;
     }
     if (status.active || remoteOperation_.hasActive()) return "busy";
@@ -663,6 +653,11 @@ bool IrrigationMqttAdapter::saveHistory() {
            sizeof(entries);
 }
 
+bool IrrigationMqttAdapter::persistHistory(void* context) {
+    return context &&
+           static_cast<IrrigationMqttAdapter*>(context)->saveHistory();
+}
+
 bool IrrigationMqttAdapter::commandSignature(
     const IrrigationPlatformProtocol::Command& command,
     std::array<uint8_t, 32>& signature) const {
@@ -730,11 +725,11 @@ void IrrigationMqttAdapter::publishProgress(const HistoryEntry& entry) {
 void IrrigationMqttAdapter::setProgress(HistoryEntry& entry,
                                         EvidenceStatus status,
                                         const char* reason) {
-    const bool changed = status == EvidenceStatus::Running
-                             ? history_.markRunning(entry)
-                             : history_.markTerminal(entry, status, reason);
-    if (!changed) return;
-    if (!saveHistory()) {
+    const auto committed = history_.commitProgress(
+        entry, status, reason, persistHistory, this);
+    if (committed == IrrigationMqttCore::EvidenceCommitResult::InvalidTransition)
+        return;
+    if (committed == IrrigationMqttCore::EvidenceCommitResult::PersistenceFailed) {
         ESP32BASE_LOG_E("irrigation_mqtt", "command_evidence_save_failed");
         return;
     }
@@ -1350,23 +1345,22 @@ bool IrrigationMqttAdapter::enqueue(IrrigationMqttCore::Channel channel,
 }
 
 bool IrrigationMqttAdapter::observedAt(char* output, std::size_t size) {
-    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
-    uint32_t epoch = 0;
-    if (now.synced) {
-        lastTrustedEpoch_ = now.epochSec;
-        lastTrustedMillis_ = millis();
-        epoch = now.epochSec;
-    } else if (lastTrustedEpoch_ != 0) {
-        epoch = lastTrustedEpoch_ +
-                static_cast<uint32_t>(millis() - lastTrustedMillis_) / 1000U;
-    }
+    const uint32_t currentMillis = millis();
+    refreshTrustedTime(currentMillis);
+    const uint32_t epoch = trustedTime_.currentEpochSec(currentMillis);
     return epoch != 0 &&
            IrrigationPlatformProtocol::formatUtcIso8601(epoch, output, size);
 }
 
-uint64_t IrrigationMqttAdapter::nowMs() const {
+void IrrigationMqttAdapter::refreshTrustedTime(uint32_t currentMillis) {
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
-    return now.synced ? static_cast<uint64_t>(now.epochSec) * 1000ULL : 0;
+    trustedTime_.observe(now.synced, now.epochSec, currentMillis);
+}
+
+uint64_t IrrigationMqttAdapter::nowMs() {
+    const uint32_t currentMillis = millis();
+    refreshTrustedTime(currentMillis);
+    return trustedTime_.currentTimeMs(currentMillis);
 }
 
 void IrrigationMqttAdapter::makeConnectionId() {
