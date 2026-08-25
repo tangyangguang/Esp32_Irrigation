@@ -168,21 +168,21 @@ void IrrigationMqttAdapter::handle() {
     if (!connected_) return;
 
     if (replayProgressPending_) {
-        for (const HistoryEntry& entry : history_) {
-            if (entry.used && entry.progress != EvidenceStatus::None)
+        for (const HistoryEntry& entry : history_.entries()) {
+            if (entry.used && IrrigationMqttCore::shouldReplayProgress(entry.progress))
                 publishProgress(entry);
         }
         replayProgressPending_ = false;
     }
 
-    if ((activeRemote_.present || pendingStop_.present) &&
+    if ((remoteOperation_.hasActive() || remoteOperation_.hasPendingStop()) &&
         static_cast<uint32_t>(now - lastProgressPublishMs_) >= kProgressIntervalMs) {
-        if (activeRemote_.present) {
-            if (HistoryEntry* entry = findHistory(activeRemote_.commandId.data()))
+        if (remoteOperation_.hasActive()) {
+            if (HistoryEntry* entry = findHistory(remoteOperation_.activeCommandId()))
                 publishProgress(*entry);
         }
-        if (pendingStop_.present) {
-            if (HistoryEntry* entry = findHistory(pendingStop_.commandId.data()))
+        if (remoteOperation_.hasPendingStop()) {
+            if (HistoryEntry* entry = findHistory(remoteOperation_.pendingStopCommandId()))
                 publishProgress(*entry);
         }
         lastProgressPublishMs_ = now;
@@ -229,27 +229,24 @@ void IrrigationMqttAdapter::onMqttEvent(esp_mqtt_event_handle_t event) {
         case MQTT_EVENT_CONNECTED: {
             connected_ = true;
             char topic[192]{};
-            makeTopic("command", topic, sizeof(topic));
+            makeTopic(IrrigationMqttCore::Channel::Command, topic, sizeof(topic));
             esp_mqtt_client_subscribe(client_, topic, 1);
-            publishAvailability(true);
-            publishAllPending_ = true;
+            const auto decision = IrrigationMqttCore::connectedDecision();
+            if (decision.publishOnlineAvailability) publishAvailability(true);
+            publishAllPending_ = decision.publishFullState;
             lastProgressPublishMs_ = millis();
-            pendingWateringEventMessageId_ = -1;
-            pendingWateringEventRecordId_ = 0;
+            wateringEventCursor_.disconnected();
             prepareWateringEventCursor();
-            pendingAppEventMessageId_ = -1;
-            pendingAppEventRecordId_ = 0;
+            appEventCursor_.disconnected();
             prepareAppEventCursor();
-            replayProgressPending_ = true;
+            replayProgressPending_ = decision.replayKnownProgress;
             ESP32BASE_LOG_I("irrigation_mqtt", "connected");
             break;
         }
         case MQTT_EVENT_DISCONNECTED:
             connected_ = false;
-            pendingWateringEventMessageId_ = -1;
-            pendingWateringEventRecordId_ = 0;
-            pendingAppEventMessageId_ = -1;
-            pendingAppEventRecordId_ = 0;
+            wateringEventCursor_.disconnected();
+            appEventCursor_.disconnected();
             restartPending_ = true;
             reconnectAtMs_ = millis() + kReconnectDelayMs;
             ESP32BASE_LOG_W("irrigation_mqtt", "disconnected_reconnect_scheduled");
@@ -258,20 +255,17 @@ void IrrigationMqttAdapter::onMqttEvent(esp_mqtt_event_handle_t event) {
             queueIncoming(*event);
             break;
         case MQTT_EVENT_PUBLISHED:
-            if (event->msg_id == pendingWateringEventMessageId_ &&
-                pendingWateringEventRecordId_ != 0) {
-                preferences_.putUInt("watering_cursor",
-                                     pendingWateringEventRecordId_);
-                nextWateringEventRecordId_ = pendingWateringEventRecordId_ + 1U;
-                pendingWateringEventMessageId_ = -1;
-                pendingWateringEventRecordId_ = 0;
+            if (const uint32_t recordId =
+                    wateringEventCursor_.matchingAckRecord(event->msg_id)) {
+                const bool saved = preferences_.putUInt("watering_cursor", recordId) ==
+                                   sizeof(recordId);
+                wateringEventCursor_.commitAck(event->msg_id, saved);
             }
-            if (event->msg_id == pendingAppEventMessageId_ &&
-                pendingAppEventRecordId_ != 0) {
-                preferences_.putUInt("app_evt_cursor", pendingAppEventRecordId_);
-                nextAppEventRecordId_ = pendingAppEventRecordId_ + 1U;
-                pendingAppEventMessageId_ = -1;
-                pendingAppEventRecordId_ = 0;
+            if (const uint32_t recordId =
+                    appEventCursor_.matchingAckRecord(event->msg_id)) {
+                const bool saved = preferences_.putUInt("app_evt_cursor", recordId) ==
+                                   sizeof(recordId);
+                appEventCursor_.commitAck(event->msg_id, saved);
             }
             break;
         case MQTT_EVENT_ERROR:
@@ -284,7 +278,8 @@ void IrrigationMqttAdapter::onMqttEvent(esp_mqtt_event_handle_t event) {
 
 bool IrrigationMqttAdapter::startClient() {
     makeConnectionId();
-    makeTopic("availability", availabilityTopic_.data(), availabilityTopic_.size());
+    makeTopic(IrrigationMqttCore::Channel::Availability,
+              availabilityTopic_.data(), availabilityTopic_.size());
     std::snprintf(lwtPayload_.data(), lwtPayload_.size(),
                   "{\"protocol\":\"%s\",\"online\":false,\"connectionId\":\"%s\",\"reason\":\"lwt\"}",
                   IrrigationPlatformProtocol::kProtocol, connectionId_.data());
@@ -297,8 +292,10 @@ bool IrrigationMqttAdapter::startClient() {
     config.lwt_topic = availabilityTopic_.data();
     config.lwt_msg = lwtPayload_.data();
     config.lwt_msg_len = std::strlen(lwtPayload_.data());
-    config.lwt_qos = 1;
-    config.lwt_retain = 1;
+    const auto lwtPolicy =
+        IrrigationMqttCore::publicationPolicy(IrrigationMqttCore::Channel::Availability);
+    config.lwt_qos = lwtPolicy.qos;
+    config.lwt_retain = lwtPolicy.retain;
     config.disable_clean_session = 0;
     config.disable_auto_reconnect = true;
     config.keepalive = 60;
@@ -331,7 +328,8 @@ void IrrigationMqttAdapter::stopClient() {
 void IrrigationMqttAdapter::queueIncoming(const esp_mqtt_event_t& event) {
     if (event.current_data_offset == 0) {
         char expectedTopic[192]{};
-        makeTopic("command", expectedTopic, sizeof(expectedTopic));
+        makeTopic(IrrigationMqttCore::Channel::Command,
+                  expectedTopic, sizeof(expectedTopic));
         if (!event.topic || event.topic_len != static_cast<int>(std::strlen(expectedTopic)) ||
             std::memcmp(event.topic, expectedTopic, event.topic_len) != 0 ||
             event.total_data_len <= 0 ||
@@ -355,37 +353,31 @@ void IrrigationMqttAdapter::queueIncoming(const esp_mqtt_event_t& event) {
     assemblyLength_ += static_cast<uint16_t>(event.data_len);
     if (assemblyLength_ != assemblyExpected_) return;
     assembly_[assemblyLength_] = '\0';
+    const bool stop = IrrigationMqttCore::isStopCommandEnvelope(
+        assembly_.data(), assemblyLength_);
     portENTER_CRITICAL(&queueMux_);
-    for (QueuedPacket& slot : commandQueue_) {
-        if (slot.ready) continue;
-        slot.length = assemblyLength_;
-        slot.qos = assemblyQos_;
-        slot.retain = assemblyRetain_;
-        std::memcpy(slot.payload.data(), assembly_.data(), assemblyLength_ + 1U);
-        slot.ready = true;
-        break;
-    }
+    const auto queued = commandQueue_.pushClassified(
+        assembly_.data(), assemblyLength_, assemblyQos_, assemblyRetain_, stop);
     portEXIT_CRITICAL(&queueMux_);
+    if (queued == IrrigationMqttCore::QueuePushResult::NormalSlotFull)
+        ESP32BASE_LOG_W("irrigation_mqtt", "normal_command_queue_full");
+    else if (queued == IrrigationMqttCore::QueuePushResult::StopSlotFull)
+        ESP32BASE_LOG_W("irrigation_mqtt", "stop_already_queued");
+    else if (queued == IrrigationMqttCore::QueuePushResult::InvalidTransport)
+        ESP32BASE_LOG_W("irrigation_mqtt", "invalid_command_qos_or_retain");
     assemblyExpected_ = 0;
     assemblyLength_ = 0;
 }
 
 bool IrrigationMqttAdapter::popIncoming(QueuedPacket& packet) {
-    bool found = false;
     portENTER_CRITICAL(&queueMux_);
-    for (QueuedPacket& slot : commandQueue_) {
-        if (!slot.ready) continue;
-        packet = slot;
-        slot.ready = false;
-        found = true;
-        break;
-    }
+    const bool found = commandQueue_.pop(packet);
     portEXIT_CRITICAL(&queueMux_);
     return found;
 }
 
 void IrrigationMqttAdapter::processPacket(const QueuedPacket& packet) {
-    if (packet.qos != 1 || packet.retain) {
+    if (!IrrigationMqttCore::acceptsCommandTransport(packet.qos, packet.retain)) {
         ESP32BASE_LOG_W("irrigation_mqtt", "invalid_command_qos_or_retain");
         return;
     }
@@ -398,13 +390,15 @@ void IrrigationMqttAdapter::processPacket(const QueuedPacket& packet) {
     }
     std::array<uint8_t, 32> signature{};
     if (!commandSignature(command, signature)) return;
-    if (HistoryEntry* previous = findHistory(command.commandId.data())) {
-        if (previous->signature != signature) return;
-        replay(*previous);
+    const auto admission = history_.admit(
+        command.commandId.data(), signature, command.expiresAtMs,
+        command.capability, nowMs());
+    if (admission.result == IrrigationMqttCore::Admission::Replay) {
+        replay(*admission.entry);
         return;
     }
-    HistoryEntry* entry = allocateHistory(nowMs());
-    if (!entry) {
+    if (admission.result == IrrigationMqttCore::Admission::Conflict) return;
+    if (admission.result == IrrigationMqttCore::Admission::Full) {
         HistoryEntry temporary{};
         temporary.used = true;
         temporary.capability = command.capability;
@@ -416,14 +410,7 @@ void IrrigationMqttAdapter::processPacket(const QueuedPacket& packet) {
         publishReceipt(temporary);
         return;
     }
-    *entry = {};
-    entry->used = true;
-    entry->capability = command.capability;
-    entry->expiresAtMs = command.expiresAtMs;
-    entry->signature = signature;
-    std::snprintf(entry->commandId.data(), entry->commandId.size(), "%s",
-                  command.commandId.data());
-    execute(command, *entry);
+    execute(command, *admission.entry);
 }
 
 void IrrigationMqttAdapter::execute(
@@ -431,19 +418,19 @@ void IrrigationMqttAdapter::execute(
     HistoryEntry& history) {
     const char* rejection = evaluate(command);
     if (rejection) {
-        history.receipt = EvidenceStatus::Rejected;
-        std::snprintf(history.reason.data(), history.reason.size(), "%s", rejection);
+        history_.markRejected(history, rejection);
         if (!saveHistory()) return;
         publishReceipt(history);
         return;
     }
-    history.receipt = EvidenceStatus::Accepted;
-    history.reason = {};
+    history_.markAccepted(history);
     if (!saveHistory()) {
-        history.receipt = EvidenceStatus::Rejected;
-        std::snprintf(history.reason.data(), history.reason.size(), "%s",
+        HistoryEntry temporary = history;
+        temporary.receipt = EvidenceStatus::Rejected;
+        std::snprintf(temporary.reason.data(), temporary.reason.size(), "%s",
                       "persistence_error");
-        publishReceipt(history);
+        history = {};
+        publishReceipt(temporary);
         return;
     }
     publishReceipt(history);
@@ -480,17 +467,20 @@ void IrrigationMqttAdapter::execute(
     if (command.capability == IrrigationPlatformProtocol::Capability::Stop) {
         const WateringStatus status = app_->wateringStatus();
         if (!status.active) {
-            setProgress(history, EvidenceStatus::Succeeded);
+            remoteOperation_.requestStop(command.commandId.data());
+            const auto completion = remoteOperation_.completeIdleStop();
+            for (uint8_t index = 0; index < completion.count; ++index) {
+                const auto& update = completion.updates[index];
+                if (HistoryEntry* entry = findHistory(update.commandId.data()))
+                    setProgress(*entry, update.status, update.reason);
+            }
             return;
         }
         if (!app_->stopWatering()) {
             setProgress(history, EvidenceStatus::Failed, "hardware_failure");
             return;
         }
-        pendingStop_.present = true;
-        pendingStop_.capability = command.capability;
-        std::snprintf(pendingStop_.commandId.data(), pendingStop_.commandId.size(),
-                      "%s", command.commandId.data());
+        remoteOperation_.requestStop(command.commandId.data());
         return;
     }
 
@@ -514,10 +504,7 @@ void IrrigationMqttAdapter::execute(
         setProgress(history, EvidenceStatus::Failed, rejectionForStart(result));
         return;
     }
-    activeRemote_.present = true;
-    activeRemote_.capability = command.capability;
-    std::snprintf(activeRemote_.commandId.data(), activeRemote_.commandId.size(), "%s",
-                  command.commandId.data());
+    remoteOperation_.start(command.commandId.data());
     publishRuntime();
 }
 
@@ -549,7 +536,7 @@ const char* IrrigationMqttAdapter::evaluate(
         }
         return nullptr;
     }
-    if (status.active || activeRemote_.present) return "busy";
+    if (status.active || remoteOperation_.hasActive()) return "busy";
     if (command.capability == IrrigationPlatformProtocol::Capability::StartManual) {
         for (uint8_t index = 0; index < command.zoneCount; ++index) {
             const auto& zone = command.zones[index];
@@ -626,83 +613,54 @@ const char* IrrigationMqttAdapter::buildPlans(
 
 void IrrigationMqttAdapter::updateRemoteOperation() {
     const WateringStatus status = app_->wateringStatus();
-    if (activeRemote_.present) {
-        HistoryEntry* entry = findHistory(activeRemote_.commandId.data());
-        if (!status.active) {
-            if (entry) {
-                if (status.lastResult == WateringResult::Completed)
-                    setProgress(*entry, EvidenceStatus::Succeeded);
-                else
-                    setProgress(*entry, EvidenceStatus::Failed,
-                                wateringFailure(status.lastStopReason));
-            }
-            activeRemote_ = {};
-            publishRuntime();
-        } else if (entry && connected_ &&
-                   static_cast<uint32_t>(millis() - lastRuntimePublishMs_) >=
-                       kActiveRuntimeIntervalMs) {
-            publishProgress(*entry);
+    if (!status.active && remoteOperation_.hasPendingStop()) {
+        const auto completion = remoteOperation_.completeStoppedOperation();
+        for (uint8_t index = 0; index < completion.count; ++index) {
+            const auto& update = completion.updates[index];
+            if (HistoryEntry* entry = findHistory(update.commandId.data()))
+                setProgress(*entry, update.status, update.reason);
         }
+        publishRuntime();
+        return;
     }
-    if (pendingStop_.present && !status.active) {
-        if (HistoryEntry* entry = findHistory(pendingStop_.commandId.data()))
-            setProgress(*entry, EvidenceStatus::Succeeded);
-        pendingStop_ = {};
+    if (!remoteOperation_.hasActive()) return;
+    HistoryEntry* entry = findHistory(remoteOperation_.activeCommandId());
+    if (!status.active) {
+        const bool succeeded = status.lastResult == WateringResult::Completed;
+        const auto update = remoteOperation_.completeOperation(
+            succeeded ? EvidenceStatus::Succeeded : EvidenceStatus::Failed,
+            succeeded ? nullptr : wateringFailure(status.lastStopReason));
+        if (entry) setProgress(*entry, update.status, update.reason);
+        publishRuntime();
     }
 }
 
 IrrigationMqttAdapter::HistoryEntry* IrrigationMqttAdapter::findHistory(
     const char* commandId) {
-    for (HistoryEntry& entry : history_) {
-        if (entry.used && std::strcmp(entry.commandId.data(), commandId) == 0)
-            return &entry;
-    }
-    return nullptr;
-}
-
-IrrigationMqttAdapter::HistoryEntry* IrrigationMqttAdapter::allocateHistory(
-    uint64_t currentMs) {
-    for (HistoryEntry& entry : history_) {
-        if (entry.used && entry.expiresAtMs <= currentMs &&
-            entry.progress != EvidenceStatus::Running) entry = {};
-    }
-    for (HistoryEntry& entry : history_) {
-        if (!entry.used) return &entry;
-    }
-    return nullptr;
+    return history_.find(commandId);
 }
 
 bool IrrigationMqttAdapter::loadHistory() {
     const std::size_t stored = preferences_.getBytesLength("history");
     if (stored == 0) {
-        history_ = {};
+        history_.entries() = {};
         return true;
     }
-    if (stored != sizeof(history_) ||
-        preferences_.getBytes("history", history_.data(), sizeof(history_)) !=
-            sizeof(history_)) {
+    auto& entries = history_.entries();
+    if (stored != sizeof(entries) ||
+        preferences_.getBytes("history", entries.data(), sizeof(entries)) !=
+            sizeof(entries)) {
         return false;
     }
-    bool reconciled = false;
-    for (HistoryEntry& entry : history_) {
-        if (entry.used && (!IrrigationPlatformProtocol::isUuid(entry.commandId.data()) ||
-                           entry.receipt == EvidenceStatus::None ||
-                           entry.receipt > EvidenceStatus::Rejected ||
-                           entry.progress > EvidenceStatus::Failed)) return false;
-        if (entry.used && entry.progress == EvidenceStatus::Running) {
-            // A reset destroys the in-memory execution binding. Preserve the
-            // accepted idempotency record but do not claim that work is still running.
-            entry.progress = EvidenceStatus::None;
-            entry.reason = {};
-            reconciled = true;
-        }
-    }
+    if (!history_.validate()) return false;
+    const bool reconciled = history_.reconcileAfterRestart();
     return !reconciled || saveHistory();
 }
 
 bool IrrigationMqttAdapter::saveHistory() {
-    return preferences_.putBytes("history", history_.data(), sizeof(history_)) ==
-           sizeof(history_);
+    auto& entries = history_.entries();
+    return preferences_.putBytes("history", entries.data(), sizeof(entries)) ==
+           sizeof(entries);
 }
 
 bool IrrigationMqttAdapter::commandSignature(
@@ -739,11 +697,11 @@ void IrrigationMqttAdapter::publishReceipt(const HistoryEntry& entry) {
                       IrrigationPlatformProtocol::capabilityKey(entry.capability),
                       entry.reason.data(), observed);
     }
-    enqueue("receipt", payload);
+    enqueue(IrrigationMqttCore::Channel::Receipt, payload);
 }
 
 void IrrigationMqttAdapter::publishProgress(const HistoryEntry& entry) {
-    if (!connected_ || entry.progress == EvidenceStatus::None) return;
+    if (!connected_ || !IrrigationMqttCore::shouldReplayProgress(entry.progress)) return;
     char observed[25]{};
     if (!observedAt(observed, sizeof(observed))) return;
     const char* status = entry.progress == EvidenceStatus::Running
@@ -766,17 +724,16 @@ void IrrigationMqttAdapter::publishProgress(const HistoryEntry& entry) {
                       IrrigationPlatformProtocol::capabilityKey(entry.capability), status,
                       observed);
     }
-    enqueue("progress", payload);
+    enqueue(IrrigationMqttCore::Channel::Progress, payload);
 }
 
 void IrrigationMqttAdapter::setProgress(HistoryEntry& entry,
                                         EvidenceStatus status,
                                         const char* reason) {
-    if (entry.progress == EvidenceStatus::Succeeded ||
-        entry.progress == EvidenceStatus::Failed) return;
-    entry.progress = status;
-    entry.reason = {};
-    if (reason) std::snprintf(entry.reason.data(), entry.reason.size(), "%s", reason);
+    const bool changed = status == EvidenceStatus::Running
+                             ? history_.markRunning(entry)
+                             : history_.markTerminal(entry, status, reason);
+    if (!changed) return;
     if (!saveHistory()) {
         ESP32BASE_LOG_E("irrigation_mqtt", "command_evidence_save_failed");
         return;
@@ -848,8 +805,8 @@ void IrrigationMqttAdapter::publishRuntime() {
     }
     JsonObject activity = document["activity"].to<JsonObject>();
     activity["kind"] = activityKind(status);
-    if (activeRemote_.present && status.active)
-        activity["commandId"] = activeRemote_.commandId.data();
+    if (remoteOperation_.hasActive() && status.active)
+        activity["commandId"] = remoteOperation_.activeCommandId();
     else activity["commandId"] = nullptr;
     if (status.active && BoardPins::isValidZoneId(status.activeZoneId))
         activity["zoneId"] = status.activeZoneId;
@@ -1051,28 +1008,24 @@ void IrrigationMqttAdapter::publishSystemParameters() {
 void IrrigationMqttAdapter::prepareWateringEventCursor() {
     Esp32BaseRecordStore::StoreStatus status{};
     if (!app_->readWateringRecordStoreStatus(status) || status.recordCount == 0) {
-        nextWateringEventRecordId_ = 0;
+        wateringEventCursor_.prepare(0, 0, 0, 0);
         return;
     }
     const uint32_t cursor = preferences_.getUInt("watering_cursor", 0);
-    nextWateringEventRecordId_ = cursor == UINT32_MAX ? 0 : cursor + 1U;
-    if (nextWateringEventRecordId_ == 0 ||
-        nextWateringEventRecordId_ < status.oldestRecordId)
-        nextWateringEventRecordId_ = status.oldestRecordId;
-    if (nextWateringEventRecordId_ > status.newestRecordId)
-        nextWateringEventRecordId_ = 0;
+    wateringEventCursor_.prepare(cursor, status.oldestRecordId,
+                                 status.newestRecordId, status.recordCount);
 }
 
 void IrrigationMqttAdapter::publishNextWateringEvent() {
-    if (!connected_ || pendingWateringEventMessageId_ >= 0) return;
-    if (nextWateringEventRecordId_ == 0) {
+    if (!connected_ || wateringEventCursor_.awaitingAck()) return;
+    if (wateringEventCursor_.nextRecordId() == 0) {
         const uint32_t now = millis();
         if (static_cast<uint32_t>(now - lastWateringEventPollMs_) < 1000U) return;
         lastWateringEventPollMs_ = now;
         prepareWateringEventCursor();
     }
-    if (nextWateringEventRecordId_ != 0)
-        publishWateringEvent(nextWateringEventRecordId_);
+    if (wateringEventCursor_.nextRecordId() != 0)
+        publishWateringEvent(wateringEventCursor_.nextRecordId());
 }
 
 bool IrrigationMqttAdapter::publishWateringEvent(uint32_t recordId) {
@@ -1084,10 +1037,11 @@ bool IrrigationMqttAdapter::publishWateringEvent(uint32_t recordId) {
             Esp32BaseRecordStore::StoreStatus status{};
             if (app_->readWateringRecordStoreStatus(status) &&
                 recordId <= status.newestRecordId) {
-                preferences_.putUInt("watering_cursor", recordId);
-                nextWateringEventRecordId_ = recordId + 1U;
+                const bool saved = preferences_.putUInt("watering_cursor", recordId) ==
+                                   sizeof(recordId);
+                wateringEventCursor_.skipRecord(recordId, status.newestRecordId, saved);
             } else {
-                nextWateringEventRecordId_ = 0;
+                wateringEventCursor_.skipRecord(recordId, 0, false);
             }
         }
         return false;
@@ -1158,39 +1112,39 @@ bool IrrigationMqttAdapter::publishWateringEvent(uint32_t recordId) {
     const std::size_t written = serializeJson(document, payload, sizeof(payload));
     if (written == 0 || written >= sizeof(payload) - 1U) return false;
     char topic[192]{};
-    makeTopic("event", topic, sizeof(topic));
+    makeTopic(IrrigationMqttCore::Channel::Event, topic, sizeof(topic));
+    const auto policy =
+        IrrigationMqttCore::publicationPolicy(IrrigationMqttCore::Channel::Event);
     const int messageId = esp_mqtt_client_enqueue(
-        client_, topic, payload, static_cast<int>(written), 1, false, true);
+        client_, topic, payload, static_cast<int>(written), policy.qos,
+        policy.retain, true);
     if (messageId < 0) return false;
-    pendingWateringEventMessageId_ = messageId;
-    pendingWateringEventRecordId_ = recordId;
+    wateringEventCursor_.enqueued(messageId, recordId);
     return true;
 }
 
 void IrrigationMqttAdapter::prepareAppEventCursor() {
     Esp32BaseAppEvents::AppEventsStatus status{};
     if (!app_->readEventStatus(status) || status.eventStore.recordCount == 0) {
-        nextAppEventRecordId_ = 0;
+        appEventCursor_.prepare(0, 0, 0, 0);
         return;
     }
     const uint32_t cursor = preferences_.getUInt("app_evt_cursor", 0);
-    nextAppEventRecordId_ = cursor == UINT32_MAX ? 0 : cursor + 1U;
-    if (nextAppEventRecordId_ == 0 ||
-        nextAppEventRecordId_ < status.eventStore.oldestRecordId)
-        nextAppEventRecordId_ = status.eventStore.oldestRecordId;
-    if (nextAppEventRecordId_ > status.eventStore.newestRecordId)
-        nextAppEventRecordId_ = 0;
+    appEventCursor_.prepare(cursor, status.eventStore.oldestRecordId,
+                            status.eventStore.newestRecordId,
+                            status.eventStore.recordCount);
 }
 
 void IrrigationMqttAdapter::publishNextAppEvent() {
-    if (!connected_ || pendingAppEventMessageId_ >= 0) return;
-    if (nextAppEventRecordId_ == 0) {
+    if (!connected_ || appEventCursor_.awaitingAck()) return;
+    if (appEventCursor_.nextRecordId() == 0) {
         const uint32_t now = millis();
         if (static_cast<uint32_t>(now - lastAppEventPollMs_) < 1000U) return;
         lastAppEventPollMs_ = now;
         prepareAppEventCursor();
     }
-    if (nextAppEventRecordId_ != 0) publishAppEvent(nextAppEventRecordId_);
+    if (appEventCursor_.nextRecordId() != 0)
+        publishAppEvent(appEventCursor_.nextRecordId());
 }
 
 bool IrrigationMqttAdapter::publishAppEvent(uint32_t recordId) {
@@ -1202,16 +1156,23 @@ bool IrrigationMqttAdapter::publishAppEvent(uint32_t recordId) {
             Esp32BaseAppEvents::AppEventsStatus status{};
             if (app_->readEventStatus(status) &&
                 recordId <= status.eventStore.newestRecordId) {
-                preferences_.putUInt("app_evt_cursor", recordId);
-                nextAppEventRecordId_ = recordId + 1U;
-            } else nextAppEventRecordId_ = 0;
+                const bool saved = preferences_.putUInt("app_evt_cursor", recordId) ==
+                                   sizeof(recordId);
+                appEventCursor_.skipRecord(recordId,
+                                           status.eventStore.newestRecordId, saved);
+            } else appEventCursor_.skipRecord(recordId, 0, false);
         }
         return false;
     }
     const char* eventKey = appEventKey(event);
     if (!eventKey) {
-        preferences_.putUInt("app_evt_cursor", recordId);
-        nextAppEventRecordId_ = recordId + 1U;
+        Esp32BaseAppEvents::AppEventsStatus status{};
+        if (app_->readEventStatus(status)) {
+            const bool saved = preferences_.putUInt("app_evt_cursor", recordId) ==
+                               sizeof(recordId);
+            appEventCursor_.skipRecord(recordId,
+                                       status.eventStore.newestRecordId, saved);
+        }
         return false;
     }
     uint32_t observedEpoch = 0;
@@ -1246,12 +1207,14 @@ bool IrrigationMqttAdapter::publishAppEvent(uint32_t recordId) {
     const std::size_t written = serializeJson(document, payload, sizeof(payload));
     if (written == 0 || written >= sizeof(payload) - 1U) return false;
     char topic[192]{};
-    makeTopic("event", topic, sizeof(topic));
+    makeTopic(IrrigationMqttCore::Channel::Event, topic, sizeof(topic));
+    const auto policy =
+        IrrigationMqttCore::publicationPolicy(IrrigationMqttCore::Channel::Event);
     const int messageId = esp_mqtt_client_enqueue(
-        client_, topic, payload, static_cast<int>(written), 1, false, true);
+        client_, topic, payload, static_cast<int>(written), policy.qos,
+        policy.retain, true);
     if (messageId < 0) return false;
-    pendingAppEventMessageId_ = messageId;
-    pendingAppEventRecordId_ = recordId;
+    appEventCursor_.enqueued(messageId, recordId);
     return true;
 }
 
@@ -1356,7 +1319,7 @@ void IrrigationMqttAdapter::publishState(const char* capabilityKey,
         IrrigationPlatformProtocol::kProtocol, connectionId_.data(), capabilityKey,
         static_cast<unsigned long>(seq_++), valueJson, observed);
     if (written > 0 && static_cast<std::size_t>(written) < sizeof(payload))
-        enqueue("state", payload);
+        enqueue(IrrigationMqttCore::Channel::State, payload);
 }
 
 void IrrigationMqttAdapter::publishAvailability(bool online, const char* reason) {
@@ -1373,16 +1336,17 @@ void IrrigationMqttAdapter::publishAvailability(bool online, const char* reason)
                       IrrigationPlatformProtocol::kProtocol, connectionId_.data(),
                       reason ? reason : "shutdown", observed);
     }
-    enqueue("availability", payload, true);
+    enqueue(IrrigationMqttCore::Channel::Availability, payload);
 }
 
-bool IrrigationMqttAdapter::enqueue(const char* channel,
-                                    const char* payload,
-                                    bool retain) {
+bool IrrigationMqttAdapter::enqueue(IrrigationMqttCore::Channel channel,
+                                    const char* payload) {
     if (!connected_ || !client_ || !payload) return false;
     char topic[192]{};
     makeTopic(channel, topic, sizeof(topic));
-    return esp_mqtt_client_enqueue(client_, topic, payload, 0, 1, retain, true) >= 0;
+    const auto policy = IrrigationMqttCore::publicationPolicy(channel);
+    return esp_mqtt_client_enqueue(client_, topic, payload, 0, policy.qos,
+                                   policy.retain, true) >= 0;
 }
 
 bool IrrigationMqttAdapter::observedAt(char* output, std::size_t size) {
@@ -1418,11 +1382,12 @@ void IrrigationMqttAdapter::makeConnectionId() {
     seq_ = 0;
 }
 
-void IrrigationMqttAdapter::makeTopic(const char* channel,
+void IrrigationMqttAdapter::makeTopic(IrrigationMqttCore::Channel channel,
                                       char* output,
                                       std::size_t size) const {
     if (!IrrigationPlatformProtocol::formatTopic(
-            IRRIGATION_MQTT_DEVICE_ID, channel, output, size) && size != 0)
+            IRRIGATION_MQTT_DEVICE_ID, IrrigationMqttCore::channelName(channel),
+            output, size) && size != 0)
         output[0] = '\0';
 }
 

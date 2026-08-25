@@ -45,7 +45,7 @@ mkdir -p local_private
 cp include/IrrigationMqttPrivate.example.h local_private/IrrigationMqttPrivate.h
 ```
 
-`IRRIGATION_MQTT_DEFINITION_SHA256` 必须与当前受控定义一致，否则适配器拒绝启动。没有私有文件或显式设置 `IRRIGATION_MQTT_ENABLED 0` 时，仅禁用平台连接，本地 Web、RTC 计划、手动停止和现场保护继续工作。MQTT 使用 TLS、独立连接周期/LWT、QoS 1 和非 retained command；命令经过有界队列在主循环串行执行。浇水历史在本地持久化后生成稳定 eventId，并在 PUBACK 后推进补发游标。
+`IRRIGATION_MQTT_DEFINITION_SHA256` 必须与当前受控定义一致，否则适配器拒绝启动。没有私有文件或显式设置 `IRRIGATION_MQTT_ENABLED 0` 时，仅禁用平台连接，本地 Web、RTC 计划、手动停止和现场保护继续工作。MQTT 使用 TLS、独立连接周期/LWT、QoS 1 和非 retained command；命令经过有界队列在主循环串行执行，普通命令只有一个待处理槽，另保留一个专用 stop 槽且优先取出，避免普通命令占满队列后饿死远程停止。浇水历史在本地持久化后生成稳定 eventId；只有匹配消息且游标成功持久化的 PUBACK 才推进补发游标，断线、错误消息 ID 或 NVS 写入失败均不推进。
 
 本轮浇水记录采用当前唯一的 Store v5，固化发生时水路名称用于历史平台事件；不读取或迁移旧 Store。安装到已有旧 Store 的设备前，应在确认维护窗口及数据取舍后按现有 System 流程处理，不能仅因版本提示擅自格式化。
 
@@ -58,6 +58,8 @@ cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 Web OTA 配置
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-08-25 MQTT 适配器状态证据加固：抽取由正式适配器直接调用的最小纯 C++ 决策组件，native 可执行测试新增覆盖同签名幂等重放、冲突静默丢弃、receipt/progress 顺序、远程浇水被 stop 中断、空闲 stop、重启不推断无证据终态、连接周期完整状态与已知 progress 重放、QoS/retain、有界 stop 专用槽、事件 PUBACK 游标及固定发布策略。修复普通命令占满队列时 stop 无声饿死，以及 PUBACK 后即使游标 NVS 保存失败仍在 RAM 推进的两个实际缺陷。执行 `pio test -e native` 通过 100/100；执行 `pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录/事件测试固件，未在板卡运行；执行 `pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466365 B / 93.2%。实际 `esp32-4mb-ota-balanced.csv` 的 `app0`、`app1` 均为 1572864 B：当前 ELF 程序占用余 106499 B / 6.77%，生成的 `firmware.bin` 为 1472944 B、距单槽上限余 99920 B / 6.35%；`cd55fba^` 为 1298369 B、余 274495 B / 17.45%。双槽布局和当前镜像仍满足 OTA 装载条件，但余量已经偏紧，后续协议微调必须持续检查最终 binary，不能视为无风险。本轮没有为减重删除本地 Web、OTA、RTC 或安全能力，也没有发现可在不牺牲现有能力的前提下显著收回约 168 KB 的低风险重复实现。
 
 2026-08-25 统一 IoT MQTT 平台接入：新增严格的当前受控命令解析、TLS 连接与独立 LWT 周期、有界命令队列、持久幂等记录、receipt/progress、完整状态投影和业务事件补发；本地 Web、RTC 调度及平台命令继续共用现有业务入口。浇水 Store 使用当前唯一 v5 格式保存发生时水路名称，计划编辑不再清除已停用水路的隐藏历史配置。执行 `pio test -e native` 通过 92/92；执行 `pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录/事件测试固件，未在板卡运行；执行 `pio run -e esp32_irrigation` 成功，RAM 95788 B / 29.2%、Flash 1464965 B / 93.1%。本轮未烧录、未操作泵阀，也未连接真实 EMQX；这些结果只证明主机契约/业务回归和目标固件可编译。
 
