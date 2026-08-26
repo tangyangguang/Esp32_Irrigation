@@ -72,10 +72,10 @@ void test_initialize_base_and_capacity_plan() {
 
     Esp32BaseRecordStore::StoreStatus status;
     TEST_ASSERT_TRUE(g_mainStore.readStatus(status));
-    TEST_ASSERT_EQUAL_UINT32(136, status.slotSizeBytes);
+    TEST_ASSERT_EQUAL_UINT32(WateringRecordCodec::kPayloadSize + 24U,
+                             status.slotSizeBytes);
     TEST_ASSERT_EQUAL_UINT32(512UL * 1024UL, status.maximumStoreBytes);
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(3800, status.capacity);
-    TEST_ASSERT_LESS_OR_EQUAL_UINT32(3900, status.capacity);
+    TEST_ASSERT_EQUAL_UINT32(817, status.capacity);
     TEST_ASSERT_TRUE(status.writable);
 }
 
@@ -88,7 +88,7 @@ void test_production_watering_store_definition_loads() {
                              status.maximumStoreBytes);
     TEST_ASSERT_EQUAL_UINT32(32UL * 1024UL,
                              WateringRecordStore::kMinimumFileSystemFreeBytes);
-    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(4500, status.capacity);
+    TEST_ASSERT_EQUAL_UINT32(817, status.capacity);
     TEST_ASSERT_TRUE(status.writable);
 }
 

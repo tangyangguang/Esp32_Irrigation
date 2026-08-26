@@ -10,7 +10,7 @@
 
 当前已经实现配置安全保存、定稿 PCB 硬件层、浇水控制与保护、自动调度、流量计校准、水路流量学习、业务记录、应用事件、在线检查点、业务 Web 页面和统一 IoT 平台 MQTT 适配。设备本地 Web、RTC 自动调度和 MQTT 平台命令调用同一个业务入口；MQTT 断网不阻断本地业务。
 
-旧 MQTT 远程控制方案、Mac 测试控制台和 N1/Cloudflare 直连设备 Web 方案保持删除且不兼容。当前实现只服从 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 和 `/Users/tyg/workspace/iot-device-lab/docs/02-公共通信规则.md`，本项目不复制协议正文。
+平台适配只服从 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 和 `/Users/tyg/workspace/iot-device-lab/docs/02-公共通信规则.md`，本项目不复制协议正文。
 
 启动时只有加载到有效配置或成功创建默认配置后才继续；存在配置文件但所有副本均无效时保持输出关闭，不用默认值覆盖。RTC 倒退判断会参考最近浇水记录、应用事件和在线检查点。在线检查点仅在达到配置间隔且期间没有业务写入时保存，避免不必要的 Flash 磨损。
 
@@ -49,7 +49,7 @@ python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-
 | 当前只读 state | 从 `WateringStatus`、当前配置、调度、RTC 和存储状态投影，不建立第二业务模型 |
 | 业务 event | 从本地浇水 Store v5 和 App Events 补发，PUBACK 后推进各自游标 |
 
-复制无凭据模板到 Git 忽略目录，填写真实设备独立的 `deviceId`、Client ID、用户名和密码。Broker 可以与其它设备共用，但不得复用模拟器或服务端身份；构建日志和回复中不得回显真实值。
+复制无凭据模板到 Git 忽略目录，填写真实设备独立的 `deviceId` 和 Client ID，并使用该项目分配的终端 MQTT 凭据。真实终端与模拟器必须使用不同 `deviceId` 和 Client ID；同一项目默认共用终端 MQTT 用户，绝不能复用服务端身份。构建日志和回复中不得回显真实值。
 
 ```sh
 mkdir -p local_private
@@ -60,9 +60,9 @@ cp include/IrrigationMqttPrivate.example.h local_private/IrrigationMqttPrivate.h
 
 平台适配器只在本次启动曾取得可信 RTC/NTP 快照后，使用该 epoch 与 `millis()` 单调外推命令 TTL 和消息观测时间；瞬时失去同步不会阻断仍在有效期内的普通浇水 stop，但重启后从未取得可信时间时仍不连接平台、不接受远程命令。定时暂停仍同时要求当前时间同步和调度器时间状态 Ready，维护校准或水路学习活动仍不能由平台 stop 中断。本地 Web、现场停止和控制器安全入口不经过这层 MQTT 时间判断。
 
-命令证据固定保存 8 条。当前定义 TTL 为 10～30 秒，适配器同时最多排队一个普通命令和一个 stop，正常串行命令流不会必然耗尽该容量；异常突发仍可能填满，此时新命令静默丢弃并由服务端进入 timeout/unknown，不发布未持久化的拒绝，也不执行动作。receipt 和 progress 只有在完整证据成功写入 NVS 后才发布，写入失败会回滚 RAM 中未持久化的状态。
+命令证据固定保存 8 条。当前定义 TTL 为 10～30 秒，适配器同时最多排队一个普通命令和一个 stop，正常串行命令流不会必然耗尽该容量；异常突发仍可能填满，此时新命令静默丢弃并由服务端进入 timeout/unknown，不发布未持久化的拒绝，也不执行动作。receipt 和 progress 只有在完整证据成功写入 NVS 后才发布，写入失败会回滚 RAM 中未持久化的状态；`accepted` 只表示已接纳，只有 `running` 证据持久化成功后才能改变参数或启动执行器。
 
-本轮浇水记录采用当前唯一的 Store v5，固化发生时水路名称用于历史平台事件；不读取或迁移旧 Store。安装到已有旧 Store 的设备前，应在确认维护窗口及数据取舍后按现有 System 流程处理，不能仅因版本提示擅自格式化。
+本轮浇水记录采用当前唯一的 Store v5，固化发生时水路名称用于历史平台事件。维护人员不能仅因存储故障提示擅自格式化文件系统。
 
 分层验收顺序：先运行 native 契约与业务回归，再编译设备记录测试固件和正式固件；随后在维护窗口烧录，检查写入校验和启动日志；最后使用真实设备专属凭据验证 EMQX 连接、LWT、重连、状态新鲜度、命令幂等、断网期间本地计划与停止、浇水事件补发。未完成最后两层时不得宣称实机或真实平台通过。
 
@@ -75,6 +75,8 @@ cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 Web OTA 配置
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-08-26 G0 独立评审闭环：按定稿 BOM/网表、当前方案、`iot-base` 架构与演进流程以及 `iot-device-lab` 当前定义和共享通信规则，复核上电安全态、阀泵输出、流量保护、RTC 离线调度、Web/RTC/MQTT 统一入口、配置与运行证据持久化、重启不恢复任务和维护停止边界。修复两项 G4 阻断缺陷：平台命令在 `accepted` 后只有 `running` 证据成功持久化才允许修改参数或启动执行器；空闲 `state.runtime` 不再携带上次任务的历时、脉冲、水量和步骤。新增 native 证据持久化失败门禁测试；修正设备记录测试中与 Store v5/616 字节 payload 不符的槽位与容量断言；当前方案收敛为配置 v4、记录 Store v5/616 字节以及同项目终端凭据、独立设备身份和 Client ID 的唯一当前定义。执行 `/opt/homebrew/bin/pio test -e native` 通过 107/107；执行 `python3 scripts/sync_platform_command_vectors.py --lab-root /Users/tyg/workspace/iot-device-lab --check` 确认 33 条向量及 SHA-256 `809871d04661e19a81f5df755fa9256d702e0b01f4f3f7cb843bca19ad4382a0` 一致；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备端记录测试固件，未在板卡运行；执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466837 B / 93.3%，`firmware.bin` 1473408 B，OTA app slot 剩余 99456 B / 6.32%，尺寸检查按预期告警。本轮在临时同级依赖布局中离线使用本机已有 PlatformIO 包完成验证；没有烧录、OTA、连接真实 MQTT/服务端、读取真实凭据、修改真实配置、发送设备命令或操作物理执行器。LCD2004 和 4 个按钮仍未实现；真实 RTC、断网、掉电、文件系统/NVS 写失败、阀泵、流量和本地物理停止仍需后续维护窗口实机验收，不能由本轮结果替代。
 
 2026-08-25 权威命令向量与 UUID 漂移修复：新增显式 `--lab-root` 的最小 fixture 同步脚本和 `--check` 漂移检测，提交的测试专用头文件记录源 SHA-256 `809871d04661e19a81f5df755fa9256d702e0b01f4f3f7cb843bca19ad4382a0`。当前 33 条 fixture 全部属于平台下发到固件的 command，测试 33/33 消费、跳过 0 条，并通过正式适配器共用路径覆盖五项 capability、Topic、QoS/retain、UTF-8、JSON、UUID、TTL 和未知字段。UUID 校验与权威正则对齐为版本 1～8、variant 8/9/a/b 且十六进制大小写均可，版本 0/9 和其它 variant 拒绝。`iot-device-lab` preflight 确认 definition checksum 仍为 `e09e0e9e649d6b7d618c3ab849fd0c3695e557c9e2e920fedf91b55e91cd92f8`，固件公开常量和私有配置示例一致。执行 `/opt/homebrew/bin/pio test -e native` 通过 106/106；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录测试固件，未在板卡运行；执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466777 B / 93.3%。实际 app0/app1 均为 1572864 B，ELF 程序余 106087 B / 6.74%；`firmware.bin` 为 1473360 B，余 99504 B / 6.33%，尺寸检查按预期告警但构建成功。本轮未烧录、未使用串口、未发送 MQTT 业务命令，也未操作任何物理执行器。
 

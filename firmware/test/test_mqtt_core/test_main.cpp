@@ -182,6 +182,30 @@ void test_unpersisted_rejection_and_terminal_are_never_replayed() {
                       static_cast<int>(persistence.durable.find(kCommandB)->progress));
 }
 
+void test_unpersisted_running_evidence_gates_business_action() {
+    EvidenceStore store;
+    PersistenceHarness persistence{&store};
+    EvidenceEntry& entry = admitted(store, kCommandA, 0x53);
+    TEST_ASSERT_EQUAL(
+        static_cast<int>(EvidenceCommitResult::Persisted),
+        static_cast<int>(store.commitReceipt(
+            entry, EvidenceStatus::Accepted, nullptr, persistEvidence, &persistence)));
+
+    uint8_t businessActions = 0;
+    persistence.succeed = false;
+    const auto running = store.commitProgress(
+        entry, EvidenceStatus::Running, nullptr, persistEvidence, &persistence);
+    if (running == EvidenceCommitResult::Persisted) ++businessActions;
+
+    TEST_ASSERT_EQUAL(static_cast<int>(EvidenceCommitResult::PersistenceFailed),
+                      static_cast<int>(running));
+    TEST_ASSERT_EQUAL_UINT8(0, businessActions);
+    TEST_ASSERT_EQUAL(static_cast<int>(EvidenceStatus::None),
+                      static_cast<int>(entry.progress));
+    TEST_ASSERT_EQUAL(static_cast<int>(EvidenceStatus::None),
+                      static_cast<int>(persistence.durable.find(kCommandA)->progress));
+}
+
 void test_full_evidence_store_silently_retries_without_action() {
     EvidenceStore store;
     PersistenceHarness persistence{&store};
@@ -419,6 +443,7 @@ int main(int, char**) {
     RUN_TEST(test_trusted_anchor_allows_only_safe_commands_after_sync_loss);
     RUN_TEST(test_receipt_persistence_gates_publish_action_retry_and_restart);
     RUN_TEST(test_unpersisted_rejection_and_terminal_are_never_replayed);
+    RUN_TEST(test_unpersisted_running_evidence_gates_business_action);
     RUN_TEST(test_full_evidence_store_silently_retries_without_action);
     RUN_TEST(test_duplicate_replays_latest_evidence_without_second_action);
     RUN_TEST(test_conflicting_signature_is_silent_and_keeps_original_evidence);

@@ -54,7 +54,7 @@ private:
     void replay(const HistoryEntry& entry);
     void publishReceipt(const HistoryEntry& entry);
     void publishProgress(const HistoryEntry& entry);
-    void setProgress(HistoryEntry& entry, EvidenceStatus status,
+    bool setProgress(HistoryEntry& entry, EvidenceStatus status,
                      const char* reason = nullptr);
 
     void publishAllState();

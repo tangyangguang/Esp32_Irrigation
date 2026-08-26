@@ -419,7 +419,9 @@ void IrrigationMqttAdapter::execute(
                                persistHistory, this) !=
         IrrigationMqttCore::EvidenceCommitResult::Persisted) return;
     publishReceipt(history);
-    setProgress(history, EvidenceStatus::Running);
+    // An accepted receipt only proves admission. Do not change parameters or
+    // energize outputs until the recoverable running evidence is durable.
+    if (!setProgress(history, EvidenceStatus::Running)) return;
 
     if (command.capability == IrrigationPlatformProtocol::Capability::Plans) {
         if (applyPlans(command)) {
@@ -721,18 +723,19 @@ void IrrigationMqttAdapter::publishProgress(const HistoryEntry& entry) {
     enqueue(IrrigationMqttCore::Channel::Progress, payload);
 }
 
-void IrrigationMqttAdapter::setProgress(HistoryEntry& entry,
+bool IrrigationMqttAdapter::setProgress(HistoryEntry& entry,
                                         EvidenceStatus status,
                                         const char* reason) {
     const auto committed = history_.commitProgress(
         entry, status, reason, persistHistory, this);
     if (committed == IrrigationMqttCore::EvidenceCommitResult::InvalidTransition)
-        return;
+        return false;
     if (committed == IrrigationMqttCore::EvidenceCommitResult::PersistenceFailed) {
         ESP32BASE_LOG_E("irrigation_mqtt", "command_evidence_save_failed");
-        return;
+        return false;
     }
     publishProgress(entry);
+    return true;
 }
 
 void IrrigationMqttAdapter::publishAllState() {
@@ -806,8 +809,8 @@ void IrrigationMqttAdapter::publishRuntime() {
         activity["zoneId"] = status.activeZoneId;
     else activity["zoneId"] = nullptr;
     activity["phase"] = status.active ? phaseName(status.state) : "idle";
-    activity["elapsedSeconds"] = status.elapsedSec;
-    activity["remainingSeconds"] = status.plannedRemainingSec;
+    activity["elapsedSeconds"] = status.active ? status.elapsedSec : 0;
+    activity["remainingSeconds"] = status.active ? status.plannedRemainingSec : 0;
     if (status.active && status.currentZoneTargetWaterMl == 0)
         activity["targetDurationSeconds"] = status.currentZoneElapsedSec +
                                                 status.currentZoneRemainingSec;
@@ -817,7 +820,7 @@ void IrrigationMqttAdapter::publishRuntime() {
     else activity["targetWaterMl"] = nullptr;
     uint64_t pulses = 0;
     uint64_t water = 0;
-    for (uint8_t index = 0; index < status.stepCount; ++index) {
+    for (uint8_t index = 0; status.active && index < status.stepCount; ++index) {
         pulses += status.zones[index].pulseCount;
         water += status.zones[index].estimatedWaterMl;
     }
@@ -829,14 +832,14 @@ void IrrigationMqttAdapter::publishRuntime() {
     else activity["flowMlPerMinute"] = nullptr;
     bool lowActive = false;
     bool highActive = false;
-    if (status.currentStepIndex < status.stepCount) {
+    if (status.active && status.currentStepIndex < status.stepCount) {
         lowActive = status.zones[status.currentStepIndex].lowFlowActive;
         highActive = status.zones[status.currentStepIndex].highFlowActive;
     }
     activity["lowFlowActive"] = lowActive;
     activity["highFlowActive"] = highActive;
     JsonArray steps = activity["steps"].to<JsonArray>();
-    for (uint8_t index = 0; index < status.stepCount; ++index) {
+    for (uint8_t index = 0; status.active && index < status.stepCount; ++index) {
         const ZoneWateringSummary& zone = status.zones[index];
         JsonObject item = steps.add<JsonObject>();
         item["zoneId"] = zone.zoneId;

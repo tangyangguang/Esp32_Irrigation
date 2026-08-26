@@ -31,6 +31,6 @@
 
 ## 当前实现状态
 
-当前固件保留完整本地业务与设备本地 Web 控制入口，并通过外围 MQTT 适配层接入统一 IoT 平台；本地 Web、RTC 自动调度和 MQTT 共用现有业务状态机。旧 MQTT 远程控制、Mac 测试控制台和 N1/Cloudflare 直连设备 Web 方案保持删除且不兼容。设备类型契约以 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 和公共通信规则为权威位置，本项目不复制协议正文。
+当前固件保留完整本地业务与设备本地 Web 控制入口，并通过外围 MQTT 适配层接入统一 IoT 平台；本地 Web、RTC 自动调度和 MQTT 共用现有业务状态机。MQTT 未配置、断开、重连或平台不可用不改变本地 Web、RTC 调度、现场保护和安全停机能力。设备类型契约以 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 和公共通信规则为权威位置，本项目不复制协议正文。
 
 实际硬件 RTC 已接通并测试正常。仍需在完整 PCB 和真实水路上验证电磁阀、自吸泵、流量计、突然断电和 LittleFS 真实写失败等场景。LCD2004 和 4 个按钮已有硬件接口，但本地显示与按键交互尚未设计和实现，待 Web 功能稳定后另行确认。
