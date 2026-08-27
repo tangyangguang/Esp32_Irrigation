@@ -405,6 +405,29 @@ bool isUuid(const char* value) {
            variant == 'b' || variant == 'A' || variant == 'B';
 }
 
+bool isCanonicalDeviceId(const char* value) {
+    if (!isUuid(value)) return false;
+    for (std::size_t index = 0; index < 36; ++index) {
+        if (value[index] >= 'A' && value[index] <= 'F') return false;
+    }
+    return true;
+}
+
+bool formatUuidV4(const uint8_t bytes[16], char* output, std::size_t outputSize) {
+    if (!bytes || !output || outputSize < 37) return false;
+    uint8_t value[16]{};
+    std::memcpy(value, bytes, sizeof(value));
+    value[6] = static_cast<uint8_t>((value[6] & 0x0FU) | 0x40U);
+    value[8] = static_cast<uint8_t>((value[8] & 0x3FU) | 0x80U);
+    const int written = std::snprintf(
+        output, outputSize,
+        "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+        value[0], value[1], value[2], value[3], value[4], value[5], value[6],
+        value[7], value[8], value[9], value[10], value[11], value[12], value[13],
+        value[14], value[15]);
+    return written == 36 && isCanonicalDeviceId(output);
+}
+
 bool isValidUtf8(const uint8_t* data, std::size_t length) {
     if (!data) return false;
     for (std::size_t index = 0; index < length;) {
@@ -461,13 +484,7 @@ bool formatTopic(const char* deviceId,
                  char* output,
                  std::size_t outputSize) {
     if (!deviceId || !channel || !output || outputSize == 0) return false;
-    const std::size_t length = std::strlen(deviceId);
-    if (length == 0 || length > 64) return false;
-    for (std::size_t index = 0; index < length; ++index) {
-        const char ch = deviceId[index];
-        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
-              (ch == '-' && index != 0))) return false;
-    }
+    if (!isCanonicalDeviceId(deviceId)) return false;
     static constexpr const char* channels[] = {
         "availability", "state", "event", "command", "receipt", "progress",
     };
@@ -479,8 +496,35 @@ bool formatTopic(const char* deviceId,
         }
     }
     if (!known) return false;
-    const int written = std::snprintf(output, outputSize, "iot/%s/v1/%s/%s",
-                                      kTypeKey, deviceId, channel);
+    const int written = std::snprintf(output, outputSize, "iot/%s/v%s/%s/%s",
+                                      kTypeKey, kProtocolMajor, deviceId, channel);
+    return written > 0 && static_cast<std::size_t>(written) < outputSize;
+}
+
+bool formatAvailability(bool online,
+                        const char* connectionId,
+                        const char* reason,
+                        const char* observedAt,
+                        char* output,
+                        std::size_t outputSize) {
+    if (!isUuid(connectionId) || !output || outputSize == 0) return false;
+    int written = -1;
+    if (online && !reason && observedAt) {
+        written = std::snprintf(
+            output, outputSize,
+            "{\"protocol\":\"%s\",\"modelKey\":\"%s\",\"online\":true,\"connectionId\":\"%s\",\"observedAt\":\"%s\"}",
+            kProtocol, kModelKey, connectionId, observedAt);
+    } else if (!online && reason && std::strcmp(reason, "lwt") == 0 && !observedAt) {
+        written = std::snprintf(
+            output, outputSize,
+            "{\"protocol\":\"%s\",\"modelKey\":\"%s\",\"online\":false,\"connectionId\":\"%s\",\"reason\":\"lwt\"}",
+            kProtocol, kModelKey, connectionId);
+    } else if (!online && reason && std::strcmp(reason, "shutdown") == 0 && observedAt) {
+        written = std::snprintf(
+            output, outputSize,
+            "{\"protocol\":\"%s\",\"modelKey\":\"%s\",\"online\":false,\"connectionId\":\"%s\",\"reason\":\"shutdown\",\"observedAt\":\"%s\"}",
+            kProtocol, kModelKey, connectionId, observedAt);
+    }
     return written > 0 && static_cast<std::size_t>(written) < outputSize;
 }
 

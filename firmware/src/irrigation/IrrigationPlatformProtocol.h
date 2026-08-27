@@ -5,15 +5,21 @@
 #include <cstdint>
 
 #include "IrrigationTypes.h"
+#include "generated/IrrigationDefinitionContract.h"
 
 namespace IrrigationPlatformProtocol {
 
-constexpr const char* kProtocol = "irrigation-controller/v1";
-constexpr const char* kTypeKey = "irrigation-controller";
-constexpr const char* kModelKey = "irrigation-controller-6-zone";
+constexpr const char* kProtocol = IrrigationDefinitionContract::kProtocol;
+constexpr const char* kProtocolVersion =
+    IrrigationDefinitionContract::kProtocolVersion;
+constexpr const char* kProtocolMajor =
+    IrrigationDefinitionContract::kProtocolMajor;
+constexpr const char* kTypeKey = IrrigationDefinitionContract::kTypeKey;
+constexpr const char* kModelKey = IrrigationDefinitionContract::kModelKey;
 constexpr const char* kDefinitionSha256 =
-    "e09e0e9e649d6b7d618c3ab849fd0c3695e557c9e2e920fedf91b55e91cd92f8";
-constexpr uint32_t kStateFreshnessSeconds = 30;
+    IrrigationDefinitionContract::kDefinitionSha256;
+constexpr uint32_t kStateFreshnessSeconds =
+    IrrigationDefinitionContract::kStateFreshnessSeconds;
 constexpr std::size_t kMaximumPayloadBytes = 16U * 1024U;
 constexpr std::size_t kMaximumCommandBytes = 4096U;
 
@@ -74,12 +80,20 @@ ParseResult parseCommand(const char* payload,
 const char* capabilityKey(Capability capability);
 uint32_t commandTtlMs(Capability capability);
 bool isUuid(const char* value);
+bool isCanonicalDeviceId(const char* value);
+bool formatUuidV4(const uint8_t bytes[16], char* output, std::size_t outputSize);
 bool isValidUtf8(const uint8_t* data, std::size_t length);
 bool formatUtcIso8601(uint32_t epochSec, char* output, std::size_t outputSize);
 bool formatTopic(const char* deviceId,
                  const char* channel,
                  char* output,
                  std::size_t outputSize);
+bool formatAvailability(bool online,
+                        const char* connectionId,
+                        const char* reason,
+                        const char* observedAt,
+                        char* output,
+                        std::size_t outputSize);
 bool canonicalizeCommand(const Command& command,
                          char* output,
                          std::size_t outputSize);

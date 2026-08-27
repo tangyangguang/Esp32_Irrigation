@@ -26,16 +26,16 @@ pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-po
 
 ## 统一 IoT 平台本机配置
 
-### 共享命令契约向量
+### 共享平台契约
 
-命令契约测试以 `iot-device-lab/device-types/irrigation-controller/test/fixtures/platform-command-vectors.json` 为唯一人工维护来源。固件仓库只提交确定性生成的 native 测试头文件；生成物携带源 fixture SHA-256，测试逐条调用正式固件共用的 Topic、QoS/retain 和 command parser。同步脚本不查找固定本机目录，必须显式提供实验室仓库根目录：
+固件直接消费 `iot-device-lab` 当前 `irrigation-controller/definition.json`、仓库级 `device-discovery-vectors.json` 和该类型 `platform-command-vectors.json`。固件仓库只提交确定性生成的定义常量和 native 测试头文件；生成物携带各源文件 SHA-256，测试调用正式固件共用的身份、Topic、availability、QoS/retain 和 command parser。同步脚本不查找固定本机目录，必须显式提供实验室仓库根目录：
 
 ```sh
 python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-lab
 python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-lab --check
 ```
 
-协议或 fixture 更新后先同步，再提交生成物；CI 或本地验收使用 `--check`，源内容与已提交生成物不一致时直接失败。本仓库不复制 fixture JSON 或协议正文，也不自行维护另一组 33 条向量。
+定义或 fixture 更新后先同步，再提交生成物；CI 或本地验收使用 `--check`，任一权威源与已提交生成物不一致时直接失败。本仓库不复制 fixture JSON 或协议正文，也不自行维护第二组发现或命令向量。
 
 平台能力与本地权威入口的固定映射：
 
@@ -49,14 +49,14 @@ python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-
 | 当前只读 state | 从 `WateringStatus`、当前配置、调度、RTC 和存储状态投影，不建立第二业务模型 |
 | 业务 event | 从本地浇水 Store v5 和 App Events 补发，PUBACK 后推进各自游标 |
 
-复制无凭据模板到 Git 忽略目录，填写真实设备独立的 `deviceId` 和 Client ID，并使用该项目分配的终端 MQTT 凭据。真实终端与模拟器必须使用不同 `deviceId` 和 Client ID；同一项目默认共用终端 MQTT 用户，绝不能复用服务端身份。构建日志和回复中不得回显真实值。
+复制无凭据模板到 Git 忽略目录，只填写该项目分配的终端 MQTT 地址与凭据，不填写或另配 `deviceId`、Client ID。MQTT 首次受控启用时，固件生成规范小写 UUIDv4 并保存到 NVS，Client ID 直接等于该永久 `deviceId`；普通重启、断网和固件升级保持不变，已存在但非法的身份会使平台适配拒绝启动而不会静默换号。真实终端与模拟器必须使用不同 UUID；同一项目默认共用终端 MQTT 用户，绝不能复用服务端身份。构建日志和回复中不得回显真实值。
 
 ```sh
 mkdir -p local_private
 cp include/IrrigationMqttPrivate.example.h local_private/IrrigationMqttPrivate.h
 ```
 
-`IRRIGATION_MQTT_DEFINITION_SHA256` 必须与当前受控定义一致，否则适配器拒绝启动。没有私有文件或显式设置 `IRRIGATION_MQTT_ENABLED 0` 时，仅禁用平台连接，本地 Web、RTC 计划、手动停止和现场保护继续工作。MQTT 使用 TLS、独立连接周期/LWT、QoS 1 和非 retained command；命令经过有界队列在主循环串行执行，普通命令只有一个待处理槽，另保留一个专用 stop 槽且优先取出，避免普通命令占满队列后饿死远程停止。浇水历史在本地持久化后生成稳定 eventId；只有匹配消息且游标成功持久化的 PUBACK 才推进补发游标，断线、错误消息 ID 或 NVS 写入失败均不推进。
+`IRRIGATION_MQTT_DEFINITION_SHA256` 必须与当前受控定义一致，否则适配器拒绝启动。online、LWT 和正常 shutdown 三种 retained availability 均由同一生产格式化路径携带固定 `modelKey=irrigation-controller-6-zone`，不上传动态能力。没有私有文件或显式设置 `IRRIGATION_MQTT_ENABLED 0` 时，仅禁用平台连接，本地 Web、RTC 计划、手动停止和现场保护继续工作。MQTT 使用 TLS、独立连接周期/LWT、QoS 1 和非 retained command；命令经过有界队列在主循环串行执行，普通命令只有一个待处理槽，另保留一个专用 stop 槽且优先取出，避免普通命令占满队列后饿死远程停止。浇水历史在本地持久化后生成稳定 eventId；只有匹配消息且游标成功持久化的 PUBACK 才推进补发游标，断线、错误消息 ID 或 NVS 写入失败均不推进。
 
 平台适配器只在本次启动曾取得可信 RTC/NTP 快照后，使用该 epoch 与 `millis()` 单调外推命令 TTL 和消息观测时间；瞬时失去同步不会阻断仍在有效期内的普通浇水 stop，但重启后从未取得可信时间时仍不连接平台、不接受远程命令。定时暂停仍同时要求当前时间同步和调度器时间状态 Ready，维护校准或水路学习活动仍不能由平台 stop 中断。本地 Web、现场停止和控制器安全入口不经过这层 MQTT 时间判断。
 
@@ -75,6 +75,8 @@ cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 Web OTA 配置
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-08-27 统一设备发现契约同步：删除私有配置中的人工 `deviceId` 和 Client ID，MQTT 首次受控启用时生成规范小写 UUIDv4 并永久保存到 NVS，Client ID、Topic 和稳定事件 ID 直接复用该身份；已存在但非法的持久身份拒绝启动平台适配，不做旧语义 ID fallback 或迁移。online、LWT、正常 shutdown 三种 availability 统一携带固定 `modelKey=irrigation-controller-6-zone`，不上传动态能力。固件生产常量和 native fixtures 由 `iot-device-lab main@4f8bf28` 的当前定义、14 条发现向量及 33 条命令向量确定性生成并执行 SHA-256 漂移检查；当前协议版本 `1.1.0`，定义 SHA-256 `f7e8e474919d72e02ec166eaee525086c0a969b871ec8e2b162107a828cde0f0`，发现向量 SHA-256 `c809d5f7ad1de5af453113a1e3b0dddfd89ecd6781ff22b9d19d7762b79a73d3`，命令向量 SHA-256 `a605884faf001bbe4610cf98e3c9d6a564dcd3f76ed024afc86ab97b624bcb4a`。执行 `python3 scripts/sync_platform_command_vectors.py --lab-root /Users/tyg/workspace/iot-device-lab --check` 通过；执行 `/opt/homebrew/bin/pio test -e native` 通过 109/109；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备端记录测试固件；清理生成目录后执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95820 B / 29.2%、Flash 1467389 B / 93.3%，`firmware.bin` 1473968 B，单个 OTA app slot 剩余 98896 B / 6.29%，低于 10% 警戒线但未超槽。本轮只形成 G4 的代码、native 契约/业务回归和目标板构建证据；未烧录、未读取或修改真实私有配置、未连接真实 MQTT/服务端、未使用串口、未发送命令、未操作泵阀或其它物理执行器，不能证明 G5/G6。
 
 2026-08-26 G0 独立评审闭环：按定稿 BOM/网表、当前方案、`iot-base` 架构与演进流程以及 `iot-device-lab` 当前定义和共享通信规则，复核上电安全态、阀泵输出、流量保护、RTC 离线调度、Web/RTC/MQTT 统一入口、配置与运行证据持久化、重启不恢复任务和维护停止边界。修复两项 G4 阻断缺陷：平台命令在 `accepted` 后只有 `running` 证据成功持久化才允许修改参数或启动执行器；空闲 `state.runtime` 不再携带上次任务的历时、脉冲、水量和步骤。新增 native 证据持久化失败门禁测试；修正设备记录测试中与 Store v5/616 字节 payload 不符的槽位与容量断言；当前方案收敛为配置 v4、记录 Store v5/616 字节以及同项目终端凭据、独立设备身份和 Client ID 的唯一当前定义。执行 `/opt/homebrew/bin/pio test -e native` 通过 107/107；执行 `python3 scripts/sync_platform_command_vectors.py --lab-root /Users/tyg/workspace/iot-device-lab --check` 确认 33 条向量及 SHA-256 `809871d04661e19a81f5df755fa9256d702e0b01f4f3f7cb843bca19ad4382a0` 一致；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备端记录测试固件，未在板卡运行；执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95780 B / 29.2%、Flash 1466837 B / 93.3%，`firmware.bin` 1473408 B，OTA app slot 剩余 99456 B / 6.32%，尺寸检查按预期告警。本轮在临时同级依赖布局中离线使用本机已有 PlatformIO 包完成验证；没有烧录、OTA、连接真实 MQTT/服务端、读取真实凭据、修改真实配置、发送设备命令或操作物理执行器。LCD2004 和 4 个按钮仍未实现；真实 RTC、断网、掉电、文件系统/NVS 写失败、阀泵、流量和本地物理停止仍需后续维护窗口实机验收，不能由本轮结果替代。
 

@@ -6,11 +6,11 @@
 
 namespace IrrigationPlatformCommandFixtures {
 
-static constexpr char kSourceFixtureSha256[] = "809871d04661e19a81f5df755fa9256d702e0b01f4f3f7cb843bca19ad4382a0";
+static constexpr char kSourceFixtureSha256[] = "a605884faf001bbe4610cf98e3c9d6a564dcd3f76ed024afc86ab97b624bcb4a";
 static constexpr char kSchemaVersion[] = "1";
 static constexpr char kTypeKey[] = "irrigation-controller";
 static constexpr char kModelKey[] = "irrigation-controller-6-zone";
-static constexpr char kDeviceId[] = "irrigation-fixture-001";
+static constexpr char kDeviceId[] = "33333333-3333-4333-8333-333333333333";
 
 struct PlatformCommandVector {
     const char* id;
@@ -617,39 +617,39 @@ static const uint8_t kPayload32[] = {
 };
 
 static const PlatformCommandVector kCases[] = {
-    {"stop-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload0, sizeof(kPayload0), true},
-    {"start-manual-min-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload1, sizeof(kPayload1), true},
-    {"start-manual-max-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload2, sizeof(kPayload2), true},
-    {"start-manual-empty-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload3, sizeof(kPayload3), false},
-    {"start-manual-zone-out-of-range", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload4, sizeof(kPayload4), false},
-    {"single-output-duration-min-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload5, sizeof(kPayload5), true},
-    {"single-output-duration-max-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload6, sizeof(kPayload6), true},
-    {"single-output-volume-min-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload7, sizeof(kPayload7), true},
-    {"single-output-volume-max-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload8, sizeof(kPayload8), true},
-    {"single-output-mode-shape-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload9, sizeof(kPayload9), false},
-    {"plans-empty-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload10, sizeof(kPayload10), true},
-    {"plans-utf8-name-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload11, sizeof(kPayload11), true},
-    {"plans-id-out-of-range", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload12, sizeof(kPayload12), false},
-    {"automatic-enabled-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload13, sizeof(kPayload13), true},
-    {"automatic-paused-until-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload14, sizeof(kPayload14), true},
-    {"automatic-mode-value-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload15, sizeof(kPayload15), false},
-    {"ttl-one-millisecond-over", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload16, sizeof(kPayload16), false},
-    {"ttl-zero-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload17, sizeof(kPayload17), false},
-    {"uuid-version-1-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload18, sizeof(kPayload18), true},
-    {"uuid-version-8-variant-b-valid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload19, sizeof(kPayload19), true},
-    {"uuid-version-zero-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload20, sizeof(kPayload20), false},
-    {"uuid-variant-seven-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload21, sizeof(kPayload21), false},
-    {"unknown-envelope-field", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload22, sizeof(kPayload22), false},
-    {"unknown-parameter-field", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload23, sizeof(kPayload23), false},
-    {"unknown-capability", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload24, sizeof(kPayload24), false},
-    {"retained-command-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, true, kPayload25, sizeof(kPayload25), false},
-    {"qos-zero-invalid", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 0, false, kPayload26, sizeof(kPayload26), false},
-    {"wrong-device-topic", "iot/irrigation-controller/v1/irrigation-other-001/command", 1, false, kPayload27, sizeof(kPayload27), false},
-    {"wrong-channel-topic", "iot/irrigation-controller/v1/irrigation-fixture-001/state", 1, false, kPayload28, sizeof(kPayload28), false},
-    {"wrong-type-topic", "iot/other-controller/v1/irrigation-fixture-001/command", 1, false, kPayload29, sizeof(kPayload29), false},
-    {"wrong-version-topic", "iot/irrigation-controller/v2/irrigation-fixture-001/command", 1, false, kPayload30, sizeof(kPayload30), false},
-    {"invalid-utf8", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload31, sizeof(kPayload31), false},
-    {"invalid-json-with-valid-utf8", "iot/irrigation-controller/v1/irrigation-fixture-001/command", 1, false, kPayload32, sizeof(kPayload32), false},
+    {"stop-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload0, sizeof(kPayload0), true},
+    {"start-manual-min-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload1, sizeof(kPayload1), true},
+    {"start-manual-max-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload2, sizeof(kPayload2), true},
+    {"start-manual-empty-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload3, sizeof(kPayload3), false},
+    {"start-manual-zone-out-of-range", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload4, sizeof(kPayload4), false},
+    {"single-output-duration-min-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload5, sizeof(kPayload5), true},
+    {"single-output-duration-max-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload6, sizeof(kPayload6), true},
+    {"single-output-volume-min-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload7, sizeof(kPayload7), true},
+    {"single-output-volume-max-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload8, sizeof(kPayload8), true},
+    {"single-output-mode-shape-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload9, sizeof(kPayload9), false},
+    {"plans-empty-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload10, sizeof(kPayload10), true},
+    {"plans-utf8-name-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload11, sizeof(kPayload11), true},
+    {"plans-id-out-of-range", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload12, sizeof(kPayload12), false},
+    {"automatic-enabled-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload13, sizeof(kPayload13), true},
+    {"automatic-paused-until-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload14, sizeof(kPayload14), true},
+    {"automatic-mode-value-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload15, sizeof(kPayload15), false},
+    {"ttl-one-millisecond-over", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload16, sizeof(kPayload16), false},
+    {"ttl-zero-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload17, sizeof(kPayload17), false},
+    {"uuid-version-1-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload18, sizeof(kPayload18), true},
+    {"uuid-version-8-variant-b-valid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload19, sizeof(kPayload19), true},
+    {"uuid-version-zero-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload20, sizeof(kPayload20), false},
+    {"uuid-variant-seven-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload21, sizeof(kPayload21), false},
+    {"unknown-envelope-field", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload22, sizeof(kPayload22), false},
+    {"unknown-parameter-field", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload23, sizeof(kPayload23), false},
+    {"unknown-capability", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload24, sizeof(kPayload24), false},
+    {"retained-command-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, true, kPayload25, sizeof(kPayload25), false},
+    {"qos-zero-invalid", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 0, false, kPayload26, sizeof(kPayload26), false},
+    {"wrong-device-topic", "iot/irrigation-controller/v1/77777777-7777-4777-8777-777777777777/command", 1, false, kPayload27, sizeof(kPayload27), false},
+    {"wrong-channel-topic", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/state", 1, false, kPayload28, sizeof(kPayload28), false},
+    {"wrong-type-topic", "iot/other-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload29, sizeof(kPayload29), false},
+    {"wrong-version-topic", "iot/irrigation-controller/v2/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload30, sizeof(kPayload30), false},
+    {"invalid-utf8", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload31, sizeof(kPayload31), false},
+    {"invalid-json-with-valid-utf8", "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command", 1, false, kPayload32, sizeof(kPayload32), false},
 };
 
 static constexpr std::size_t kCaseCount = sizeof(kCases) / sizeof(kCases[0]);

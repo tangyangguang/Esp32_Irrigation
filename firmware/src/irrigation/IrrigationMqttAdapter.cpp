@@ -20,8 +20,6 @@
 #else
 #define IRRIGATION_MQTT_ENABLED 0
 #define IRRIGATION_MQTT_BROKER_URI ""
-#define IRRIGATION_MQTT_DEVICE_ID ""
-#define IRRIGATION_MQTT_CLIENT_ID ""
 #define IRRIGATION_MQTT_USERNAME ""
 #define IRRIGATION_MQTT_PASSWORD ""
 #define IRRIGATION_MQTT_DEFINITION_SHA256 ""
@@ -35,18 +33,6 @@ constexpr uint32_t kIdleRuntimeIntervalMs = 5000U;
 constexpr uint32_t kProgressIntervalMs = 5000U;
 constexpr uint32_t kFullStateIntervalMs =
     IrrigationPlatformProtocol::kStateFreshnessSeconds * 800U;
-
-bool validIdentity(const char* value) {
-    if (!value) return false;
-    const std::size_t length = std::strlen(value);
-    if (length == 0 || length > 64) return false;
-    for (std::size_t index = 0; index < length; ++index) {
-        const char ch = value[index];
-        if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') ||
-              (ch == '-' && index != 0))) return false;
-    }
-    return true;
-}
 
 const char* wateringFailure(WateringStopReason reason) {
     switch (reason) {
@@ -132,16 +118,15 @@ bool IrrigationMqttAdapter::begin(IrrigationApp& app) {
         return true;
     }
     if (std::strncmp(IRRIGATION_MQTT_BROKER_URI, "mqtts://", 8) != 0 ||
-        !validIdentity(IRRIGATION_MQTT_DEVICE_ID) ||
-        !validIdentity(IRRIGATION_MQTT_CLIENT_ID) ||
         IRRIGATION_MQTT_USERNAME[0] == '\0' || IRRIGATION_MQTT_PASSWORD[0] == '\0' ||
         std::strcmp(IRRIGATION_MQTT_DEFINITION_SHA256,
                     IrrigationPlatformProtocol::kDefinitionSha256) != 0) {
         ESP32BASE_LOG_E("irrigation_mqtt", "private_config_invalid_or_definition_mismatch");
         return false;
     }
-    if (!preferences_.begin("irr_mqtt", false) || !loadHistory()) {
-        ESP32BASE_LOG_E("irrigation_mqtt", "command_history_unavailable");
+    if (!preferences_.begin("irr_mqtt", false) || !loadOrCreateDeviceId() ||
+        !loadHistory()) {
+        ESP32BASE_LOG_E("irrigation_mqtt", "identity_or_command_history_unavailable");
         return false;
     }
     enabled_ = true;
@@ -281,13 +266,13 @@ bool IrrigationMqttAdapter::startClient() {
     makeConnectionId();
     makeTopic(IrrigationMqttCore::Channel::Availability,
               availabilityTopic_.data(), availabilityTopic_.size());
-    std::snprintf(lwtPayload_.data(), lwtPayload_.size(),
-                  "{\"protocol\":\"%s\",\"online\":false,\"connectionId\":\"%s\",\"reason\":\"lwt\"}",
-                  IrrigationPlatformProtocol::kProtocol, connectionId_.data());
+    if (!IrrigationPlatformProtocol::formatAvailability(
+            false, connectionId_.data(), "lwt", nullptr, lwtPayload_.data(),
+            lwtPayload_.size())) return false;
     esp_mqtt_client_config_t config{};
     config.event_handle = mqttEvent;
     config.uri = IRRIGATION_MQTT_BROKER_URI;
-    config.client_id = IRRIGATION_MQTT_CLIENT_ID;
+    config.client_id = deviceId_.data();
     config.username = IRRIGATION_MQTT_USERNAME;
     config.password = IRRIGATION_MQTT_PASSWORD;
     config.lwt_topic = availabilityTopic_.data();
@@ -331,7 +316,7 @@ void IrrigationMqttAdapter::queueIncoming(const esp_mqtt_event_t& event) {
         if (!event.topic || event.topic_len < 0 ||
             !IrrigationMqttCore::matchesCommandTopic(
                 event.topic, static_cast<std::size_t>(event.topic_len),
-                IRRIGATION_MQTT_DEVICE_ID) ||
+                deviceId_.data()) ||
             event.total_data_len <= 0 ||
             event.total_data_len > static_cast<int>(IrrigationPlatformProtocol::kMaximumCommandBytes)) {
             assemblyExpected_ = 0;
@@ -629,6 +614,21 @@ void IrrigationMqttAdapter::updateRemoteOperation() {
 IrrigationMqttAdapter::HistoryEntry* IrrigationMqttAdapter::findHistory(
     const char* commandId) {
     return history_.find(commandId);
+}
+
+bool IrrigationMqttAdapter::loadOrCreateDeviceId() {
+    constexpr const char* key = "device_id";
+    if (preferences_.isKey(key)) {
+        const std::size_t length =
+            preferences_.getString(key, deviceId_.data(), deviceId_.size());
+        return length == deviceId_.size() &&
+               IrrigationPlatformProtocol::isCanonicalDeviceId(deviceId_.data());
+    }
+    uint8_t bytes[16]{};
+    esp_fill_random(bytes, sizeof(bytes));
+    if (!IrrigationPlatformProtocol::formatUuidV4(
+            bytes, deviceId_.data(), deviceId_.size())) return false;
+    return preferences_.putString(key, deviceId_.data()) == 36;
 }
 
 bool IrrigationMqttAdapter::loadHistory() {
@@ -1266,7 +1266,7 @@ void IrrigationMqttAdapter::makeWateringEventId(
     std::size_t size) const {
     char identity[160]{};
     std::snprintf(identity, sizeof(identity), "%s|watering|%lu|%lu|%lu|%lu",
-                  IRRIGATION_MQTT_DEVICE_ID, static_cast<unsigned long>(recordId),
+                  deviceId_.data(), static_cast<unsigned long>(recordId),
                   static_cast<unsigned long>(timing.completedBootId),
                   static_cast<unsigned long>(timing.completedUptimeSec),
                   static_cast<unsigned long>(timing.completedEpochSec));
@@ -1289,7 +1289,7 @@ void IrrigationMqttAdapter::makeAppEventId(
     std::size_t size) const {
     char identity[160]{};
     std::snprintf(identity, sizeof(identity), "%s|app-event|%lu|%lu|%lu|%lu",
-                  IRRIGATION_MQTT_DEVICE_ID, static_cast<unsigned long>(recordId),
+                  deviceId_.data(), static_cast<unsigned long>(recordId),
                   static_cast<unsigned long>(timing.completedBootId),
                   static_cast<unsigned long>(timing.completedUptimeSec),
                   static_cast<unsigned long>(timing.completedEpochSec));
@@ -1323,17 +1323,11 @@ void IrrigationMqttAdapter::publishAvailability(bool online, const char* reason)
     char observed[25]{};
     if (!observedAt(observed, sizeof(observed))) return;
     char payload[320]{};
-    if (online) {
-        std::snprintf(payload, sizeof(payload),
-                      "{\"protocol\":\"%s\",\"online\":true,\"connectionId\":\"%s\",\"observedAt\":\"%s\"}",
-                      IrrigationPlatformProtocol::kProtocol, connectionId_.data(), observed);
-    } else {
-        std::snprintf(payload, sizeof(payload),
-                      "{\"protocol\":\"%s\",\"online\":false,\"connectionId\":\"%s\",\"reason\":\"%s\",\"observedAt\":\"%s\"}",
-                      IrrigationPlatformProtocol::kProtocol, connectionId_.data(),
-                      reason ? reason : "shutdown", observed);
-    }
-    enqueue(IrrigationMqttCore::Channel::Availability, payload);
+    const char* finalReason = online ? nullptr : (reason ? reason : "shutdown");
+    if (IrrigationPlatformProtocol::formatAvailability(
+            online, connectionId_.data(), finalReason, observed, payload,
+            sizeof(payload)))
+        enqueue(IrrigationMqttCore::Channel::Availability, payload);
 }
 
 bool IrrigationMqttAdapter::enqueue(IrrigationMqttCore::Channel channel,
@@ -1382,7 +1376,7 @@ void IrrigationMqttAdapter::makeTopic(IrrigationMqttCore::Channel channel,
                                       char* output,
                                       std::size_t size) const {
     if (!IrrigationPlatformProtocol::formatTopic(
-            IRRIGATION_MQTT_DEVICE_ID, IrrigationMqttCore::channelName(channel),
+            deviceId_.data(), IrrigationMqttCore::channelName(channel),
             output, size) && size != 0)
         output[0] = '\0';
 }
