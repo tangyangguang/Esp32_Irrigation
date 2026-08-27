@@ -21,6 +21,10 @@ void test_consumes_controlled_platform_command_vectors() {
     TEST_ASSERT_EQUAL_STRING("1", Fixtures::kSchemaVersion);
     TEST_ASSERT_EQUAL_STRING(kTypeKey, Fixtures::kTypeKey);
     TEST_ASSERT_EQUAL_STRING(kModelKey, Fixtures::kModelKey);
+    TEST_ASSERT_EQUAL_STRING("1.1.0", kProtocolVersion);
+    TEST_ASSERT_EQUAL_STRING(
+        "f01520b35eeb1a565d922626a50d20135863fbf1dc365b0afa3de9543b3f47b6",
+        kDefinitionChecksum);
     TEST_ASSERT_EQUAL_UINT32(33, Fixtures::kCaseCount);
     TEST_ASSERT_EQUAL_UINT32(64, std::strlen(Fixtures::kSourceFixtureSha256));
     uint8_t acceptedCapabilities = 0;

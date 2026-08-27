@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -28,6 +29,28 @@ DEFAULT_DEFINITION_OUTPUT = (
     Path(__file__).resolve().parents[1]
     / "src/irrigation/generated/IrrigationDefinitionContract.h"
 )
+
+NODE_CANONICALIZE_JSON = r"""
+const fs = require("node:fs");
+const value = JSON.parse(fs.readFileSync(0, "utf8"));
+function canonicalizeJson(value) {
+  if (value === null || typeof value === "boolean" || typeof value === "string")
+    return JSON.stringify(value);
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new Error("non-finite JSON number");
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalizeJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalizeJson(child)}`)
+      .join(",")}}`;
+  }
+  throw new Error("value is not JSON");
+}
+process.stdout.write(canonicalizeJson(value));
+"""
 
 
 def _arguments():
@@ -161,6 +184,39 @@ def _compact_json(value):
     )
 
 
+def canonicalize_json_text(text):
+    try:
+        result = subprocess.run(
+            ["node", "-e", NODE_CANONICALIZE_JSON],
+            input=text,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+    except FileNotFoundError as error:
+        raise RuntimeError("Node.js is required to canonicalize device definitions") from error
+    except subprocess.CalledProcessError as error:
+        raise ValueError(
+            "definition canonicalization failed: %s" % error.stderr.strip()
+        ) from error
+    return result.stdout
+
+
+def canonicalize_json(value):
+    serialized = json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+    return canonicalize_json_text(serialized)
+
+
+def definition_checksum(value):
+    canonical = canonicalize_json(value).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def _device_id_from_topic(topic):
     parts = topic.split("/")
     if len(parts) != 5 or parts[0] != "iot" or parts[4] != "availability":
@@ -235,7 +291,7 @@ static constexpr std::size_t kApplicableCaseCount = %u;
     )
 
 
-def _render_definition(raw, source_sha256):
+def _render_definition(raw, source_file_sha256, canonical_checksum):
     definition = json.loads(raw.decode("utf-8"))
     models = definition.get("models")
     if definition.get("schemaVersion") != "1" or not isinstance(models, list) or len(models) != 1:
@@ -261,7 +317,8 @@ constexpr const char* kProtocolVersion = %s;
 constexpr const char* kProtocolMajor = %s;
 constexpr const char* kTypeKey = %s;
 constexpr const char* kModelKey = %s;
-constexpr const char* kDefinitionSha256 = %s;
+constexpr const char* kSourceFileSha256 = %s;
+constexpr const char* kDefinitionChecksum = %s;
 constexpr uint32_t kStateFreshnessSeconds = %uU;
 
 }  // namespace IrrigationDefinitionContract
@@ -271,7 +328,8 @@ constexpr uint32_t kStateFreshnessSeconds = %uU;
         _cpp_string(protocol_major),
         _cpp_string(definition["typeKey"]),
         _cpp_string(model["modelKey"]),
-        _cpp_string(source_sha256),
+        _cpp_string(source_file_sha256),
+        _cpp_string(canonical_checksum),
         freshness,
     )
 
@@ -301,11 +359,23 @@ def main():
         if not source.is_file():
             raise FileNotFoundError("controlled contract source not found: %s" % source)
     raw = {name: source.read_bytes() for name, source in sources.items()}
-    sha256 = {name: hashlib.sha256(value).hexdigest() for name, value in raw.items()}
+    source_sha256 = {
+        name: hashlib.sha256(value).hexdigest() for name, value in raw.items()
+    }
+    definition_text = raw["definition"].decode("utf-8")
+    canonical_definition_checksum = hashlib.sha256(
+        canonicalize_json_text(definition_text).encode("utf-8")
+    ).hexdigest()
     generated = {
-        "command": _render_commands(raw["command"], sha256["command"]),
-        "discovery": _render_discovery(raw["discovery"], sha256["discovery"]),
-        "definition": _render_definition(raw["definition"], sha256["definition"]),
+        "command": _render_commands(raw["command"], source_sha256["command"]),
+        "discovery": _render_discovery(
+            raw["discovery"], source_sha256["discovery"]
+        ),
+        "definition": _render_definition(
+            raw["definition"],
+            source_sha256["definition"],
+            canonical_definition_checksum,
+        ),
     }
     outputs = {
         "command": arguments.command_output,
@@ -326,8 +396,16 @@ def main():
     discovery_count = len(json.loads(raw["discovery"].decode("utf-8"))["cases"])
     action = "current" if arguments.check else "synced"
     print(
-        "platform contracts %s: commands=%d discovery=%d command_sha256=%s discovery_sha256=%s definition_sha256=%s"
-        % (action, command_count, discovery_count, sha256["command"], sha256["discovery"], sha256["definition"])
+        "platform contracts %s: commands=%d discovery=%d command_source_sha256=%s discovery_source_sha256=%s definition_source_sha256=%s definition_canonical_checksum=%s"
+        % (
+            action,
+            command_count,
+            discovery_count,
+            source_sha256["command"],
+            source_sha256["discovery"],
+            source_sha256["definition"],
+            canonical_definition_checksum,
+        )
     )
     return 0
 

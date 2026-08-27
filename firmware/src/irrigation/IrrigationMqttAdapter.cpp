@@ -22,7 +22,7 @@
 #define IRRIGATION_MQTT_BROKER_URI ""
 #define IRRIGATION_MQTT_USERNAME ""
 #define IRRIGATION_MQTT_PASSWORD ""
-#define IRRIGATION_MQTT_DEFINITION_SHA256 ""
+#define IRRIGATION_MQTT_DEFINITION_CHECKSUM ""
 #endif
 
 namespace {
@@ -119,8 +119,8 @@ bool IrrigationMqttAdapter::begin(IrrigationApp& app) {
     }
     if (std::strncmp(IRRIGATION_MQTT_BROKER_URI, "mqtts://", 8) != 0 ||
         IRRIGATION_MQTT_USERNAME[0] == '\0' || IRRIGATION_MQTT_PASSWORD[0] == '\0' ||
-        std::strcmp(IRRIGATION_MQTT_DEFINITION_SHA256,
-                    IrrigationPlatformProtocol::kDefinitionSha256) != 0) {
+        std::strcmp(IRRIGATION_MQTT_DEFINITION_CHECKSUM,
+                    IrrigationPlatformProtocol::kDefinitionChecksum) != 0) {
         ESP32BASE_LOG_E("irrigation_mqtt", "private_config_invalid_or_definition_mismatch");
         return false;
     }

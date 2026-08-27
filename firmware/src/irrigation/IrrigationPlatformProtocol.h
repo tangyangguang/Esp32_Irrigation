@@ -16,8 +16,8 @@ constexpr const char* kProtocolMajor =
     IrrigationDefinitionContract::kProtocolMajor;
 constexpr const char* kTypeKey = IrrigationDefinitionContract::kTypeKey;
 constexpr const char* kModelKey = IrrigationDefinitionContract::kModelKey;
-constexpr const char* kDefinitionSha256 =
-    IrrigationDefinitionContract::kDefinitionSha256;
+constexpr const char* kDefinitionChecksum =
+    IrrigationDefinitionContract::kDefinitionChecksum;
 constexpr uint32_t kStateFreshnessSeconds =
     IrrigationDefinitionContract::kStateFreshnessSeconds;
 constexpr std::size_t kMaximumPayloadBytes = 16U * 1024U;
