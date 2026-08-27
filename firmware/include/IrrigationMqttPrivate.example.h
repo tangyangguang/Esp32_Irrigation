@@ -6,5 +6,5 @@
 #define IRRIGATION_MQTT_BROKER_URI "mqtts://broker.example.invalid:8883"
 #define IRRIGATION_MQTT_USERNAME "replace-with-device-username"
 #define IRRIGATION_MQTT_PASSWORD "replace-with-device-password"
-#define IRRIGATION_MQTT_DEFINITION_SHA256 \
-    "f7e8e474919d72e02ec166eaee525086c0a969b871ec8e2b162107a828cde0f0"
+#define IRRIGATION_MQTT_DEFINITION_CHECKSUM \
+    "f01520b35eeb1a565d922626a50d20135863fbf1dc365b0afa3de9543b3f47b6"
