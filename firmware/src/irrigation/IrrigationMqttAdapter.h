@@ -46,6 +46,7 @@ private:
     void updateRemoteOperation();
 
     HistoryEntry* findHistory(const char* commandId);
+    bool loadOrCreateDeviceId();
     bool loadHistory();
     bool saveHistory();
     static bool persistHistory(void* context);
@@ -123,6 +124,7 @@ private:
     uint32_t lastAppEventPollMs_ = 0;
     IrrigationMqttCore::EventCursor appEventCursor_{};
     uint32_t seq_ = 0;
+    std::array<char, 37> deviceId_{};
     std::array<char, 37> connectionId_{};
     std::array<char, 192> availabilityTopic_{};
     std::array<char, 256> lwtPayload_{};

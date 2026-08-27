@@ -7,18 +7,32 @@ import sys
 from pathlib import Path
 
 
-FIXTURE_RELATIVE_PATH = Path(
+COMMAND_FIXTURE_RELATIVE_PATH = Path(
     "device-types/irrigation-controller/test/fixtures/platform-command-vectors.json"
 )
-DEFAULT_OUTPUT = (
+DISCOVERY_FIXTURE_RELATIVE_PATH = Path(
+    "platform/test/fixtures/device-discovery-vectors.json"
+)
+DEFINITION_RELATIVE_PATH = Path(
+    "device-types/irrigation-controller/definition.json"
+)
+DEFAULT_COMMAND_OUTPUT = (
     Path(__file__).resolve().parents[1]
     / "test/test_platform_protocol/generated/platform_command_vectors.h"
+)
+DEFAULT_DISCOVERY_OUTPUT = (
+    Path(__file__).resolve().parents[1]
+    / "test/test_platform_protocol/generated/device_discovery_vectors.h"
+)
+DEFAULT_DEFINITION_OUTPUT = (
+    Path(__file__).resolve().parents[1]
+    / "src/irrigation/generated/IrrigationDefinitionContract.h"
 )
 
 
 def _arguments():
     parser = argparse.ArgumentParser(
-        description="Sync the controlled irrigation platform command vectors for native tests."
+        description="Sync the controlled irrigation definition and platform fixtures."
     )
     parser.add_argument(
         "--lab-root",
@@ -26,7 +40,9 @@ def _arguments():
         type=Path,
         help="iot-device-lab repository root containing the controlled fixture",
     )
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--command-output", type=Path, default=DEFAULT_COMMAND_OUTPUT)
+    parser.add_argument("--discovery-output", type=Path, default=DEFAULT_DISCOVERY_OUTPUT)
+    parser.add_argument("--definition-output", type=Path, default=DEFAULT_DEFINITION_OUTPUT)
     parser.add_argument(
         "--check",
         action="store_true",
@@ -62,7 +78,7 @@ def _byte_array(name, payload):
     return "static const uint8_t %s[] = {\n%s\n};" % (name, "\n".join(lines))
 
 
-def _render(raw, source_sha256):
+def _render_commands(raw, source_sha256):
     fixture = json.loads(raw.decode("utf-8"))
     if fixture.get("schemaVersion") != "1" or not isinstance(fixture.get("cases"), list):
         raise ValueError("unsupported platform command fixture schema")
@@ -136,35 +152,182 @@ static constexpr std::size_t kCaseCount = sizeof(kCases) / sizeof(kCases[0]);
     )
 
 
-def main():
-    arguments = _arguments()
-    source = (arguments.lab_root / FIXTURE_RELATIVE_PATH).resolve()
-    if not source.is_file():
-        raise FileNotFoundError("controlled fixture not found: %s" % source)
-    raw = source.read_bytes()
-    source_sha256 = hashlib.sha256(raw).hexdigest()
-    case_count = len(json.loads(raw.decode("utf-8"))["cases"])
-    generated = _render(raw, source_sha256)
-    output = arguments.output.resolve()
-    if arguments.check:
-        if not output.is_file() or output.read_text(encoding="utf-8") != generated:
-            print(
-                "platform command fixture drift: run sync_platform_command_vectors.py without --check",
-                file=sys.stderr,
+def _compact_json(value):
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _device_id_from_topic(topic):
+    parts = topic.split("/")
+    if len(parts) != 5 or parts[0] != "iot" or parts[4] != "availability":
+        raise ValueError("discovery vector topic is invalid: %s" % topic)
+    return parts[3]
+
+
+def _render_discovery(raw, source_sha256):
+    fixture = json.loads(raw.decode("utf-8"))
+    if fixture.get("schemaVersion") != "1" or not isinstance(fixture.get("cases"), list):
+        raise ValueError("unsupported device discovery fixture schema")
+    rows = []
+    applicable_count = 0
+    for index, case in enumerate(fixture["cases"]):
+        required = ("name", "definitionTypeKey", "modelKey", "topic", "qos", "retain", "payload", "valid")
+        if any(key not in case for key in required):
+            raise ValueError("discovery fixture case is incomplete at index %d" % index)
+        applicable = case["definitionTypeKey"] == "irrigation-controller"
+        invalid_device_id = case.get("error") == "invalid_device_id"
+        if applicable or invalid_device_id:
+            applicable_count += 1
+        rows.append(
+            "    {%s, %s, %s, %u, %s, %s, %s, %s, %s},"
+            % (
+                _cpp_string(case["name"]),
+                _cpp_string(case["definitionTypeKey"]),
+                _cpp_string(_device_id_from_topic(case["topic"])),
+                case["qos"],
+                "true" if case["retain"] else "false",
+                _cpp_string(_compact_json(case["payload"])),
+                "true" if case["valid"] else "false",
+                _cpp_string(case.get("error", "")),
+                "true" if applicable or invalid_device_id else "false",
             )
-            return 1
-        print(
-            "platform command fixtures current: cases=%d sha256=%s"
-            % (case_count, source_sha256)
         )
-        return 0
+    return """// Generated by scripts/sync_platform_command_vectors.py. Do not edit.
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+
+namespace IrrigationDeviceDiscoveryFixtures {
+
+static constexpr char kSourceFixtureSha256[] = %s;
+static constexpr char kSchemaVersion[] = %s;
+
+struct DeviceDiscoveryVector {
+    const char* name;
+    const char* definitionTypeKey;
+    const char* deviceId;
+    uint8_t qos;
+    bool retain;
+    const char* payload;
+    bool valid;
+    const char* error;
+    bool applicableToFirmware;
+};
+
+static const DeviceDiscoveryVector kCases[] = {
+%s
+};
+
+static constexpr std::size_t kCaseCount = sizeof(kCases) / sizeof(kCases[0]);
+static constexpr std::size_t kApplicableCaseCount = %u;
+
+}  // namespace IrrigationDeviceDiscoveryFixtures
+""" % (
+        _cpp_string(source_sha256),
+        _cpp_string(fixture["schemaVersion"]),
+        "\n".join(rows),
+        applicable_count,
+    )
+
+
+def _render_definition(raw, source_sha256):
+    definition = json.loads(raw.decode("utf-8"))
+    models = definition.get("models")
+    if definition.get("schemaVersion") != "1" or not isinstance(models, list) or len(models) != 1:
+        raise ValueError("irrigation definition must contain exactly one current model")
+    protocol_version = definition.get("protocolVersion", "")
+    protocol_major = protocol_version.split(".", 1)[0]
+    if not protocol_major.isdigit() or int(protocol_major) < 1:
+        raise ValueError("irrigation protocolVersion is invalid")
+    model = models[0]
+    freshness = model.get("stateFreshnessSeconds")
+    if not isinstance(freshness, int) or freshness < 1:
+        raise ValueError("irrigation state freshness is invalid")
+    protocol = "%s/v%s" % (definition["protocolId"], protocol_major)
+    return """// Generated by scripts/sync_platform_command_vectors.py. Do not edit.
+#pragma once
+
+#include <cstdint>
+
+namespace IrrigationDefinitionContract {
+
+constexpr const char* kProtocol = %s;
+constexpr const char* kProtocolVersion = %s;
+constexpr const char* kProtocolMajor = %s;
+constexpr const char* kTypeKey = %s;
+constexpr const char* kModelKey = %s;
+constexpr const char* kDefinitionSha256 = %s;
+constexpr uint32_t kStateFreshnessSeconds = %uU;
+
+}  // namespace IrrigationDefinitionContract
+""" % (
+        _cpp_string(protocol),
+        _cpp_string(protocol_version),
+        _cpp_string(protocol_major),
+        _cpp_string(definition["typeKey"]),
+        _cpp_string(model["modelKey"]),
+        _cpp_string(source_sha256),
+        freshness,
+    )
+
+
+def _write_or_check(output, generated, check, drift_message):
+    output = output.resolve()
+    if check:
+        if not output.is_file() or output.read_text(encoding="utf-8") != generated:
+            print(drift_message, file=sys.stderr)
+            return False
+        return True
     output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix + ".tmp")
     temporary.write_text(generated, encoding="utf-8", newline="\n")
     temporary.replace(output)
+    return True
+
+
+def main():
+    arguments = _arguments()
+    sources = {
+        "command": (arguments.lab_root / COMMAND_FIXTURE_RELATIVE_PATH).resolve(),
+        "discovery": (arguments.lab_root / DISCOVERY_FIXTURE_RELATIVE_PATH).resolve(),
+        "definition": (arguments.lab_root / DEFINITION_RELATIVE_PATH).resolve(),
+    }
+    for source in sources.values():
+        if not source.is_file():
+            raise FileNotFoundError("controlled contract source not found: %s" % source)
+    raw = {name: source.read_bytes() for name, source in sources.items()}
+    sha256 = {name: hashlib.sha256(value).hexdigest() for name, value in raw.items()}
+    generated = {
+        "command": _render_commands(raw["command"], sha256["command"]),
+        "discovery": _render_discovery(raw["discovery"], sha256["discovery"]),
+        "definition": _render_definition(raw["definition"], sha256["definition"]),
+    }
+    outputs = {
+        "command": arguments.command_output,
+        "discovery": arguments.discovery_output,
+        "definition": arguments.definition_output,
+    }
+    valid = True
+    for name in ("command", "discovery", "definition"):
+        valid = _write_or_check(
+            outputs[name],
+            generated[name],
+            arguments.check,
+            "%s contract drift: run sync_platform_command_vectors.py without --check" % name,
+        ) and valid
+    if not valid:
+        return 1
+    command_count = len(json.loads(raw["command"].decode("utf-8"))["cases"])
+    discovery_count = len(json.loads(raw["discovery"].decode("utf-8"))["cases"])
+    action = "current" if arguments.check else "synced"
     print(
-        "platform command fixtures synced: output=%s cases=%d sha256=%s"
-        % (output, case_count, source_sha256)
+        "platform contracts %s: commands=%d discovery=%d command_sha256=%s discovery_sha256=%s definition_sha256=%s"
+        % (action, command_count, discovery_count, sha256["command"], sha256["discovery"], sha256["definition"])
     )
     return 0
 

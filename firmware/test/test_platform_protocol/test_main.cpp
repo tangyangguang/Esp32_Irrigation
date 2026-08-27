@@ -3,6 +3,7 @@
 #include <array>
 #include <cstring>
 
+#include "generated/device_discovery_vectors.h"
 #include "generated/platform_command_vectors.h"
 #include "irrigation/IrrigationMqttCore.h"
 #include "irrigation/IrrigationPlatformProtocol.h"
@@ -11,6 +12,7 @@ namespace {
 
 using namespace IrrigationPlatformProtocol;
 namespace Fixtures = IrrigationPlatformCommandFixtures;
+namespace DiscoveryFixtures = IrrigationDeviceDiscoveryFixtures;
 
 const char* manualCommand =
     R"JSON({"protocol":"irrigation-controller/v1","commandId":"7d1898cd-adbf-4fc2-a8f0-dfa5748774fe","capabilityKey":"operation.start-manual","parameters":{"zones":[{"zoneId":2,"durationMinutes":5},{"zoneId":1,"durationMinutes":3}]},"issuedAt":"2026-08-25T02:00:00.000Z","expiresAt":"2026-08-25T02:00:30.000Z"})JSON";
@@ -43,6 +45,51 @@ void test_consumes_controlled_platform_command_vectors() {
     TEST_ASSERT_EQUAL_HEX8(0x1FU, acceptedCapabilities);
 }
 
+void test_consumes_controlled_device_discovery_vectors() {
+    TEST_ASSERT_EQUAL_STRING("1", DiscoveryFixtures::kSchemaVersion);
+    TEST_ASSERT_EQUAL_UINT32(14, DiscoveryFixtures::kCaseCount);
+    TEST_ASSERT_EQUAL_UINT32(5, DiscoveryFixtures::kApplicableCaseCount);
+    TEST_ASSERT_EQUAL_UINT32(64, std::strlen(DiscoveryFixtures::kSourceFixtureSha256));
+    std::size_t consumed = 0;
+    for (const auto& vector : DiscoveryFixtures::kCases) {
+        if (!vector.applicableToFirmware) continue;
+        ++consumed;
+        if (std::strcmp(vector.definitionTypeKey, kTypeKey) == 0) {
+            char topic[160]{};
+            TEST_ASSERT_TRUE_MESSAGE(
+                formatTopic(vector.deviceId, "availability", topic, sizeof(topic)),
+                vector.name);
+            const auto policy = IrrigationMqttCore::publicationPolicy(
+                IrrigationMqttCore::Channel::Availability);
+            TEST_ASSERT_EQUAL_UINT8_MESSAGE(vector.qos, policy.qos, vector.name);
+            TEST_ASSERT_EQUAL_MESSAGE(vector.retain, policy.retain, vector.name);
+            char payload[320]{};
+            const char* reason = nullptr;
+            const char* observedAt = nullptr;
+            bool online = false;
+            if (std::strstr(vector.name, "online")) {
+                online = true;
+                observedAt = "2026-08-27T00:00:00.000Z";
+            } else if (std::strstr(vector.name, "lwt")) {
+                reason = "lwt";
+            } else {
+                reason = "shutdown";
+                observedAt = "2026-08-27T00:01:00.000Z";
+            }
+            TEST_ASSERT_TRUE_MESSAGE(
+                formatAvailability(
+                    online, "a2222222-2222-4222-8222-222222222222", reason,
+                    observedAt, payload, sizeof(payload)),
+                vector.name);
+            TEST_ASSERT_EQUAL_STRING_MESSAGE(vector.payload, payload, vector.name);
+        } else {
+            TEST_ASSERT_EQUAL_STRING("invalid_device_id", vector.error);
+            TEST_ASSERT_FALSE_MESSAGE(isCanonicalDeviceId(vector.deviceId), vector.name);
+        }
+    }
+    TEST_ASSERT_EQUAL_UINT32(DiscoveryFixtures::kApplicableCaseCount, consumed);
+}
+
 void test_uuid_versions_variants_and_case_match_platform_rule() {
     char value[] = "7d1898cd-adbf-1fc2-88f0-dfa5748774fe";
     constexpr char variants[] = {'8', '9', 'a', 'b', 'A', 'B'};
@@ -64,6 +111,19 @@ void test_uuid_versions_variants_and_case_match_platform_rule() {
     TEST_ASSERT_FALSE(isUuid(value));
     value[19] = 'c';
     TEST_ASSERT_FALSE(isUuid(value));
+}
+
+void test_formats_new_device_identity_as_canonical_uuid_v4() {
+    const uint8_t source[16] = {
+        0x4b, 0x8a, 0x3f, 0x7e, 0x7d, 0xc4, 0x09, 0xdb,
+        0xe8, 0x19, 0x2e, 0x7b, 0x8a, 0xb5, 0xa1, 0xe3,
+    };
+    char deviceId[37]{};
+    TEST_ASSERT_TRUE(formatUuidV4(source, deviceId, sizeof(deviceId)));
+    TEST_ASSERT_EQUAL_STRING("4b8a3f7e-7dc4-49db-a819-2e7b8ab5a1e3", deviceId);
+    TEST_ASSERT_TRUE(isCanonicalDeviceId(deviceId));
+    TEST_ASSERT_FALSE(isCanonicalDeviceId("4B8A3F7E-7DC4-49DB-A819-2E7B8AB5A1E3"));
+    TEST_ASSERT_FALSE(isCanonicalDeviceId("irrigation-real-001"));
 }
 
 void test_parses_current_manual_command_and_canonicalizes_fields() {
@@ -130,12 +190,12 @@ void test_formats_precise_utc_timestamp() {
 
 void test_formats_only_fixed_platform_topics() {
     char topic[128]{};
-    TEST_ASSERT_TRUE(formatTopic("irrigation-real-001", "command",
+    TEST_ASSERT_TRUE(formatTopic("4b8a3f7e-7dc4-49db-a819-2e7b8ab5a1e3", "command",
                                  topic, sizeof(topic)));
     TEST_ASSERT_EQUAL_STRING(
-        "iot/irrigation-controller/v1/irrigation-real-001/command", topic);
-    TEST_ASSERT_FALSE(formatTopic("-invalid", "command", topic, sizeof(topic)));
-    TEST_ASSERT_FALSE(formatTopic("irrigation-real-001", "debug", topic,
+        "iot/irrigation-controller/v1/4b8a3f7e-7dc4-49db-a819-2e7b8ab5a1e3/command", topic);
+    TEST_ASSERT_FALSE(formatTopic("irrigation-real-001", "command", topic, sizeof(topic)));
+    TEST_ASSERT_FALSE(formatTopic("4b8a3f7e-7dc4-49db-a819-2e7b8ab5a1e3", "debug", topic,
                                   sizeof(topic)));
 }
 
@@ -144,7 +204,9 @@ void test_formats_only_fixed_platform_topics() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_consumes_controlled_platform_command_vectors);
+    RUN_TEST(test_consumes_controlled_device_discovery_vectors);
     RUN_TEST(test_uuid_versions_variants_and_case_match_platform_rule);
+    RUN_TEST(test_formats_new_device_identity_as_canonical_uuid_v4);
     RUN_TEST(test_parses_current_manual_command_and_canonicalizes_fields);
     RUN_TEST(test_rejects_unknown_fields_retained_shape_and_ttl_overflow);
     RUN_TEST(test_validates_plan_schema_uuid_and_utf8);
