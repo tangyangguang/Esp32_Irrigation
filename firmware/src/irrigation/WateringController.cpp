@@ -51,6 +51,7 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     sessionSummary_.source = request.source;
     sessionSummary_.purpose = request.purpose;
     sessionSummary_.planId = request.planId;
+    sessionSummary_.planName = request.planName;
     sessionSummary_.zoneCount = request.stepCount;
     for (uint8_t index = 0; index < request.stepCount; ++index) {
         sessionSummary_.zones[index].zoneId = request.steps[index].zoneId;
@@ -65,6 +66,8 @@ WateringStartResult WateringController::start(const WateringRequest& request,
         baselinePulseRateX10000_[index] =
             config.zones[BoardPins::zoneIndex(request.steps[index].zoneId)]
                 .baselinePulseRateX10000;
+        sessionSummary_.zones[index].baselinePulseRateX10000 =
+            baselinePulseRateX10000_[index];
         sessionSummary_.zones[index].flowBaselineAvailable =
             baselinePulseRateX10000_[index] != 0;
         FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
@@ -265,8 +268,10 @@ WateringStatus WateringController::status() const {
     result.lastResult = lastResult_;
     result.lastStopReason = lastStopReason_;
     result.purpose = request_.purpose;
-    result.elapsedSec = active_ ? static_cast<uint32_t>(lastHandledMs_ - sessionStartedMs_) / 1000U
-                                : sessionSummary_.elapsedSec;
+    result.elapsedMs = active_
+                           ? static_cast<uint32_t>(lastHandledMs_ - sessionStartedMs_)
+                           : sessionSummary_.elapsedSec * 1000U;
+    result.elapsedSec = result.elapsedMs / 1000U;
     result.currentFlowMlPerMinute = currentFlowMlPerMinute_;
     result.learningAverageMlPerMinute = learningAverageMlPerMinute_;
     result.learningMinimumMlPerMinute = learningMinimumMlPerMinute_;
@@ -322,18 +327,22 @@ WateringStatus WateringController::status() const {
                                 : 0U;
         if (currentZoneStarted_ && flowMonitor_.flowEstablished()) {
             const uint32_t endedMs = wateringEndCaptured_ ? wateringEndedMs_ : lastHandledMs_;
-            result.currentZoneElapsedSec =
-                static_cast<uint32_t>(endedMs - wateringStartedMs_) / 1000U;
+            result.currentZoneElapsedMs =
+                static_cast<uint32_t>(endedMs - wateringStartedMs_);
+            result.currentZoneElapsedSec = result.currentZoneElapsedMs / 1000U;
         }
         const uint32_t targetSec = request_.steps[currentStepIndex_].targetDurationSec;
+        const uint32_t targetMs = targetSec * 1000U;
         result.currentZoneTargetWaterMl =
             request_.steps[currentStepIndex_].targetWaterMl;
-        const uint32_t limitElapsedSec = request_.purpose == WateringPurpose::FlowCalibration
-                                             ? result.elapsedSec
-                                             : result.currentZoneElapsedSec;
-        result.currentZoneRemainingSec = limitElapsedSec < targetSec
-                                             ? targetSec - limitElapsedSec
-                                             : 0U;
+        const uint32_t limitElapsedMs = request_.purpose == WateringPurpose::FlowCalibration
+                                            ? result.elapsedMs
+                                            : result.currentZoneElapsedMs;
+        result.currentZoneRemainingMs = limitElapsedMs < targetMs
+                                            ? targetMs - limitElapsedMs
+                                            : 0U;
+        result.currentZoneRemainingSec =
+            (result.currentZoneRemainingMs + 999U) / 1000U;
         if (currentZoneStarted_) {
             ZoneWateringSummary& current = result.zones[currentStepIndex_];
             current.actualWateringSec = result.currentZoneElapsedSec;
@@ -350,10 +359,12 @@ WateringStatus WateringController::status() const {
     if (!(active_ && state_ == WateringState::StoppingZone && stopSessionAfterValveClose_ &&
           pendingStopReason_ != WateringStopReason::Completed)) {
         for (uint8_t index = currentStepIndex_; active_ && index < request_.stepCount; ++index) {
-            result.plannedRemainingSec += index == currentStepIndex_
-                                              ? result.currentZoneRemainingSec
-                                              : request_.steps[index].targetDurationSec;
+            result.plannedRemainingMs += index == currentStepIndex_
+                                             ? result.currentZoneRemainingMs
+                                             : request_.steps[index].targetDurationSec * 1000U;
         }
+        result.plannedRemainingSec =
+            (result.plannedRemainingMs + 999U) / 1000U;
     }
     for (uint8_t index = 0; index < result.stepCount; ++index) {
         result.totalEstimatedWaterMl += result.zones[index].estimatedWaterMl;

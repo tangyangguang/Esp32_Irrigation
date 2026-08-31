@@ -5,15 +5,18 @@
 #include <Wire.h>
 
 #include <climits>
+#include <cstring>
 
 #include "BoardHardware.h"
 #include "BoardPins.h"
+#include "IrrigationIot.h"
+#include "IrrigationRecordStream.h"
 #include "IrrigationWeb.h"
 
 namespace {
 
 constexpr const char* kFirmwareName = "esp32-irrigation";
-constexpr const char* kFirmwareVersion = "0.7.0";
+constexpr const char* kFirmwareVersion = "0.8.0";
 constexpr const char* kDefaultWebUser = "admin";
 constexpr const char* kDefaultWebPassword = "admin";
 
@@ -77,6 +80,9 @@ bool IrrigationApp::begin() {
     Wire.begin(BoardPins::kI2cSdaPin, BoardPins::kI2cSclPin);
     Esp32Base::setFirmwareInfo(kFirmwareName, kFirmwareVersion);
     Esp32BaseRtc::configure(Wire);
+    if (!IrrigationIot::instance().configure()) {
+        return failStartup(hardware, statusIndicator_);
+    }
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
     if (!IrrigationParameterConfig::registerFields(parameterConfigSaved,
@@ -132,6 +138,10 @@ bool IrrigationApp::begin() {
                         static_cast<unsigned long>(status.slotSizeBytes),
                         static_cast<unsigned long>(status.maximumStoreBytes));
     }
+    IrrigationIot::instance().begin();
+    if (!IrrigationRecordStream::instance().ready()) {
+        recordStorageFault_ = true;
+    }
 
     schedulerStorageFault_ = !wateringScheduler_.begin(wateringSchedulerStore_);
     wateringScheduler_.setCallbacks(startScheduledWatering, handleSchedulerEvent, this);
@@ -166,6 +176,7 @@ void IrrigationApp::handle() {
     }
 
     advanceBusiness();
+    IrrigationIot::instance().handle(*this);
     updateStatusIndicator(nowMs);
     Esp32Base::handle();
 }
@@ -302,7 +313,8 @@ IrrigationEvents::ConditionDisplayState IrrigationApp::eventConditionState(
 }
 
 bool IrrigationApp::recordStorageFault() const {
-    return recordStorageFault_;
+    return recordStorageFault_ ||
+           !IrrigationRecordStream::instance().writable();
 }
 
 bool IrrigationApp::eventStorageFault() const {
@@ -496,7 +508,9 @@ bool IrrigationApp::saveFlowCalibrationParameters(
     resetUnexpectedFlowMonitor(millis());
     events_.recordFlowCalibrationSaved(
         previousCoefficientX100,
-        parameters.pulsesPerLiterX100);
+        parameters.pulsesPerLiterX100,
+        parameters.calibrationStartupPulseCount,
+        parameters.calibrationStartupWaterMl);
     return true;
 }
 
@@ -592,8 +606,10 @@ bool IrrigationApp::saveZoneBaselinePulseRate(
         pulseRateX10000,
         next.flowMeter.pulsesPerLiterX100,
         savedFlowMlPerMinute);
-    events_.recordZoneFlowSaved(
-        zoneId, previousFlowMlPerMinute, savedFlowMlPerMinute);
+    events_.recordZoneFlowSaved(zoneId,
+                                previousFlowMlPerMinute,
+                                pulseRateX10000,
+                                savedFlowMlPerMinute);
     return true;
 }
 
@@ -637,7 +653,7 @@ bool IrrigationApp::clearLearnedZoneFlow(uint8_t zoneId,
         return false;
     }
     wateringScheduler_.rebaseTimeCheck();
-    events_.recordZoneFlowSaved(zoneId, previousFlowMlPerMinute, 0);
+    events_.recordZoneFlowSaved(zoneId, previousFlowMlPerMinute, 0, 0);
     return true;
 }
 
@@ -677,6 +693,10 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
     }
     const uint32_t previousFrequency = current->valveDrive.pwmFrequencyHz;
     if (!configStore_.save(proposed, expectedRevision)) {
+        if (std::strcmp(configStore_.lastError(), "config_write_failed") == 0) {
+            events_.recordBusinessStorageFailed("configuration",
+                                                "config_write_failed");
+        }
         if (hardwareChanged && !hardware.configureValvePwmFrequency(previousFrequency)) {
             businessReady_ = false;
             hardware.safeShutdown();
@@ -688,7 +708,7 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
     if (!active) {
         resetUnexpectedFlowMonitor(millis());
     }
-    events_.recordConfigurationChanged(change, objectId);
+    events_.recordConfigurationChanged(change, objectId, configStore_.current());
     return true;
 }
 
@@ -749,14 +769,20 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
         const uint8_t zoneIndex = BoardPins::zoneIndex(zone.zoneId);
         PendingFlowDeviationEvent& low = pendingLowFlowEvents_[zoneIndex];
         if (zone.lowFlowActive && !low.pending) {
+            low.zoneName = zone.zoneName;
             low.detectedFlowMlPerMinute = zone.lowFlowDetectedMlPerMinute;
+            low.baselinePulseRateX10000 = zone.baselinePulseRateX10000;
             low.baselineFlowMlPerMinute = zone.baselineFlowMlPerMinute;
+            low.flowBaselineAvailable = zone.flowBaselineAvailable;
             low.pending = true;
         }
         PendingFlowDeviationEvent& high = pendingHighFlowEvents_[zoneIndex];
         if (zone.highFlowActive && !high.pending) {
+            high.zoneName = zone.zoneName;
             high.detectedFlowMlPerMinute = zone.highFlowDetectedMlPerMinute;
+            high.baselinePulseRateX10000 = zone.baselinePulseRateX10000;
             high.baselineFlowMlPerMinute = zone.baselineFlowMlPerMinute;
+            high.flowBaselineAvailable = zone.flowBaselineAvailable;
             high.pending = true;
         }
     }
@@ -769,8 +795,11 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
         if (low.pending) {
             ZoneWateringSummary zone{};
             zone.zoneId = zoneId;
+            zone.zoneName = low.zoneName;
             zone.lowFlowDetectedMlPerMinute = low.detectedFlowMlPerMinute;
+            zone.baselinePulseRateX10000 = low.baselinePulseRateX10000;
             zone.baselineFlowMlPerMinute = low.baselineFlowMlPerMinute;
+            zone.flowBaselineAvailable = low.flowBaselineAvailable;
             events_.recordFlowDeviationEvent(
                 zone,
                 IrrigationEvents::ReasonCode::LowFlow,
@@ -783,8 +812,11 @@ void IrrigationApp::reportNewFlowDeviationEvents() {
         if (high.pending) {
             ZoneWateringSummary zone{};
             zone.zoneId = zoneId;
+            zone.zoneName = high.zoneName;
             zone.highFlowDetectedMlPerMinute = high.detectedFlowMlPerMinute;
+            zone.baselinePulseRateX10000 = high.baselinePulseRateX10000;
             zone.baselineFlowMlPerMinute = high.baselineFlowMlPerMinute;
+            zone.flowBaselineAvailable = high.flowBaselineAvailable;
             events_.recordFlowDeviationEvent(
                 zone,
                 IrrigationEvents::ReasonCode::HighFlow,
@@ -813,17 +845,46 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
     }
 
     if (summary->purpose == WateringPurpose::Normal) {
-        if (!wateringStartTimeValid_ ||
-            !wateringRecordStore_.appendCompleted(wateringStartTime_, *summary)) {
+        const char* relatedCommandId =
+            IrrigationIot::instance().activeCommandId();
+        const bool platformRecord =
+            summary->source == WateringSource::AutomaticPlan ||
+            relatedCommandId != nullptr;
+        bool platformAppendFailed = false;
+        bool appended = false;
+        if (wateringStartTimeValid_) {
+            if (platformRecord) {
+                appended = IrrigationRecordStream::instance().appendWatering(
+                    wateringStartTime_, *summary, relatedCommandId);
+                platformAppendFailed = !appended;
+                if (!appended &&
+                    summary->source == WateringSource::AutomaticPlan &&
+                    relatedCommandId == nullptr) {
+                    appended = wateringRecordStore_.appendCompleted(
+                        wateringStartTime_, *summary);
+                }
+            } else {
+                appended = wateringRecordStore_.appendCompleted(
+                    wateringStartTime_, *summary);
+            }
+        }
+        if (!appended || platformAppendFailed) {
             recordStorageFault_ = true;
             events_.recordWateringRecordSaveFailed(
                 wateringStartTimeValid_ ? IrrigationEvents::ReasonCode::RecordAppendFailed
                                         : IrrigationEvents::ReasonCode::RecordStartTimeUnavailable,
-                wateringRecordStore_.state(),
-                wateringRecordStore_.lastError());
+                platformRecord
+                    ? IrrigationRecordStream::instance().baseStore().state()
+                    : wateringRecordStore_.state(),
+                platformRecord
+                    ? IrrigationRecordStream::instance().baseStore().lastError()
+                    : wateringRecordStore_.lastError());
         } else {
-            recordStorageFault_ = wateringRecordStore_.state() !=
-                                  Esp32BaseRecordStore::StoreState::Ready;
+            recordStorageFault_ =
+                platformRecord
+                    ? !IrrigationRecordStream::instance().writable()
+                    : wateringRecordStore_.state() !=
+                          Esp32BaseRecordStore::StoreState::Ready;
         }
     }
 
@@ -856,7 +917,7 @@ void IrrigationApp::applyPendingHardwareConfiguration() {
 
 void IrrigationApp::updateStatusIndicator(uint32_t nowMs) {
     StatusIndicator::Mode mode = StatusIndicator::Mode::ReadyIdle;
-    if (!businessReady_ || recordStorageFault_ || eventStorageFault() ||
+    if (!businessReady_ || recordStorageFault() || eventStorageFault() ||
         schedulerStorageFault_ || checkpointStorageFault() || unexpectedFlowAlarm()) {
         mode = StatusIndicator::Mode::Critical;
     } else if (wateringController_.status().active) {
@@ -931,7 +992,9 @@ void IrrigationApp::handleParameterConfigSaved() {
     wateringScheduler_.rebaseTimeCheck();
     if (!active) resetUnexpectedFlowMonitor(millis());
     events_.recordConfigurationChanged(
-        IrrigationEvents::ConfigurationChange::SystemParametersUpdated);
+        IrrigationEvents::ConfigurationChange::SystemParametersUpdated,
+        0,
+        configStore_.current());
 }
 
 void IrrigationApp::resetUnexpectedFlowMonitor(uint32_t nowMs) {
@@ -946,6 +1009,7 @@ void IrrigationApp::resetUnexpectedFlowMonitor(uint32_t nowMs) {
         config->flowProtection.unexpectedFlowWindowSec,
         config->flowProtection.unexpectedFlowPulseCount);
     events_.observeClosedValveFlow(Esp32BaseAppEvents::ObservedConditionState::Unknown,
+                                   0,
                                    0,
                                    config->flowProtection.unexpectedFlowWindowSec,
                                    config->flowProtection.unexpectedFlowPulseCount);
@@ -985,9 +1049,23 @@ void IrrigationApp::observeEventConditions(uint32_t nowMs,
                         ? Esp32BaseAppEvents::ObservedConditionState::Active
                         : Esp32BaseAppEvents::ObservedConditionState::Inactive;
     }
+    uint32_t detectedFlowMlPerMinute = 0;
+    if (config && config->flowProtection.unexpectedFlowWindowSec != 0U) {
+        const uint64_t pulseRateX10000 =
+            static_cast<uint64_t>(unexpectedFlowMonitor_.observedPulseCount()) *
+            10000ULL /
+            config->flowProtection.unexpectedFlowWindowSec;
+        if (pulseRateX10000 <= UINT32_MAX) {
+            FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
+                static_cast<uint32_t>(pulseRateX10000),
+                config->flowMeter.pulsesPerLiterX100,
+                detectedFlowMlPerMinute);
+        }
+    }
     events_.observeClosedValveFlow(
         flowState,
         unexpectedFlowMonitor_.observedPulseCount(),
+        detectedFlowMlPerMinute,
         config ? config->flowProtection.unexpectedFlowWindowSec : 0,
         config ? config->flowProtection.unexpectedFlowPulseCount : 0);
 }
@@ -1025,17 +1103,20 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
             events_.recordAutomaticWateringResumed(true);
             break;
         case WateringScheduler::Event::PlanSkippedBusy:
+        case WateringScheduler::Event::PlanStartRejected: {
+            const IrrigationConfig* config = configStore_.current();
+            const char* planName = nullptr;
+            if (config && planId >= 1U && planId <= config->plans.size() &&
+                config->plans[planId - 1U].configured) {
+                planName = config->plans[planId - 1U].name.data();
+            }
             events_.recordAutomaticPlanSkipped(
                 planId,
+                planName,
                 static_cast<WateringStartResult>(value),
                 wateringController_.status());
             break;
-        case WateringScheduler::Event::PlanStartRejected:
-            events_.recordAutomaticPlanSkipped(
-                planId,
-                static_cast<WateringStartResult>(value),
-                wateringController_.status());
-            break;
+        }
         case WateringScheduler::Event::StorageFault:
             schedulerStorageFault_ = true;
             events_.recordSchedulerStateSaveFailed();
@@ -1062,6 +1143,8 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     }
 
     const bool conditionHistoryReset = events_.resetConditionHistory();
+    const bool iotRecordStreamReady =
+        IrrigationRecordStream::instance().resetGenerationAfterFormat();
     rtcObservationInitialized_ = false;
     eventConditionsInitialized_ = false;
 
@@ -1107,7 +1190,8 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
                 wateringRecordStore_.baseStore());
     }
     const bool recordsReady =
-        wateringRecordStoreRegistered_ && recordStoreReady;
+        wateringRecordStoreRegistered_ && recordStoreReady &&
+        iotRecordStreamReady;
     if (!recordsReady) {
         ESP32BASE_LOG_E(
             "irrigation",

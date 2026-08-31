@@ -181,6 +181,7 @@ struct WateringRequest {
     WateringSource source;
     WateringPurpose purpose;
     uint8_t planId;
+    std::array<char, kObjectNameCapacity> planName;
     uint8_t stepCount;
     std::array<WateringStep, BoardPins::kZoneCount> steps;
 };
@@ -195,6 +196,7 @@ struct ZoneWateringSummary {
     uint32_t pulseCount;
     uint32_t estimatedWaterMl;
     uint32_t averageFlowMlPerMinute;
+    uint32_t baselinePulseRateX10000;
     uint32_t baselineFlowMlPerMinute;
     uint32_t terminalFlowMlPerMinute;
     uint32_t terminalMinimumFlowMlPerMinute;
@@ -241,10 +243,14 @@ struct WateringStatus {
     WateringStopReason lastStopReason;
     WateringPurpose purpose;
     uint32_t elapsedSec;
+    uint32_t elapsedMs;
     uint32_t currentZoneElapsedSec;
+    uint32_t currentZoneElapsedMs;
     uint32_t currentZoneRemainingSec;
+    uint32_t currentZoneRemainingMs;
     uint32_t currentZoneTargetWaterMl;
     uint32_t plannedRemainingSec;
+    uint32_t plannedRemainingMs;
     uint32_t pulseCount;
     uint32_t currentFlowMlPerMinute;
     uint32_t expectedFlowMlPerMinute;
@@ -283,6 +289,7 @@ struct WateringSessionSummary {
     WateringSource source;
     WateringPurpose purpose;
     uint8_t planId;
+    std::array<char, kObjectNameCapacity> planName;
     uint8_t zoneCount;
     uint32_t elapsedSec;
     WateringResult result;

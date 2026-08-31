@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "IrrigationConfig.h"
 #include "IrrigationTypes.h"
 
 class IrrigationEvents {
@@ -108,24 +109,32 @@ public:
     void recordAutomaticWateringPaused(bool indefinitely, uint32_t resumeAtEpoch);
     void recordAutomaticWateringResumed(bool automatically);
     void recordAutomaticPlanSkipped(uint8_t planId,
+                                    const char* planName,
                                     WateringStartResult result,
                                     const WateringStatus& status);
     void recordFlowCalibrationSaved(uint32_t previousCoefficientX100,
-                                    uint32_t coefficientX100);
+                                    uint32_t coefficientX100,
+                                    uint32_t pulseCount,
+                                    uint32_t waterMl);
     void recordZoneFlowSaved(uint8_t zoneId,
                              uint32_t previousFlowMlPerMinute,
+                             uint32_t pulseRateX10000,
                              uint32_t flowMlPerMinute);
-    void recordConfigurationChanged(ConfigurationChange change, uint8_t objectId = 0);
+    void recordConfigurationChanged(ConfigurationChange change,
+                                    uint8_t objectId = 0,
+                                    const IrrigationConfig* config = nullptr);
     void recordWateringRecordSaveFailed(ReasonCode reason,
                                         Esp32BaseRecordStore::StoreState state,
                                         Esp32BaseRecordStore::StoreError error);
     void recordSchedulerStateSaveFailed();
+    void recordBusinessStorageFailed(const char* area, const char* reason);
 
     void observeRtcAvailability(bool available, uint8_t statusCode);
     void observeTrustedTime(bool trusted);
     void observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState state);
     void observeClosedValveFlow(Esp32BaseAppEvents::ObservedConditionState state,
                                 uint32_t pulseCount,
+                                uint32_t detectedFlowMlPerMinute,
                                 uint16_t windowSec,
                                 uint16_t thresholdPulseCount);
     ConditionDisplayState conditionState(uint8_t conditionId) const;

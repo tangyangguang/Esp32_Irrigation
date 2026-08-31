@@ -314,6 +314,7 @@ WateringRequest WateringScheduler::makeRequest(const IrrigationConfig& config,
     request.source = WateringSource::AutomaticPlan;
     request.purpose = WateringPurpose::Normal;
     request.planId = plan.id;
+    request.planName = plan.name;
     for (uint8_t zoneIndex = 0; zoneIndex < config.zones.size(); ++zoneIndex) {
         const uint16_t durationMinutes = plan.zoneDurationMinutes[zoneIndex];
         if (!config.zones[zoneIndex].enabled || durationMinutes == 0) {

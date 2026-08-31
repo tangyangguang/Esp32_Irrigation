@@ -14,18 +14,21 @@
 - 配置安全保存、浇水记录、业务事件和在线检查点；
 - DS3231 RTC 离线时间、NTP 校时和本地 Web；
 - 认证 Web、System 维护、文件系统日志和 HTTP Web OTA；
-- `LED1 / GPIO13` 低电平点亮的非阻塞状态指示。
+- `LED1 / GPIO13` 低电平点亮的非阻塞状态指示；
+- 当前 `irrigation-controller/v1` MQTTS 外围适配：固定七个 channel Topic、QoS 1、retain/LWT、五类命令、receipt/progress、八项完整状态投影和可靠业务记录流。
 
-当前本地定稿固件不编译、不配置、不连接 MQTT。最终平台接入必须重新读取当时 `iot-device-lab` 中灌溉设备类型和公共通信规则的唯一最新契约，并切换到 `Esp32Base` 的 `IOT` Profile；不得恢复已删除的旧平台适配。
+MQTT 适配只调用现有配置、调度和浇水入口，不直接操作 GPIO，也不建立第二套网络生命周期。未提供本机私密 MQTT 配置时，固件保持本地能力可用且不尝试连接 Broker；掉线、重连或平台不可用不得阻断本地 Web、RTC 自动调度、保护和安全停机。
 
-产品永久不实现 LCD2004、本地菜单和四按钮业务交互。MQTT 或平台不可用不得阻断本地 Web、RTC 自动调度、保护和安全停机。
+产品永久不实现 LCD2004、本地菜单和四按钮业务交互。
 
 ## 2. Esp32Base 接入契约
 
 正式固件使用：
 
 ```ini
--D ESP32BASE_PROFILE=ESP32BASE_PROFILE_LOCAL
+-D ESP32BASE_PROFILE=ESP32BASE_PROFILE_IOT
+-D ESP32BASE_MQTT_MAX_PAYLOAD_BYTES=4096
+-D ESP32BASE_MQTT_ALLOW_UNCHECKED_CERTIFICATE_DATES=1
 -D ESP32BASE_ENABLE_RECORD_STORE=1
 -D ESP32BASE_ENABLE_APP_EVENTS=1
 -D ESP32BASE_ENABLE_APP_EVENT_CONDITIONS=1
@@ -45,6 +48,15 @@
 
 项目业务代码只实现灌溉领域能力，不复制 Esp32Base 的 WiFi、Web、认证、OTA、文件系统、日志、时间、RTC、配置、健康和看门狗实现。
 
+MQTT 私密配置只放在 Git 忽略的 `local_private/irrigation_iot_private.h`：
+
+```sh
+mkdir -p local_private
+cp IrrigationIotSecrets.example.h local_private/irrigation_iot_private.h
+```
+
+填写 Broker 主机、8883 端口、项目用户名/密码和签发 Broker 证书的 CA PEM。不得提交该文件、设备凭据或正式环境地址。Client ID 和协议 `deviceId` 均由运行时芯片 MAC 生成的永久 `esp32-irrigation-{12位小写十六进制}`，不允许私密文件覆盖身份。Arduino Core 2.0.16 的 TLS 栈执行 CA 与 hostname 校验，但该版本未启用证书 notBefore/notAfter 检查；构建中的 `ESP32BASE_MQTT_ALLOW_UNCHECKED_CERTIFICATE_DATES=1` 是明确、可审计的当前 Core 例外，不代表关闭 CA 或 hostname 校验，升级生产 Core 后必须重新评估并移除。
+
 ## 3. 启动与运行边界
 
 启动顺序固定为：
@@ -55,10 +67,10 @@
 4. 设置 Web 默认认证，注册业务 Web、App Config 和文件系统格式化回调。
 5. 调用 `Esp32Base::begin()`；失败时保持全部输出关闭并进入故障指示。
 6. 基础库启动成功后启用 WiFi modem sleep。
-7. 加载业务配置、调度状态、记录和事件存储。
+7. 加载业务配置、命令幂等 journal、调度状态、本地历史、IoT 记录流和事件存储。
 8. 只有全部必需状态有效时才进入业务 ready。
 
-正常循环先推进业务状态机，再调用 `Esp32Base::handle()`。Web handler 不执行校准、等待出水或其它长时间流程。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。
+正常循环先推进业务状态机和 IoT 外围适配，再调用 `Esp32Base::handle()`。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。
 
 WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项目不进入 Deep-sleep，不降低 CPU 频率，也不改变泵阀控制时序。OTA 期间由 Esp32Base 临时关闭 power save，结束后恢复。
 
@@ -67,11 +79,15 @@ WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项�
 当前数据定义：
 
 - 灌溉 JSON 配置：schema v4，权威路径 `/app/irrigation/config.json`；
-- 浇水记录：`watering` Store v5，最大逻辑预算 512 KiB；
+- 本地浇水历史：`watering` Store v5，最大逻辑预算 512 KiB；
+- IoT 可靠记录流：`irrigation-iot` Store v1，固定 200 条、151168 B，单调 `recordStreamId + recordSequence`，只在完整事实形成后追加；
+- MQTT 命令 journal：NVS 中固定 16 条，保存不可变签名、receipt 和可信终态；重启不为中断任务推断终态；
 - App Events：使用 Esp32Base 当前事件格式和默认 100 KiB 预算；
 - 系统文件日志：4 × 32 KiB，默认 WARN；
 - 标量系统参数：Esp32Base App Config / NVS；
-- 自动浇水总控、调度防重复标记和在线检查点：项目 NVS 小状态。
+- 自动浇水总控、调度防重复标记、在线检查点、记录流身份和低频累计 ACK 检查点：项目 NVS 小状态。
+
+IoT 记录 QoS 1 PUBACK 只解除本次 MQTT 在途发布，不删除补发事实；只有匹配当前流且不越过已产生日志头的累计 `record-ack` 才推进 RAM 水位。ACK 每累计 32 条或推进后满 24 小时才写 NVS；容量满时只有整个最旧分段都已确认才允许轮转，否则报告 `record_sync_backlog_full` 对应的记录存储故障并停止追加。
 
 配置文件存在但当前副本和备份都无效时，固件保持安全停机，不用默认值覆盖。重新编译、串口烧录或 HTTP OTA 不得清理或覆盖已有有效 NVS/LittleFS 数据。只有业务结构明确不兼容时才拒绝启动并提示重新配置；不得自行猜测或迁移旧结构。
 
@@ -87,27 +103,34 @@ LittleFS 挂载失败不会自动格式化。格式化只允许用户在确认�
 python3 ../../Esp32Base/scripts/ensure_arduino_platformio.py
 python3 scripts/generate_web_assets.py --check
 python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e native
+IOT_DEVICE_LAB_DIR=/Users/tyg/workspace/iot-device-lab \
+  python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e native_iot_vectors
 python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test --without-uploading --without-testing
-python3 ../../Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irrigation
+python3 scripts/build_iot_release_fixture.py
 ```
 
 含义：
 
 - Web 资源检查：确认 `web-src/` 与生成的压缩固件数组一致；
-- Native：覆盖配置、控制器、记录编解码、调度、异常水流、校准和时间；
-- 设备记录测试编译：确认 Esp32Base OFFLINE、Record Store、App Events 和项目设备测试可链接；
-- 正式构建：使用 classic ESP32 4MB balanced 双 OTA 分区，并执行镜像 slot 余量检查。
+- Native：覆盖配置、控制器、记录编解码、调度、异常水流、校准、时间、IoT 严格协议和命令 journal；
+- 共享向量：直接消费当前 `iot-device-lab` 合法/非法命令向量，防止终端与平台契约漂移；
+- 设备记录测试编译：确认 Esp32Base OFFLINE、Record Store、App Events、200 条 IoT 流容量断言和项目设备测试可链接；
+- 正式构建：夹具脚本拒绝覆盖已有私密头，临时生成带 2 KiB CA 正文的非敏感配置，清理旧目标后完整链接 MQTT/TLS 路径，使用 classic ESP32 4MB balanced 双 OTA 分区并检查 slot 余量。
 
 当前自动验证基线：
 
 - Web 资源漂移检查通过；
-- Native 测试 87/87 通过；
+- Native 测试 101/101 通过；
+- 当前共享命令向量测试通过；
 - `esp32_record_test` 设备测试固件编译通过，未在当前版本实机运行；
-- `esp32_irrigation` 构建通过；
-- RAM 90876 B / 27.7%；
-- Flash 1248561 B / 79.4%；
-- `firmware.bin` 1255136 B；
-- 1.5 MiB OTA slot剩余317728 B / 20.20%。
+- `esp32_irrigation` Core 2.0.16 构建通过；
+- 使用非敏感完整 MQTTS 配置夹具链接，其中 CA 占位正文为 2 KiB（避免空配置被 LTO 裁掉 MQTT/TLS 路径或低估证书尺寸）；
+- RAM 110860 B / 33.8%；
+- Flash 1437561 B / 91.4%；
+- `firmware.bin` 1444144 B；
+- 1.5 MiB OTA slot 剩余 128720 B / 8.18%。
+
+N4 设备继续使用现有 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，避免改变分区导致现有配置和业务数据失效。经确认，IOT 固件发布门禁固定为至少 8% OTA slot 余量；当前只高出门禁约 2.8 KiB，后续任何代码、CA 或静态资源变化都必须重新执行带完整 MQTTS 配置的构建，不能以空私密配置构建的 17% 余量作为发布依据。
 
 代码变更后必须重新执行这些命令，并用新的实际结果更新本节；不能保留失效的历史构建数字。
 

@@ -139,8 +139,11 @@ private:
     uint8_t pendingLearnedZoneId_ = 0;
     uint32_t pendingLearnedBaselinePulseRateX10000_ = 0;
     struct PendingFlowDeviationEvent {
+        std::array<char, kObjectNameCapacity> zoneName{};
         uint32_t detectedFlowMlPerMinute = 0;
+        uint32_t baselinePulseRateX10000 = 0;
         uint32_t baselineFlowMlPerMinute = 0;
+        bool flowBaselineAvailable = false;
         bool pending = false;
     };
     std::array<PendingFlowDeviationEvent, BoardPins::kZoneCount>

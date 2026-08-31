@@ -1,7 +1,12 @@
 #include "IrrigationEvents.h"
 
+#include <ArduinoJson.h>
+
 #include <climits>
 #include <cstdio>
+
+#include "IrrigationIotProtocol.h"
+#include "IrrigationRecordStream.h"
 
 namespace {
 
@@ -20,6 +25,50 @@ const ZoneWateringSummary* affectedZone(const WateringSessionSummary& summary) {
 
 bool recovered(const Esp32BaseAppEvents::EventRecord& event) {
     return event.eventKind == Esp32BaseAppEvents::EventKind::ConditionRecovered;
+}
+
+bool appendPlatformRecord(const char* eventKey,
+                          JsonDocument& data,
+                          uint32_t observedAtEpoch = 0) {
+    char json[IrrigationRecordStream::kDataSize]{};
+    const std::size_t length = serializeJson(data, json, sizeof(json));
+    const bool appended =
+        length != 0U && length < sizeof(json) &&
+        IrrigationRecordStream::instance().appendJson(eventKey, json,
+                                                      observedAtEpoch);
+    if (!appended) {
+        ESP32BASE_LOG_E("irrigation_iot",
+                        "business_record_append_failed event_key=%s backlog_full=%s",
+                        eventKey ? eventKey : "invalid",
+                        IrrigationRecordStream::instance().backlogFull() ? "true"
+                                                                        : "false");
+    }
+    return appended;
+}
+
+const char* automaticSkipReason(IrrigationEvents::ReasonCode reason) {
+    switch (reason) {
+        case IrrigationEvents::ReasonCode::PlanBusyManualWatering:
+            return "busy_manual_watering";
+        case IrrigationEvents::ReasonCode::PlanBusyAutomaticWatering:
+            return "busy_automatic_watering";
+        case IrrigationEvents::ReasonCode::PlanBusyFlowCalibration:
+            return "busy_flow_calibration";
+        case IrrigationEvents::ReasonCode::PlanBusyZoneFlowLearning:
+            return "busy_zone_flow_learning";
+        case IrrigationEvents::ReasonCode::PlanPreviousResultPending:
+            return "previous_result_pending";
+        case IrrigationEvents::ReasonCode::PlanControllerNotReady:
+            return "controller_not_ready";
+        case IrrigationEvents::ReasonCode::PlanInvalidRequest:
+            return "invalid_request";
+        case IrrigationEvents::ReasonCode::PlanHardwareFailure:
+            return "hardware_failure";
+        case IrrigationEvents::ReasonCode::PlanBusy:
+            return "busy";
+        default:
+            return "start_rejected";
+    }
 }
 
 uint32_t cappedValue(uint32_t value, uint8_t& flags) {
@@ -95,6 +144,25 @@ void IrrigationEvents::recordAbnormalWateringStop(const WateringSessionSummary& 
                       ? Esp32BaseAppEvents::Level::Warning
                       : Esp32BaseAppEvents::Level::Error;
     append(event);
+    if (summary.stopReason == WateringStopReason::FlowStartTimeout ||
+        summary.stopReason == WateringStopReason::NoFlowTimeout) {
+        JsonDocument data;
+        if (zone) {
+            data["zoneId"] = zone->zoneId;
+            data["zoneName"] = zone->zoneName.data();
+            if (zone->flowBaselineAvailable &&
+                zone->baselinePulseRateX10000 != 0U)
+                data["baselinePulseRateX10000"] =
+                    zone->baselinePulseRateX10000;
+            else data["baselinePulseRateX10000"] = nullptr;
+        } else {
+            data["zoneId"] = nullptr;
+            data["zoneName"] = nullptr;
+            data["baselinePulseRateX10000"] = nullptr;
+        }
+        data["stopped"] = true;
+        appendPlatformRecord("flow.no-flow", data);
+    }
 }
 
 void IrrigationEvents::recordFlowDeviationEvent(
@@ -120,6 +188,17 @@ void IrrigationEvents::recordFlowDeviationEvent(
     event.level = stopped ? Esp32BaseAppEvents::Level::Error
                           : Esp32BaseAppEvents::Level::Warning;
     append(event);
+    JsonDocument data;
+    data["zoneId"] = zone.zoneId;
+    data["zoneName"] = zone.zoneName.data();
+    data["measuredFlowMlPerMinute"] =
+        low ? zone.lowFlowDetectedMlPerMinute
+            : zone.highFlowDetectedMlPerMinute;
+    if (zone.flowBaselineAvailable && zone.baselineFlowMlPerMinute != 0U)
+        data["baselineFlowMlPerMinute"] = zone.baselineFlowMlPerMinute;
+    else data["baselineFlowMlPerMinute"] = nullptr;
+    data["stopped"] = stopped;
+    appendPlatformRecord(low ? "flow.low" : "flow.high", data);
 }
 
 void IrrigationEvents::recordAutomaticWateringPaused(bool indefinitely,
@@ -131,6 +210,9 @@ void IrrigationEvents::recordAutomaticWateringPaused(bool indefinitely,
     event.value1 = static_cast<int32_t>(resumeAtEpoch);
     event.level = Esp32BaseAppEvents::Level::Info;
     append(event);
+    JsonDocument data;
+    data.to<JsonObject>();
+    appendPlatformRecord("automatic.paused", data);
 }
 
 void IrrigationEvents::recordAutomaticWateringResumed(bool automatically) {
@@ -140,9 +222,13 @@ void IrrigationEvents::recordAutomaticWateringResumed(bool automatically) {
                                                            : ReasonCode::ResumedManually);
     event.level = Esp32BaseAppEvents::Level::Info;
     append(event);
+    JsonDocument data;
+    data.to<JsonObject>();
+    appendPlatformRecord("automatic.resumed", data);
 }
 
 void IrrigationEvents::recordAutomaticPlanSkipped(uint8_t planId,
+                                                  const char* planName,
                                                   WateringStartResult result,
                                                   const WateringStatus& status) {
     ReasonCode reason = ReasonCode::PlanStartRejected;
@@ -183,11 +269,34 @@ void IrrigationEvents::recordAutomaticPlanSkipped(uint8_t planId,
     event.objectId = planId;
     event.level = Esp32BaseAppEvents::Level::Warning;
     append(event);
+
+    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+    char endedAt[25]{};
+    if (!now.synced || now.epochSec == 0U || !planName || planName[0] == '\0' ||
+        !IrrigationIotProtocol::formatTimestamp(now.epochSec, 0, endedAt,
+                                                sizeof(endedAt))) {
+        return;
+    }
+    JsonDocument data;
+    data["actionKey"] = "automatic.plan-run";
+    data["sourceKey"] = "device_schedule";
+    data["status"] = "skipped";
+    data["reason"] = automaticSkipReason(reason);
+    data["startedAt"] = nullptr;
+    data["endedAt"] = endedAt;
+    data["durationSeconds"] = nullptr;
+    JsonObject parameters = data["parameters"].to<JsonObject>();
+    parameters["planId"] = planId;
+    parameters["planName"] = planName;
+    appendPlatformRecord("operation.automatic-run.completed", data,
+                         now.epochSec);
 }
 
 void IrrigationEvents::recordFlowCalibrationSaved(
     uint32_t previousCoefficientX100,
-    uint32_t coefficientX100) {
+    uint32_t coefficientX100,
+    uint32_t pulseCount,
+    uint32_t waterMl) {
     Esp32BaseAppEvents::EventInput event;
     event.eventCode = static_cast<uint32_t>(EventCode::FlowCalibrationSaved);
     event.reasonCode = static_cast<uint32_t>(ReasonCode::CalibrationCoefficientSaved);
@@ -197,11 +306,17 @@ void IrrigationEvents::recordFlowCalibrationSaved(
         cappedValue(coefficientX100, event.flags));
     event.level = Esp32BaseAppEvents::Level::Info;
     append(event);
+    JsonDocument data;
+    data["coefficientPulsesPerLiterX100"] = coefficientX100;
+    data["pulseCount"] = pulseCount;
+    data["waterMl"] = waterMl;
+    appendPlatformRecord("calibration.result-saved", data);
 }
 
 void IrrigationEvents::recordZoneFlowSaved(
     uint8_t zoneId,
     uint32_t previousFlowMlPerMinute,
+    uint32_t pulseRateX10000,
     uint32_t flowMlPerMinute) {
     Esp32BaseAppEvents::EventInput event;
     event.eventCode = static_cast<uint32_t>(EventCode::ZoneFlowSaved);
@@ -213,10 +328,19 @@ void IrrigationEvents::recordZoneFlowSaved(
         cappedValue(flowMlPerMinute, event.flags));
     event.level = Esp32BaseAppEvents::Level::Info;
     append(event);
+    if (pulseRateX10000 != 0U && flowMlPerMinute != 0U) {
+        JsonDocument data;
+        data["zoneId"] = zoneId;
+        data["baselinePulseRateX10000"] = pulseRateX10000;
+        data["baselineFlowMlPerMinute"] = flowMlPerMinute;
+        appendPlatformRecord("zone.baseline-saved", data);
+    }
 }
 
-void IrrigationEvents::recordConfigurationChanged(ConfigurationChange change,
-                                                  uint8_t objectId) {
+void IrrigationEvents::recordConfigurationChanged(
+    ConfigurationChange change,
+    uint8_t objectId,
+    const IrrigationConfig* config) {
     ReasonCode reason = ReasonCode::SystemParametersUpdated;
     switch (change) {
         case ConfigurationChange::PlanCreated: reason = ReasonCode::PlanCreated; break;
@@ -231,6 +355,17 @@ void IrrigationEvents::recordConfigurationChanged(ConfigurationChange change,
     event.objectId = objectId;
     event.level = Esp32BaseAppEvents::Level::Info;
     append(event);
+    if (config && (change == ConfigurationChange::PlanCreated ||
+                   change == ConfigurationChange::PlanUpdated ||
+                   change == ConfigurationChange::PlanDeleted)) {
+        JsonDocument data;
+        data["revision"] = config->revision;
+        JsonArray planIds = data["planIds"].to<JsonArray>();
+        for (const WateringPlan& plan : config->plans) {
+            if (plan.configured) planIds.add(plan.id);
+        }
+        appendPlatformRecord("configuration.plans-changed", data);
+    }
 }
 
 void IrrigationEvents::recordWateringRecordSaveFailed(
@@ -244,6 +379,14 @@ void IrrigationEvents::recordWateringRecordSaveFailed(
     event.value2 = static_cast<int32_t>(error);
     event.level = Esp32BaseAppEvents::Level::Error;
     append(event);
+    JsonDocument data;
+    data["area"] = "records";
+    data["reason"] = static_cast<uint32_t>(reason) ==
+                              static_cast<uint32_t>(
+                                  ReasonCode::RecordStartTimeUnavailable)
+                          ? "start_time_unavailable"
+                          : "append_failed";
+    appendPlatformRecord("storage.business-failed", data);
 }
 
 void IrrigationEvents::recordSchedulerStateSaveFailed() {
@@ -252,6 +395,19 @@ void IrrigationEvents::recordSchedulerStateSaveFailed() {
     event.reasonCode = static_cast<uint32_t>(ReasonCode::SchedulerStateStorage);
     event.level = Esp32BaseAppEvents::Level::Error;
     append(event);
+    JsonDocument data;
+    data["area"] = "scheduler";
+    data["reason"] = "append_failed";
+    appendPlatformRecord("storage.business-failed", data);
+}
+
+void IrrigationEvents::recordBusinessStorageFailed(const char* area,
+                                                    const char* reason) {
+    if (!area || !reason) return;
+    JsonDocument data;
+    data["area"] = area;
+    data["reason"] = reason;
+    appendPlatformRecord("storage.business-failed", data);
 }
 
 void IrrigationEvents::observeRtcAvailability(bool available, uint8_t statusCode) {
@@ -294,6 +450,7 @@ void IrrigationEvents::observeRtcRollback(Esp32BaseAppEvents::ObservedConditionS
 void IrrigationEvents::observeClosedValveFlow(
     Esp32BaseAppEvents::ObservedConditionState state,
     uint32_t pulseCount,
+    uint32_t detectedFlowMlPerMinute,
     uint16_t windowSec,
     uint16_t thresholdPulseCount) {
     Esp32BaseAppEvents::EventInput event;
@@ -308,7 +465,16 @@ void IrrigationEvents::observeClosedValveFlow(
     event.level = state == Esp32BaseAppEvents::ObservedConditionState::Active
                       ? Esp32BaseAppEvents::Level::Error
                       : Esp32BaseAppEvents::Level::Info;
+    const ConditionDisplayState previous = closedValveFlowState_;
     observe(closedValveFlowCondition_, state, event, closedValveFlowState_);
+    if (state == Esp32BaseAppEvents::ObservedConditionState::Active &&
+        previous != ConditionDisplayState::Active &&
+        closedValveFlowState_ == ConditionDisplayState::Active) {
+        JsonDocument data;
+        data["activeTask"] = nullptr;
+        data["detectedFlowMlPerMinute"] = detectedFlowMlPerMinute;
+        appendPlatformRecord("flow.unexpected", data);
+    }
 }
 
 IrrigationEvents::ConditionDisplayState IrrigationEvents::conditionState(
@@ -725,6 +891,7 @@ void IrrigationEvents::handleDiscreteResult(
     Esp32BaseAppEvents::DiscreteEventAppendResult result) {
     if (result == Esp32BaseAppEvents::DiscreteEventAppendResult::Stored) return;
     updateStorageFault(true, "discrete_event_write_failed");
+    recordBusinessStorageFailed("events", "discrete_event_write_failed");
 }
 
 void IrrigationEvents::handleConditionResult(
@@ -739,6 +906,8 @@ void IrrigationEvents::handleConditionResult(
             return;
         default:
             updateStorageFault(true, "condition_event_write_failed");
+            recordBusinessStorageFailed("events",
+                                        "condition_event_write_failed");
             return;
     }
 }

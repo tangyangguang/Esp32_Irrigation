@@ -7,6 +7,7 @@
 
 #include "irrigation/DeviceAliveCheckpoint.h"
 #include "irrigation/IrrigationEvents.h"
+#include "irrigation/IrrigationRecordStream.h"
 #include "irrigation/WateringRecordCodec.h"
 #include "irrigation/WateringRecordStore.h"
 #include "irrigation/WateringSchedulerStore.h"
@@ -90,6 +91,19 @@ void test_production_watering_store_definition_loads() {
                              WateringRecordStore::kMinimumFileSystemFreeBytes);
     TEST_ASSERT_EQUAL_UINT32(817, status.capacity);
     TEST_ASSERT_TRUE(status.writable);
+}
+
+void test_iot_record_stream_uses_exact_bounded_capacity() {
+    IrrigationRecordStream& stream = IrrigationRecordStream::instance();
+    TEST_ASSERT_TRUE(stream.begin());
+    Esp32BaseRecordStore::StoreStatus status;
+    TEST_ASSERT_TRUE(stream.baseStore().readStatus(status));
+    TEST_ASSERT_EQUAL_UINT32(IrrigationRecordStream::kPayloadSize + 24U,
+                             status.slotSizeBytes);
+    TEST_ASSERT_EQUAL_UINT32(IrrigationRecordStream::kCapacity,
+                             status.capacity);
+    TEST_ASSERT_EQUAL_UINT32(151168U, status.maximumStoreBytes);
+    TEST_ASSERT_TRUE(stream.ready());
 }
 
 void test_completed_append_latest_page_detail_and_reload() {
@@ -323,7 +337,7 @@ void test_irrigation_event_mapping_and_latest_read() {
     busyStatus.purpose = WateringPurpose::Normal;
     busyStatus.source = WateringSource::ManualZones;
     events.recordAutomaticPlanSkipped(
-        2, WateringStartResult::Busy, busyStatus);
+        2, "自动计划 2", WateringStartResult::Busy, busyStatus);
     EventCapture skippedCapture;
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(
         0, 1, captureEvent, &skippedCapture));
@@ -503,6 +517,7 @@ void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_initialize_base_and_capacity_plan);
     RUN_TEST(test_production_watering_store_definition_loads);
+    RUN_TEST(test_iot_record_stream_uses_exact_bounded_capacity);
     RUN_TEST(test_completed_append_latest_page_detail_and_reload);
     RUN_TEST(test_small_store_rotates_oldest_complete_segments);
     RUN_TEST(test_crc_damage_is_reported_and_not_returned);

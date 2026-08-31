@@ -95,6 +95,7 @@ void test_startup_minute_is_skipped_and_next_minute_runs_once() {
     TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::AutomaticPlan),
                       static_cast<int>(callbacks.lastRequest.source));
     TEST_ASSERT_EQUAL_UINT8(1, callbacks.lastRequest.planId);
+    TEST_ASSERT_EQUAL_STRING("A", callbacks.lastRequest.planName.data());
     TEST_ASSERT_EQUAL_UINT8(2, callbacks.lastRequest.stepCount);
     TEST_ASSERT_EQUAL_UINT32(120, callbacks.lastRequest.steps[0].targetDurationSec);
     TEST_ASSERT_EQUAL_UINT32(180, callbacks.lastRequest.steps[1].targetDurationSec);
