@@ -81,13 +81,14 @@ LittleFS 挂载失败不会自动格式化。格式化只允许用户在确认�
 
 ## 5. 构建与自动测试
 
-在本目录执行：
+在本目录执行。首次使用先准备Esp32Base仓库隔离的双Core环境；本项目当前固定通过Core 2.x目录构建，不依赖用户默认`~/.platformio`：
 
 ```sh
+python3 ../../Esp32Base/scripts/ensure_arduino_platformio.py
 python3 scripts/generate_web_assets.py --check
-pio test -e native
-pio test -e esp32_record_test --without-uploading --without-testing
-pio run -e esp32_irrigation
+python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e native
+python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test --without-uploading --without-testing
+python3 ../../Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irrigation
 ```
 
 含义：
@@ -103,10 +104,10 @@ pio run -e esp32_irrigation
 - Native 测试 87/87 通过；
 - `esp32_record_test` 设备测试固件编译通过，未在当前版本实机运行；
 - `esp32_irrigation` 构建通过；
-- RAM 90884 B / 27.7%；
-- Flash 1247441 B / 79.3%；
-- `firmware.bin` 1254016 B；
-- 1.5 MiB OTA slot 剩余 318848 B / 20.27%。
+- RAM 90876 B / 27.7%；
+- Flash 1248561 B / 79.4%；
+- `firmware.bin` 1255136 B；
+- 1.5 MiB OTA slot剩余317728 B / 20.20%。
 
 代码变更后必须重新执行这些命令，并用新的实际结果更新本节；不能保留失效的历史构建数字。
 
@@ -142,7 +143,7 @@ custom_esp32base_webota_password = <current-web-auth-password>
 操作者确认设备空闲和维护窗口后显式执行：
 
 ```sh
-pio run -e esp32_irrigation -t webota
+python3 ../../Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irrigation -t webota
 ```
 
 普通构建和测试不会触发 OTA。不得提交真实设备地址、账号或密码。不得配置 espota、ArduinoOTA 或 3232 端口。
