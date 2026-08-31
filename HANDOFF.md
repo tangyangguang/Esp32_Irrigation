@@ -1,4 +1,6 @@
-# 会话交接
+# 会话交接（已完成）
+
+> 本文保留实施前调查、约束和决策背景；其中“当前”“建议”等表述均以重构前基线为上下文。最终能力契约以 `Esp32Base` 当前 README/docs 和本项目 `docs/当前方案/` 为准。
 
 ## 目标
 
@@ -67,17 +69,11 @@
 - raw Web OTA 默认使用 64 KiB 客户端块、`TCP_NODELAY`、SHA256、认证/容量预检、RSSI弱网降速和 `X-Firmware-Size`；删除 ArduinoOTA不能影响这条路径。
 - 风扇、水龙头、FarmAuto 等项目中的 `ArduinoOTA` 依赖/包含主要由旧 FULL Profile 和 LDF要求带入；现有操作记录主要使用 `webota`，未找到正在生效的 `upload_protocol = espota`。
 
-## 进行中
+## 完成状态
 
-- `Esp32Base` 代码尚未修改。
-- 四 Profile、OTA统一和基础 Web 资源优化已完成设计确认，但尚未实现、构建或实机验证。
-- 灌溉项目仍使用旧 `ESP32BASE_PROFILE_FULL`，等待基础库新 Profile 落地后再切换。
-
-## 阻塞
-
-- 当前会话启动时加载的是修改前的绝对跨项目限制，因此上一 Agent 没有直接修改 `../Esp32Base`。
-- 新会话读取更新后的 `AGENTS.md` 后，用户需要在该次任务明确授权修改 `/Users/tyg/dir/claude_dir/Esp32Base`，或者直接从该目录启动会话。
-- LOCAL/IOT 的实机 Web、OTA、MQTTS 和长稳验证需要后续硬件维护窗口；不能用编译结果替代。
+- `Esp32Base` 已收敛为四个 Profile，并完成 HTTP Web OTA 统一、旧契约删除、构建矩阵、裁剪、安全、发布包和自动测试验证。
+- 灌溉正式固件已切换到 `ESP32BASE_PROFILE_LOCAL`，设备记录测试已切换到 `ESP32BASE_PROFILE_OFFLINE`。
+- 两仓均未执行任何实机写入；LOCAL/IOT 的实机 Web、HTTP OTA、MQTTS、heap 和长稳验证仍需后续硬件维护窗口，不能用编译结果替代。
 
 ## 关键决策
 
