@@ -6,6 +6,7 @@
 #include "irrigation/BoardPins.h"
 #include "irrigation/IrrigationConfig.h"
 #include "irrigation/IrrigationConfigJson.h"
+#include "irrigation/StatusIndicator.h"
 
 namespace {
 
@@ -17,6 +18,25 @@ void test_board_pin_mapping_matches_finalized_pcb() {
     TEST_ASSERT_EQUAL_UINT8(17, BoardPins::kFlowMeterPin);
     TEST_ASSERT_EQUAL_UINT8(21, BoardPins::kI2cSdaPin);
     TEST_ASSERT_EQUAL_UINT8(22, BoardPins::kI2cSclPin);
+    TEST_ASSERT_EQUAL_UINT8(13, BoardPins::kStatusLedPin);
+}
+
+void test_status_indicator_patterns_match_product_states() {
+    using Mode = StatusIndicator::Mode;
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::ReadyIdle, 0));
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::ReadyIdle, 100000));
+
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::Startup, 0));
+    TEST_ASSERT_FALSE(StatusIndicator::outputOnForMode(Mode::Startup, 1000));
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::Startup, 2000));
+
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::Active, 0));
+    TEST_ASSERT_FALSE(StatusIndicator::outputOnForMode(Mode::Active, 500));
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::Active, 1000));
+
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::Critical, 0));
+    TEST_ASSERT_FALSE(StatusIndicator::outputOnForMode(Mode::Critical, 125));
+    TEST_ASSERT_TRUE(StatusIndicator::outputOnForMode(Mode::Critical, 250));
 }
 
 void test_default_config_matches_confirmed_product_defaults() {
@@ -242,6 +262,7 @@ void test_checkpoint_zero_is_valid_and_invalid_ranges_are_rejected() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_board_pin_mapping_matches_finalized_pcb);
+    RUN_TEST(test_status_indicator_patterns_match_product_states);
     RUN_TEST(test_default_config_matches_confirmed_product_defaults);
     RUN_TEST(test_checkpoint_zero_is_valid_and_invalid_ranges_are_rejected);
     RUN_TEST(test_names_and_cross_field_rules_are_validated);

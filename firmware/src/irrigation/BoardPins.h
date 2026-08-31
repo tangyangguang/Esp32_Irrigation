@@ -13,6 +13,7 @@ constexpr uint8_t kPumpSignalPin = 18;
 constexpr uint8_t kFlowMeterPin = 17;
 constexpr uint8_t kI2cSdaPin = 21;
 constexpr uint8_t kI2cSclPin = 22;
+constexpr uint8_t kStatusLedPin = 13;
 
 constexpr bool isValidZoneId(uint8_t zoneId) {
     return zoneId >= 1 && zoneId <= kZoneCount;

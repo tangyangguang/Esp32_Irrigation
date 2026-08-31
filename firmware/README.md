@@ -8,9 +8,11 @@
 - `../pcb_irrigation/` 下的定稿 BOM 和网表。
 - `../../Esp32Base` 已核实的公共能力。
 
-当前已经实现配置安全保存、定稿 PCB 硬件层、浇水控制与保护、自动调度、流量计校准、水路流量学习、业务记录、应用事件、在线检查点、业务 Web 页面和统一 IoT 平台 MQTT 适配。设备本地 Web、RTC 自动调度和 MQTT 平台命令调用同一个业务入口；MQTT 断网不阻断本地业务。
+当前已经实现配置安全保存、定稿 PCB 硬件层、浇水控制与保护、自动调度、流量计校准、水路流量学习、业务记录、应用事件、在线检查点和业务 Web 页面。产品永久不实现 LCD2004、本地菜单和四按钮业务交互；板载 `LED1 / GPIO13` 低电平点亮状态灯属于当前本地完成范围。设备本地 Web、RTC 自动调度和最终 MQTT 平台命令必须调用同一个业务入口，MQTT 断网不能阻断本地业务。
 
-平台适配只服从 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 和 `/Users/tyg/workspace/iot-device-lab/docs/02-公共通信规则.md`，本项目不复制协议正文。
+统一 IoT 平台固定在本地产品定稿、代码和尺寸风险收敛、当前版本自动测试与真实水路回归通过后最后实施。届时平台适配只服从 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 和 `/Users/tyg/workspace/iot-device-lab/docs/02-公共通信规则.md` 的唯一最新契约，本项目不复制协议正文；已经漂移的旧契约适配已从当前本地固件删除，后续不得恢复或作为最终实现基础。
+
+用户确认在统一 IoT 平台接入前已经使用真实水路验证六路阀门控制、流量计采集和流量校准，结果正常。该历史证据证明当时硬件与本地实现可用；后续代码主要改变平台适配和记录，但当前最终固件仍须重新完成六路互斥、代表性真实流量与校准、停止和保护、断电安全及离线调度回归。
 
 启动时只有加载到有效配置或成功创建默认配置后才继续；存在配置文件但所有副本均无效时保持输出关闭，不用默认值覆盖。RTC 倒退判断会参考最近浇水记录、应用事件和在线检查点。在线检查点仅在达到配置间隔且期间没有业务写入时保存，避免不必要的 Flash 磨损。
 
@@ -19,62 +21,31 @@
 常用验证命令：
 
 ```sh
+python3 scripts/generate_web_assets.py --check
 pio test -e native
 pio run -e esp32_irrigation
 pio test -e esp32_record_test --upload-port <serial-port> --test-port <serial-port>
 ```
 
-## 统一 IoT 平台本机配置
+本地 Web 的大段静态 HTML、CSS 和 JavaScript 在 `web-src/` 维护，运行 `python3 scripts/generate_web_assets.py` 生成压缩固件数组；正式构建会先检查生成物漂移。运行时使用 ESP32 ROM miniz 和单个复用缓冲区恢复原始字节，不写 LittleFS、不改变认证、路由或页面内容。尺寸验收以最终 `firmware.bin` 和实际 OTA slot 为准，不能用源文件或 ELF 单项大小替代。
 
-### 共享平台契约
+## 统一 IoT 平台接入门禁
 
-固件直接消费 `iot-device-lab` 当前 `irrigation-controller/definition.json`、仓库级 `device-discovery-vectors.json` 和该类型 `platform-command-vectors.json`。固件仓库只提交确定性生成的定义常量和 native 测试头文件；发现与命令向量记录 source file SHA-256 用于来源漂移检查，定义另外按权威 `canonicalizeJson` 规则递归排序对象键并计算 canonical checksum，后者才是固件启动门禁。测试调用正式固件共用的身份、Topic、availability、QoS/retain 和 command parser。同步脚本不查找固定本机目录，必须显式提供实验室仓库根目录：
+当前本地定稿固件不编译、不配置、不连接 MQTT；已经漂移的旧平台适配、生成契约、私有配置模板和契约测试已删除，避免把无效契约带入本地版本并释放其 Flash/RAM 成本。此状态不影响本地 Web、RTC 自动调度、停止、保护、记录和 OTA。
 
-```sh
-python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-lab
-python3 scripts/sync_platform_command_vectors.py --lab-root /path/to/iot-device-lab --check
-```
-
-定义或 fixture 更新后先同步，再提交生成物；CI 或本地验收使用 `--check`，任一权威源与已提交生成物不一致时直接失败。`python3 scripts/test_sync_platform_contract.py` 验证定义空白和对象键顺序不影响 canonical checksum。本仓库不复制 fixture JSON 或协议正文，也不自行维护第二组发现或命令向量。
-
-平台能力与本地权威入口的固定映射：
-
-| 平台能力 | 现有业务入口或证据 |
-| --- | --- |
-| `operation.start-manual` | `IrrigationApp::startManualWatering()` |
-| `operation.stop` | `IrrigationApp::stopWatering()` |
-| `operation.single-output` | `IrrigationApp::startSingleOutput()` |
-| `parameter.plans` | 合并为当前 `IrrigationConfig` 后经 `saveConfiguration()` 完整校验和原子保存 |
-| `parameter.automatic-watering` | 现有暂停、定时暂停和恢复入口 |
-| 当前只读 state | 从 `WateringStatus`、当前配置、调度、RTC 和存储状态投影，不建立第二业务模型 |
-| 业务 event | 从本地浇水 Store v5 和 App Events 补发，PUBACK 后推进各自游标 |
-
-复制无凭据模板到 Git 忽略目录，只填写该项目分配的终端 MQTT 地址与凭据，不填写或另配 `deviceId`、Client ID。MQTT 首次受控启用时，固件生成规范小写 UUIDv4 并保存到 NVS，Client ID 直接等于该永久 `deviceId`；普通重启、断网和固件升级保持不变，已存在但非法的身份会使平台适配拒绝启动而不会静默换号。真实终端与模拟器必须使用不同 UUID；同一项目默认共用终端 MQTT 用户，绝不能复用服务端身份。构建日志和回复中不得回显真实值。
-
-```sh
-mkdir -p local_private
-cp include/IrrigationMqttPrivate.example.h local_private/IrrigationMqttPrivate.h
-```
-
-`IRRIGATION_MQTT_DEFINITION_CHECKSUM` 必须等于当前受控定义的 canonical JSON SHA-256，而不是原始文件字节 SHA-256，否则适配器拒绝启动。online、LWT 和正常 shutdown 三种 retained availability 均由同一生产格式化路径携带固定 `modelKey=irrigation-controller-6-zone`，不上传动态能力。没有私有文件或显式设置 `IRRIGATION_MQTT_ENABLED 0` 时，仅禁用平台连接，本地 Web、RTC 计划、手动停止和现场保护继续工作。MQTT 使用 TLS、独立连接周期/LWT、QoS 1 和非 retained command；命令经过有界队列在主循环串行执行，普通命令只有一个待处理槽，另保留一个专用 stop 槽且优先取出，避免普通命令占满队列后饿死远程停止。浇水历史在本地持久化后生成稳定 eventId；只有匹配消息且游标成功持久化的 PUBACK 才推进补发游标，断线、错误消息 ID 或 NVS 写入失败均不推进。
-
-平台适配器只在本次启动曾取得可信 RTC/NTP 快照后，使用该 epoch 与 `millis()` 单调外推命令 TTL 和消息观测时间；瞬时失去同步不会阻断仍在有效期内的普通浇水 stop，但重启后从未取得可信时间时仍不连接平台、不接受远程命令。定时暂停仍同时要求当前时间同步和调度器时间状态 Ready，维护校准或水路学习活动仍不能由平台 stop 中断。本地 Web、现场停止和控制器安全入口不经过这层 MQTT 时间判断。
-
-命令证据固定保存 8 条。当前定义 TTL 为 10～30 秒，适配器同时最多排队一个普通命令和一个 stop，正常串行命令流不会必然耗尽该容量；异常突发仍可能填满，此时新命令静默丢弃并由服务端进入 timeout/unknown，不发布未持久化的拒绝，也不执行动作。receipt 和 progress 只有在完整证据成功写入 NVS 后才发布，写入失败会回滚 RAM 中未持久化的状态；`accepted` 只表示已接纳，只有 `running` 证据持久化成功后才能改变参数或启动执行器。
-
-本轮浇水记录采用当前唯一的 Store v5，固化发生时水路名称用于历史平台事件。维护人员不能仅因存储故障提示擅自格式化文件系统。
-
-分层验收顺序：先运行 native 契约与业务回归，再编译设备记录测试固件和正式固件；随后在维护窗口烧录，检查写入校验和启动日志；最后使用真实设备专属凭据验证 EMQX 连接、LWT、重连、状态新鲜度、命令幂等、断网期间本地计划与停止、浇水事件补发。未完成最后两层时不得宣称实机或真实平台通过。
+只有在本地自动测试、烧录启动检查和真实水路回归完成且用户确认产品定稿后，才进入最终平台阶段。届时必须重新读取 `iot-device-lab` 的唯一最新定义和公共通信规则，基于 `Esp32Base` 当前 MQTT 连接机制实现项目侧 Topic、payload、命令、状态和证据适配，并重新建立契约测试、资源预算、实机 MQTTS 长稳与平台验收；不得恢复本轮删除的旧版本代码。
 
 基础库 Web OTA 使用本地 `platformio.local.ini` 保存设备地址和 Web Auth，该文件被 Git 忽略且不得提交。仓库中的 `platformio.example.ini` 只提供无凭据模板。需要升级时由操作者显式执行 `pio run -e esp32_irrigation -t webota`，普通构建和测试不会触发 OTA。
 
-正式构建会由 `scripts/check_ota_image_size.py` 读取 `board_build.partitions` 指向的实际 CSV，并在生成 `firmware.bin` 后输出两个 OTA app slot、镜像大小和剩余字节/百分比。镜像超过最小 OTA slot 时构建失败；剩余低于 10% 只产生明确告警，不阻止当前构建，也不通过修改分区或删除现有功能规避空间风险。
+正式构建会由 `scripts/check_ota_image_size.py` 读取 `board_build.partitions` 指向的实际 CSV，并在生成 `firmware.bin` 后输出两个 OTA app slot、镜像大小和剩余字节/百分比。当前本地定稿阶段要求最小 OTA slot 剩余至少 15%，低于门槛或镜像超槽均直接使构建失败；最终平台接入后的门槛必须结合新增 MQTT/TLS 实测预算重新确认，但不得低于 10%，也不通过修改分区或删除安全与本地产品能力规避空间风险。
 
 ```sh
 cp platformio.example.ini platformio.local.ini
 # 编辑 platformio.local.ini，填写 Web OTA 配置
 pio run -e esp32_irrigation -t webota
 ```
+
+2026-08-31 本地产品边界与尺寸整改：永久取消 LCD2004 和四按钮业务功能，按定稿网表实现 `LED1 / GPIO13` 低电平点亮的非阻塞启动、就绪、活动和关键故障状态；删除已经漂移且按阶段门禁不应进入本地固件的旧 MQTT/平台协议实现、生成契约、私有配置模板和对应测试。十段大体积业务 Web 静态内容改为可读源文件、确定性 zlib 生成物和 ESP32 ROM miniz 有界解压发送，页面原始字节经生成脚本回环校验保持一致；只保留 Web OTA，裁掉未使用的 ArduinoOTA/espota 运行能力，并把 15 条业务 route 容量按实固定。执行 `python3 scripts/generate_web_assets.py --check` 通过；执行 `/opt/homebrew/bin/pio test -e native` 通过 87/87；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备记录测试固件；执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 91596 B / 28.0%、Flash 1248549 B / 79.4%，`firmware.bin` 1255120 B，1.5 MiB OTA slot 剩余 317744 B / 20.20%。相对整改前 `firmware.bin` 1473968 B 减少 218848 B，未删除本地 Web、认证、TLS 基础、Web OTA、RTC、保护、记录或诊断能力。尚未烧录，没有实测状态灯电平/节奏、页面视觉与并发请求、OTA、六路阀、泵、流量计、校准、断电、RTC 或真实水路，不能替代最终实机回归。
 
 2026-08-27 统一设备发现契约同步：删除私有配置中的人工 `deviceId` 和 Client ID，MQTT 首次受控启用时生成规范小写 UUIDv4 并永久保存到 NVS，Client ID、Topic 和稳定事件 ID 直接复用该身份；已存在但非法的持久身份拒绝启动平台适配，不做旧语义 ID fallback 或迁移。online、LWT、正常 shutdown 三种 availability 统一携带固定 `modelKey=irrigation-controller-6-zone`，不上传动态能力。固件生产常量和 native fixtures 由 `iot-device-lab main@4f8bf28` 的当前定义、14 条发现向量及 33 条命令向量确定性生成并执行漂移检查；当前协议版本 `1.1.0`，定义 canonical checksum `f01520b35eeb1a565d922626a50d20135863fbf1dc365b0afa3de9543b3f47b6`，definition source file SHA-256 `f7e8e474919d72e02ec166eaee525086c0a969b871ec8e2b162107a828cde0f0`，发现向量 source file SHA-256 `c809d5f7ad1de5af453113a1e3b0dddfd89ecd6781ff22b9d19d7762b79a73d3`，命令向量 source file SHA-256 `a605884faf001bbe4610cf98e3c9d6a564dcd3f76ed024afc86ab97b624bcb4a`。执行 `python3 scripts/test_sync_platform_contract.py` 和 `python3 scripts/sync_platform_command_vectors.py --lab-root /Users/tyg/workspace/iot-device-lab --check` 通过；执行 `/opt/homebrew/bin/pio test -e native` 通过 109/109；执行 `/opt/homebrew/bin/pio test -e esp32_record_test --without-uploading --without-testing` 成功编译设备端记录测试固件；清理生成目录后执行 `/opt/homebrew/bin/pio run -e esp32_irrigation` 成功，RAM 95820 B / 29.2%、Flash 1467389 B / 93.3%，`firmware.bin` 1473968 B，单个 OTA app slot 剩余 98896 B / 6.29%，低于 10% 警戒线但未超槽。本轮只形成 G4 的代码、native 契约/业务回归和目标板构建证据；未烧录、未读取或修改真实私有配置、未连接真实 MQTT/服务端、未使用串口、未发送命令、未操作泵阀或其它物理执行器，不能证明 G5/G6。
 
@@ -174,4 +145,4 @@ pio run -e esp32_irrigation -t webota
 
 2026-07-24 单次出水页面与交互重构：确认旧样式的 `.single-output-target{display:grid}` 覆盖 `hidden`，导致按时长时水量输入仍可见但不可编辑。目标方式现改为紧凑分段控件，目标编辑区强制一次只显示当前模式；时长由分钟、秒两个宽输入改为单个 `时:分:秒` 复合输入，同时接受总秒数，提供 ±1 秒和常用时长；水量使用带 `L` 单位的单一输入，提供 ±0.1 L 和常用水量。水路卡增加明确选中标记，目标区限制宽度，提交区实时汇总水路与目标；无水路、无基准、输入无效、快捷值超上限和预计运行超时均有明确处理。服务端按时长只接收规范化总秒数并再次校验动态上限。嵌入脚本通过 Node.js 语法解析，交互模拟覆盖模式可见性、提交字段切换、估算、0.1 L 校验、快捷值上限、总秒数、±1 秒和时长上限等 14 项状态，静态结构检查确认标签闭合且 10 个控件 ID 唯一。执行 `pio test -e native` 通过 86/86；执行 `pio test -e esp32_record_test --without-uploading --without-testing` 通过设备事件测试固件编译；执行 `pio run -e esp32_irrigation` 通过，资源占用 RAM 84452 B / 25.8%、Flash 1295977 B / 82.4%。按项目约定未由 Codex 打开实机页面或代替用户做最终视觉验收。
 
-仍需在完整 PCB 和真实水路上验证电磁阀、泵、流量计、突然断电及 LittleFS 真实写失败。实际硬件 RTC 已接通并测试正常。本地 LCD2004 与四按钮功能按方案明确留待 Web 功能稳定后另行设计。
+历史完整水路实测已经覆盖六路电磁阀、流量计和校准并由用户确认正常；当前代码修改完成后仍需在完整 PCB 上做当前版本回归，覆盖六路互斥、代表性真实流量与校准、停止和无流量保护、突然断电、离线 RTC 调度及适用的 LittleFS/NVS 写失败。实际硬件 RTC 已接通并测试正常。LCD2004 和四按钮业务功能已永久取消，不再作为剩余工作；现场紧急止水以关闭上游水源开关为最终物理隔离，并可同时关闭控制器电源。

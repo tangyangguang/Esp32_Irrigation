@@ -1,0 +1,146 @@
+
+                    </div>
+                </section>
+                <div class="single-output-workspace">
+                    <fieldset class="single-output-mode-group">
+                        <legend>2. 选择停止方式</legend>
+                        <div class="single-output-modes">
+                            <label class="single-output-option">
+                                <input type="radio" name="target_mode" value="time" checked>
+                                <span class="single-output-mode-card"><b>按时长</b><small>精确到秒</small></span>
+                            </label>
+                            <label class="single-output-option">
+                                <input type="radio" name="target_mode" value="volume">
+                                <span class="single-output-mode-card"><b>按水量</b><small>流量计估算</small></span>
+                            </label>
+                        </div>
+                    </fieldset>
+                    <div class="single-output-editor">
+                        <div id="single-time-target" class="single-output-target">
+                            <label class="single-output-target-label" for="single-duration-text">出水时长</label>
+                            <div class="single-output-value-row">
+                                <button type="button" class="single-output-stepper" data-duration-delta="-1" aria-label="减少 1 秒">−</button>
+                                <div class="single-output-value">
+                                    <input id="single-duration-text" class="single-output-duration-input" type="text" value="00:01:00" inputmode="numeric" maxlength="8" autocomplete="off" spellcheck="false" aria-describedby="single-duration-help">
+                                    <input id="single-duration-seconds" type="hidden" name="duration_seconds" value="60">
+                                </div>
+                                <button type="button" class="single-output-stepper" data-duration-delta="1" aria-label="增加 1 秒">+</button>
+                            </div>
+                            <small id="single-duration-help" class="single-output-help">可输入时:分:秒或总秒数，也可按 1 秒微调。</small>
+                            <div class="single-output-presets" aria-label="常用时长">
+                                <button type="button" data-duration="60">1 分钟</button>
+                                <button type="button" data-duration="300">5 分钟</button>
+                                <button type="button" data-duration="600">10 分钟</button>
+                                <button type="button" data-duration="1800">30 分钟</button>
+                            </div>
+                        </div>
+                        <div id="single-volume-target" class="single-output-target" hidden>
+                            <label class="single-output-target-label" for="single-volume-input">目标水量</label>
+                            <div class="single-output-value-row">
+                                <button type="button" class="single-output-stepper" data-volume-delta="-0.1" aria-label="减少 0.1 升">−</button>
+                                <div class="single-output-value">
+                                    <input id="single-volume-input" type="number" name="target_liters" min="0.1" step="0.1" value="5.0" inputmode="decimal" disabled>
+                                    <span class="single-output-unit">L</span>
+                                </div>
+                                <button type="button" class="single-output-stepper" data-volume-delta="0.1" aria-label="增加 0.1 升">+</button>
+                            </div>
+                            <small class="single-output-help">按流量计脉冲估算，支持 0.1 L 步进。</small>
+                            <div class="single-output-presets" aria-label="常用水量">
+                                <button type="button" data-volume="1">1 L</button>
+                                <button type="button" data-volume="5">5 L</button>
+                                <button type="button" data-volume="10">10 L</button>
+                                <button type="button" data-volume="20">20 L</button>
+                            </div>
+                        </div>
+                        <p id="single-output-estimate" class="single-output-estimate" hidden></p>
+                    </div>
+                </div>
+                <p id="single-output-note" class="single-output-note"></p>
+                <div class="single-output-submit">
+                    <span id="single-output-summary" class="single-output-summary"></span>
+                    <input id="single-output-submit" type="submit" value="开始出水">
+                </div>
+                </form>
+                <script>
+                (function(){
+                    var form=document.getElementById('single-output-form');
+                    if(!form)return;
+                    var timePanel=document.getElementById('single-time-target');
+                    var volumePanel=document.getElementById('single-volume-target');
+                    var durationText=document.getElementById('single-duration-text');
+                    var durationSeconds=document.getElementById('single-duration-seconds');
+                    var volumeInput=document.getElementById('single-volume-input');
+                    var estimate=document.getElementById('single-output-estimate');
+                    var note=document.getElementById('single-output-note');
+                    var summary=document.getElementById('single-output-summary');
+                    var submit=document.getElementById('single-output-submit');
+                    var maximumDuration=Number(form.dataset.maxDurationSeconds)||0;
+                    var maximumVolume=Number(form.dataset.maxVolumeLiters)||0;
+                    volumeInput.max=String(maximumVolume);
+                    function selected(name){return form.querySelector('input[name="'+name+'"]:checked')}
+                    function pad(value){return String(value).padStart(2,'0')}
+                    function formatClock(seconds){seconds=Math.max(0,Math.round(Number(seconds)||0));return pad(Math.floor(seconds/3600))+':'+pad(Math.floor(seconds%3600/60))+':'+pad(seconds%60)}
+                    function formatDuration(seconds){seconds=Math.max(0,Math.round(Number(seconds)||0));if(seconds<60)return seconds+' 秒';var hours=Math.floor(seconds/3600),minutes=Math.floor(seconds%3600/60),rest=seconds%60;if(!hours)return rest?minutes+' 分 '+rest+' 秒':minutes+' 分钟';var text=hours+' 小时';if(minutes)text+=' '+minutes+' 分';if(rest)text+=' '+rest+' 秒';return text}
+                    function parseClock(value){value=String(value||'').trim();var seconds=0;if(/^\d+$/.test(value)){seconds=Number(value)}else{var match=value.match(/^(\d{1,2}):([0-5]\d):([0-5]\d)$/);if(!match)return 0;seconds=Number(match[1])*3600+Number(match[2])*60+Number(match[3])}return seconds>=1&&seconds<=maximumDuration?seconds:0}
+                    function setDuration(seconds){seconds=Math.max(1,Math.min(maximumDuration,Math.round(Number(seconds)||0)));durationText.value=formatClock(seconds);durationSeconds.value=String(seconds)}
+                    function volumeTenths(){var value=Number(volumeInput.value),tenths=Math.round(value*10);return value>=0.1&&value<=maximumVolume&&Math.abs(value*10-tenths)<0.000001?tenths:0}
+                    function setVolume(value){var tenths=Math.max(1,Math.min(maximumVolume*10,Math.round((Number(value)||0)*10)));volumeInput.value=(tenths/10).toFixed(1)}
+                    function zoneName(zone){var label=zone&&zone.closest('label'),name=label&&label.querySelector('b');return name?name.textContent:'所选水路'}
+                    function update(){
+                        var mode=selected('target_mode');
+                        var zone=selected('zone_id');
+                        var byVolume=mode&&mode.value==='volume';
+                        var seconds=parseClock(durationText.value);
+                        var tenths=volumeTenths();
+                        timePanel.hidden=byVolume;
+                        volumePanel.hidden=!byVolume;
+                        durationSeconds.disabled=byVolume;
+                        volumeInput.disabled=!byVolume;
+                        durationText.setCustomValidity(!byVolume&&!seconds?'请输入有效时长，可使用时:分:秒或总秒数，且不能超过系统上限。':'');
+                        volumeInput.setCustomValidity(byVolume&&!tenths?'请输入 0.1 L 步进且不超过系统上限的水量。':'');
+                        if(seconds)durationSeconds.value=String(seconds);
+                        estimate.hidden=true;
+                        estimate.className='single-output-estimate';
+                        var flow=zone?Number(zone.dataset.flow)||0:0;
+                        if(flow&&((byVolume&&tenths)||(!byVolume&&seconds))){
+                            if(byVolume){
+                                var targetLiters=tenths/10;
+                                var estimatedSeconds=Math.ceil(targetLiters*60000/flow);
+                                estimate.textContent='按当前水路基准估算，约需 '+formatDuration(estimatedSeconds)+(estimatedSeconds>maximumDuration?'；预计超过最长运行时间，可能无法完成':'');
+                                if(estimatedSeconds>maximumDuration)estimate.classList.add('warn');
+                            }else{
+                                var estimatedLiters=flow*seconds/60000;
+                                estimate.textContent='按当前水路基准估算，约出水 '+estimatedLiters.toFixed(estimatedLiters<1?2:1)+' L';
+                            }
+                            estimate.hidden=false;
+                        }
+                        note.textContent=byVolume?'水量由流量计脉冲估算，校准误差、阀门响应和管路余流会影响实际结果；最长运行 '+formatDuration(maximumDuration)+'。':'到达设定时长后自动停止；最长可设置 '+formatDuration(maximumDuration)+'。';
+                        var valid=!!zone&&(byVolume?!!tenths:!!seconds);
+                        var targetText=byVolume?(tenths?(tenths/10).toFixed(1)+' L':'水量格式有误'):(seconds?formatDuration(seconds):'时长格式有误');
+                        summary.textContent=zone?(zoneName(zone)+' · '+targetText):'请选择水路';
+                        submit.disabled=!valid;
+                    }
+                    durationText.addEventListener('input',update);
+                    durationText.addEventListener('change',function(){var seconds=parseClock(durationText.value);if(seconds)setDuration(seconds);update()});
+                    volumeInput.addEventListener('input',update);
+                    volumeInput.addEventListener('change',function(){if(volumeTenths())setVolume(Number(volumeInput.value));update()});
+                    form.querySelectorAll('input[type="radio"]').forEach(function(input){input.addEventListener('change',update)});
+                    form.querySelectorAll('[data-duration-delta]').forEach(function(button){button.addEventListener('click',function(){setDuration((parseClock(durationText.value)||Number(durationSeconds.value)||60)+Number(button.dataset.durationDelta));update()})});
+                    form.querySelectorAll('[data-duration]').forEach(function(button){var value=Number(button.dataset.duration)||0;button.disabled=value>maximumDuration;button.addEventListener('click',function(){setDuration(value);update()})});
+                    form.querySelectorAll('[data-volume-delta]').forEach(function(button){button.addEventListener('click',function(){setVolume((volumeTenths()||50)/10+Number(button.dataset.volumeDelta));update()})});
+                    form.querySelectorAll('[data-volume]').forEach(function(button){var value=Number(button.dataset.volume)||0;button.disabled=value>maximumVolume;button.addEventListener('click',function(){setVolume(value);update()})});
+                    window.submitSingleOutput=function(){
+                        update();
+                        if(submit.disabled){
+                            var mode=selected('target_mode');
+                            if(mode&&mode.value==='volume')volumeInput.reportValidity();else durationText.reportValidity();
+                            return false;
+                        }
+                        return confirm('确认按“'+summary.textContent+'”开始单次出水？')&&once(form);
+                    };
+                    setDuration(60);
+                    setVolume(5);
+                    update();
+                })();
+                </script>
+                

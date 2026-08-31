@@ -12,6 +12,7 @@
 #include "IrrigationApp.h"
 #include "IrrigationConfig.h"
 #include "IrrigationTime.h"
+#include "generated/IrrigationWebAssets.h"
 
 namespace {
 
@@ -1408,16 +1409,7 @@ void IrrigationWeb::overview() {
     }
     if (!Esp32BaseWeb::checkAuth()) return;
     Esp32BaseWeb::sendHeader("智能浇水");
-    Esp32BaseWeb::sendChunk(
-        R"HTML(<style>
-.home-hero{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:20px;border:1px solid var(--eb-line);border-radius:12px;background:linear-gradient(135deg,#f4faf7,#fff);margin:12px 0}
-.home-hero.warn{background:linear-gradient(135deg,var(--eb-warn-soft),#fff);border-color:#efcf96}.home-hero.danger{background:linear-gradient(135deg,var(--eb-danger-soft),#fff);border-color:#efc0ba}.home-hero.info{background:linear-gradient(135deg,var(--eb-info-soft),#fff);border-color:#cbdde5}
-.home-eyebrow{display:block;margin-bottom:5px;color:var(--eb-muted);font-size:12px;font-weight:750}.home-hero h1{margin:0 0 6px;font-size:24px}.home-hero p{margin:0;color:var(--eb-muted)}.home-monitor{display:block;margin-top:7px;color:var(--eb-muted);font-size:12px}.home-monitor.danger{color:var(--eb-danger)}.home-hero .btnlink{min-height:38px;padding:0 16px}.home-action.hidden{display:none}
-.home-hero-side{display:flex;align-items:center;justify-content:flex-end;gap:20px}.home-clock{width:170px}.home-clock.has-warning{width:250px}.home-clock-time{display:block;color:inherit;font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1.1}.home-clock-date{display:block;margin-top:5px;color:var(--eb-muted);font-size:12px;font-weight:400;white-space:nowrap}.home-clock-warning{display:inline-flex;margin-top:7px;padding:3px 7px;border:1px solid #efcf96;border-radius:999px;background:var(--eb-warn-soft);color:#8a5708;font-size:11px;font-weight:500;line-height:1.35;text-decoration:none}.home-clock.pending .home-clock-time{color:var(--eb-warn);font-size:16px}.home-clock.pending .home-clock-date{white-space:normal}
-.home-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:12px 0}.home-card{display:flex;flex-direction:column;min-height:230px;padding:18px;border:1px solid var(--eb-line);border-radius:12px;background:#fff}.home-card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:14px}.home-card-head h2{margin:0;font-size:17px}.home-main{font-size:22px;font-weight:760;line-height:1.3;overflow-wrap:anywhere}.home-sub{margin:6px 0 0;color:var(--eb-muted);overflow-wrap:anywhere}.home-plan{margin-top:14px;padding:11px 12px;border-radius:9px;background:var(--eb-soft)}.home-plan span{display:block;color:var(--eb-muted);font-size:11px}.home-plan b{display:block;margin-top:3px;font-size:17px;font-weight:600;overflow-wrap:anywhere}.home-outcome{margin:14px 0 0;padding:10px 12px;border-radius:9px;background:var(--eb-soft);font-size:14px;line-height:1.55}.home-card.danger{border-color:#efc0ba;background:linear-gradient(150deg,#fff,var(--eb-danger-soft))}.home-card.warn{border-color:#efcf96;background:linear-gradient(150deg,#fff,var(--eb-warn-soft))}.home-card.ok{border-color:#c8e4d5}.home-card.just-finished{animation:home-result-highlight 3.5s ease-out}.home-facts{display:grid;gap:7px;margin:14px 0 0}.home-fact{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;font-size:13px}.home-fact span:first-child{color:var(--eb-muted)}.home-card-actions{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:16px}.home-card-actions form{margin:0}.home-empty{color:var(--eb-muted);line-height:1.7}.home-note{margin-top:10px;padding:10px 12px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:13px}@keyframes home-result-highlight{0%{box-shadow:0 0 0 4px rgba(17,123,139,.22)}100%{box-shadow:0 0 0 0 rgba(17,123,139,0)}}
-.manual-modal{width:min(760px,calc(100vw - 28px));padding:20px!important}.manual-template{margin:14px 0}.manual-template-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:7px}.manual-template-head h3{margin:0;font-size:14px;font-weight:500}.manual-template-head a{font-size:12px}.manual-template-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.manual-template-card{display:block;min-width:0;min-height:76px;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);color:var(--eb-text);text-align:left}.manual-template-card:hover{border-color:#a9cbd3;background:#f5fafb}.manual-template-card.selected{border-color:var(--eb-primary);background:var(--eb-primary-soft);box-shadow:0 0 0 1px var(--eb-primary)}.manual-template-card:disabled{opacity:.58;cursor:not-allowed}.manual-template-card b,.manual-template-card span,.manual-template-card small{display:block}.manual-template-card b{font-size:14px;font-weight:500}.manual-template-card span{margin-top:4px;color:#526071;font-size:12px;line-height:1.4;overflow-wrap:anywhere}.manual-template-card small{margin-top:3px;color:var(--eb-muted);font-size:11px}.manual-template-empty{padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:13px}.manual-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.manual-zone{display:grid;grid-template-columns:minmax(0,1fr) 100px auto;gap:8px;align-items:center;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft)}.manual-zone label{margin:0;overflow-wrap:anywhere}.manual-zone input{width:100%;max-width:none;min-height:38px;margin:0}.manual-zone span{color:var(--eb-muted);font-weight:650}.manual-summary{margin-top:12px;padding:11px 13px;border:1px solid #cbdde5;border-radius:8px;background:var(--eb-info-soft)}.manual-summary b,.manual-summary span{display:block}.manual-summary span{margin-top:3px;color:var(--eb-muted);font-size:12px}.manual-modal .actions{margin-top:14px}
-@media(max-width:760px){.home-hero,.home-grid{grid-template-columns:1fr}.home-hero{padding:16px}.home-hero h1{font-size:21px}.home-hero-side{align-items:stretch;flex-direction:column;gap:14px}.home-clock,.home-clock.has-warning{width:100%}.home-hero .btnlink{width:100%}.home-card{min-height:0;padding:15px}.home-fact{grid-template-columns:1fr;gap:2px}.manual-modal{width:calc(100vw - 20px);padding:14px!important}.manual-template-list,.manual-grid{grid-template-columns:1fr}.manual-zone{grid-template-columns:minmax(0,1fr) 86px auto}.manual-modal .actions{display:grid;grid-template-columns:1fr 1fr}.manual-modal .actions button,.manual-modal .actions input{width:100%;margin:0}}
-</style>)HTML");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
     const AutomaticWateringState automatic = g_app->automaticWateringState();
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     const WateringScheduler::TimeState schedulerTime = g_app->schedulerTimeState();
@@ -1863,38 +1855,13 @@ void IrrigationWeb::overview() {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_INFO, "还没有启用水路", "请先到水路页面启用实际安装的水路。");
         Esp32BaseWeb::sendChunk("<div class='actions'><a class='btnlink info' href='/irrigation/zones'>前往水路设置</a></div>");
     }
-    Esp32BaseWeb::sendChunk(R"HTML(<script>(function(){
-var recentCard=document.getElementById('home-recent-card');try{if(recentCard&&sessionStorage.getItem('irrigationJustFinished')==='1'){sessionStorage.removeItem('irrigationJustFinished');recentCard.classList.add('just-finished');setTimeout(function(){recentCard.classList.remove('just-finished')},3600)}}catch(ignore){}
-var clock=document.getElementById('home-clock'),clockTime=document.getElementById('home-clock-time'),clockDate=document.getElementById('home-clock-date');if(clock&&clock.dataset.epoch){var clockBase=Number(clock.dataset.epoch),clockStarted=performance.now();function clockPad(v){return String(v).padStart(2,'0')}function updateClock(){var epoch=clockBase+Math.floor((performance.now()-clockStarted)/1000),d=new Date((epoch+28800)*1000);if(clockTime)clockTime.textContent=clockPad(d.getUTCHours())+':'+clockPad(d.getUTCMinutes())+':'+clockPad(d.getUTCSeconds());if(clockDate)clockDate.textContent=d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日'}updateClock();setInterval(updateClock,1000)}
-var inputs=Array.prototype.slice.call(document.querySelectorAll('.manual-duration')),submit=document.getElementById('manual-submit'),summary=document.getElementById('manual-summary'),note=document.getElementById('manual-template-note'),cards=Array.prototype.slice.call(document.querySelectorAll('.manual-template-card')),applyingTemplate=false,count=0,total=0;
-function update(){count=0;total=0;inputs.forEach(function(input){var value=Math.max(0,Math.min(Number(input.max)||0,Number(input.value)||0));if(value>0){count++;total+=value}});if(summary)summary.textContent=count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路';if(submit)submit.disabled=count===0}
-inputs.forEach(function(input){input.addEventListener('input',function(){update();if(applyingTemplate)return;cards.forEach(function(card){card.classList.remove('selected')});if(note)note.textContent='当前时长已手动调整，不会修改任何计划。'})});
-cards.forEach(function(card){card.addEventListener('click',function(){if(card.disabled)return;var values=(card.dataset.durations||'').split(',');applyingTemplate=true;inputs.forEach(function(input){input.value=values[Number(input.dataset.zoneIndex)]||0});applyingTemplate=false;cards.forEach(function(item){item.classList.toggle('selected',item===card)});if(note)note.textContent='已从“'+(card.dataset.planName||'计划')+'”填入，可继续修改；本次修改不会保存到计划。';update()})});
-var clear=document.getElementById('manual-clear');if(clear)clear.addEventListener('click',function(){inputs.forEach(function(input){input.value=0});cards.forEach(function(card){card.classList.remove('selected')});if(note)note.textContent='已全部清零。';update()});
-window.submitManualWatering=function(form){update();if(!count){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认手动浇水 '+count+' 条水路，合计 '+total+' 分钟？')&&once(form)};update();
-var hero=document.getElementById('home-hero'),heroTitle=document.getElementById('home-hero-title'),heroDescription=document.getElementById('home-hero-description'),monitor=document.getElementById('home-flow-monitor'),defaultAction=document.getElementById('home-default-action'),alarmAction=document.getElementById('home-alarm-action');
-function toggleHidden(element,hidden){if(element)element.classList.toggle('hidden',hidden)}
-function alarmObservation(status){var seconds=Math.max(1,Number(status.unexpectedFlowObservedWindowSec)||1),pulses=Number(status.unexpectedFlowPulseCount)||0,flow=(Number(status.unexpectedFlowEstimatedMlPerMinute)||0)/1000;return'近 '+seconds+' 秒检测到 '+pulses+' 个水流脉冲 · 估算平均流量 '+flow.toFixed(3)+' L/min'}
-function updateIdleStatus(status){if(status.active||!!status.rtcUnavailable!==(hero.dataset.rtcUnavailable==='1')){location.reload();return false}var alarm=!!status.unexpectedFlowAlarm;if(hero){var tone=alarm?'danger':String(hero.dataset.defaultTone||'').trim();hero.className='home-hero'+(tone?' '+tone:'')}if(heroTitle)heroTitle.textContent=alarm?'关阀后水流异常':hero.dataset.defaultTitle;if(heroDescription)heroDescription.textContent=alarm?'水泵和全部阀门均已关闭，但仍检测到水流。请检查阀门、管路或流量计。':hero.dataset.defaultDescription;toggleHidden(defaultAction,alarm);toggleHidden(alarmAction,!alarm);if(monitor){monitor.classList.toggle('danger',alarm);if(alarm)monitor.textContent=alarmObservation(status);else if(status.unexpectedFlowObservationReady)monitor.textContent='关阀后水流监测已开启';else monitor.textContent='关阀后水流监测中'}return true}
-var pollTimer=0,polling=false;function schedulePoll(delay){clearTimeout(pollTimer);pollTimer=setTimeout(poll,delay)}function poll(){if(polling)return;polling=true;fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(response){return response.json()}).then(function(status){polling=false;if(updateIdleStatus(status))schedulePoll(document.hidden?15000:5000)}).catch(function(){polling=false;schedulePoll(document.hidden?15000:10000)})}
-document.addEventListener('visibilitychange',function(){schedulePoll(document.hidden?15000:0)});schedulePoll(5000);
-})();</script>)HTML");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeScript);
     endPage();
 }
 
 void IrrigationWeb::activeTask() {
     if (!beginPage("首页", "查看当前任务的实时状态")) return;
-    Esp32BaseWeb::sendChunk(R"HTML(<style>
-.run-idle-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px;border:1px solid #cfe1e5;border-radius:10px;background:linear-gradient(135deg,#f4faf7,#fff)}.run-idle-hero h3{margin:0 0 4px;font-size:19px}.run-idle-hero p{margin:0;color:var(--eb-muted)}
-.run-context{display:flex;align-items:center;justify-content:space-between;gap:16px;margin:12px 0;padding:11px 14px;border:1px solid var(--eb-line);border-radius:10px;background:#fff}.run-context-status{display:flex;align-items:center;gap:8px}.run-context-status b{font-size:14px;font-weight:600}.run-clock{text-align:right}.run-clock-time{display:block;font-size:20px;font-weight:650;font-variant-numeric:tabular-nums;line-height:1.1}.run-clock-date{display:block;margin-top:4px;color:var(--eb-muted);font-size:11px}.run-clock-warning{display:inline-flex;margin-top:5px;padding:2px 6px;border:1px solid #efcf96;border-radius:999px;background:var(--eb-warn-soft);color:#8a5708;font-size:10px;text-decoration:none}
-.run-live-head{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:12px 14px;border:1px solid #cbdde5;border-radius:10px;background:linear-gradient(135deg,var(--eb-info-soft),#fff)}.run-live-title{display:flex;align-items:center;gap:9px;min-width:0}.run-live-title h3{margin:0;font-size:18px;font-weight:600;overflow-wrap:anywhere}.run-live-title .tag{flex:0 0 auto;font-size:11px;font-weight:500}.run-live-head p{margin:3px 0 0;color:var(--eb-muted);font-size:13px}.run-live-head form{flex:0 0 auto;margin:0}.run-live-head input{min-height:36px;font-weight:500}
-.run-live-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-top:12px}.run-live-metric{padding:12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.run-live-metric span{display:block;color:var(--eb-muted);font-size:12px;font-weight:400}.run-live-metric b{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.run-live-metric small{display:block;margin-top:3px;color:var(--eb-muted);font-size:10px;font-weight:400;line-height:1.35}
-.run-live-grid{display:grid;grid-template-columns:minmax(260px,.8fr) minmax(0,1.4fr);gap:12px;margin-top:12px}.run-current,.run-chart-card{padding:15px;border:1px solid var(--eb-line);border-radius:10px;background:#fff}.run-section-label{display:block;margin-bottom:5px;color:var(--eb-muted);font-size:12px;font-weight:400}.run-current-head{display:flex;align-items:center;justify-content:space-between;gap:10px}.run-current-head h3{margin:0;font-size:19px;font-weight:500}.run-current-head .tag{flex:0 0 auto;font-weight:500}.run-progress{height:10px;margin:13px 0 8px;border-radius:999px;background:var(--eb-line-soft);overflow:hidden}.run-progress span{display:block;height:100%;width:0;border-radius:inherit;background:var(--eb-primary);transition:width .25s ease}.run-current-detail{display:flex;justify-content:space-between;gap:10px;color:var(--eb-muted);font-size:13px;font-variant-numeric:tabular-nums}.run-flow-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:13px}.run-flow-fact{padding:9px 10px;border-radius:8px;background:var(--eb-soft)}.run-flow-fact span{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.run-flow-fact b{display:block;margin-top:2px;font-size:14px;font-weight:500;font-variant-numeric:tabular-nums}.run-chart-card{min-width:0}.run-chart-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:8px}.run-chart-head h3{margin:0;font-size:16px;font-weight:500}.run-chart-head span{color:var(--eb-muted);font-size:12px;font-weight:400}.run-chart-wrap{position:relative;min-height:205px}.run-chart-wrap canvas{display:block;width:100%;height:205px}.run-chart-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--eb-muted);font-size:13px;pointer-events:none}
-.run-steps{display:grid;gap:8px;margin-top:12px}.run-step{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--eb-line-soft);border-radius:9px;background:#fff}.run-step-icon{display:flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;font-weight:500}.run-step.current{border-color:#9fc8d0;background:var(--eb-primary-soft)}.run-step.current .run-step-icon{background:var(--eb-primary);color:#fff}.run-step.complete .run-step-icon{background:var(--eb-ok);color:#fff}.run-step-main b,.run-step-main small{display:block}.run-step-main b{font-weight:400}.run-step.current .run-step-main b{font-weight:500}.run-step-main small,.run-step-detail{color:var(--eb-muted);font-size:12px;font-weight:400}.run-step-detail{text-align:right}.run-note{margin:10px 0 0;color:var(--eb-muted);font-size:12px;font-weight:400}
-@media(max-width:900px){.run-live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-live-grid{grid-template-columns:1fr}}
-@media(max-width:760px){.run-context{align-items:flex-start}.run-context-status{align-items:flex-start;flex-direction:column;gap:4px}.run-clock{max-width:62%}.run-live-head{align-items:stretch;flex-direction:column;gap:10px}.run-live-head form input{width:100%}.run-live-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.run-live-grid{grid-template-columns:1fr}.run-step{grid-template-columns:30px minmax(0,1fr)}.run-step-detail{grid-column:2;text-align:left}}
-@media(max-width:420px){.run-live-metrics,.run-flow-facts{grid-template-columns:1fr}}
-</style>)HTML");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::ActiveTaskStyle);
     const IrrigationConfig* config = g_app->configuration();
     const WateringStatus status = g_app->wateringStatus();
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
@@ -2092,30 +2059,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::sendChunk("</div><p class='run-note'>预计剩余时间只计算计划浇水时长，不包含等待水流和设备启停延时。</p></div>");
         Esp32BaseWeb::endPanel();
     }
-    Esp32BaseWeb::sendChunk(R"HTML(<script>(function(){var live=document.getElementById('run-live'),initialActive=!!live;function duration(v){v=Math.max(0,Number(v)||0);if(v<60)return v+' 秒';if(v<3600)return Math.floor(v/60)+' 分 '+(v%60)+' 秒';return Math.floor(v/3600)+' 小时 '+Math.floor((v%3600)/60)+' 分'}function liters(v){return((Number(v)||0)/1000).toFixed(3)+' L'}function flow(v){return((Number(v)||0)/1000).toFixed(3)+' L/min'}function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}var inputs=document.querySelectorAll('.run-custom-duration'),submit=document.getElementById('run-custom-submit');function updateCustom(){var count=0,total=0;inputs.forEach(function(i){var v=Math.max(0,Math.min(Number(i.max)||0,Number(i.value)||0));if(v>0){count++;total+=v}});set('run-custom-summary',count?('已选择 '+count+' 条水路 · 合计 '+total+' 分钟'):'尚未选择水路');if(submit)submit.disabled=count===0}inputs.forEach(function(i){i.addEventListener('input',updateCustom)});window.runCustomSubmit=function(form){updateCustom();if(!submit||submit.disabled){alert('请至少为一条水路设置大于 0 的时长。');return false}return confirm('确认按当前自定义时长立即开始浇水？')&&once(form)};updateCustom();if(!initialActive){function idlePoll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(s.active)location.reload();else setTimeout(idlePoll,5000)}).catch(function(){setTimeout(idlePoll,10000)})}setTimeout(idlePoll,5000);return}var canvas=document.getElementById('run-flow-chart'),empty=document.getElementById('run-chart-empty'),samples=[],generation=Number(live.dataset.generation||0),serial=Number(live.dataset.serial||0),expectedFlow=Number(live.dataset.expectedFlow||0);
-function rangeDuration(value){if(value<60)return value+' 秒';if(value%60===0)return value/60+' 分钟';return Math.floor(value/60)+' 分 '+value%60+' 秒'}
-function draw(){
-if(!canvas)return;
-var rect=canvas.getBoundingClientRect(),dpr=window.devicePixelRatio||1,w=Math.max(280,rect.width),h=205,left=52,right=12,top=14,bottom=28,plotW=w-left-right,plotH=h-top-bottom;
-canvas.width=w*dpr;canvas.height=h*dpr;
-var c=canvas.getContext('2d');c.scale(dpr,dpr);c.clearRect(0,0,w,h);c.font='11px sans-serif';c.fillStyle='#667085';c.textBaseline='middle';
-var count=samples.length,coverage=Math.min(600,count*5);
-set('run-chart-range',count?('最近 '+rangeDuration(coverage)+' · 5 秒/点'):'正在等待数据 · 5 秒/点');
-var maximum=count?Math.max.apply(null,samples)/1000:1;if(expectedFlow>0)maximum=Math.max(maximum,expectedFlow/1000);var rough=Math.max(maximum*1.08,1)/4,power=Math.pow(10,Math.floor(Math.log(rough)/Math.LN10)),normalized=rough/power,steps=[1,2,2.5,5,10],step=steps[steps.length-1]*power;
-for(var s=0;s<steps.length;s++){if(normalized<=steps[s]){step=steps[s]*power;break}}
-var scale=step*4;
-function yText(value){if(value===0)return '0';if(value>=10)return String(Math.round(value));return value.toFixed(value>=1?1:2)}
-for(var yi=0;yi<=4;yi++){var value=step*yi,y=top+plotH*(1-yi/4);c.strokeStyle=yi===0?'#cbd7dd':'#e7edef';c.lineWidth=1;c.beginPath();c.moveTo(left,y);c.lineTo(w-right,y);c.stroke();c.fillStyle='#667085';c.textAlign='right';c.fillText(yText(value),left-8,y)}
-if(count){var maximumLabels=w<500?5:6,minimumStep=coverage/Math.max(1,maximumLabels-1),timeSteps=[5,10,15,30,60,120],timeStep=timeSteps[timeSteps.length-1];for(var ts=0;ts<timeSteps.length;ts++){if(timeSteps[ts]>=minimumStep){timeStep=timeSteps[ts];break}}var ticks=[coverage],next=Math.floor((coverage-1)/timeStep)*timeStep;while(next>0){ticks.push(next);next-=timeStep}ticks.push(0);ticks.forEach(function(ago){var x=left+plotW*(1-ago/coverage);c.strokeStyle='#eef2f4';c.beginPath();c.moveTo(x,top);c.lineTo(x,top+plotH);c.stroke();var label=ago===0?'现在':rangeDuration(ago)+'前';c.fillStyle='#667085';c.textBaseline='bottom';c.textAlign=ago===coverage?'left':(ago===0?'right':'center');c.fillText(label,x,h-2)})}
-if(count===0){if(empty)empty.style.display='flex';return}
-if(empty)empty.style.display='none';
-if(expectedFlow>0){var baseline=expectedFlow/1000,baselineY=top+plotH*(1-baseline/scale);c.save();c.setLineDash([5,4]);c.strokeStyle='#7b8d94';c.lineWidth=1;c.beginPath();c.moveTo(left,baselineY);c.lineTo(w-right,baselineY);c.stroke();c.restore();c.fillStyle='#667085';c.textAlign='right';c.textBaseline='bottom';c.fillText('基准 '+baseline.toFixed(3),w-right-4,baselineY-3)}
-c.strokeStyle='#117b8b';c.lineWidth=2;c.lineJoin='round';c.lineCap='round';c.beginPath();
-samples.forEach(function(value,index){var x=left+plotW*((index+1)/count),y=top+plotH*(1-(value/1000)/scale);if(index===0)c.moveTo(x,y);else c.lineTo(x,y)});
-c.stroke();
-var latest=samples[count-1]/1000,latestX=w-right,latestY=top+plotH*(1-latest/scale);c.fillStyle='#117b8b';c.beginPath();c.arc(latestX,latestY,3.5,0,Math.PI*2);c.fill()
-}
-function loadHistory(){fetch('/irrigation/api/flow-history',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(h){samples=Array.isArray(h.samples)?h.samples.slice(-120):[];generation=Number(h.generation||0);serial=Number(h.latestSerial||0);draw()}).catch(function(){setTimeout(loadHistory,2000)})}function update(s){set('run-elapsed',duration(s.elapsedSec));set('run-remaining',duration(s.plannedRemainingSec));set('run-water',liters(s.totalEstimatedWaterMl));set('run-step-count','第 '+(Number(s.currentStepIndex)+1)+' / '+s.stepCount+' 条水路');var activeZone=s.zones[s.currentStepIndex]||{},waterTarget=Number(activeZone.targetWaterMl)||0;set('run-current-elapsed','实际浇水 '+duration(s.currentZoneElapsedSec)+(waterTarget?' / 目标 '+liters(waterTarget):' / '+duration(activeZone.plannedDurationSec)));set('run-current-remaining',(waterTarget?'安全时限剩余 ':'剩余 ')+duration(s.currentZoneRemainingSec));set('run-flow',flow(s.currentFlowMlPerMinute));expectedFlow=Number(s.expectedFlowMlPerMinute||0);set('run-expected-flow',expectedFlow?flow(expectedFlow):'未设置');set('run-pulses',s.pulseCount);set('run-zone-water',liters(activeZone.estimatedWaterMl));var current=document.querySelector('[data-step-index=\"'+s.currentStepIndex+'\"]'),zoneName='水路 '+s.zoneId;if(current){var name=current.querySelector('.run-step-name');if(name)zoneName=name.textContent;set('run-current-zone',zoneName)}var states=['空闲','区域启动中','等待水流','正在浇水','区域停止中','水路切换中'],phase=Number(s.state)===3?(s.flowEstablished?'水流已建立':'等待水流建立'):(states[s.state]||'未知');set('run-state',zoneName+' · '+phase);var target=waterTarget||Number(activeZone.plannedDurationSec)||0,value=waterTarget?Number(activeZone.estimatedWaterMl):Number(s.currentZoneElapsedSec),percent=target?Math.min(100,Math.round(value*100/target)):0,bar=document.getElementById('run-current-progress');if(bar)bar.style.width=percent+'%';var flowState=document.getElementById('run-flow-state');if(flowState){var flowTone='warn',flowLabel='等待水流';if(Number(s.state)===5){flowTone='info';flowLabel='水路切换中'}else if(s.flowEstablished&&!expectedFlow){flowTone='info';flowLabel='水流已建立'}else if(s.flowEstablished&&activeZone.lowFlowActive){flowTone='warn';flowLabel='低流量'}else if(s.flowEstablished&&activeZone.highFlowActive){flowTone='danger';flowLabel='高流量'}else if(s.flowEstablished){flowTone='info';flowLabel='流量监测中'}flowState.textContent=flowLabel;flowState.className='tag '+flowTone}document.querySelectorAll('.run-step').forEach(function(row){var i=Number(row.dataset.stepIndex),z=s.zones[i]||{},icon=row.querySelector('.run-step-icon'),detail=row.querySelector('.run-step-detail');row.classList.toggle('complete',i<s.currentStepIndex);row.classList.toggle('current',i===s.currentStepIndex);if(icon)icon.textContent=i<s.currentStepIndex?'✓':String(i+1);if(detail){if(i<s.currentStepIndex)detail.textContent='实际 '+duration(z.actualWateringSec)+' · '+liters(z.estimatedWaterMl);else if(i===s.currentStepIndex)detail.textContent=Number(s.state)===5?'等待开阀':'正在执行 · '+(Number(z.targetWaterMl)?'已出 '+liters(z.estimatedWaterMl):'剩余 '+duration(s.currentZoneRemainingSec));else detail.textContent='等待执行'}});var nextGeneration=Number(s.flowHistoryGeneration||0),nextSerial=Number(s.flowSampleSerial||0);if(nextGeneration!==generation){generation=nextGeneration;loadHistory()}else if(nextSerial!==serial){if(nextSerial===serial+1){samples.push(Number(s.currentFlowMlPerMinute)||0);if(samples.length>120)samples.shift();serial=nextSerial;draw()}else loadHistory()}}function finished(){try{sessionStorage.setItem('irrigationJustFinished','1')}catch(ignore){}location.reload()}function poll(){fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){if(!s.active){finished();return}update(s);setTimeout(poll,1000)}).catch(function(){setTimeout(poll,2000)})}window.addEventListener('resize',draw);loadHistory();setTimeout(poll,1000)})();</script>)HTML");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::ActiveTaskScript);
     endPage();
 }
 
@@ -2276,11 +2220,7 @@ void IrrigationWeb::plans() {
             Esp32BaseWeb::sendChunk("</div><div class='plan-pause-submit'><input type='submit' value='确认暂停'");
             if (!timeTrusted) Esp32BaseWeb::sendChunk(" disabled");
             Esp32BaseWeb::sendChunk("></div></form><div class='plan-pause-option plan-pause-indefinite'><div><h3>无限期暂停</h3><p class='muted'>不依赖设备时间，之后需要回到本页手动恢复。</p></div><form method='post' action='/irrigation/plans' onsubmit=\"return confirm('确认无限期暂停自动浇水？')&&once(this)\"><input type='hidden' name='action' value='pause_indefinitely'><input type='submit' value='无限期暂停'></form></div></div><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>取消</button></div></dialog>");
-            Esp32BaseWeb::sendChunk(R"HTML(<script>(function(){
-var form=document.getElementById('plan-pause-timed'),hours=document.getElementById('pause-hours'),resume=document.getElementById('pause-resume-at');if(!form||!hours||!resume)return;var base=Number(form.dataset.nowEpoch)||0,started=performance.now(),hourButtons=Array.prototype.slice.call(form.querySelectorAll('[data-pause-hours]')),dayButtons=Array.prototype.slice.call(form.querySelectorAll('[data-pause-day]'));
-function nowEpoch(){return base+Math.floor((performance.now()-started)/1000)}function pad(v){return String(v).padStart(2,'0')}function formatUtc8(epoch){var d=new Date((epoch+28800)*1000);return d.getUTCFullYear()+'-'+pad(d.getUTCMonth()+1)+'-'+pad(d.getUTCDate())+'T'+pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())}function selectHours(value){hourButtons.forEach(function(button){button.classList.toggle('selected',Number(button.dataset.pauseHours)===value)});dayButtons.forEach(function(button){button.classList.remove('selected')})}function clearHours(){hours.value='';hours.setCustomValidity('');hourButtons.forEach(function(button){button.classList.remove('selected')})}function updateFromHours(value){if(hours.value===''){hours.setCustomValidity('');hourButtons.forEach(function(button){button.classList.remove('selected')});return}if(!Number.isInteger(value)||value<1||value>8760){hours.setCustomValidity('请输入 1～8760 的整数小时。');hourButtons.forEach(function(button){button.classList.remove('selected')});return}hours.setCustomValidity('');resume.value=formatUtc8(nowEpoch()+value*3600);selectHours(value)}
-hours.addEventListener('input',function(){updateFromHours(Number(hours.value))});hourButtons.forEach(function(button){button.addEventListener('click',function(){var value=Number(button.dataset.pauseHours);hours.value=value;updateFromHours(value)})});dayButtons.forEach(function(button){button.addEventListener('click',function(){var shifted=new Date((nowEpoch()+28800)*1000),day=Number(button.dataset.pauseDay),target=Date.UTC(shifted.getUTCFullYear(),shifted.getUTCMonth(),shifted.getUTCDate()+day,6,0,0)/1000-28800;clearHours();resume.value=formatUtc8(target);dayButtons.forEach(function(item){item.classList.toggle('selected',item===button)})})});resume.addEventListener('input',function(){clearHours();dayButtons.forEach(function(button){button.classList.remove('selected')})});window.submitTimedPause=function(target){if(!target.reportValidity())return false;return confirm('确认暂停自动浇水至 '+resume.value.replace('T',' ')+'（UTC+8）？')&&once(target)};
-})();</script>)HTML");
+            IrrigationWebAssets::send(IrrigationWebAssets::Asset::PauseScript);
         }
         int firstAvailable = -1;
         bool anyConfigured = false;
@@ -2559,152 +2499,7 @@ void IrrigationWeb::zones() {
                     Esp32BaseWeb::sendChunk("</small></span></label>");
                     firstEnabledZone = false;
                 }
-                Esp32BaseWeb::sendChunk(R"HTML(
-                    </div>
-                </section>
-                <div class="single-output-workspace">
-                    <fieldset class="single-output-mode-group">
-                        <legend>2. 选择停止方式</legend>
-                        <div class="single-output-modes">
-                            <label class="single-output-option">
-                                <input type="radio" name="target_mode" value="time" checked>
-                                <span class="single-output-mode-card"><b>按时长</b><small>精确到秒</small></span>
-                            </label>
-                            <label class="single-output-option">
-                                <input type="radio" name="target_mode" value="volume">
-                                <span class="single-output-mode-card"><b>按水量</b><small>流量计估算</small></span>
-                            </label>
-                        </div>
-                    </fieldset>
-                    <div class="single-output-editor">
-                        <div id="single-time-target" class="single-output-target">
-                            <label class="single-output-target-label" for="single-duration-text">出水时长</label>
-                            <div class="single-output-value-row">
-                                <button type="button" class="single-output-stepper" data-duration-delta="-1" aria-label="减少 1 秒">−</button>
-                                <div class="single-output-value">
-                                    <input id="single-duration-text" class="single-output-duration-input" type="text" value="00:01:00" inputmode="numeric" maxlength="8" autocomplete="off" spellcheck="false" aria-describedby="single-duration-help">
-                                    <input id="single-duration-seconds" type="hidden" name="duration_seconds" value="60">
-                                </div>
-                                <button type="button" class="single-output-stepper" data-duration-delta="1" aria-label="增加 1 秒">+</button>
-                            </div>
-                            <small id="single-duration-help" class="single-output-help">可输入时:分:秒或总秒数，也可按 1 秒微调。</small>
-                            <div class="single-output-presets" aria-label="常用时长">
-                                <button type="button" data-duration="60">1 分钟</button>
-                                <button type="button" data-duration="300">5 分钟</button>
-                                <button type="button" data-duration="600">10 分钟</button>
-                                <button type="button" data-duration="1800">30 分钟</button>
-                            </div>
-                        </div>
-                        <div id="single-volume-target" class="single-output-target" hidden>
-                            <label class="single-output-target-label" for="single-volume-input">目标水量</label>
-                            <div class="single-output-value-row">
-                                <button type="button" class="single-output-stepper" data-volume-delta="-0.1" aria-label="减少 0.1 升">−</button>
-                                <div class="single-output-value">
-                                    <input id="single-volume-input" type="number" name="target_liters" min="0.1" step="0.1" value="5.0" inputmode="decimal" disabled>
-                                    <span class="single-output-unit">L</span>
-                                </div>
-                                <button type="button" class="single-output-stepper" data-volume-delta="0.1" aria-label="增加 0.1 升">+</button>
-                            </div>
-                            <small class="single-output-help">按流量计脉冲估算，支持 0.1 L 步进。</small>
-                            <div class="single-output-presets" aria-label="常用水量">
-                                <button type="button" data-volume="1">1 L</button>
-                                <button type="button" data-volume="5">5 L</button>
-                                <button type="button" data-volume="10">10 L</button>
-                                <button type="button" data-volume="20">20 L</button>
-                            </div>
-                        </div>
-                        <p id="single-output-estimate" class="single-output-estimate" hidden></p>
-                    </div>
-                </div>
-                <p id="single-output-note" class="single-output-note"></p>
-                <div class="single-output-submit">
-                    <span id="single-output-summary" class="single-output-summary"></span>
-                    <input id="single-output-submit" type="submit" value="开始出水">
-                </div>
-                </form>
-                <script>
-                (function(){
-                    var form=document.getElementById('single-output-form');
-                    if(!form)return;
-                    var timePanel=document.getElementById('single-time-target');
-                    var volumePanel=document.getElementById('single-volume-target');
-                    var durationText=document.getElementById('single-duration-text');
-                    var durationSeconds=document.getElementById('single-duration-seconds');
-                    var volumeInput=document.getElementById('single-volume-input');
-                    var estimate=document.getElementById('single-output-estimate');
-                    var note=document.getElementById('single-output-note');
-                    var summary=document.getElementById('single-output-summary');
-                    var submit=document.getElementById('single-output-submit');
-                    var maximumDuration=Number(form.dataset.maxDurationSeconds)||0;
-                    var maximumVolume=Number(form.dataset.maxVolumeLiters)||0;
-                    volumeInput.max=String(maximumVolume);
-                    function selected(name){return form.querySelector('input[name="'+name+'"]:checked')}
-                    function pad(value){return String(value).padStart(2,'0')}
-                    function formatClock(seconds){seconds=Math.max(0,Math.round(Number(seconds)||0));return pad(Math.floor(seconds/3600))+':'+pad(Math.floor(seconds%3600/60))+':'+pad(seconds%60)}
-                    function formatDuration(seconds){seconds=Math.max(0,Math.round(Number(seconds)||0));if(seconds<60)return seconds+' 秒';var hours=Math.floor(seconds/3600),minutes=Math.floor(seconds%3600/60),rest=seconds%60;if(!hours)return rest?minutes+' 分 '+rest+' 秒':minutes+' 分钟';var text=hours+' 小时';if(minutes)text+=' '+minutes+' 分';if(rest)text+=' '+rest+' 秒';return text}
-                    function parseClock(value){value=String(value||'').trim();var seconds=0;if(/^\d+$/.test(value)){seconds=Number(value)}else{var match=value.match(/^(\d{1,2}):([0-5]\d):([0-5]\d)$/);if(!match)return 0;seconds=Number(match[1])*3600+Number(match[2])*60+Number(match[3])}return seconds>=1&&seconds<=maximumDuration?seconds:0}
-                    function setDuration(seconds){seconds=Math.max(1,Math.min(maximumDuration,Math.round(Number(seconds)||0)));durationText.value=formatClock(seconds);durationSeconds.value=String(seconds)}
-                    function volumeTenths(){var value=Number(volumeInput.value),tenths=Math.round(value*10);return value>=0.1&&value<=maximumVolume&&Math.abs(value*10-tenths)<0.000001?tenths:0}
-                    function setVolume(value){var tenths=Math.max(1,Math.min(maximumVolume*10,Math.round((Number(value)||0)*10)));volumeInput.value=(tenths/10).toFixed(1)}
-                    function zoneName(zone){var label=zone&&zone.closest('label'),name=label&&label.querySelector('b');return name?name.textContent:'所选水路'}
-                    function update(){
-                        var mode=selected('target_mode');
-                        var zone=selected('zone_id');
-                        var byVolume=mode&&mode.value==='volume';
-                        var seconds=parseClock(durationText.value);
-                        var tenths=volumeTenths();
-                        timePanel.hidden=byVolume;
-                        volumePanel.hidden=!byVolume;
-                        durationSeconds.disabled=byVolume;
-                        volumeInput.disabled=!byVolume;
-                        durationText.setCustomValidity(!byVolume&&!seconds?'请输入有效时长，可使用时:分:秒或总秒数，且不能超过系统上限。':'');
-                        volumeInput.setCustomValidity(byVolume&&!tenths?'请输入 0.1 L 步进且不超过系统上限的水量。':'');
-                        if(seconds)durationSeconds.value=String(seconds);
-                        estimate.hidden=true;
-                        estimate.className='single-output-estimate';
-                        var flow=zone?Number(zone.dataset.flow)||0:0;
-                        if(flow&&((byVolume&&tenths)||(!byVolume&&seconds))){
-                            if(byVolume){
-                                var targetLiters=tenths/10;
-                                var estimatedSeconds=Math.ceil(targetLiters*60000/flow);
-                                estimate.textContent='按当前水路基准估算，约需 '+formatDuration(estimatedSeconds)+(estimatedSeconds>maximumDuration?'；预计超过最长运行时间，可能无法完成':'');
-                                if(estimatedSeconds>maximumDuration)estimate.classList.add('warn');
-                            }else{
-                                var estimatedLiters=flow*seconds/60000;
-                                estimate.textContent='按当前水路基准估算，约出水 '+estimatedLiters.toFixed(estimatedLiters<1?2:1)+' L';
-                            }
-                            estimate.hidden=false;
-                        }
-                        note.textContent=byVolume?'水量由流量计脉冲估算，校准误差、阀门响应和管路余流会影响实际结果；最长运行 '+formatDuration(maximumDuration)+'。':'到达设定时长后自动停止；最长可设置 '+formatDuration(maximumDuration)+'。';
-                        var valid=!!zone&&(byVolume?!!tenths:!!seconds);
-                        var targetText=byVolume?(tenths?(tenths/10).toFixed(1)+' L':'水量格式有误'):(seconds?formatDuration(seconds):'时长格式有误');
-                        summary.textContent=zone?(zoneName(zone)+' · '+targetText):'请选择水路';
-                        submit.disabled=!valid;
-                    }
-                    durationText.addEventListener('input',update);
-                    durationText.addEventListener('change',function(){var seconds=parseClock(durationText.value);if(seconds)setDuration(seconds);update()});
-                    volumeInput.addEventListener('input',update);
-                    volumeInput.addEventListener('change',function(){if(volumeTenths())setVolume(Number(volumeInput.value));update()});
-                    form.querySelectorAll('input[type="radio"]').forEach(function(input){input.addEventListener('change',update)});
-                    form.querySelectorAll('[data-duration-delta]').forEach(function(button){button.addEventListener('click',function(){setDuration((parseClock(durationText.value)||Number(durationSeconds.value)||60)+Number(button.dataset.durationDelta));update()})});
-                    form.querySelectorAll('[data-duration]').forEach(function(button){var value=Number(button.dataset.duration)||0;button.disabled=value>maximumDuration;button.addEventListener('click',function(){setDuration(value);update()})});
-                    form.querySelectorAll('[data-volume-delta]').forEach(function(button){button.addEventListener('click',function(){setVolume((volumeTenths()||50)/10+Number(button.dataset.volumeDelta));update()})});
-                    form.querySelectorAll('[data-volume]').forEach(function(button){var value=Number(button.dataset.volume)||0;button.disabled=value>maximumVolume;button.addEventListener('click',function(){setVolume(value);update()})});
-                    window.submitSingleOutput=function(){
-                        update();
-                        if(submit.disabled){
-                            var mode=selected('target_mode');
-                            if(mode&&mode.value==='volume')volumeInput.reportValidity();else durationText.reportValidity();
-                            return false;
-                        }
-                        return confirm('确认按“'+summary.textContent+'”开始单次出水？')&&once(form);
-                    };
-                    setDuration(60);
-                    setVolume(5);
-                    update();
-                })();
-                </script>
-                )HTML");
+                IrrigationWebAssets::send(IrrigationWebAssets::Asset::SingleOutputForm);
             }
         }
         Esp32BaseWeb::endPanel();
@@ -3095,14 +2890,7 @@ void IrrigationWeb::zoneLearning() {
         zone.baselinePulseRateX10000, learnedRate, sizeof(learnedRate));
     const bool baselineManagementAvailable =
         !status.active && g_app->pendingLearnedZoneId() == 0;
-    Esp32BaseWeb::sendChunk(
-        R"HTML(<style>
-.learning-panel{padding-bottom:16px}.learning-context{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;margin:-2px 0 14px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.learning-context>div{min-width:0;padding:10px 12px;border-right:1px solid var(--eb-line-soft)}.learning-context>div:last-child{border-right:0}.learning-label{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.learning-context-value{display:block;margin-top:2px;font-size:14px;font-weight:400;overflow-wrap:anywhere}.learning-context-help{display:block;margin-top:2px;color:var(--eb-muted);font-size:11px;font-weight:400}
-.learning-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 10px}.learning-head h3{margin:0;font-size:15px;font-weight:500}.learning-head .tag{font-weight:400}.learning-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.learning-metric{min-width:0;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.learning-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.learning-rule{margin:10px 0 0;padding:9px 11px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px;font-weight:400;line-height:1.55}.learning-rule span{color:var(--eb-text);font-weight:400}
-.learning-debug{margin-top:14px}.learning-debug h3{margin:0 0 2px;font-size:14px;font-weight:500}.learning-debug>p{margin:0 0 7px;color:var(--eb-muted);font-size:11px}.learning-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}.learning-table th,.learning-table td{padding:7px 8px;border-bottom:1px solid var(--eb-line-soft);text-align:right;font-weight:400;white-space:nowrap}.learning-table th{color:var(--eb-muted);font-size:11px}.learning-table th:first-child,.learning-table td:first-child{text-align:left}.learning-table tbody tr:last-child td{border-bottom:0}.learning-table tr.learning-decision td{background:#f6faf8}.learning-table tr.learning-decision-start td{border-top:1px solid #cfe5da}.learning-inline{display:inline-flex;align-items:baseline;justify-content:flex-end;gap:7px}.learning-change{color:var(--eb-muted);font-size:10px;font-weight:400}.learning-latest{margin-left:5px;color:#16794a;font-size:10px;font-weight:400}.learning-table .learning-empty{text-align:center;color:var(--eb-muted);padding:12px}.learning-summary{display:flex;flex-wrap:wrap;gap:5px 18px;margin:8px 0 0;color:var(--eb-muted);font-size:11px}.learning-summary span{font-weight:400}.learning-result{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:10px}.learning-result>div{padding:11px;border:1px solid var(--eb-line-soft);border-radius:8px}.learning-result-value{display:block;margin-top:3px;font-size:18px;font-weight:500;font-variant-numeric:tabular-nums}.learning-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.learning-actions form,.learning-actions .actions{margin:0}.learning-panel input,.learning-panel .btnlink{font-weight:500}.learning-manual{width:min(520px,calc(100vw - 28px))}.learning-manual>p{margin-top:0}.learning-manual .field{margin:14px 0 0}.learning-manual input[type=number]{width:100%;margin-top:6px}.learning-manual-preview{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-top:10px;padding:9px 11px;border-radius:8px;background:var(--eb-soft);color:var(--eb-muted);font-size:12px}.learning-manual-preview output{color:var(--eb-text);font-size:16px;font-variant-numeric:tabular-nums}
-@media(max-width:760px){.learning-context{grid-template-columns:1fr 1fr}.learning-context>div{border-bottom:1px solid var(--eb-line-soft)}.learning-context>div:nth-child(2){border-right:0}.learning-context>div:last-child{grid-column:1/-1;border-bottom:0}.learning-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.learning-table{display:block}.learning-table thead{display:none}.learning-table tbody{display:grid;gap:7px}.learning-table tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding:7px 9px;border:1px solid var(--eb-line-soft);border-radius:7px}.learning-table td{display:grid;grid-template-columns:6.8em minmax(0,1fr);gap:6px;padding:3px 0;border:0;text-align:right}.learning-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:11px;text-align:left}.learning-table td:first-child{text-align:right}.learning-table .learning-empty{display:block;grid-column:1/-1;text-align:center}.learning-table .learning-empty::before{display:none}}
-@media(max-width:420px){.learning-context,.learning-metrics,.learning-result{grid-template-columns:1fr}.learning-context>div{border-right:0}.learning-context>div:last-child{grid-column:auto}.learning-value,.learning-result-value{font-size:17px}.learning-table tr{grid-template-columns:1fr}}
-</style>)HTML");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::LearningStyle);
     Esp32BaseWeb::beginPanel("基准流量学习");
     Esp32BaseWeb::sendChunk("<div class='learning-panel'><div class='learning-context'><div><span class='learning-label'>水路</span><span class='learning-context-value'>");
     Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
@@ -3407,71 +3195,14 @@ void IrrigationWeb::zoneLearning() {
     }
     Esp32BaseWeb::sendChunk("<p><a class='btnlink secondary' href='/irrigation/zones'>返回水路设置</a></p>");
     if (active) {
-        Esp32BaseWeb::sendChunk(R"HTML(<script>
-(function(){
-function set(id,v){var e=document.getElementById(id);if(e)e.textContent=v}
-function liters(v){return (Math.max(0,Number(v)||0)/1000).toFixed(3)+' L/min'}
-function rate(v){return (Math.max(0,Number(v)||0)/100).toFixed(2)+' P/s'}
-function seconds(v){return (Math.max(0,Number(v)||0)/1000).toFixed(1)+' 秒'}
-function duration(v){v=Math.max(0,Number(v)||0);return v<60?v+' 秒':Math.floor(v/60)+' 分 '+v%60+' 秒'}
-function signed(v,digits){v=Number(v)||0;return (v<0?'−':'+')+Math.abs(v).toFixed(digits)}
-function pulseChange(current,previous){return signed(Number(current)-Number(previous),0)}
-function flowChange(current,previous){current=Number(current)||0;previous=Number(previous)||0;var change=current-previous,text=signed(change/1000,3);return previous?text+' ('+signed(change/previous*100,1)+'%)':text}
-function updateWindows(s){
-var rows=s.learningWindows||[],empty=document.getElementById('learn-window-empty'),start=Math.max(0,rows.length-5);
-if(empty)empty.style.display=rows.length?'none':'';
-for(var i=0;i<10;i++){
-var row=document.getElementById('learn-window-'+i),w=rows[i];
-if(!row)continue;
-row.style.display=w?'':'none';
-row.className=w&&i>=start?'learning-decision'+(i===start?' learning-decision-start':''):'';
-if(!w)continue;
-set('learn-window-index-'+i,'#'+w.sequence+(i===rows.length-1?' 最新':''));
-set('learn-window-duration-'+i,seconds(w.windowMs));
-set('learn-window-pulses-'+i,w.pulseCount);
-set('learn-window-pulse-change-'+i,i?pulseChange(w.pulseCount,rows[i-1].pulseCount):'—');
-set('learn-window-rate-'+i,rate(w.pulseRateX100));
-set('learn-window-flow-'+i,liters(w.flowMlPerMinute));
-set('learn-window-flow-change-'+i,i?flowChange(w.flowMlPerMinute,rows[i-1].flowMlPerMinute):'—')
-}
-}
-function updateRule(s){
-var n=Number(s.learningTotalWindowCount)||0;
-if(!n)return '窗口 #1 正在采集；每个窗口约 5 秒且互不重叠。';
-var min=Number(s.learningMinimumPulseRateX100)||0,max=Number(s.learningMaximumPulseRateX100)||0,allow=Number(s.learningAllowedPulseRateSpreadX100)||0,first=Math.max(1,n-4);
-return '已采集 '+n+' 个完整窗口，窗口 #'+(n+1)+' 正在采集；当前使用 #'+first+'～#'+n+' 判断。原始脉冲速率为 '+rate(min)+'～'+rate(max)+'，跨度 '+rate(max-min)+'，允许 '+rate(allow)+'。收满 5 窗、每窗均有脉冲且跨度不超过允许值时完成。'
-}
-function poll(){
-fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){
-if(!s.active||s.purpose!==2){location.reload();return}
-var n=Number(s.learningTotalWindowCount)||0;
-set('learn-elapsed',duration(s.elapsedSec));
-set('learn-current',liters(s.currentFlowMlPerMinute));
-set('learn-average',liters(s.learningAverageMlPerMinute));
-set('learn-state',n<5?'采集中 '+n+'/5':'波动偏大');
-set('learn-rule',updateRule(s));
-set('learn-total-windows',n);
-set('learn-total-pulses',s.pulseCount);
-updateWindows(s);
-setTimeout(poll,1000)
-}).catch(function(){setTimeout(poll,2000)})
-}
-setTimeout(poll,1000)
-})();
-</script>)HTML");
+        IrrigationWebAssets::send(IrrigationWebAssets::Asset::LearningScript);
     }
     endPage();
 }
 
 void IrrigationWeb::records() {
     if (!beginPage("浇水记录", "最新记录优先")) return;
-    Esp32BaseWeb::sendChunk(
-        R"HTML(<style>
-.record-toolbar{margin:0 0 10px}.record-toolbar p{margin:0;color:var(--eb-muted);font-size:13px}.record-table{width:100%;min-width:900px;border-collapse:collapse;font-size:13px}.record-table th,.record-table td{padding:10px 8px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:middle}.record-table th{color:var(--eb-muted);font-weight:500;white-space:nowrap;background:var(--eb-soft)}.record-table tbody tr:last-child td{border-bottom:0}.record-table tbody tr:hover{background:#fbfcfd}.record-number{white-space:nowrap;font-variant-numeric:tabular-nums}.record-number span,.record-number small,.record-result-reason{display:block}.record-number small,.record-result-reason{margin-top:2px;color:var(--eb-muted);font-size:11px;font-weight:400}.record-list-duration span,.record-list-duration small{display:inline;margin:0}.record-list-duration small{margin-left:3px}.record-time{width:1%;min-width:9.5em;white-space:nowrap;font-variant-numeric:tabular-nums}.record-zones{min-width:12em}.record-action{width:1%;white-space:nowrap;text-align:right!important}.record-empty-cell{padding:24px 16px!important;background:var(--eb-soft);text-align:center!important}.record-empty-cell b{display:block;margin-bottom:4px;font-size:15px;font-weight:500}.record-empty-cell span{color:var(--eb-muted)}
-.record-detail-dialog{width:min(1160px,calc(100vw - 28px));text-align:left!important;white-space:normal!important}.record-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}.record-detail-head h2{margin:3px 0 0;font-size:20px;font-weight:500}.record-detail-head>div>span{font-size:12px}.record-detail-close{min-height:30px;font-weight:500}.record-detail-result{display:flex;align-items:center;gap:10px;margin-bottom:10px;color:var(--eb-muted);font-size:13px}.record-detail-result .tag{font-weight:500}.record-detail-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.record-detail-metrics>div{min-width:0;padding:11px 12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft);text-align:left}.record-detail-metrics span{display:block;color:var(--eb-muted);font-size:11px}.record-detail-metrics b{display:block;margin-top:3px;font-size:16px;font-weight:500;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}.record-detail-metrics small{display:block;margin-top:2px;color:var(--eb-muted);font-size:10px;font-weight:400}.record-detail-grid{display:grid;grid-template-columns:minmax(240px,2fr) repeat(2,minmax(0,1fr));gap:8px 14px;padding:11px 12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.record-detail-grid>div{min-width:0}.record-detail-grid b{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.record-detail-grid span{display:block;margin-top:3px;overflow-wrap:anywhere}.record-time-range span{white-space:nowrap;font-variant-numeric:tabular-nums}.record-detail-section{margin-top:16px}.record-detail-section>h3{margin-bottom:7px;font-size:14px;font-weight:500}.record-detail-section>p{margin:0 0 8px;color:var(--eb-muted);font-size:12px}.record-zone-table{width:100%;min-width:1080px;border-collapse:collapse;font-size:12px}.record-zone-table th,.record-zone-table td{padding:8px 7px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:top}.record-zone-table th{color:var(--eb-muted);font-weight:500;white-space:nowrap;background:var(--eb-soft)}.record-zone-table tr:last-child td{border-bottom:0}.record-zone-table td>b,.record-zone-table td>small{display:block}.record-zone-table td>b{font-weight:500}.record-zone-table td>small{margin-top:2px;color:var(--eb-muted);font-weight:400}.record-duration-pair{white-space:nowrap}.record-duration-pair b,.record-duration-pair span,.record-duration-pair small{display:inline!important;margin:0!important}.record-duration-pair span{padding:0 4px;color:var(--eb-muted)}.record-zone-table td>small.warn{color:var(--eb-warn)}.record-baseline{min-width:12em}.record-flow-performance{display:grid;gap:3px;min-width:30em}.record-flow-performance>span{display:block}.record-flow-performance .record-flags{margin-top:3px}.record-stability{display:inline-block!important;margin:0 0 0 4px!important;padding:1px 5px;border-radius:999px;background:var(--eb-soft);font-size:10px!important;white-space:nowrap}.record-stability.ok{color:var(--eb-ok)}.record-flags{display:flex;flex-wrap:wrap;gap:4px;min-width:7em}.record-technical{margin-top:13px;padding-top:10px;border-top:1px solid var(--eb-line-soft)}.record-technical summary{cursor:pointer;color:var(--eb-muted);font-size:12px}.record-technical-note{margin:8px 0 0;color:var(--eb-muted);font-size:11px;line-height:1.55}.record-technical-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;margin-top:8px}.record-technical-grid>div{padding:8px 9px;border-radius:7px;background:var(--eb-soft)}.record-technical-grid b,.record-technical-grid span{display:block}.record-technical-grid b{color:var(--eb-muted);font-size:10px;font-weight:400}.record-technical-grid span{margin-top:2px;font-size:12px}.record-detail-note{margin:10px 0 0;color:var(--eb-muted);font-size:11px}.record-detail-bottom-close{display:none}
-@media(max-width:760px){.record-toolbar p{display:none}.record-table{display:block;min-width:0}.record-table thead{display:none}.record-table tbody{display:grid;gap:9px}.record-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}.record-table tbody tr:hover{background:#fff}.record-table td{display:grid;grid-template-columns:6.5em minmax(0,1fr);gap:8px;padding:4px 0;border:0;white-space:normal;text-align:left!important}.record-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:400}.record-table .record-action{display:flex;justify-content:flex-end;width:auto;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}.record-table .record-action::before{display:none}.record-table .record-action>.btnlink{width:100%;min-height:34px}.record-table .record-empty-row{display:block;padding:0}.record-table .record-empty-cell{display:block;padding:22px 12px!important}.record-table .record-empty-cell::before{display:none}.record-detail-dialog{width:calc(100vw - 20px);padding:12px!important}.record-detail-metrics,.record-detail-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.record-zone-table{display:block;min-width:0}.record-zone-table thead{display:none}.record-zone-table tbody{display:grid;gap:8px}.record-zone-table tr{display:grid;padding:9px;border:1px solid var(--eb-line);border-radius:7px}.record-zone-table td{display:grid;grid-template-columns:8em minmax(0,1fr);gap:7px;padding:3px 0;border:0}.record-zone-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:11px;font-weight:400}.record-zone-table td>b,.record-zone-table td>small{display:inline}.record-zone-table td>small{margin-left:4px}.record-baseline,.record-flow-performance{min-width:0}.record-flags{min-width:0}.record-detail-bottom-close{display:flex}.record-detail-dialog>.actions button{width:100%}}
-@media(max-width:420px){.record-detail-metrics,.record-detail-grid{grid-template-columns:1fr}.record-detail-result{align-items:flex-start;flex-direction:column;gap:5px}.record-detail-head h2{font-size:18px}}
-</style>)HTML");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
     uint32_t detailId = 0;
     char idText[16]{};
     const bool detailRequested = getParam("id", idText, sizeof(idText)) &&
@@ -3552,13 +3283,7 @@ void IrrigationWeb::records() {
 
 void IrrigationWeb::events() {
     if (!beginPage("事件", "记录设备的重要操作、报警和异常")) return;
-    Esp32BaseWeb::sendChunk(
-        R"HTML(<style>
-.condition-summary{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:10px}.condition-summary p{margin:0;color:var(--eb-muted);font-size:13px}.condition-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.condition-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.condition-item div{min-width:0}.condition-item b{display:block;font-size:13px;font-weight:500}.condition-item small{display:block;margin-top:2px;color:var(--eb-muted);font-size:11px;font-weight:400}.condition-item .tag{flex:0 0 auto}
-.event-filter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px;margin-bottom:14px}.event-filter label{display:grid;gap:4px;margin:0;color:var(--eb-muted);font-size:12px}.event-filter select{width:180px;max-width:none;min-height:34px;margin:0}.event-filter-actions{display:flex;align-items:center;gap:8px}.event-filter-actions input,.event-filter-actions .btnlink{min-height:34px;margin:0}.event-table{width:100%;min-width:900px;border-collapse:collapse;table-layout:auto;font-size:13px}.event-table th,.event-table td{padding:11px 10px;border-bottom:1px solid var(--eb-line);text-align:left;vertical-align:top}.event-table th{padding-top:9px;padding-bottom:9px;color:var(--eb-muted);font-weight:650;white-space:nowrap;background:var(--eb-soft)}.event-table tbody tr:last-child td{border-bottom:0}.event-table tbody tr:hover{background:#fbfcfd}.event-time{width:1%;min-width:10.5em;white-space:nowrap;font-variant-numeric:tabular-nums}.event-level{width:1%;white-space:nowrap}.event-category{width:1%;min-width:8em;white-space:nowrap}.event-title{min-width:15em;line-height:1.5;font-weight:400}.event-summary{min-width:20em;color:var(--eb-muted);line-height:1.5}.event-action{width:1%;white-space:nowrap;text-align:right!important}.event-empty{padding:26px!important;text-align:center!important;color:var(--eb-muted)}.event-detail{width:min(780px,calc(100vw - 28px));text-align:left;white-space:normal}.event-detail-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.event-detail-heading{flex:1;min-width:0}.event-detail-head h2{margin:7px 0 0;font-size:20px;font-weight:500}.event-detail-close{flex:0 0 auto;min-height:32px}.event-detail-summary{margin:16px 0;padding:12px 14px;border-radius:8px;background:var(--eb-soft);font-size:14px;line-height:1.55}.event-detail-section{margin-top:16px}.event-detail-section h3{margin-bottom:7px;color:#344054;font-size:13px;font-weight:500}.event-detail-grid{display:grid;gap:10px 18px;padding:12px 14px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}.event-detail-overview{grid-template-columns:repeat(3,minmax(0,1fr))}.event-detail-business{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.event-detail-technical-grid{grid-template-columns:repeat(3,minmax(0,1fr));background:var(--eb-soft)}.event-detail-grid>div{min-width:0}.event-detail-grid b{display:block;color:var(--eb-muted);font-size:11px;font-weight:400}.event-detail-grid span{display:block;margin-top:3px;overflow-wrap:anywhere}.event-detail-grid span.tag{display:inline-flex}.event-time-value{white-space:nowrap;font-variant-numeric:tabular-nums}.event-technical{margin-top:18px;padding-top:13px;border-top:1px solid var(--eb-line)}.event-technical summary{cursor:pointer;color:var(--eb-muted);font-size:13px;font-weight:400}.event-technical[open] summary{margin-bottom:10px}
-@media(max-width:760px){.condition-grid{grid-template-columns:1fr}.event-filter{display:grid;grid-template-columns:1fr 1fr}.event-filter label,.event-filter select{width:100%}.event-filter-actions{grid-column:1/-1}.event-filter-actions input,.event-filter-actions .btnlink{flex:1}.event-table{display:block;min-width:0}.event-table thead{display:none}.event-table tbody{display:grid;gap:9px}.event-table tr{display:grid;padding:11px;border:1px solid var(--eb-line);border-radius:8px;background:#fff}.event-table tbody tr:hover{background:#fff}.event-table td{display:grid;grid-template-columns:6em minmax(0,1fr);gap:8px;width:auto;min-width:0;padding:4px 0;border:0;text-align:left!important;white-space:normal}.event-table td::before{content:attr(data-label);color:var(--eb-muted);font-size:12px;font-weight:500}.event-table .event-time{white-space:nowrap}.event-table .event-action{display:flex;justify-content:flex-end;padding-top:9px;border-top:1px solid var(--eb-line-soft);margin-top:5px}.event-table .event-action::before{display:none}.event-table .event-action>.btnlink{width:100%;min-height:34px}.event-empty{display:block!important}.event-empty::before{display:none}.event-detail{width:calc(100vw - 20px);padding:12px!important}.event-detail-overview,.event-detail-technical-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:440px){.event-filter{grid-template-columns:1fr}.event-filter-actions{grid-column:auto}.event-detail-overview,.event-detail-business,.event-detail-technical-grid{grid-template-columns:1fr}.event-detail-head h2{font-size:18px}}
-</style>)HTML");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
 
     EventFilter filter{};
     char value[20]{};

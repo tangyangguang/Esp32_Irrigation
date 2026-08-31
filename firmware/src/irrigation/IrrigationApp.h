@@ -3,7 +3,7 @@
 #include "IrrigationConfigStore.h"
 #include "IrrigationEvents.h"
 #include "IrrigationParameterConfig.h"
-#include "IrrigationMqttAdapter.h"
+#include "StatusIndicator.h"
 #include "FlowCalibrationService.h"
 #include "DeviceAliveCheckpoint.h"
 #include "WateringRecordStore.h"
@@ -110,6 +110,7 @@ private:
     void observeEventConditions(uint32_t nowMs, const Esp32BaseTime::Snapshot& now);
     void refreshRtcCondition(uint32_t nowMs, bool force);
     void applyPendingHardwareConfiguration();
+    void updateStatusIndicator(uint32_t nowMs);
     void handleParameterConfigSaved();
     bool applyStoredParameterConfig();
     static void parameterConfigSaved(void* user);
@@ -156,7 +157,7 @@ private:
     WateringSchedulerStore wateringSchedulerStore_;
     WateringScheduler wateringScheduler_;
     UnexpectedFlowMonitor unexpectedFlowMonitor_;
-    IrrigationMqttAdapter mqttAdapter_;
+    StatusIndicator& statusIndicator_;
     Esp32BaseRecordStore::RecordStartTime wateringStartTime_{};
     uint32_t lastRtcRefreshMs_ = 0;
 };

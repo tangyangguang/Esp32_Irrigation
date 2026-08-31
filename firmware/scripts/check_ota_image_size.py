@@ -4,7 +4,7 @@ from pathlib import Path
 Import("env")
 
 
-WARNING_REMAINING_PERCENT = 10.0
+MINIMUM_REMAINING_PERCENT = 15.0
 
 
 def _parse_size(value):
@@ -51,11 +51,12 @@ def _check_image_size(target, source, env):
     if remaining < 0:
         print("ERROR: firmware.bin exceeds the smallest OTA app slot")
         env.Exit(1)
-    if remaining_percent < WARNING_REMAINING_PERCENT:
+    if remaining_percent < MINIMUM_REMAINING_PERCENT:
         print(
-            "WARNING: OTA image remaining space is below %.1f%%; protocol changes must recheck firmware.bin"
-            % WARNING_REMAINING_PERCENT
+            "ERROR: local-final firmware requires at least %.1f%% OTA slot headroom"
+            % MINIMUM_REMAINING_PERCENT
         )
+        env.Exit(1)
 
 
 env.AddPostAction("$BUILD_DIR/${PROGNAME}.bin", _check_image_size)

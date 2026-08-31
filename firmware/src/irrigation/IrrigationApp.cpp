@@ -39,9 +39,19 @@ void collectEventEpoch(const Esp32BaseAppEvents::EventRecord& event, void* user)
     }
 }
 
+bool failStartup(BoardHardware& hardware, StatusIndicator& indicator) {
+    hardware.safeShutdown();
+    const uint32_t nowMs = millis();
+    indicator.setMode(StatusIndicator::Mode::Critical, nowMs);
+    indicator.handle(nowMs);
+    return false;
+}
+
 }  // namespace
 
-IrrigationApp::IrrigationApp() : wateringController_(BoardHardware::instance()) {}
+IrrigationApp::IrrigationApp()
+    : wateringController_(BoardHardware::instance()),
+      statusIndicator_(StatusIndicator::instance()) {}
 
 IrrigationApp& IrrigationApp::instance() {
     static IrrigationApp app;
@@ -57,11 +67,11 @@ bool IrrigationApp::begin() {
     // This must remain the first hardware operation of application startup.
     BoardHardware& hardware = BoardHardware::instance();
     const bool hardwareReady = hardware.begin(20000);
+    statusIndicator_.begin(millis());
 
     Serial.begin(115200);
     if (!hardwareReady) {
-        hardware.safeShutdown();
-        return false;
+        return failStartup(hardware, statusIndicator_);
     }
 
     Wire.begin(BoardPins::kI2cSdaPin, BoardPins::kI2cSclPin);
@@ -73,31 +83,26 @@ bool IrrigationApp::begin() {
                                                    validateParameterConfig,
                                                    this) ||
         !IrrigationWeb::registerRoutes(*this)) {
-        hardware.safeShutdown();
-        return false;
+        return failStartup(hardware, statusIndicator_);
     }
     baseReady_ = Esp32Base::begin();
     if (!baseReady_) {
-        hardware.safeShutdown();
-        return false;
+        return failStartup(hardware, statusIndicator_);
     }
     Esp32BaseWiFi::setPowerSave(true);
     if (!configStore_.begin()) {
-        hardware.safeShutdown();
-        return false;
+        return failStartup(hardware, statusIndicator_);
     }
 
     if (!applyStoredParameterConfig()) {
-        hardware.safeShutdown();
-        return false;
+        return failStartup(hardware, statusIndicator_);
     }
 
     const IrrigationConfig* config = configStore_.current();
     if (!config ||
         (config->valveDrive.pwmFrequencyHz != 20000U &&
          !hardware.configureValvePwmFrequency(config->valveDrive.pwmFrequencyHz))) {
-        hardware.safeShutdown();
-        return false;
+        return failStartup(hardware, statusIndicator_);
     }
 
     const bool storeReady = wateringRecordStore_.begin();
@@ -141,8 +146,9 @@ bool IrrigationApp::begin() {
     wateringScheduler_.setTrustedEpochBaseline(latestTrusted.value);
 
     businessReady_ = true;
-    resetUnexpectedFlowMonitor(millis());
-    mqttAdapter_.begin(*this);
+    const uint32_t readyMs = millis();
+    resetUnexpectedFlowMonitor(readyMs);
+    updateStatusIndicator(readyMs);
     ESP32BASE_LOG_I("irrigation", "business_ready records_fault=%s events_fault=%s scheduler_fault=%s",
                     recordStorageFault_ ? "yes" : "no",
                     Esp32BaseAppEvents::isEventStoreReady() ? "no" : "yes",
@@ -151,13 +157,16 @@ bool IrrigationApp::begin() {
 }
 
 void IrrigationApp::handle() {
+    const uint32_t nowMs = millis();
     if (!started_ || !baseReady_) {
         BoardHardware::instance().safeShutdown();
+        statusIndicator_.setMode(StatusIndicator::Mode::Critical, nowMs);
+        statusIndicator_.handle(nowMs);
         return;
     }
 
     advanceBusiness();
-    mqttAdapter_.handle();
+    updateStatusIndicator(nowMs);
     Esp32Base::handle();
 }
 
@@ -843,6 +852,18 @@ void IrrigationApp::applyPendingHardwareConfiguration() {
         return;
     }
     pendingPwmReconfigure_ = false;
+}
+
+void IrrigationApp::updateStatusIndicator(uint32_t nowMs) {
+    StatusIndicator::Mode mode = StatusIndicator::Mode::ReadyIdle;
+    if (!businessReady_ || recordStorageFault_ || eventStorageFault() ||
+        schedulerStorageFault_ || checkpointStorageFault() || unexpectedFlowAlarm()) {
+        mode = StatusIndicator::Mode::Critical;
+    } else if (wateringController_.status().active) {
+        mode = StatusIndicator::Mode::Active;
+    }
+    statusIndicator_.setMode(mode, nowMs);
+    statusIndicator_.handle(nowMs);
 }
 
 void IrrigationApp::parameterConfigSaved(void* user) {
