@@ -15,7 +15,7 @@
 - DS3231 RTC 离线时间、NTP 校时和本地 Web；
 - 认证 Web、System 维护、文件系统日志和 HTTP Web OTA；
 - `LED1 / GPIO13` 低电平点亮的非阻塞状态指示；
-- 当前 `irrigation-controller/v1` MQTTS 外围适配：固定七个 channel Topic、QoS 1、retain/LWT、五类命令、receipt/progress、八项完整状态投影和可靠业务记录流。
+- 当前 `irrigation-controller/v1` MQTTS 外围适配：固定七个 channel Topic、QoS 1、retain/LWT/正常 shutdown、五类命令、receipt/progress、八项完整状态投影和可靠业务记录流。
 
 MQTT 适配只调用现有配置、调度和浇水入口，不直接操作 GPIO，也不建立第二套网络生命周期。未提供本机私密 MQTT 配置时，固件保持本地能力可用且不尝试连接 Broker；掉线、重连或平台不可用不得阻断本地 Web、RTC 自动调度、保护和安全停机。
 
@@ -71,6 +71,8 @@ cp IrrigationIotSecrets.example.h local_private/irrigation_iot_private.h
 8. 只有全部必需状态有效时才进入业务 ready。
 
 正常循环先推进业务状态机和 IoT 外围适配，再调用 `Esp32Base::handle()`。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。MQTT 状态和记录序列化共用 `IrrigationIot` 长期对象中的单一 4097 B 缓冲，不在 `loopTask` 栈上创建 4 KiB 临时数组；这是当前 4096 B payload 上限下的硬性栈安全边界。
+
+IOT 配置在 `Esp32Base::begin()` 前注册基础库网络停止回调。统一 restart/deep sleep 或 Web OTA 暂停 MQTT 前，如果当前连接和可信 UTC 均可用，回调以 QoS 1 retained enqueue 同一 `connectionId` 的 `online:false, reason:"shutdown"`，并请求基础库允许的 1000 ms 有界网络宽限；restart/deep sleep 在 MQTT DISCONNECT 前后各应用一次，实机验证可形成 `online → shutdown → 新周期 online` 且不触发该正常周期 LWT。enqueue 或宽限不等于 PUBACK/必达，离线、时间不可信、异常掉电或 Broker 不可达仍以本周期预置 LWT 兜底，不能因 shutdown 发布失败阻止安全停机或维护流程。
 
 WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项目不进入 Deep-sleep，不降低 CPU 频率，也不改变泵阀控制时序。OTA 期间由 Esp32Base 临时关闭 power save，结束后恢复。
 
@@ -131,9 +133,9 @@ python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test \
 - `esp32_record_test` 设备端 9/9 通过，覆盖正式 Store 定义、固定 200 条 IoT 容量、追加/分页/重载、分段轮转、CRC 损坏、业务事件、调度 NVS 和在线检查点；
 - `esp32_irrigation` Core 2.0.16 构建通过；
 - 使用非敏感完整 MQTTS 配置夹具链接，其中 CA 占位正文为 2 KiB（避免空配置被 LTO 裁掉 MQTT/TLS 路径或低估证书尺寸）；
-- 使用实验环境真实 3298 B CA 链完整构建：RAM 114940 B / 35.1%，Flash 1438761 B / 91.5%；
-- 真实配置 `firmware.bin` 1445344 B；
-- 1.5 MiB OTA slot 剩余 127520 B / 8.11%。
+- 使用实验环境真实 3298 B CA 链完整构建：RAM 114964 B / 35.1%，Flash 1439485 B / 91.5%；
+- 真实配置 `firmware.bin` 1446064 B；
+- 1.5 MiB OTA slot 剩余 126800 B / 8.06%。
 
 N4 设备继续使用现有 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，避免改变分区导致现有配置和业务数据失效。经确认，IOT 固件发布门禁固定为至少 8% OTA slot 余量；当前只高出门禁约 1.65 KiB，后续任何代码、CA 或静态资源变化都必须重新执行带完整 MQTTS 配置的构建，不能以空私密配置构建的 17% 余量作为发布依据。
 
@@ -195,8 +197,8 @@ python3 ../../Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irrigation -t webo
 
 - WiFi、NTP、真实 CA/hostname 校验的 MQTTS 认证和 CONNECT 成功；command 与 `record-ack` 双订阅完成后，online 和八项状态均由当前 `iot-device-lab` 定义校验通过；
 - 首次完整状态发布、周期发布和多次重连后不再出现 `Stack canary watchpoint triggered (loopTask)`；页面观测的 loopTask 栈最低余量为 1.90 KiB，最小 heap 为 76.21 KiB，看门狗 trip reset 为 0；
-- 硬复位得到 retained LWT offline，重连使用新的 `connectionId`；命令 journal 中同一 stop 命令的 accepted/succeeded 证据在重启后使用新连接周期重新发布；
+- 硬复位得到 retained LWT offline，重连使用新的 `connectionId`；正常 Web restart 得到同一旧周期 retained shutdown、服务端 `online → offline → online` 和新 `connectionId`，该正常周期未触发 LWT；命令 journal 中同一 stop 命令的 accepted/succeeded 证据在重启后使用新连接周期重新发布；
 - 可靠记录在没有累计 ACK 时按 5 秒窗口补发；累计 ACK 将同一 `recordStreamId` 从 sequence 1 推进到 2；因仅推进 2 条未触发低频 NVS 检查点，重启后按设计再次补发 sequence 1，同时 `recordStreamId` 保持不变；
-- 设备记录测试通过后已恢复并再次烧录真实 IOT 固件，启动进入 `business_ready`，记录存储状态正常。
+- 设备记录测试通过后已恢复并再次烧录真实 IOT 固件，启动进入 `business_ready`，记录存储状态正常；同一真实配置镜像随后通过命令行 raw HTTP Web OTA 写入另一 app slot，设备报告 100% 并以 software reset 启动，MQTT 与服务端均恢复在线且八项状态重新达到 fresh。
 
-当前核心板没有泵阀、水路、流量计和 DS3231，因此日志中的 DS3231 I2C 写回失败是硬件缺失，不能作为 RTC 验收；六路输出、泵延时、流量保护和现场安全仍需完整灌溉硬件完成 G6。当前镜像也尚未完成 HTTP Web OTA、长时间稳定运行和浏览器视觉验收。
+当前核心板没有泵阀、水路、流量计和 DS3231，因此日志中的 DS3231 I2C 写回失败是硬件缺失，不能作为 RTC 验收；六路输出、泵延时、流量保护和现场安全仍需完整灌溉硬件完成 G6。当前镜像尚未完成浏览器 multipart OTA、至少 24 小时稳定运行和浏览器视觉验收。

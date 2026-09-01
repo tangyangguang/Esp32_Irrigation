@@ -69,11 +69,13 @@ private:
     static constexpr std::size_t kEvidenceCapacity = 32;
 
     static void beforeConnect(void* context);
+    static uint16_t beforeNetworkStop(void* context);
     static void mqttMessage(const Esp32BaseMqtt::MessageView& message,
                             void* context);
     static void mqttEvent(const Esp32BaseMqtt::Event& event, void* context);
 
     void prepareConnectionCycle();
+    bool publishShutdown();
     void onMessage(const Esp32BaseMqtt::MessageView& message);
     void onEvent(const Esp32BaseMqtt::Event& event);
     void handleCommand(const IrrigationIotProtocol::Command& command,
@@ -148,6 +150,7 @@ private:
     bool connected_ = false;
     bool subscriptionsReady_ = false;
     bool journalReady_ = false;
+    bool lifecycleStopping_ = false;
     uint8_t subscriptionAckMask_ = 0;
     uint32_t stateSeq_ = 0;
     uint32_t lastRecordPublishMs_ = 0;

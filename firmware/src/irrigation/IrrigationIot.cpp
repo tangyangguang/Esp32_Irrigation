@@ -16,6 +16,7 @@
 namespace {
 
 constexpr uint32_t kRunningPublishIntervalMs = 5000U;
+constexpr uint16_t kShutdownNetworkGraceMs = 1000U;
 constexpr uint64_t kFnvOffset = 1469598103934665603ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;
 
@@ -184,6 +185,7 @@ bool IrrigationIot::configure() {
     }
     Esp32BaseMqtt::setMessageCallback(mqttMessage, this);
     Esp32BaseMqtt::setEventCallback(mqttEvent, this);
+    Esp32Base::setBeforeNetworkStopCallback(beforeNetworkStop, this);
     configured_ = true;
     ESP32BASE_LOG_I("irrigation_iot",
                     "mqtt_configured device_id=%s model=%s definition=%s",
@@ -209,7 +211,7 @@ bool IrrigationIot::begin() {
 
 void IrrigationIot::handle(IrrigationApp& app) {
     app_ = &app;
-    if (!configured_ || !begun_) return;
+    if (!configured_ || !begun_ || lifecycleStopping_) return;
     const uint32_t nowMs = millis();
     IrrigationRecordStream::instance().handle(nowMs);
     detectActivity(app, nowMs);
@@ -242,6 +244,12 @@ void IrrigationIot::beforeConnect(void* context) {
     if (context) static_cast<IrrigationIot*>(context)->prepareConnectionCycle();
 }
 
+uint16_t IrrigationIot::beforeNetworkStop(void* context) {
+    return context && static_cast<IrrigationIot*>(context)->publishShutdown()
+               ? kShutdownNetworkGraceMs
+               : 0U;
+}
+
 void IrrigationIot::mqttMessage(const Esp32BaseMqtt::MessageView& message,
                                 void* context) {
     if (context) static_cast<IrrigationIot*>(context)->onMessage(message);
@@ -254,6 +262,7 @@ void IrrigationIot::mqttEvent(const Esp32BaseMqtt::Event& event, void* context) 
 void IrrigationIot::prepareConnectionCycle() {
     connected_ = false;
     subscriptionsReady_ = false;
+    lifecycleStopping_ = false;
     subscriptionAckMask_ = 0;
     makeUuid(connectionId_, sizeof(connectionId_));
     stateSeq_ = 0;
@@ -270,6 +279,62 @@ void IrrigationIot::prepareConnectionCycle() {
     }
     lastWill_.payloadLength = std::strlen(lwtPayload_);
     resetConnectionDelivery();
+}
+
+bool IrrigationIot::publishShutdown() {
+    if (lifecycleStopping_) return false;
+    lifecycleStopping_ = true;
+    if (!configured_ || !connected_ || connectionId_[0] == '\0' ||
+        Esp32BaseMqtt::state() != Esp32BaseMqtt::CONNECTED) {
+        ESP32BASE_LOG_W("irrigation_iot",
+                        "shutdown_publish_skipped mqtt_connected=false");
+        return false;
+    }
+
+    char observedAt[25]{};
+    char payload[320]{};
+    if (!currentObservedAt(observedAt, sizeof(observedAt))) {
+        ESP32BASE_LOG_W("irrigation_iot",
+                        "shutdown_publish_skipped trusted_time=false");
+        return false;
+    }
+    const int length = std::snprintf(
+        payload,
+        sizeof(payload),
+        "{\"protocol\":\"%s\",\"modelKey\":\"%s\",\"online\":false,"
+        "\"connectionId\":\"%s\",\"reason\":\"shutdown\","
+        "\"observedAt\":\"%s\"}",
+        IrrigationIotProtocol::kProtocol,
+        IrrigationIotProtocol::kModelKey,
+        connectionId_,
+        observedAt);
+    if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(payload)) {
+        ESP32BASE_LOG_E("irrigation_iot", "shutdown_serialize_failed");
+        return false;
+    }
+
+    Esp32BaseMqtt::PublishRequest request;
+    request.topic = availabilityTopic_;
+    request.payload = reinterpret_cast<const uint8_t*>(payload);
+    request.payloadLength = static_cast<std::size_t>(length);
+    request.qos = Esp32BaseMqtt::QOS_1;
+    request.retain = true;
+    const Esp32BaseMqtt::PublishResult result = Esp32BaseMqtt::publish(request);
+    if (!result.accepted()) {
+        ESP32BASE_LOG_W("irrigation_iot",
+                        "shutdown_publish_rejected code=%u",
+                        static_cast<unsigned>(result.code));
+        return false;
+    }
+
+    connected_ = false;
+    subscriptionsReady_ = false;
+    availabilityPending_ = false;
+    ESP32BASE_LOG_I("irrigation_iot",
+                    "shutdown_publish_accepted packet_id=%u connection_id=%s",
+                    static_cast<unsigned>(result.packetId),
+                    connectionId_);
+    return true;
 }
 
 void IrrigationIot::onMessage(const Esp32BaseMqtt::MessageView& message) {
