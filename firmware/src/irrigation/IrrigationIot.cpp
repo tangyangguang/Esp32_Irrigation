@@ -1010,10 +1010,13 @@ bool IrrigationIot::publishEvidence() {
 }
 
 bool IrrigationIot::publishRecord() {
-    char payload[4097]{};
     std::size_t payloadLength = 0;
-    if (!serializeRecord(payload, sizeof(payload), payloadLength)) return false;
-    const bool accepted = publishBuffer(eventTopic_, payload, payloadLength, false,
+    if (!serializeRecord(publishPayload_, sizeof(publishPayload_),
+                         payloadLength)) {
+        return false;
+    }
+    const bool accepted = publishBuffer(eventTopic_, publishPayload_,
+                                        payloadLength, false,
                                         InFlightKind::Record);
     if (accepted) lastRecordPublishMs_ = millis();
     return accepted;
@@ -1159,12 +1162,13 @@ bool IrrigationIot::serializeRecord(char* output,
 }
 
 bool IrrigationIot::publishState(IrrigationApp& app, StateBit state) {
-    char payload[4097]{};
     std::size_t payloadLength = 0;
-    if (!serializeState(app, state, payload, sizeof(payload), payloadLength)) {
+    if (!serializeState(app, state, publishPayload_, sizeof(publishPayload_),
+                        payloadLength)) {
         return false;
     }
-    const bool accepted = publishBuffer(stateTopic_, payload, payloadLength, false,
+    const bool accepted = publishBuffer(stateTopic_, publishPayload_,
+                                        payloadLength, false,
                                         InFlightKind::State,
                                         static_cast<uint16_t>(state));
     if (accepted) ++stateSeq_;

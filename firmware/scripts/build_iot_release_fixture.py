@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build the production IOT path with non-secret, realistically sized TLS data."""
 
+import argparse
 from pathlib import Path
 import subprocess
 import sys
@@ -34,6 +35,12 @@ def _fixture_header() -> str:
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--upload-port",
+        help="after the clean release build, upload the fixture image to this serial port",
+    )
+    args = parser.parse_args()
     if PRIVATE_HEADER.exists():
         print(
             "ERROR: refusing to replace existing local_private/"
@@ -59,10 +66,17 @@ def main() -> int:
         )
         if clean != 0:
             return clean
-        return subprocess.call(
-            [sys.executable, str(PIO_WRAPPER), "2", "run", "-e", "esp32_irrigation"],
-            cwd=PROJECT_DIR,
-        )
+        command = [
+            sys.executable,
+            str(PIO_WRAPPER),
+            "2",
+            "run",
+            "-e",
+            "esp32_irrigation",
+        ]
+        if args.upload_port:
+            command.extend(["--target", "upload", "--upload-port", args.upload_port])
+        return subprocess.call(command, cwd=PROJECT_DIR)
     finally:
         PRIVATE_HEADER.unlink(missing_ok=True)
         try:

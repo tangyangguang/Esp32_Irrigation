@@ -19,4 +19,4 @@
 
 设备类型定义和通信规则以
 `/Users/tyg/workspace/iot-device-lab/device-types/irrigation-controller/` 与
-`/Users/tyg/workspace/iot-device-lab/docs/02-公共通信规则.md` 为唯一协议权威。当前只完成 G4 代码、契约、构建和非硬件回归；真实 MQTT/TLS/ACL 属于 G5，泵阀和水路属于 G6。
+`/Users/tyg/workspace/iot-device-lab/docs/02-公共通信规则.md` 为唯一协议权威。当前已完成 G4 代码、契约、构建、设备端存储和核心板软件生命周期回归，并使用共享非生产项目凭据取得真实 MQTTS、LWT、重连、状态、命令 journal 和累计记录 ACK 证据。G5 仍需为真实终端完成正式实例登记、专用凭据/Topic ACL 和服务端闭环；泵阀、水路、流量计、DS3231 与现场安全属于 G6。

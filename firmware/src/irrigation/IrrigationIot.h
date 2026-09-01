@@ -170,6 +170,9 @@ private:
     char progressTopic_[160]{};
     char connectionId_[IrrigationIotProtocol::kUuidBufferSize]{};
     char lwtPayload_[256]{};
+    // State and record payloads can reach 4096 bytes. Keep the single serialized
+    // publish buffer in static storage rather than consuming loopTask's stack.
+    char publishPayload_[ESP32BASE_MQTT_MAX_PAYLOAD_BYTES + 1U]{};
     Esp32BaseMqtt::LastWill lastWill_{};
 
     Evidence evidence_[kEvidenceCapacity]{};

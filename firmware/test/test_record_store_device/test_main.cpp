@@ -246,8 +246,13 @@ void captureEvent(const Esp32BaseAppEvents::EventRecord& event, void* user) {
 void test_irrigation_event_mapping_and_latest_read() {
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::clearEventHistory());
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::forgetAllConditionStates());
-    IrrigationEvents events;
-    WateringSessionSummary summary{};
+    // This integration case drives filesystem-backed event persistence from the
+    // Arduino loop task. Keep its presentation fixtures out of the loopTask
+    // stack so the test exercises production code instead of exhausting the
+    // comparatively small test-runner stack before that code is entered.
+    static IrrigationEvents events;
+    static WateringSessionSummary summary{};
+    summary = {};
     summary.purpose = WateringPurpose::Normal;
     summary.source = WateringSource::AutomaticPlan;
     summary.planId = 3;
@@ -261,7 +266,8 @@ void test_irrigation_event_mapping_and_latest_read() {
     events.syncStorageStatus();
     events.recordAbnormalWateringStop(summary);
 
-    EventCapture capture;
+    static EventCapture capture;
+    capture = {};
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(0, 1, captureEvent, &capture));
     TEST_ASSERT_EQUAL_UINT32(
         static_cast<uint32_t>(IrrigationEvents::EventCode::WateringStoppedAbnormally),
@@ -276,12 +282,14 @@ void test_irrigation_event_mapping_and_latest_read() {
         (1U << 7U) | (1U << 2U) | (3U << 3U), capture.flags);
     TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::Level::Error),
                       static_cast<int>(capture.level));
-    Esp32BaseAppEvents::EventRecord wateringPresentation{};
+    static Esp32BaseAppEvents::EventRecord wateringPresentation{};
+    wateringPresentation = {};
     wateringPresentation.eventCode = capture.eventCode;
     wateringPresentation.reasonCode = capture.reasonCode;
     wateringPresentation.objectId = capture.objectId;
     wateringPresentation.flags = capture.flags;
-    char wateringTitle[96]{};
+    static char wateringTitle[96]{};
+    wateringTitle[0] = '\0';
     IrrigationEvents::formatTitle(wateringPresentation,
                                   wateringTitle,
                                   sizeof(wateringTitle),
@@ -303,7 +311,8 @@ void test_irrigation_event_mapping_and_latest_read() {
     summary.planId = 0;
     summary.stopReason = WateringStopReason::TargetVolumeTimeout;
     events.recordAbnormalWateringStop(summary);
-    EventCapture singleOutputCapture;
+    static EventCapture singleOutputCapture;
+    singleOutputCapture = {};
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(
         0, 1, captureEvent, &singleOutputCapture));
     TEST_ASSERT_EQUAL_UINT32(
@@ -311,12 +320,14 @@ void test_irrigation_event_mapping_and_latest_read() {
         singleOutputCapture.reasonCode);
     TEST_ASSERT_EQUAL_UINT8((1U << 7U) | (1U << 3U),
                             singleOutputCapture.flags);
-    Esp32BaseAppEvents::EventRecord singleOutputPresentation{};
+    static Esp32BaseAppEvents::EventRecord singleOutputPresentation{};
+    singleOutputPresentation = {};
     singleOutputPresentation.eventCode = singleOutputCapture.eventCode;
     singleOutputPresentation.reasonCode = singleOutputCapture.reasonCode;
     singleOutputPresentation.objectId = singleOutputCapture.objectId;
     singleOutputPresentation.flags = singleOutputCapture.flags;
-    char singleOutputTitle[96]{};
+    static char singleOutputTitle[96]{};
+    singleOutputTitle[0] = '\0';
     IrrigationEvents::formatTitle(singleOutputPresentation,
                                   singleOutputTitle,
                                   sizeof(singleOutputTitle),
@@ -338,19 +349,23 @@ void test_irrigation_event_mapping_and_latest_read() {
     busyStatus.source = WateringSource::ManualZones;
     events.recordAutomaticPlanSkipped(
         2, "自动计划 2", WateringStartResult::Busy, busyStatus);
-    EventCapture skippedCapture;
+    static EventCapture skippedCapture;
+    skippedCapture = {};
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(
         0, 1, captureEvent, &skippedCapture));
     TEST_ASSERT_EQUAL_UINT32(
         static_cast<uint32_t>(
             IrrigationEvents::ReasonCode::PlanBusyManualWatering),
         skippedCapture.reasonCode);
-    Esp32BaseAppEvents::EventRecord skippedPresentation{};
+    static Esp32BaseAppEvents::EventRecord skippedPresentation{};
+    skippedPresentation = {};
     skippedPresentation.eventCode = skippedCapture.eventCode;
     skippedPresentation.reasonCode = skippedCapture.reasonCode;
     skippedPresentation.objectId = skippedCapture.objectId;
-    char skippedTitle[128]{};
-    char skippedSummary[160]{};
+    static char skippedTitle[128]{};
+    static char skippedSummary[160]{};
+    skippedTitle[0] = '\0';
+    skippedSummary[0] = '\0';
     IrrigationEvents::formatTitle(skippedPresentation,
                                   skippedTitle,
                                   sizeof(skippedTitle),
@@ -390,17 +405,20 @@ void test_irrigation_event_mapping_and_latest_read() {
     events.observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState::Active);
     TEST_ASSERT_EQUAL_UINT32(1U, Esp32BaseAppEvents::eventCount());
 
-    EventCapture recoveredEvent;
+    static EventCapture recoveredEvent;
+    recoveredEvent = {};
     TEST_ASSERT_TRUE(Esp32BaseAppEvents::readLatest(0, 1, captureEvent, &recoveredEvent));
     TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseAppEvents::EventKind::ConditionActivated),
                       static_cast<int>(recoveredEvent.eventKind));
     TEST_ASSERT_EQUAL_UINT8(3, recoveredEvent.conditionId);
-    char title[64]{};
-    Esp32BaseAppEvents::EventRecord presentation{};
+    static char title[64]{};
+    static Esp32BaseAppEvents::EventRecord presentation{};
+    title[0] = '\0';
+    presentation = {};
     presentation.eventCode = recoveredEvent.eventCode;
     presentation.eventKind = recoveredEvent.eventKind;
     IrrigationEvents::formatTitle(presentation, title, sizeof(title));
-    TEST_ASSERT_EQUAL_STRING("检测到设备时间倒退", title);
+    TEST_ASSERT_EQUAL_STRING("设备时间发生倒退", title);
 
     constexpr uint32_t eventCodes[] = {1001, 1002, 1003, 1004, 1006, 1009, 1101,
                                        1102, 1103, 1104, 1201, 1202, 1203};

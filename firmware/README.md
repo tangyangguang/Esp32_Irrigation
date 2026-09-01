@@ -70,7 +70,7 @@ cp IrrigationIotSecrets.example.h local_private/irrigation_iot_private.h
 7. 加载业务配置、命令幂等 journal、调度状态、本地历史、IoT 记录流和事件存储。
 8. 只有全部必需状态有效时才进入业务 ready。
 
-正常循环先推进业务状态机和 IoT 外围适配，再调用 `Esp32Base::handle()`。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。
+正常循环先推进业务状态机和 IoT 外围适配，再调用 `Esp32Base::handle()`。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。MQTT 状态和记录序列化共用 `IrrigationIot` 长期对象中的单一 4097 B 缓冲，不在 `loopTask` 栈上创建 4 KiB 临时数组；这是当前 4096 B payload 上限下的硬性栈安全边界。
 
 WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项目不进入 Deep-sleep，不降低 CPU 频率，也不改变泵阀控制时序。OTA 期间由 Esp32Base 临时关闭 power save，结束后恢复。
 
@@ -107,6 +107,12 @@ IOT_DEVICE_LAB_DIR=/Users/tyg/workspace/iot-device-lab \
   python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e native_iot_vectors
 python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test --without-uploading --without-testing
 python3 scripts/build_iot_release_fixture.py
+
+# 有专用可清空实验板时，执行设备端测试；端口按实际环境替换
+python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test \
+  -f test_record_store_device \
+  --upload-port /dev/cu.usbserial-XXXXXXXX \
+  --test-port /dev/cu.usbserial-XXXXXXXX
 ```
 
 含义：
@@ -117,20 +123,19 @@ python3 scripts/build_iot_release_fixture.py
 - 设备记录测试编译：确认 Esp32Base OFFLINE、Record Store、App Events、200 条 IoT 流容量断言和项目设备测试可链接；
 - 正式构建：夹具脚本拒绝覆盖已有私密头，临时生成带 2 KiB CA 正文的非敏感配置，清理旧目标后完整链接 MQTT/TLS 路径，使用 classic ESP32 4MB balanced 双 OTA 分区并检查 slot 余量。
 
-当前自动验证基线：
+当前自动与设备端验证基线（2026-09-01）：
 
 - Web 资源漂移检查通过；
 - Native 测试 101/101 通过；
-- 当前共享命令向量测试通过；
-- `esp32_record_test` 设备测试固件编译通过，未在当前版本实机运行；
+- 当前共享命令向量测试 1/1 通过；
+- `esp32_record_test` 设备端 9/9 通过，覆盖正式 Store 定义、固定 200 条 IoT 容量、追加/分页/重载、分段轮转、CRC 损坏、业务事件、调度 NVS 和在线检查点；
 - `esp32_irrigation` Core 2.0.16 构建通过；
 - 使用非敏感完整 MQTTS 配置夹具链接，其中 CA 占位正文为 2 KiB（避免空配置被 LTO 裁掉 MQTT/TLS 路径或低估证书尺寸）；
-- RAM 110860 B / 33.8%；
-- Flash 1437561 B / 91.4%；
-- `firmware.bin` 1444144 B；
-- 1.5 MiB OTA slot 剩余 128720 B / 8.18%。
+- 使用实验环境真实 3298 B CA 链完整构建：RAM 114940 B / 35.1%，Flash 1438761 B / 91.5%；
+- 真实配置 `firmware.bin` 1445344 B；
+- 1.5 MiB OTA slot 剩余 127520 B / 8.11%。
 
-N4 设备继续使用现有 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，避免改变分区导致现有配置和业务数据失效。经确认，IOT 固件发布门禁固定为至少 8% OTA slot 余量；当前只高出门禁约 2.8 KiB，后续任何代码、CA 或静态资源变化都必须重新执行带完整 MQTTS 配置的构建，不能以空私密配置构建的 17% 余量作为发布依据。
+N4 设备继续使用现有 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，避免改变分区导致现有配置和业务数据失效。经确认，IOT 固件发布门禁固定为至少 8% OTA slot 余量；当前只高出门禁约 1.65 KiB，后续任何代码、CA 或静态资源变化都必须重新执行带完整 MQTTS 配置的构建，不能以空私密配置构建的 17% 余量作为发布依据。
 
 代码变更后必须重新执行这些命令，并用新的实际结果更新本节；不能保留失效的历史构建数字。
 
@@ -186,4 +191,12 @@ python3 ../../Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irrigation -t webo
 - LittleFS/NVS 写失败、空间不足、重启和掉电恢复；
 - 长时间运行、最小 heap、看门狗、WiFi 恢复和温升。
 
-当前 Profile 定型版本未执行烧录、HTTP OTA、清 NVS、格式化 LittleFS 或真实水路回归。已有历史实机结果只证明当时版本和硬件状态，不能作为当前镜像的发布证据。
+当前 IOT 镜像已在专用 ESP32-D0WD-V3 核心板完成串口写入和 Hash 校验，并取得以下实机证据：
+
+- WiFi、NTP、真实 CA/hostname 校验的 MQTTS 认证和 CONNECT 成功；command 与 `record-ack` 双订阅完成后，online 和八项状态均由当前 `iot-device-lab` 定义校验通过；
+- 首次完整状态发布、周期发布和多次重连后不再出现 `Stack canary watchpoint triggered (loopTask)`；页面观测的 loopTask 栈最低余量为 1.90 KiB，最小 heap 为 76.21 KiB，看门狗 trip reset 为 0；
+- 硬复位得到 retained LWT offline，重连使用新的 `connectionId`；命令 journal 中同一 stop 命令的 accepted/succeeded 证据在重启后使用新连接周期重新发布；
+- 可靠记录在没有累计 ACK 时按 5 秒窗口补发；累计 ACK 将同一 `recordStreamId` 从 sequence 1 推进到 2；因仅推进 2 条未触发低频 NVS 检查点，重启后按设计再次补发 sequence 1，同时 `recordStreamId` 保持不变；
+- 设备记录测试通过后已恢复并再次烧录真实 IOT 固件，启动进入 `business_ready`，记录存储状态正常。
+
+当前核心板没有泵阀、水路、流量计和 DS3231，因此日志中的 DS3231 I2C 写回失败是硬件缺失，不能作为 RTC 验收；六路输出、泵延时、流量保护和现场安全仍需完整灌溉硬件完成 G6。当前镜像也尚未完成 HTTP Web OTA、长时间稳定运行和浏览器视觉验收。
