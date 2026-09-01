@@ -7,48 +7,45 @@
 #include "IrrigationTypes.h"
 
 struct ZoneWateringRecord {
-    std::array<char, kObjectNameCapacity> name;
-    ZoneWateringResult result;
-    uint8_t flags;
-    uint16_t plannedDurationSec;
-    uint16_t actualWateringSec;
-    uint32_t targetWaterMl;
-    uint32_t pulseCount;
-    uint32_t estimatedWaterMl;
-    uint32_t averageFlowMlPerMinute;
-    uint32_t baselineFlowMlPerMinute;
-    uint32_t terminalFlowMlPerMinute;
-    uint32_t terminalMinimumFlowMlPerMinute;
-    uint32_t terminalMaximumFlowMlPerMinute;
+    ZoneWateringResult result = ZoneWateringResult::NotStarted;
+    uint8_t flags = 0;
+    uint16_t plannedDurationSec = 0;
+    uint16_t actualWateringSec = 0;
+    uint32_t targetWaterMl = 0;
+    uint32_t pulseCount = 0;
+    uint32_t estimatedWaterMl = 0;
+    uint32_t averageFlowMlPerMinute = 0;
+    uint32_t baselinePulseRateX10000 = 0;
+    uint32_t baselineFlowMlPerMinute = 0;
 };
 
 struct WateringRecordPayload {
-    WateringSource source;
-    uint8_t planId;
-    WateringResult result;
-    WateringStopReason stopReason;
-    std::array<ZoneWateringRecord, BoardPins::kZoneCount> zones;
+    WateringSource source = WateringSource::ManualZones;
+    uint8_t planId = 0;
+    WateringResult result = WateringResult::Failed;
+    WateringStopReason stopReason = WateringStopReason::None;
+    std::array<uint8_t, 16> relatedCommandId{};
+    std::array<ZoneWateringRecord, BoardPins::kZoneCount> zones{};
 };
 
 struct WateringRecordTotals {
-    uint32_t plannedDurationSec;
-    uint32_t actualWateringSec;
-    uint64_t pulseCount;
-    uint64_t estimatedWaterMl;
-    uint32_t averageFlowMlPerMinute;
+    uint32_t plannedDurationSec = 0;
+    uint32_t actualWateringSec = 0;
+    uint64_t pulseCount = 0;
+    uint64_t estimatedWaterMl = 0;
+    uint32_t averageFlowMlPerMinute = 0;
 };
 
 class WateringRecordCodec {
 public:
-    static constexpr std::size_t kPayloadSize = 616;
+    static constexpr std::size_t kPayloadSize = 193;
     static constexpr uint8_t kZoneFlagWaterEstimateCapped = 1U << 0U;
     static constexpr uint8_t kZoneFlagLowFlow = 1U << 1U;
     static constexpr uint8_t kZoneFlagHighFlow = 1U << 2U;
     static constexpr uint8_t kZoneFlagFlowBaselineAvailable = 1U << 3U;
-    static constexpr uint8_t kZoneFlagTerminalFlowAvailable = 1U << 4U;
-    static constexpr uint8_t kZoneFlagTerminalFlowStable = 1U << 5U;
 
     static bool fromSession(const WateringSessionSummary& summary,
+                            const char* relatedCommandId,
                             WateringRecordPayload& payload);
     static bool encode(const WateringRecordPayload& payload,
                        uint8_t* output,
@@ -56,5 +53,8 @@ public:
     static bool decode(const uint8_t* data,
                        std::size_t dataSize,
                        WateringRecordPayload& payload);
+    static bool formatRelatedCommandId(const WateringRecordPayload& payload,
+                                       char* output,
+                                       std::size_t outputSize);
     static WateringRecordTotals calculateTotals(const WateringRecordPayload& payload);
 };

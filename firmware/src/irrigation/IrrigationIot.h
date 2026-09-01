@@ -7,6 +7,7 @@
 
 #include "IrrigationCommandJournal.h"
 #include "IrrigationIotProtocol.h"
+#include "IrrigationRecordSync.h"
 
 class IrrigationApp;
 
@@ -124,8 +125,9 @@ private:
     void pump(IrrigationApp& app);
     bool publishAvailability();
     bool publishEvidence();
-    bool publishRecord();
-    bool serializeRecord(char* output,
+    bool publishRecord(IrrigationRecordSync::StreamKind stream);
+    bool serializeRecord(IrrigationRecordSync::StreamKind stream,
+                         char* output,
                          std::size_t outputLength,
                          std::size_t& payloadLength);
     bool publishState(IrrigationApp& app, StateBit state);
@@ -153,7 +155,10 @@ private:
     bool lifecycleStopping_ = false;
     uint8_t subscriptionAckMask_ = 0;
     uint32_t stateSeq_ = 0;
-    uint32_t lastRecordPublishMs_ = 0;
+    uint32_t lastWateringRecordPublishMs_ = 0;
+    uint32_t lastAuditRecordPublishMs_ = 0;
+    IrrigationRecordSync::StreamKind nextRecordStream_ =
+        IrrigationRecordSync::StreamKind::Watering;
     uint32_t lastStateScheduleMs_ = 0;
     uint32_t lastRunningEvidenceMs_ = 0;
     uint32_t lastActivityStateMs_ = 0;
@@ -189,6 +194,8 @@ private:
     uint16_t inFlightPacketId_ = 0;
     uint16_t inFlightStateBit_ = 0;
     uint32_t inFlightRecordSequence_ = 0;
+    IrrigationRecordSync::StreamKind inFlightRecordStream_ =
+        IrrigationRecordSync::StreamKind::Watering;
 
     bool activityTracked_ = false;
     char activityId_[IrrigationIotProtocol::kUuidBufferSize]{};

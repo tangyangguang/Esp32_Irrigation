@@ -10,7 +10,7 @@
 #include "BoardHardware.h"
 #include "BoardPins.h"
 #include "IrrigationIot.h"
-#include "IrrigationRecordStream.h"
+#include "IrrigationRecordSync.h"
 #include "IrrigationWeb.h"
 
 namespace {
@@ -33,7 +33,7 @@ void collectWateringEpoch(const StoredWateringRecord& record, void* user) {
     }
 }
 
-void collectEventEpoch(const Esp32BaseAppEvents::EventRecord& event, void* user) {
+void collectEventEpoch(const IrrigationEvents::EventRecord& event, void* user) {
     auto* latest = static_cast<LatestTrustedEpoch*>(user);
     uint32_t epoch = 0;
     if (latest && Esp32BaseRecordStore::resolveCompletedEpoch(event.timing, epoch) &&
@@ -111,37 +111,31 @@ bool IrrigationApp::begin() {
         return failStartup(hardware, statusIndicator_);
     }
 
-    const bool storeReady = wateringRecordStore_.begin();
-    const bool storeRegistered =
-        Esp32BaseWeb::registerBusinessRecordStore(wateringRecordStore_.baseStore());
-    wateringRecordStoreRegistered_ = storeRegistered;
-    recordStorageFault_ = !storeReady || !storeRegistered ||
-                          wateringRecordStore_.state() !=
-                              Esp32BaseRecordStore::StoreState::Ready;
-    if (!storeReady) {
+    const bool wateringStoreReady = wateringRecordStore_.begin();
+    const bool auditStoreReady = events_.begin();
+    const bool recordsReady = wateringStoreReady && auditStoreReady &&
+        IrrigationRecordSync::instance().begin(wateringRecordStore_,
+                                                events_.auditStore());
+    wateringRecordStoreRegistered_ = recordsReady;
+    recordStorageFault_ = !recordsReady;
+    if (!recordsReady) {
         ESP32BASE_LOG_E("irrigation",
-                        "watering_record_store_begin_failed state=%s error=%s",
-                        Esp32BaseRecordStore::storeStateName(wateringRecordStore_.state()),
-                        wateringRecordStore_.lastErrorReason());
-    }
-    if (!storeRegistered) {
-        ESP32BASE_LOG_E("irrigation", "watering_record_store_registration_failed");
-    }
-    if (storeReady) {
-        Esp32BaseRecordStore::StoreStatus status;
-        wateringRecordStore_.readStatus(status);
+                        "business_record_stores_begin_failed watering=%s audit=%s",
+                        wateringStoreReady ? "ready" : "failed",
+                        auditStoreReady ? "ready" : "failed");
+    } else {
+        Esp32BaseRecordStore::StoreStatus wateringStatus;
+        Esp32BaseRecordStore::StoreStatus auditStatus;
+        wateringRecordStore_.readStatus(wateringStatus);
+        events_.auditStore().readStatus(auditStatus);
         ESP32BASE_LOG_I("irrigation",
-                        "watering_record_store_ready state=%s records=%lu capacity=%lu slot_bytes=%lu max_bytes=%lu",
-                        Esp32BaseRecordStore::storeStateName(status.state),
-                        static_cast<unsigned long>(status.recordCount),
-                        static_cast<unsigned long>(status.capacity),
-                        static_cast<unsigned long>(status.slotSizeBytes),
-                        static_cast<unsigned long>(status.maximumStoreBytes));
+                        "business_record_stores_ready watering_capacity=%lu watering_slot=%lu audit_capacity=%lu audit_slot=%lu",
+                        static_cast<unsigned long>(wateringStatus.capacity),
+                        static_cast<unsigned long>(wateringStatus.slotSizeBytes),
+                        static_cast<unsigned long>(auditStatus.capacity),
+                        static_cast<unsigned long>(auditStatus.slotSizeBytes));
     }
     IrrigationIot::instance().begin();
-    if (!IrrigationRecordStream::instance().ready()) {
-        recordStorageFault_ = true;
-    }
 
     schedulerStorageFault_ = !wateringScheduler_.begin(wateringSchedulerStore_);
     wateringScheduler_.setCallbacks(startScheduledWatering, handleSchedulerEvent, this);
@@ -152,7 +146,7 @@ bool IrrigationApp::begin() {
     LatestTrustedEpoch latestTrusted;
     latestTrusted.value = aliveCheckpoint_.lastKnownAliveEpoch();
     wateringRecordStore_.readLatest(0, 1, collectWateringEpoch, &latestTrusted);
-    Esp32BaseAppEvents::readLatest(0, 1, collectEventEpoch, &latestTrusted);
+    events_.readLatest(0, 1, collectEventEpoch, &latestTrusted);
     wateringScheduler_.setTrustedEpochBaseline(latestTrusted.value);
 
     businessReady_ = true;
@@ -161,7 +155,7 @@ bool IrrigationApp::begin() {
     updateStatusIndicator(readyMs);
     ESP32BASE_LOG_I("irrigation", "business_ready records_fault=%s events_fault=%s scheduler_fault=%s",
                     recordStorageFault_ ? "yes" : "no",
-                    Esp32BaseAppEvents::isEventStoreReady() ? "no" : "yes",
+                    events_.storageFault() ? "yes" : "no",
                     schedulerStorageFault_ ? "yes" : "no");
     return true;
 }
@@ -303,7 +297,7 @@ bool IrrigationApp::readLatestEvents(uint32_t offset,
     return events_.readLatest(offset, limit, callback, user);
 }
 
-bool IrrigationApp::readEventStatus(Esp32BaseAppEvents::AppEventsStatus& status) const {
+bool IrrigationApp::readEventStatus(IrrigationEvents::EventStatus& status) const {
     return events_.readStatus(status);
 }
 
@@ -314,7 +308,7 @@ IrrigationEvents::ConditionDisplayState IrrigationApp::eventConditionState(
 
 bool IrrigationApp::recordStorageFault() const {
     return recordStorageFault_ ||
-           !IrrigationRecordStream::instance().writable();
+           !IrrigationRecordSync::instance().writable();
 }
 
 bool IrrigationApp::eventStorageFault() const {
@@ -745,9 +739,9 @@ void IrrigationApp::advanceBusiness() {
         }
         observeEventConditions(nowMs, now);
         Esp32BaseRecordStore::StoreStatus recordStatus{};
-        Esp32BaseAppEvents::AppEventsStatus eventStatus{};
+        IrrigationEvents::EventStatus eventStatus{};
         if (wateringRecordStore_.readStatus(recordStatus) &&
-            Esp32BaseAppEvents::readStatus(eventStatus)) {
+            events_.readStatus(eventStatus)) {
             const uint64_t activitySequence =
                 (static_cast<uint64_t>(recordStatus.nextRecordId) << 32U) |
                 eventStatus.eventStore.nextRecordId;
@@ -847,45 +841,14 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
     if (summary->purpose == WateringPurpose::Normal) {
         const char* relatedCommandId =
             IrrigationIot::instance().activeCommandId();
-        const bool platformRecord =
-            summary->source == WateringSource::AutomaticPlan ||
-            relatedCommandId != nullptr;
-        bool platformAppendFailed = false;
-        bool appended = false;
-        if (wateringStartTimeValid_) {
-            if (platformRecord) {
-                appended = IrrigationRecordStream::instance().appendWatering(
-                    wateringStartTime_, *summary, relatedCommandId);
-                platformAppendFailed = !appended;
-                if (!appended &&
-                    summary->source == WateringSource::AutomaticPlan &&
-                    relatedCommandId == nullptr) {
-                    appended = wateringRecordStore_.appendCompleted(
-                        wateringStartTime_, *summary);
-                }
-            } else {
-                appended = wateringRecordStore_.appendCompleted(
-                    wateringStartTime_, *summary);
-            }
-        }
-        if (!appended || platformAppendFailed) {
-            recordStorageFault_ = true;
-            events_.recordWateringRecordSaveFailed(
-                wateringStartTimeValid_ ? IrrigationEvents::ReasonCode::RecordAppendFailed
-                                        : IrrigationEvents::ReasonCode::RecordStartTimeUnavailable,
-                platformRecord
-                    ? IrrigationRecordStream::instance().baseStore().state()
-                    : wateringRecordStore_.state(),
-                platformRecord
-                    ? IrrigationRecordStream::instance().baseStore().lastError()
-                    : wateringRecordStore_.lastError());
-        } else {
-            recordStorageFault_ =
-                platformRecord
-                    ? !IrrigationRecordStream::instance().writable()
-                    : wateringRecordStore_.state() !=
-                          Esp32BaseRecordStore::StoreState::Ready;
-        }
+        const bool appended = wateringStartTimeValid_ &&
+            IrrigationRecordSync::instance().appendWatering(
+                wateringStartTime_, *summary, relatedCommandId);
+        recordStorageFault_ = !appended ||
+            !IrrigationRecordSync::instance().writable(
+                IrrigationRecordSync::StreamKind::Watering);
+        if (appended)
+            events_.recordAutomaticRun(wateringStartTime_, *summary);
     }
 
     events_.recordAbnormalWateringStop(*summary);
@@ -1008,7 +971,7 @@ void IrrigationApp::resetUnexpectedFlowMonitor(uint32_t nowMs) {
         config->flowProtection.unexpectedFlowDelaySec,
         config->flowProtection.unexpectedFlowWindowSec,
         config->flowProtection.unexpectedFlowPulseCount);
-    events_.observeClosedValveFlow(Esp32BaseAppEvents::ObservedConditionState::Unknown,
+    events_.observeClosedValveFlow(Esp32BaseConditions::ObservedState::Unknown,
                                    0,
                                    0,
                                    config->flowProtection.unexpectedFlowWindowSec,
@@ -1031,23 +994,23 @@ void IrrigationApp::refreshRtcCondition(uint32_t nowMs, bool force) {
 void IrrigationApp::observeEventConditions(uint32_t nowMs,
                                            const Esp32BaseTime::Snapshot& now) {
     events_.observeTrustedTime(now.synced);
-    Esp32BaseAppEvents::ObservedConditionState rollbackState =
-        Esp32BaseAppEvents::ObservedConditionState::Unknown;
+    Esp32BaseConditions::ObservedState rollbackState =
+        Esp32BaseConditions::ObservedState::Unknown;
     if (wateringScheduler_.timeState() == WateringScheduler::TimeState::Ready) {
-        rollbackState = Esp32BaseAppEvents::ObservedConditionState::Inactive;
+        rollbackState = Esp32BaseConditions::ObservedState::Inactive;
     } else if (wateringScheduler_.timeState() == WateringScheduler::TimeState::RtcRollback) {
-        rollbackState = Esp32BaseAppEvents::ObservedConditionState::Active;
+        rollbackState = Esp32BaseConditions::ObservedState::Active;
     }
     events_.observeRtcRollback(rollbackState);
 
     const IrrigationConfig* config = configStore_.current();
-    Esp32BaseAppEvents::ObservedConditionState flowState =
-        Esp32BaseAppEvents::ObservedConditionState::Unknown;
+    Esp32BaseConditions::ObservedState flowState =
+        Esp32BaseConditions::ObservedState::Unknown;
     if (config && !wateringController_.status().active &&
         unexpectedFlowMonitor_.observationReady(nowMs)) {
         flowState = unexpectedFlowMonitor_.alarmActive()
-                        ? Esp32BaseAppEvents::ObservedConditionState::Active
-                        : Esp32BaseAppEvents::ObservedConditionState::Inactive;
+                        ? Esp32BaseConditions::ObservedState::Active
+                        : Esp32BaseConditions::ObservedState::Inactive;
     }
     uint32_t detectedFlowMlPerMinute = 0;
     if (config && config->flowProtection.unexpectedFlowWindowSec != 0U) {
@@ -1144,7 +1107,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
 
     const bool conditionHistoryReset = events_.resetConditionHistory();
     const bool iotRecordStreamReady =
-        IrrigationRecordStream::instance().resetGenerationAfterFormat();
+        IrrigationRecordSync::instance().resetGenerationsAfterFormat();
     rtcObservationInitialized_ = false;
     eventConditionsInitialized_ = false;
 
@@ -1164,45 +1127,20 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     }
     const bool checkpointReady = aliveCheckpoint_.begin();
     schedulerStorageFault_ = !schedulerReady;
-    Esp32BaseRecordStore::StoreStatus recordStatus{};
-    bool recordStatusReady = wateringRecordStore_.readStatus(recordStatus);
-    bool recordStoreReady = recordStatusReady && recordStatus.ready &&
-                            recordStatus.writable;
-    if (!recordStoreReady) {
-        ESP32BASE_LOG_W(
-            "irrigation",
-            "watering_record_store_recover_after_format base_reload=%s state=%s error=%s",
-            result.businessRecordStoresReloadSuccess ? "success" : "failed",
-            recordStatusReady
-                ? Esp32BaseRecordStore::storeStateName(recordStatus.state)
-                : "uninitialized",
-            recordStatusReady && recordStatus.errorReason
-                ? recordStatus.errorReason
-                : "status_unavailable");
-        recordStoreReady = wateringRecordStore_.begin();
-        recordStatusReady = wateringRecordStore_.readStatus(recordStatus);
-        recordStoreReady = recordStoreReady && recordStatusReady &&
-                           recordStatus.ready && recordStatus.writable;
-    }
-    if (recordStoreReady && !wateringRecordStoreRegistered_) {
-        wateringRecordStoreRegistered_ =
-            Esp32BaseWeb::registerBusinessRecordStore(
-                wateringRecordStore_.baseStore());
-    }
-    const bool recordsReady =
-        wateringRecordStoreRegistered_ && recordStoreReady &&
-        iotRecordStreamReady;
+    Esp32BaseRecordStore::StoreStatus wateringStatus{};
+    Esp32BaseRecordStore::StoreStatus auditStatus{};
+    const bool recordsReady = result.businessRecordStoresReloadSuccess &&
+        wateringRecordStore_.readStatus(wateringStatus) &&
+        events_.auditStore().readStatus(auditStatus) &&
+        wateringStatus.ready && wateringStatus.writable &&
+        auditStatus.ready && auditStatus.writable && iotRecordStreamReady;
+    wateringRecordStoreRegistered_ = recordsReady;
     if (!recordsReady) {
-        ESP32BASE_LOG_E(
-            "irrigation",
-            "watering_record_store_recovery_failed registered=%s state=%s error=%s",
-            wateringRecordStoreRegistered_ ? "yes" : "no",
-            recordStatusReady
-                ? Esp32BaseRecordStore::storeStateName(recordStatus.state)
-                : "uninitialized",
-            recordStatusReady && recordStatus.errorReason
-                ? recordStatus.errorReason
-                : "status_unavailable");
+        ESP32BASE_LOG_E("irrigation",
+                        "business_record_stores_recovery_failed base_reload=%s watering=%s audit=%s",
+                        result.businessRecordStoresReloadSuccess ? "success" : "failed",
+                        Esp32BaseRecordStore::storeStateName(wateringStatus.state),
+                        Esp32BaseRecordStore::storeStateName(auditStatus.state));
     }
     events_.syncStorageStatus();
     recordStorageFault_ = !recordsReady;

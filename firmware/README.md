@@ -30,14 +30,13 @@ MQTT 适配只调用现有配置、调度和浇水入口，不直接操作 GPIO�
 -D ESP32BASE_MQTT_MAX_PAYLOAD_BYTES=4096
 -D ESP32BASE_MQTT_ALLOW_UNCHECKED_CERTIFICATE_DATES=1
 -D ESP32BASE_ENABLE_RECORD_STORE=1
--D ESP32BASE_ENABLE_APP_EVENTS=1
--D ESP32BASE_ENABLE_APP_EVENT_CONDITIONS=1
+-D ESP32BASE_ENABLE_CONDITIONS=1
 -D ESP32BASE_ENABLE_APP_CONFIG=1
 -D ESP32BASE_ENABLE_RTC=1
 -D ESP32BASE_RTC_DRIVER=ESP32BASE_RTC_DRIVER_DS3231
 ```
 
-设备记录测试使用 `ESP32BASE_PROFILE_OFFLINE`，只显式开启测试需要的 Record Store 和 App Events。
+设备记录测试使用 `ESP32BASE_PROFILE_OFFLINE`，只显式开启测试需要的 Record Store 和 Conditions。
 
 当前基础库只支持 `MINIMAL / OFFLINE / LOCAL / IOT` 四个 Profile。项目不得重新引入旧 Profile、`ESP32BASE_ENABLE_WEB_OTA`、`ESP32BASE_ENABLE_ARDUINO_OTA`、ArduinoOTA/espota、3232 监听端口或已删除的认证读取 API。其它项目接入或适配当前基础库时，先阅读：
 
@@ -67,7 +66,7 @@ cp IrrigationIotSecrets.example.h local_private/irrigation_iot_private.h
 4. 设置 Web 默认认证，注册业务 Web、App Config 和文件系统格式化回调。
 5. 调用 `Esp32Base::begin()`；失败时保持全部输出关闭并进入故障指示。
 6. 基础库启动成功后启用 WiFi modem sleep。
-7. 加载业务配置、命令幂等 journal、调度状态、本地历史、IoT 记录流和事件存储。
+7. 加载业务配置、命令幂等 journal、调度状态、watering/audit 两个业务 Store 及其独立同步元数据。
 8. 只有全部必需状态有效时才进入业务 ready。
 
 正常循环先推进业务状态机和 IoT 外围适配，再调用 `Esp32Base::handle()`。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。MQTT 状态和记录序列化共用 `IrrigationIot` 长期对象中的单一 4097 B 缓冲，不在 `loopTask` 栈上创建 4 KiB 临时数组；这是当前 4096 B payload 上限下的硬性栈安全边界。
@@ -81,15 +80,16 @@ WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项�
 当前数据定义：
 
 - 灌溉 JSON 配置：schema v4，权威路径 `/app/irrigation/config.json`；
-- 本地浇水历史：`watering` Store v5，最大逻辑预算 512 KiB；
-- IoT 可靠记录流：`irrigation-iot` Store v1，固定 200 条、151168 B，单调 `recordStreamId + recordSequence`，只在完整事实形成后追加；
+- 浇水事实：`watering` Store v6，固定 193 B payload、384 KiB 逻辑预算；它同时是本地历史与平台补发的唯一事实源；
+- 必要审计事实：`irrigation-audit` Store v1，固定 24 B payload、128 KiB 逻辑预算；保存自动计划运行/跳过、自动总控、计划修改、校准和水路基准保存；
+- 两个 Store 各自拥有独立 `recordStreamId + recordSequence`、累计业务 ACK 和 NVS 检查点，在同一 MQTT Client 与 event topic 上公平交错发送；
 - MQTT 命令 journal：NVS 中固定 16 条，保存不可变签名、receipt 和可信终态；重启不为中断任务推断终态；
-- App Events：使用 Esp32Base 当前事件格式和默认 100 KiB 预算；
+- RTC 不可用、可信时间不可用、RTC 倒退和关阀异常水流只由 `Esp32BaseConditions` 在 NVS 保存当前活动位图，不形成通用历史；
 - 系统文件日志：4 × 32 KiB，默认 WARN；
 - 标量系统参数：Esp32Base App Config / NVS；
 - 自动浇水总控、调度防重复标记、在线检查点、记录流身份和低频累计 ACK 检查点：项目 NVS 小状态。
 
-IoT 记录 QoS 1 PUBACK 只解除本次 MQTT 在途发布，不删除补发事实；只有匹配当前流且不越过已产生日志头的累计 `record-ack` 才推进 RAM 水位。ACK 每累计 32 条或推进后满 24 小时才写 NVS；容量满时只有整个最旧分段都已确认才允许轮转，否则报告 `record_sync_backlog_full` 对应的记录存储故障并停止追加。
+IoT 记录 QoS 1 PUBACK 只解除本次 MQTT 在途发布，不删除补发事实；只有匹配对应 `recordStreamId` 且不越过该 Store 日志头的累计 `record-ack` 才推进该流 RAM 水位，绝不联动另一流。各流 ACK 每累计 32 条或推进后满 24 小时才写 NVS；Store 容量满且仍有未确认记录时停止该 Store 追加，全部保留记录已确认后才允许分段轮转。
 
 配置文件存在但当前副本和备份都无效时，固件保持安全停机，不用默认值覆盖。重新编译、串口烧录或 HTTP OTA 不得清理或覆盖已有有效 NVS/LittleFS 数据。只有业务结构明确不兼容时才拒绝启动并提示重新配置；不得自行猜测或迁移旧结构。
 
@@ -122,22 +122,20 @@ python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test \
 - Web 资源检查：确认 `web-src/` 与生成的压缩固件数组一致；
 - Native：覆盖配置、控制器、记录编解码、调度、异常水流、校准、时间、IoT 严格协议和命令 journal；
 - 共享向量：直接消费当前 `iot-device-lab` 合法/非法命令向量，防止终端与平台契约漂移；
-- 设备记录测试编译：确认 Esp32Base OFFLINE、Record Store、App Events、200 条 IoT 流容量断言和项目设备测试可链接；
+- 设备记录测试编译：确认 Esp32Base OFFLINE、两个受管 Record Store、Conditions、独立流 ACK 路由和项目设备测试可链接；
 - 正式构建：夹具脚本拒绝覆盖已有私密头，临时生成带 2 KiB CA 正文的非敏感配置，清理旧目标后完整链接 MQTT/TLS 路径，使用 classic ESP32 4MB balanced 双 OTA 分区并检查 slot 余量。
 
 当前自动与设备端验证基线（2026-09-01）：
 
 - Web 资源漂移检查通过；
-- Native 测试 101/101 通过；
+- Native 测试 99/99 通过；
 - 当前共享命令向量测试 1/1 通过；
-- `esp32_record_test` 设备端 9/9 通过，覆盖正式 Store 定义、固定 200 条 IoT 容量、追加/分页/重载、分段轮转、CRC 损坏、业务事件、调度 NVS 和在线检查点；
+- `esp32_record_test` 设备测试固件编译通过，覆盖 watering/audit 两 Store 的固定布局、独立 stream/ACK 和 Conditions 当前态；本轮按安全约束未上传或运行实机测试；
 - `esp32_irrigation` Core 2.0.16 构建通过；
-- 使用非敏感完整 MQTTS 配置夹具链接，其中 CA 占位正文为 2 KiB（避免空配置被 LTO 裁掉 MQTT/TLS 路径或低估证书尺寸）；
-- 使用实验环境真实 3298 B CA 链完整构建：RAM 114964 B / 35.1%，Flash 1439485 B / 91.5%；
-- 真实配置 `firmware.bin` 1446064 B；
-- 1.5 MiB OTA slot 剩余 126800 B / 8.06%。
+- 使用非敏感完整 MQTTS 配置夹具链接，其中 CA 占位正文为 2 KiB；RAM 111204 B / 33.9%，Flash 1415033 B / 90.0%，OTA 镜像 1421616 B，slot 剩余 151248 B / 9.62%；
+- 使用当前本机私密 MQTTS 配置完整构建：RAM 111204 B / 33.9%，Flash 1416145 B / 90.0%，OTA 镜像 1422720 B，slot 剩余 150144 B / 9.55%。
 
-N4 设备继续使用现有 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，避免改变分区导致现有配置和业务数据失效。经确认，IOT 固件发布门禁固定为至少 8% OTA slot 余量；当前只高出门禁约 1.65 KiB，后续任何代码、CA 或静态资源变化都必须重新执行带完整 MQTTS 配置的构建，不能以空私密配置构建的 17% 余量作为发布依据。
+N4 设备继续使用现有 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，避免改变分区导致现有配置和业务数据失效。IOT 固件发布门禁固定为至少 8% OTA slot 余量；当前完整配置构建高出门禁 1.55 个百分点，后续任何代码、CA 或静态资源变化都必须重新执行完整 MQTTS 配置构建。
 
 代码变更后必须重新执行这些命令，并用新的实际结果更新本节；不能保留失效的历史构建数字。
 

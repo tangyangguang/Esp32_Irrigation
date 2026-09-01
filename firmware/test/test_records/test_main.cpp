@@ -1,260 +1,103 @@
 #include <unity.h>
 
-#include <cstdio>
+#include <cstring>
 
 #include "irrigation/WateringRecordCodec.h"
 
 namespace {
-
-WateringSessionSummary exampleSummary() {
-    WateringSessionSummary summary{};
-    summary.source = WateringSource::AutomaticPlan;
-    summary.purpose = WateringPurpose::Normal;
-    summary.planId = 3;
-    summary.zoneCount = 2;
-    summary.elapsedSec = 125;
-    summary.result = WateringResult::Stopped;
-    summary.stopReason = WateringStopReason::UserStopped;
-    summary.anyFlowEstablished = true;
-    summary.zones[0].zoneId = 1;
-    std::snprintf(summary.zones[0].zoneName.data(),
-                  summary.zones[0].zoneName.size(), "%s", "前院");
-    summary.zones[0].result = ZoneWateringResult::Completed;
-    summary.zones[0].plannedDurationSec = 60;
-    summary.zones[0].actualWateringSec = 60;
-    summary.zones[0].pulseCount = 15000;
-    summary.zones[0].estimatedWaterMl = 60000;
-    summary.zones[0].averageFlowMlPerMinute = 1000;
-    summary.zones[0].flowBaselineAvailable = true;
-    summary.zones[0].baselineFlowMlPerMinute = 960;
-    summary.zones[0].terminalFlowAvailable = true;
-    summary.zones[0].terminalFlowStable = true;
-    summary.zones[0].terminalFlowMlPerMinute = 1008;
-    summary.zones[0].terminalMinimumFlowMlPerMinute = 984;
-    summary.zones[0].terminalMaximumFlowMlPerMinute = 1032;
-    summary.zones[1].zoneId = 3;
-    std::snprintf(summary.zones[1].zoneName.data(),
-                  summary.zones[1].zoneName.size(), "%s", "后院");
-    summary.zones[1].result = ZoneWateringResult::Stopped;
-    summary.zones[1].plannedDurationSec = 120;
-    summary.zones[1].actualWateringSec = 40;
-    summary.zones[1].pulseCount = 10000;
-    summary.zones[1].estimatedWaterMl = UINT32_MAX;
-    summary.zones[1].averageFlowMlPerMinute = 2000;
-    summary.zones[1].waterEstimateCapped = true;
-    summary.zones[0].lowFlowDetected = true;
-    return summary;
+WateringSessionSummary summary() {
+    WateringSessionSummary value{};
+    value.source = WateringSource::AutomaticPlan;
+    value.purpose = WateringPurpose::Normal;
+    value.planId = 2U;
+    value.zoneCount = 2U;
+    value.elapsedSec = 45U;
+    value.result = WateringResult::Completed;
+    value.stopReason = WateringStopReason::Completed;
+    value.anyFlowEstablished = true;
+    value.zones[0].zoneId = 1U;
+    value.zones[0].result = ZoneWateringResult::Completed;
+    value.zones[0].plannedDurationSec = 20U;
+    value.zones[0].actualWateringSec = 20U;
+    value.zones[0].pulseCount = 100U;
+    value.zones[0].estimatedWaterMl = 400U;
+    value.zones[0].averageFlowMlPerMinute = 1200U;
+    value.zones[0].flowBaselineAvailable = true;
+    value.zones[0].baselinePulseRateX10000 = 5000U;
+    value.zones[0].baselineFlowMlPerMinute = 1200U;
+    value.zones[1].zoneId = 3U;
+    value.zones[1].result = ZoneWateringResult::Completed;
+    value.zones[1].plannedDurationSec = 25U;
+    value.zones[1].actualWateringSec = 25U;
+    value.zones[1].pulseCount = 150U;
+    value.zones[1].estimatedWaterMl = 600U;
+    value.zones[1].averageFlowMlPerMinute = 1440U;
+    return value;
 }
 
-void test_fixed_payload_round_trip_preserves_business_fields() {
+void test_layout_is_fixed_193_bytes() {
+    TEST_ASSERT_EQUAL_UINT32(193U, WateringRecordCodec::kPayloadSize);
+}
+
+void test_round_trip_keeps_only_core_evidence() {
     WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(exampleSummary(), payload));
-    TEST_ASSERT_EQUAL_UINT8(3, payload.planId);
-    TEST_ASSERT_EQUAL_UINT16(60, payload.zones[0].plannedDurationSec);
-    TEST_ASSERT_EQUAL_UINT16(0, payload.zones[1].plannedDurationSec);
-    TEST_ASSERT_EQUAL_UINT16(120, payload.zones[2].plannedDurationSec);
-
-    uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    TEST_ASSERT_EQUAL_UINT32(616, sizeof(encoded));
-    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringSource::AutomaticPlan), encoded[0]);
-    TEST_ASSERT_EQUAL_UINT8(3, encoded[1]);
-    TEST_ASSERT_EQUAL_STRING("前院", payload.zones[0].name.data());
-    TEST_ASSERT_EQUAL_STRING("后院", payload.zones[2].name.data());
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[170]);  // Zone 2 fixed slot is empty.
-    TEST_ASSERT_EQUAL_UINT8(0, encoded[171]);
-
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(
+        summary(), "550e8400-e29b-41d4-a716-446655440000", payload));
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
     WateringRecordPayload decoded{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
-    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
-                      static_cast<int>(decoded.zones[0].result));
-    TEST_ASSERT_EQUAL_UINT8(WateringRecordCodec::kZoneFlagLowFlow |
-                                WateringRecordCodec::kZoneFlagFlowBaselineAvailable |
-                                WateringRecordCodec::kZoneFlagTerminalFlowAvailable |
-                                WateringRecordCodec::kZoneFlagTerminalFlowStable,
-                            decoded.zones[0].flags);
-    TEST_ASSERT_EQUAL_UINT32(1000, decoded.zones[0].averageFlowMlPerMinute);
-    TEST_ASSERT_EQUAL_UINT32(960, decoded.zones[0].baselineFlowMlPerMinute);
-    TEST_ASSERT_EQUAL_UINT32(1008, decoded.zones[0].terminalFlowMlPerMinute);
-    TEST_ASSERT_EQUAL_UINT32(984,
-                             decoded.zones[0].terminalMinimumFlowMlPerMinute);
-    TEST_ASSERT_EQUAL_UINT32(1032,
-                             decoded.zones[0].terminalMaximumFlowMlPerMinute);
-    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::NotStarted),
-                      static_cast<int>(decoded.zones[1].result));
-    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Stopped),
-                      static_cast<int>(decoded.zones[2].result));
-    TEST_ASSERT_EQUAL_UINT32(10000, decoded.zones[2].pulseCount);
-    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, decoded.zones[2].estimatedWaterMl);
-    TEST_ASSERT_EQUAL_UINT32(2000, decoded.zones[2].averageFlowMlPerMinute);
-    TEST_ASSERT_EQUAL_UINT8(WateringRecordCodec::kZoneFlagWaterEstimateCapped,
-                            decoded.zones[2].flags);
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringSource::AutomaticPlan),
+                            static_cast<uint8_t>(decoded.source));
+    TEST_ASSERT_EQUAL_UINT8(2U, decoded.planId);
+    TEST_ASSERT_EQUAL_UINT32(20U, decoded.zones[0].actualWateringSec);
+    TEST_ASSERT_EQUAL_UINT32(150U, decoded.zones[2].pulseCount);
+    TEST_ASSERT_EQUAL_UINT32(5000U,
+                             decoded.zones[0].baselinePulseRateX10000);
+    char uuid[37]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::formatRelatedCommandId(
+        decoded, uuid, sizeof(uuid)));
+    TEST_ASSERT_EQUAL_STRING("550e8400-e29b-41d4-a716-446655440000", uuid);
 }
 
-void test_totals_are_derived_without_overflow() {
+void test_empty_command_id_round_trips_as_empty() {
     WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(exampleSummary(), payload));
-    WateringRecordTotals totals = WateringRecordCodec::calculateTotals(payload);
-    TEST_ASSERT_EQUAL_UINT32(180, totals.plannedDurationSec);
-    TEST_ASSERT_EQUAL_UINT32(100, totals.actualWateringSec);
-    TEST_ASSERT_EQUAL_UINT64(25000, totals.pulseCount);
-    TEST_ASSERT_EQUAL_UINT64(static_cast<uint64_t>(UINT32_MAX) + 60000ULL,
-                             totals.estimatedWaterMl);
-    TEST_ASSERT_EQUAL_UINT32(1400, totals.averageFlowMlPerMinute);
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary(), nullptr, payload));
+    char uuid[37]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::formatRelatedCommandId(
+        payload, uuid, sizeof(uuid)));
+    TEST_ASSERT_EQUAL_STRING("", uuid);
+}
 
-    payload = {};
-    payload.source = WateringSource::ManualZones;
-    payload.result = WateringResult::Completed;
+void test_invalid_uuid_and_zone_order_are_rejected() {
+    WateringRecordPayload payload{};
+    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(
+        summary(), "not-a-uuid", payload));
+    WateringSessionSummary invalid = summary();
+    invalid.zones[1].zoneId = 1U;
+    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(invalid, nullptr, payload));
+}
+
+void test_corrupted_header_and_invalid_result_pair_are_rejected() {
+    WateringRecordPayload payload{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary(), nullptr, payload));
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
+    bytes[0] ^= 0x01U;
+    WateringRecordPayload decoded{};
+    TEST_ASSERT_FALSE(WateringRecordCodec::decode(bytes, sizeof(bytes), decoded));
+    payload.result = WateringResult::Stopped;
     payload.stopReason = WateringStopReason::Completed;
-    for (ZoneWateringRecord& zone : payload.zones) {
-        std::snprintf(zone.name.data(), zone.name.size(), "%s", "水路");
-        zone.result = ZoneWateringResult::Completed;
-        zone.flags = WateringRecordCodec::kZoneFlagWaterEstimateCapped;
-        zone.plannedDurationSec = 7200;
-        zone.actualWateringSec = 7200;
-        zone.pulseCount = UINT32_MAX;
-        zone.estimatedWaterMl = UINT32_MAX;
-        zone.averageFlowMlPerMinute = UINT32_MAX;
-    }
-    uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    totals = WateringRecordCodec::calculateTotals(payload);
-    TEST_ASSERT_EQUAL_UINT64(static_cast<uint64_t>(UINT32_MAX) * 6ULL, totals.pulseCount);
-    TEST_ASSERT_EQUAL_UINT64(static_cast<uint64_t>(UINT32_MAX) * 6ULL,
-                             totals.estimatedWaterMl);
-    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, totals.averageFlowMlPerMinute);
+    TEST_ASSERT_FALSE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
 }
-
-void test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone() {
-    WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(exampleSummary(), payload));
-    uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-
-    WateringRecordPayload decoded{};
-    TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded) - 1U, decoded));
-    encoded[69] = 0x80;
-    TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
-
-    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    encoded[170] = static_cast<uint8_t>(ZoneWateringResult::Completed);
-    TEST_ASSERT_FALSE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
-}
-
-void test_single_output_record_preserves_volume_target() {
-    WateringSessionSummary summary{};
-    summary.source = WateringSource::SingleOutput;
-    summary.purpose = WateringPurpose::Normal;
-    summary.zoneCount = 1;
-    summary.result = WateringResult::Completed;
-    summary.stopReason = WateringStopReason::Completed;
-    summary.zones[0].zoneId = 2;
-    std::snprintf(summary.zones[0].zoneName.data(),
-                  summary.zones[0].zoneName.size(), "%s", "花坛");
-    summary.zones[0].result = ZoneWateringResult::Completed;
-    summary.zones[0].plannedDurationSec = 7200;
-    summary.zones[0].targetWaterMl = 5000;
-    summary.zones[0].actualWateringSec = 42;
-    summary.zones[0].pulseCount = 1250;
-    summary.zones[0].estimatedWaterMl = 5000;
-    WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
-    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::SingleOutput),
-                      static_cast<int>(payload.source));
-    TEST_ASSERT_EQUAL_UINT32(5000, payload.zones[1].targetWaterMl);
-    uint8_t encoded[WateringRecordCodec::kPayloadSize]{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    WateringRecordPayload decoded{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
-    TEST_ASSERT_EQUAL_UINT32(5000, decoded.zones[1].targetWaterMl);
-
-    summary.result = WateringResult::Failed;
-    summary.stopReason = WateringStopReason::TargetVolumeTimeout;
-    summary.zones[0].result = ZoneWateringResult::Failed;
-    summary.zones[0].actualWateringSec = summary.zones[0].plannedDurationSec;
-    summary.zones[0].estimatedWaterMl = 4900;
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
-    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-    TEST_ASSERT_TRUE(WateringRecordCodec::decode(encoded, sizeof(encoded), decoded));
-    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::TargetVolumeTimeout),
-                      static_cast<int>(decoded.stopReason));
-
-    payload.source = WateringSource::ManualZones;
-    payload.zones[1].targetWaterMl = 0;
-    TEST_ASSERT_FALSE(WateringRecordCodec::encode(payload, encoded, sizeof(encoded)));
-}
-
-void test_all_started_normal_sessions_become_records() {
-    WateringSessionSummary summary = exampleSummary();
-    WateringRecordPayload payload{};
-
-    summary.anyFlowEstablished = false;
-    summary.result = WateringResult::Failed;
-    summary.stopReason = WateringStopReason::FlowStartTimeout;
-    for (ZoneWateringSummary& zone : summary.zones) {
-        zone.actualWateringSec = 0;
-        zone.pulseCount = 0;
-        zone.estimatedWaterMl = 0;
-        zone.averageFlowMlPerMinute = 0;
-        zone.waterEstimateCapped = false;
-        zone.terminalFlowAvailable = false;
-        zone.terminalFlowStable = false;
-        zone.terminalFlowMlPerMinute = 0;
-        zone.terminalMinimumFlowMlPerMinute = 0;
-        zone.terminalMaximumFlowMlPerMinute = 0;
-    }
-    summary.zones[0].result = ZoneWateringResult::Failed;
-    summary.zones[1].result = ZoneWateringResult::NotStarted;
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
-    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Failed),
-                      static_cast<int>(payload.zones[0].result));
-    TEST_ASSERT_EQUAL_UINT32(0, payload.zones[0].pulseCount);
-    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::NotStarted),
-                      static_cast<int>(payload.zones[2].result));
-
-    summary.purpose = WateringPurpose::FlowCalibration;
-    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(summary, payload));
-}
-
-void test_included_but_unstarted_zone_keeps_plan_and_zero_actuals() {
-    WateringSessionSummary summary = exampleSummary();
-    summary.zones[1] = {};
-    summary.zones[1].zoneId = 3;
-    std::snprintf(summary.zones[1].zoneName.data(),
-                  summary.zones[1].zoneName.size(), "%s", "后院");
-    summary.zones[1].result = ZoneWateringResult::NotStarted;
-    summary.zones[1].plannedDurationSec = 120;
-    summary.result = WateringResult::Failed;
-    summary.stopReason = WateringStopReason::HardwareFailure;
-
-    WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
-    TEST_ASSERT_EQUAL_UINT16(120, payload.zones[2].plannedDurationSec);
-    TEST_ASSERT_EQUAL_UINT16(0, payload.zones[2].actualWateringSec);
-    TEST_ASSERT_EQUAL_UINT32(0, payload.zones[2].pulseCount);
-}
-
-void test_manual_records_have_no_plan() {
-    WateringSessionSummary summary = exampleSummary();
-    summary.source = WateringSource::ManualZones;
-    summary.planId = 0;
-    WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary, payload));
-    TEST_ASSERT_EQUAL(static_cast<int>(WateringSource::ManualZones),
-                      static_cast<int>(payload.source));
-    TEST_ASSERT_EQUAL_UINT8(0, payload.planId);
-}
-
 }  // namespace
 
 int main(int, char**) {
     UNITY_BEGIN();
-    RUN_TEST(test_fixed_payload_round_trip_preserves_business_fields);
-    RUN_TEST(test_totals_are_derived_without_overflow);
-    RUN_TEST(test_decoder_rejects_wrong_size_unknown_flags_and_invalid_empty_zone);
-    RUN_TEST(test_single_output_record_preserves_volume_target);
-    RUN_TEST(test_all_started_normal_sessions_become_records);
-    RUN_TEST(test_included_but_unstarted_zone_keeps_plan_and_zero_actuals);
-    RUN_TEST(test_manual_records_have_no_plan);
+    RUN_TEST(test_layout_is_fixed_193_bytes);
+    RUN_TEST(test_round_trip_keeps_only_core_evidence);
+    RUN_TEST(test_empty_command_id_round_trips_as_empty);
+    RUN_TEST(test_invalid_uuid_and_zone_order_are_rejected);
+    RUN_TEST(test_corrupted_header_and_invalid_result_pair_are_rejected);
     return UNITY_END();
 }

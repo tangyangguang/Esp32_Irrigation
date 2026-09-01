@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "IrrigationAuditStore.h"
 #include "IrrigationConfig.h"
 #include "IrrigationTypes.h"
 
@@ -25,45 +26,43 @@ public:
         RtcUnavailable = 1103,
         TrustedTimeUnavailable = 1104,
     };
-
     enum class ReasonCode : uint32_t {
-        FlowStartTimeout = 1,
-        NoFlowTimeout = 2,
-        HardwareFailure = 3,
-        MaintenanceInterrupted = 4,
-        LowFlow = 5,
-        HighFlow = 6,
-        ClosedValveFlow = 7,
-        TargetVolumeTimeout = 8,
-        RecordStartTimeUnavailable = 103,
-        RecordAppendFailed = 104,
-        PausedIndefinitely = 201,
-        PausedUntil = 202,
-        ResumedManually = 203,
-        ResumedAutomatically = 204,
-        PlanBusy = 211,
-        PlanStartRejected = 212,
-        PlanBusyManualWatering = 213,
-        PlanBusyAutomaticWatering = 214,
-        PlanBusyFlowCalibration = 215,
-        PlanBusyZoneFlowLearning = 216,
-        PlanPreviousResultPending = 217,
-        PlanControllerNotReady = 218,
-        PlanInvalidRequest = 219,
-        PlanHardwareFailure = 220,
-        SchedulerStateStorage = 221,
-        RtcRollback = 231,
-        RtcUnavailable = 232,
-        TrustedTimeUnavailable = 233,
-        CalibrationCoefficientSaved = 301,
-        ZoneFlowSaved = 302,
-        PlanCreated = 401,
-        PlanUpdated = 402,
-        PlanDeleted = 403,
-        ZoneUpdated = 404,
-        SystemParametersUpdated = 405,
+        PausedIndefinitely = 1,
+        PausedUntil,
+        ResumedManually,
+        ResumedAutomatically,
+        PlanBusy,
+        PlanStartRejected,
+        PlanBusyManualWatering,
+        PlanBusyAutomaticWatering,
+        PlanBusyFlowCalibration,
+        PlanBusyZoneFlowLearning,
+        PlanPreviousResultPending,
+        PlanControllerNotReady,
+        PlanInvalidRequest,
+        PlanHardwareFailure,
+        FlowStartTimeout,
+        NoFlowTimeout,
+        HardwareFailure,
+        MaintenanceInterrupted,
+        LowFlow,
+        HighFlow,
+        ClosedValveFlow,
+        TargetVolumeTimeout,
+        RecordStartTimeUnavailable,
+        RecordAppendFailed,
+        SchedulerStateStorage,
+        RtcRollback,
+        RtcUnavailable,
+        TrustedTimeUnavailable,
+        CalibrationCoefficientSaved,
+        ZoneFlowSaved,
+        PlanCreated,
+        PlanUpdated,
+        PlanDeleted,
+        ZoneUpdated,
+        SystemParametersUpdated,
     };
-
     enum class ConfigurationChange : uint8_t {
         PlanCreated,
         PlanUpdated,
@@ -71,14 +70,12 @@ public:
         ZoneUpdated,
         SystemParametersUpdated,
     };
-
     enum class Category : uint8_t {
         WateringAndFlow,
         AutomaticWatering,
         SettingsAndCalibration,
         TimeAndStorage,
     };
-
     enum class ConditionDisplayState : uint8_t {
         Unknown,
         Normal,
@@ -86,32 +83,48 @@ public:
         ConfirmingActivation,
         ConfirmingRecovery,
     };
-
-    using ReadCallback = Esp32BaseAppEvents::ReadCallback;
+    enum class Level : uint8_t { Info, Warning, Error };
+    struct EventRecord {
+        uint32_t recordId = 0;
+        Esp32BaseRecordStore::RecordTiming timing{};
+        uint32_t eventCode = 0;
+        uint32_t reasonCode = 0;
+        uint8_t conditionId = 0;
+        uint8_t eventKind = 0;
+        uint32_t objectId = 0;
+        int32_t value1 = 0;
+        int32_t value2 = 0;
+        uint8_t flags = 0;
+        Level level = Level::Info;
+    };
+    struct EventStatus {
+        Esp32BaseRecordStore::StoreStatus eventStore{};
+        bool conditionStateLoaded = false;
+        bool conditionStateSavePending = false;
+    };
+    using ReadCallback = void (*)(const EventRecord&, void*);
 
     IrrigationEvents();
-
+    bool begin();
+    IrrigationAuditStore& auditStore();
     void syncStorageStatus();
     bool resetConditionHistory();
     bool storageFault() const;
-    bool readStatus(Esp32BaseAppEvents::AppEventsStatus& status) const;
-    bool readLatest(uint32_t offset,
-                    uint32_t limit,
-                    ReadCallback callback,
-                    void* user = nullptr) const;
+    bool readStatus(EventStatus& status) const;
+    bool readLatest(uint32_t offset, uint32_t limit,
+                    ReadCallback callback, void* user = nullptr) const;
 
-    void recordAbnormalWateringStop(const WateringSessionSummary& summary);
-    void recordFlowDeviationEvent(const ZoneWateringSummary& zone,
-                                  ReasonCode reason,
-                                  bool stopped,
-                                  WateringSource source,
-                                  uint8_t planId);
+    void recordAbnormalWateringStop(const WateringSessionSummary&) {}
+    void recordFlowDeviationEvent(const ZoneWateringSummary&, ReasonCode, bool,
+                                  WateringSource, uint8_t) {}
     void recordAutomaticWateringPaused(bool indefinitely, uint32_t resumeAtEpoch);
     void recordAutomaticWateringResumed(bool automatically);
-    void recordAutomaticPlanSkipped(uint8_t planId,
-                                    const char* planName,
+    void recordAutomaticPlanSkipped(uint8_t planId, const char* planName,
                                     WateringStartResult result,
                                     const WateringStatus& status);
+    void recordAutomaticRun(
+        const Esp32BaseRecordStore::RecordStartTime& startTime,
+        const WateringSessionSummary& summary);
     void recordFlowCalibrationSaved(uint32_t previousCoefficientX100,
                                     uint32_t coefficientX100,
                                     uint32_t pulseCount,
@@ -123,38 +136,35 @@ public:
     void recordConfigurationChanged(ConfigurationChange change,
                                     uint8_t objectId = 0,
                                     const IrrigationConfig* config = nullptr);
-    void recordWateringRecordSaveFailed(ReasonCode reason,
-                                        Esp32BaseRecordStore::StoreState state,
-                                        Esp32BaseRecordStore::StoreError error);
-    void recordSchedulerStateSaveFailed();
-    void recordBusinessStorageFailed(const char* area, const char* reason);
+    void recordWateringRecordSaveFailed(ReasonCode,
+                                        Esp32BaseRecordStore::StoreState,
+                                        Esp32BaseRecordStore::StoreError) {}
+    void recordSchedulerStateSaveFailed() {}
+    void recordBusinessStorageFailed(const char*, const char*) {}
 
     void observeRtcAvailability(bool available, uint8_t statusCode);
     void observeTrustedTime(bool trusted);
-    void observeRtcRollback(Esp32BaseAppEvents::ObservedConditionState state);
-    void observeClosedValveFlow(Esp32BaseAppEvents::ObservedConditionState state,
+    void observeRtcRollback(Esp32BaseConditions::ObservedState state);
+    void observeClosedValveFlow(Esp32BaseConditions::ObservedState state,
                                 uint32_t pulseCount,
                                 uint32_t detectedFlowMlPerMinute,
                                 uint16_t windowSec,
                                 uint16_t thresholdPulseCount);
     ConditionDisplayState conditionState(uint8_t conditionId) const;
 
-    static Category category(const Esp32BaseAppEvents::EventRecord& event);
+    static Category category(const EventRecord& event);
     static const char* categoryName(Category category);
-    static const char* levelName(Esp32BaseAppEvents::Level level);
-    static bool hasWateringContext(
-        const Esp32BaseAppEvents::EventRecord& event);
-    static WateringSource wateringSource(
-        const Esp32BaseAppEvents::EventRecord& event);
-    static uint8_t wateringPlanId(
-        const Esp32BaseAppEvents::EventRecord& event);
-    static void formatTitle(const Esp32BaseAppEvents::EventRecord& event,
-                            char* out,
+    static const char* levelName(Level level);
+    static bool hasWateringContext(const EventRecord&) { return false; }
+    static WateringSource wateringSource(const EventRecord&) {
+        return WateringSource::ManualZones;
+    }
+    static uint8_t wateringPlanId(const EventRecord& event);
+    static void formatTitle(const EventRecord& event, char* out,
                             std::size_t length,
                             const char* planName = nullptr,
                             const char* zoneName = nullptr);
-    static void formatSummary(const Esp32BaseAppEvents::EventRecord& event,
-                              char* out,
+    static void formatSummary(const EventRecord& event, char* out,
                               std::size_t length);
 
 private:
@@ -162,35 +172,25 @@ private:
     static constexpr uint8_t kTrustedTimeUnavailableConditionId = 2;
     static constexpr uint8_t kRtcRollbackConditionId = 3;
     static constexpr uint8_t kClosedValveFlowConditionId = 4;
-    static constexpr uint8_t kFlagValue1Capped = 1U << 0U;
-    static constexpr uint8_t kFlagWateringStopped = 1U << 1U;
-    static constexpr uint8_t kFlagAutomaticPlan = 1U << 2U;
-    static constexpr uint8_t kFlagSingleOutput = 1U << 3U;
-    static constexpr uint8_t kPlanIdShift = 3U;
-    static constexpr uint8_t kPlanIdMask = 0x78U;
-    static constexpr uint8_t kFlagWateringContextPresent = 1U << 7U;
 
-    void append(const Esp32BaseAppEvents::EventInput& event);
-    void observe(Esp32BaseAppEvents::ConditionStateTracker& tracker,
-                 Esp32BaseAppEvents::ObservedConditionState state,
-                 const Esp32BaseAppEvents::EventInput& event,
+    bool append(const IrrigationAuditPayload& payload);
+    bool append(const Esp32BaseRecordStore::RecordStartTime& startTime,
+                const IrrigationAuditPayload& payload);
+    void observe(Esp32BaseConditions::ConditionTracker& tracker,
+                 Esp32BaseConditions::ObservedState state,
                  ConditionDisplayState& displayState);
-    void handleDiscreteResult(Esp32BaseAppEvents::DiscreteEventAppendResult result);
-    void handleConditionResult(Esp32BaseAppEvents::ConditionObservationResult result);
-    void updateStorageFault(bool fault, const char* reason);
-    static ReasonCode wateringReason(WateringStopReason reason);
-    static void addWateringContext(Esp32BaseAppEvents::EventInput& event,
-                                   WateringSource source,
-                                   uint8_t planId);
+    static EventRecord present(const StoredIrrigationAuditRecord& stored);
+    static ReasonCode automaticSkipReason(WateringStartResult result,
+                                          const WateringStatus& status);
 
-    Esp32BaseAppEvents::ConditionStateTracker rtcUnavailableCondition_;
-    Esp32BaseAppEvents::ConditionStateTracker trustedTimeUnavailableCondition_;
-    Esp32BaseAppEvents::ConditionStateTracker rtcRollbackCondition_;
-    Esp32BaseAppEvents::ConditionStateTracker closedValveFlowCondition_;
+    IrrigationAuditStore auditStore_;
+    Esp32BaseConditions::ConditionTracker rtcUnavailableCondition_;
+    Esp32BaseConditions::ConditionTracker trustedTimeUnavailableCondition_;
+    Esp32BaseConditions::ConditionTracker rtcRollbackCondition_;
+    Esp32BaseConditions::ConditionTracker closedValveFlowCondition_;
     ConditionDisplayState rtcUnavailableState_ = ConditionDisplayState::Unknown;
     ConditionDisplayState trustedTimeUnavailableState_ = ConditionDisplayState::Unknown;
     ConditionDisplayState rtcRollbackState_ = ConditionDisplayState::Unknown;
     ConditionDisplayState closedValveFlowState_ = ConditionDisplayState::Unknown;
-    bool storageStateKnown_ = false;
     bool storageFault_ = true;
 };

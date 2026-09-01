@@ -16,8 +16,8 @@ struct StoredWateringRecord {
 class WateringRecordStore {
 public:
     static constexpr const char* kRecordTypeName = "watering";
-    static constexpr uint16_t kStoreVersion = 5;
-    static constexpr uint32_t kMaximumStoreBytes = 512UL * 1024UL;
+    static constexpr uint16_t kStoreVersion = 6;
+    static constexpr uint32_t kMaximumStoreBytes = 384UL * 1024UL;
     static constexpr uint32_t kMinimumFileSystemFreeBytes = 32UL * 1024UL;
 
     using ReadCallback = void (*)(const StoredWateringRecord& record, void* user);
@@ -26,7 +26,8 @@ public:
     Esp32BaseRecordStore& baseStore();
     bool captureStartTime(Esp32BaseRecordStore::RecordStartTime& startTime) const;
     bool appendCompleted(const Esp32BaseRecordStore::RecordStartTime& startTime,
-                         const WateringSessionSummary& summary);
+                         const WateringSessionSummary& summary,
+                         const char* relatedCommandId = nullptr);
     bool readLatest(uint32_t offset,
                     uint32_t limit,
                     ReadCallback callback,

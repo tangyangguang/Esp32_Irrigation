@@ -42,7 +42,7 @@ public:
                           uint32_t limit,
                           IrrigationEvents::ReadCallback callback,
                           void* user = nullptr) const;
-    bool readEventStatus(Esp32BaseAppEvents::AppEventsStatus& status) const;
+    bool readEventStatus(IrrigationEvents::EventStatus& status) const;
     IrrigationEvents::ConditionDisplayState eventConditionState(
         uint8_t conditionId) const;
     bool recordStorageFault() const;
