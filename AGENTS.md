@@ -1,5 +1,7 @@
 # ESP32 灌溉项目协作规则
 
+> 目录于 2026-09-08 从 `/Users/tyg/dir/claude_dir/Esp32_Irrigation` 迁移到 `/Users/tyg/workspace/iot/devices/Esp32_Irrigation`；仓库仍可能包含旧路径，执行相关命令前先按新目录核对并修正，完成本项目的路径清理和验证后删除本条。
+
 ## 跨项目架构基线
 
 - 智能设备系统共同的产品定位、角色、权限、通信和数据边界以本机
