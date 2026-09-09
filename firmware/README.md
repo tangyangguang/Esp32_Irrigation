@@ -24,7 +24,7 @@
 
 当前硬件与构建目标均为 **4 MiB ESP32**。8 MiB 分区文件已移除，保留双 1.5 MiB OTA、896 KiB LittleFS 及现有 Store/FileLog 预算；未经同意的容量缩减方案不实施。Core 3 LEDC 安全适配、维护门禁与 SDK 输入阶段 `2133e72`，以及 SDK ESP32 Topic 生命周期修复 `c4e12e0` 已提交推送。
 
-本轮 Base 优化 `0579717` 已提交推送。资源复查结果：Base 公共脚本和配置页 CSS 通过现有 gzip 发送能力缓存，原文逐字无损；设备名称规则收敛到同一有界实现，删除与 SDK 重复的字段集合及 UTF-8 校验，保留数组/整数范围及业务交叉约束。内联编译选项对比无收益，已撤回，不更改最终编译策略。目标 ELF Flash **1601247 B**，相比 **1605707 B** 减少 **4460 B**；静态 RAM **100012 B** 不变。全套协议、日志和 TLS 仍参与链接。
+本轮 Base 优化 `0579717`、设备去重及 4 MiB 目标纠正 `2037223` 已提交推送。资源复查结果：Base 公共脚本和配置页 CSS 通过现有 gzip 发送能力缓存，原文逐字无损；设备名称规则收敛到同一有界实现，删除与 SDK 重复的字段集合及 UTF-8 校验，保留数组/整数范围及业务交叉约束。内联编译选项对比无收益，已撤回，不更改最终编译策略。目标 ELF Flash **1601247 B**，相比 **1605707 B** 减少 **4460 B**；静态 RAM **100012 B** 不变。全套协议、日志和 TLS 仍参与链接。
 
 验证：Base Web 22/22、gzip 协商/二进制边界与源文件无损检查、架构/安全/发布卫生通过；设备配置与协议 22 项通过，另有 33 个平台共享向量通过（初次未设置 `IOT_DEVICE_LAB_DIR` 未运行向量，补齐实际路径后通过）。命令：`python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native -f test_config -f test_iot_protocol`；共享向量使用 `IOT_DEVICE_LAB_DIR=/Users/tyg/workspace/iot/platform/iot-device-lab` 运行 `-e native_iot_vectors`。
 
