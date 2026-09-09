@@ -204,8 +204,6 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
     if (result == WateringStartResult::Started) {
         wateringStartTime_ = startTime;
         wateringStartTimeValid_ = captured;
-        pendingLowFlowEvents_ = {};
-        pendingHighFlowEvents_ = {};
     }
     return result;
 }
@@ -688,8 +686,7 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
     const uint32_t previousFrequency = current->valveDrive.pwmFrequencyHz;
     if (!configStore_.save(proposed, expectedRevision)) {
         if (std::strcmp(configStore_.lastError(), "config_write_failed") == 0) {
-            events_.recordBusinessStorageFailed("configuration",
-                                                "config_write_failed");
+            ESP32BASE_LOG_E("irrigation", "configuration_write_failed");
         }
         if (hardwareChanged && !hardware.configureValvePwmFrequency(previousFrequency)) {
             businessReady_ = false;
@@ -723,7 +720,6 @@ void IrrigationApp::advanceBusiness() {
     }
     refreshRtcCondition(nowMs, false);
     wateringController_.handle(nowMs);
-    reportNewFlowDeviationEvents();
     consumeFinishedWatering(nowMs);
     const IrrigationConfig* config = configStore_.current();
     if (config && !wateringController_.status().active) {
@@ -749,75 +745,6 @@ void IrrigationApp::advanceBusiness() {
                                     config->timeSafety.aliveCheckpointHours,
                                     wateringController_.status().active,
                                     activitySequence);
-        }
-    }
-}
-
-void IrrigationApp::reportNewFlowDeviationEvents() {
-    const WateringStatus status = wateringController_.status();
-    if (status.purpose != WateringPurpose::Normal) return;
-    for (uint8_t index = 0; index < status.stepCount &&
-                            index < status.zones.size(); ++index) {
-        const ZoneWateringSummary& zone = status.zones[index];
-        if (!BoardPins::isValidZoneId(zone.zoneId)) continue;
-        const uint8_t zoneIndex = BoardPins::zoneIndex(zone.zoneId);
-        PendingFlowDeviationEvent& low = pendingLowFlowEvents_[zoneIndex];
-        if (zone.lowFlowActive && !low.pending) {
-            low.zoneName = zone.zoneName;
-            low.detectedFlowMlPerMinute = zone.lowFlowDetectedMlPerMinute;
-            low.baselinePulseRateX10000 = zone.baselinePulseRateX10000;
-            low.baselineFlowMlPerMinute = zone.baselineFlowMlPerMinute;
-            low.flowBaselineAvailable = zone.flowBaselineAvailable;
-            low.pending = true;
-        }
-        PendingFlowDeviationEvent& high = pendingHighFlowEvents_[zoneIndex];
-        if (zone.highFlowActive && !high.pending) {
-            high.zoneName = zone.zoneName;
-            high.detectedFlowMlPerMinute = zone.highFlowDetectedMlPerMinute;
-            high.baselinePulseRateX10000 = zone.baselinePulseRateX10000;
-            high.baselineFlowMlPerMinute = zone.baselineFlowMlPerMinute;
-            high.flowBaselineAvailable = zone.flowBaselineAvailable;
-            high.pending = true;
-        }
-    }
-    if (status.active) {
-        return;
-    }
-    for (uint8_t zoneIndex = 0; zoneIndex < BoardPins::kZoneCount; ++zoneIndex) {
-        const uint8_t zoneId = static_cast<uint8_t>(zoneIndex + 1U);
-        PendingFlowDeviationEvent& low = pendingLowFlowEvents_[zoneIndex];
-        if (low.pending) {
-            ZoneWateringSummary zone{};
-            zone.zoneId = zoneId;
-            zone.zoneName = low.zoneName;
-            zone.lowFlowDetectedMlPerMinute = low.detectedFlowMlPerMinute;
-            zone.baselinePulseRateX10000 = low.baselinePulseRateX10000;
-            zone.baselineFlowMlPerMinute = low.baselineFlowMlPerMinute;
-            zone.flowBaselineAvailable = low.flowBaselineAvailable;
-            events_.recordFlowDeviationEvent(
-                zone,
-                IrrigationEvents::ReasonCode::LowFlow,
-                status.lastStopReason == WateringStopReason::LowFlow,
-                status.source,
-                status.planId);
-            low = {};
-        }
-        PendingFlowDeviationEvent& high = pendingHighFlowEvents_[zoneIndex];
-        if (high.pending) {
-            ZoneWateringSummary zone{};
-            zone.zoneId = zoneId;
-            zone.zoneName = high.zoneName;
-            zone.highFlowDetectedMlPerMinute = high.detectedFlowMlPerMinute;
-            zone.baselinePulseRateX10000 = high.baselinePulseRateX10000;
-            zone.baselineFlowMlPerMinute = high.baselineFlowMlPerMinute;
-            zone.flowBaselineAvailable = high.flowBaselineAvailable;
-            events_.recordFlowDeviationEvent(
-                zone,
-                IrrigationEvents::ReasonCode::HighFlow,
-                status.lastStopReason == WateringStopReason::HighFlow,
-                status.source,
-                status.planId);
-            high = {};
         }
     }
 }
@@ -851,7 +778,6 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
             events_.recordAutomaticRun(wateringStartTime_, *summary);
     }
 
-    events_.recordAbnormalWateringStop(*summary);
     resetUnexpectedFlowMonitor(nowMs);
     applyPendingHardwareConfiguration();
     wateringController_.clearFinishedSession();
@@ -1082,7 +1008,6 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
         }
         case WateringScheduler::Event::StorageFault:
             schedulerStorageFault_ = true;
-            events_.recordSchedulerStateSaveFailed();
             break;
     }
 }

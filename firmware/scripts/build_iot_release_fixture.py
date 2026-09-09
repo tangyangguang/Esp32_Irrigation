@@ -10,7 +10,7 @@ import sys
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 PRIVATE_DIR = PROJECT_DIR / "local_private"
 PRIVATE_HEADER = PRIVATE_DIR / "irrigation_iot_private.h"
-PIO_WRAPPER = PROJECT_DIR.parent.parent / "Esp32Base" / "scripts" / "pio_arduino.py"
+PIO_WRAPPER = PROJECT_DIR.parents[2] / "foundation" / "Esp32Base" / "scripts" / "pio_arduino.py"
 CA_BODY_BYTES = 2048
 
 

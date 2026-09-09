@@ -43,9 +43,9 @@ public:
 
 private:
     struct ReadContext {
-        ReadCallback callback;
-        void* user;
-        bool decodeFailed;
+        ReadCallback callback = nullptr;
+        void* user = nullptr;
+        bool decodeFailed = false;
     };
 
     static void readAdapter(const Esp32BaseRecordStore::RecordView& view, void* user);

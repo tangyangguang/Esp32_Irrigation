@@ -114,9 +114,6 @@ public:
     bool readLatest(uint32_t offset, uint32_t limit,
                     ReadCallback callback, void* user = nullptr) const;
 
-    void recordAbnormalWateringStop(const WateringSessionSummary&) {}
-    void recordFlowDeviationEvent(const ZoneWateringSummary&, ReasonCode, bool,
-                                  WateringSource, uint8_t) {}
     void recordAutomaticWateringPaused(bool indefinitely, uint32_t resumeAtEpoch);
     void recordAutomaticWateringResumed(bool automatically);
     void recordAutomaticPlanSkipped(uint8_t planId, const char* planName,
@@ -136,12 +133,6 @@ public:
     void recordConfigurationChanged(ConfigurationChange change,
                                     uint8_t objectId = 0,
                                     const IrrigationConfig* config = nullptr);
-    void recordWateringRecordSaveFailed(ReasonCode,
-                                        Esp32BaseRecordStore::StoreState,
-                                        Esp32BaseRecordStore::StoreError) {}
-    void recordSchedulerStateSaveFailed() {}
-    void recordBusinessStorageFailed(const char*, const char*) {}
-
     void observeRtcAvailability(bool available, uint8_t statusCode);
     void observeTrustedTime(bool trusted);
     void observeRtcRollback(Esp32BaseConditions::ObservedState state);

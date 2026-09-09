@@ -1,6 +1,28 @@
 # ESP32 灌溉控制器固件
 
-本目录包含当前唯一有效的灌溉控制器固件。产品和业务规则以 `../docs/当前方案/` 为准，硬件事实以 `../pcb_irrigation/` 下 2026-07-11 的 BOM 和网表为准，公共设备能力以同级 `../../Esp32Base` 当前文档和代码为准。
+本目录包含当前唯一有效的灌溉控制器固件。产品和业务规则以 `../docs/当前方案/` 为准，硬件事实以 `../pcb_irrigation/` 下 2026-07-11 的 BOM 和网表为准，公共设备能力以`../../../foundation/Esp32Base` 当前文档和代码为准。
+
+## 当前升级计划（2026-09-10）
+
+本节是唯一当前待办，替代根目录存储过程记录；类型级 G0～G6 仍在 [灌溉类型账本](../../../platform/iot-device-lab/device-types/irrigation-controller/README.md)。
+
+已核实：`29ac715` 已完成紧凑双 Store、移除独立 outbox、Conditions 与审计历史分离、统一 Storage 登记。watering v6 = 193 B / 384 KiB，audit v1 = 24 B / 128 KiB。Base 的 FS 协调、FileLog 统一入口和受保护 Store 机制已有实现，不重做底座。文档旧有“未接入”“App Events”“616 B / 200 条”不能作为当前任务依据。
+
+用户已确认本地来源及未知时间契约：如实标记本地 Web / 微信 / 自动调度；未知绝对时间为空、质量 unknown，照常保存与补发，日期统计排除并显示未覆盖量。无历史迁移或兼容分支。
+
+| 状态 | 交付结果 / 责任 | 尚缺工作与边界 |
+| --- | --- | --- |
+| 待办 | B：设备 + Base 工具链升级 | 使用固定 Core 3.3.8 TLS 产物并核对哈希；适配 LEDC，检查 PWM 失败安全关闭；移除日期校验例外。保留现有分区和 8% OTA 余量门禁，核对实际依赖与 ELF。 |
+| 待办 | C：SDK 平台职责接入 | 将会话、校验、命令生命周期、状态/证据发布交给 SDK；替换设备逐命令 NVS journal，避免按命令反复整块写 Flash；保留重连幂等、启动截止点和先关输出后终态。 |
+| 待办 | D：设备 + SDK 双流可靠存储 | 保留两个业务 Store，以 Base 世代/保护释放配合 SDK 平台连续序号、恢复、ACK 和低频检查点；移除设备自建流元数据与物理 ID 直接充当平台序号。核对 ACK 丢失、记录空洞、部分释放、维护/格式化和故障隔离；当前任一流检查点失败会全局撤销 ready，须修正。 |
+| 待办 | E：定义 + 设备 + 平台投影 | 修复本地来源错标与未知时间队头阻塞；补 state.diagnostics；服务端/小程序复用既有 unknownTimeCount 展示，核对统计类型和记录呈现。当前 SDK 用 ArduinoJson 6，设备用 7，须收敛实际构建依赖及有界文档容量。 |
+| 待办 | F：业务安全与集成收口 | 定向检查两流追加失败后的事实/故障处理、RTC 暂停/恢复、stop 与启动互斥、配置失败和维护出口；按最终代码运行目标编译及成功/明显故障路径测试，提交推送、记录产物和资源。 |
+| 用户后续试运行 | 真实设备与现场边界 | 核对 ESP32 目标并取得烧录/OTA授权后再开展设备连接与现场验证；六路阀、流量/校准、泵（实际安装时）、RTC、断网安全及真实停止由指定硬件验证。长稳、满容量、反复断电不作为本轮开发前置。 |
+| 正式发布前 | 安全与交付边界 | 项目凭据/ACL 隔离、首次 Web 默认认证治理、完整 TLS 握手和受控工具链分发位置需在正式范围确认；不改真实账号、权限或共享环境。 |
+
+本轮存储收尾完成：修复历史读取的未初始化失败标志；移除 12 个无效流量事件缓存、空 API 与调用；修正构建夹具入口路径；删除已失效的根目录存储过程记录，结果和未完成项均已转入本说明。用户已确认维护安全门禁：浇水、校准或学习活动中拒绝 OTA/格式化，重启前先关闭全部输出；随升级实施。
+
+本轮未烧录、复位、OTA、连接 Broker 发业务命令或操作泵阀；旧核心板、旧单流 G5 与后来的用户水路经验均保留原证据层级，不能证明新固件验收。
 
 ## 1. 当前产品范围
 
@@ -40,10 +62,10 @@ MQTT 适配只调用现有配置、调度和浇水入口，不直接操作 GPIO�
 
 当前基础库只支持 `MINIMAL / OFFLINE / LOCAL / IOT` 四个 Profile。项目不得重新引入旧 Profile、`ESP32BASE_ENABLE_WEB_OTA`、`ESP32BASE_ENABLE_ARDUINO_OTA`、ArduinoOTA/espota、3232 监听端口或已删除的认证读取 API。其它项目接入或适配当前基础库时，先阅读：
 
-- `../../Esp32Base/docs/13_integration_and_upgrade.md`
-- `../../Esp32Base/docs/02_profiles.md`
-- `../../Esp32Base/docs/04_web.md`
-- `../../Esp32Base/docs/05_ota.md`
+- `../../../foundation/Esp32Base/docs/13_integration_and_upgrade.md`
+- `../../../foundation/Esp32Base/docs/02_profiles.md`
+- `../../../foundation/Esp32Base/docs/04_web.md`
+- `../../../foundation/Esp32Base/docs/05_ota.md`
 
 项目业务代码只实现灌溉领域能力，不复制 Esp32Base 的 WiFi、Web、认证、OTA、文件系统、日志、时间、RTC、配置、健康和看门狗实现。
 
@@ -102,16 +124,17 @@ LittleFS 挂载失败不会自动格式化。格式化只允许用户在确认�
 在本目录执行。首次使用先准备Esp32Base仓库隔离的双Core环境；本项目当前固定通过Core 2.x目录构建，不依赖用户默认`~/.platformio`：
 
 ```sh
-python3 ../../Esp32Base/scripts/ensure_arduino_platformio.py
+python3 ../../../foundation/Esp32Base/scripts/ensure_arduino_platformio.py
 python3 scripts/generate_web_assets.py --check
-python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e native
-IOT_DEVICE_LAB_DIR=/Users/tyg/workspace/iot-device-lab \
-  python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e native_iot_vectors
-python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test --without-uploading --without-testing
+python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native
+python3 scripts/test_storage_views.py
+IOT_DEVICE_LAB_DIR=/Users/tyg/workspace/iot/platform/iot-device-lab \
+  python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native_iot_vectors
+python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test --without-uploading --without-testing
 python3 scripts/build_iot_release_fixture.py
 
 # 有专用可清空实验板时，执行设备端测试；端口按实际环境替换
-python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test \
+python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test \
   -f test_record_store_device \
   --upload-port /dev/cu.usbserial-XXXXXXXX \
   --test-port /dev/cu.usbserial-XXXXXXXX
@@ -125,19 +148,14 @@ python3 ../../Esp32Base/scripts/pio_arduino.py 2 test -e esp32_record_test \
 - 设备记录测试编译：确认 Esp32Base OFFLINE、两个受管 Record Store、Conditions、独立流 ACK 路由和项目设备测试可链接；
 - 正式构建：夹具脚本拒绝覆盖已有私密头，临时生成带 2 KiB CA 正文的非敏感配置，清理旧目标后完整链接 MQTT/TLS 路径，使用 classic ESP32 4MB balanced 双 OTA 分区并检查 slot 余量。
 
-当前自动与设备端验证基线（2026-09-01）：
+当前快速验证（2026-09-10）：
 
-- Web 资源漂移检查通过；
-- Native 测试 99/99 通过；
-- 当前共享命令向量测试 1/1 通过；
-- `esp32_record_test` 设备测试固件编译通过，覆盖 watering/audit 两 Store 的固定布局、独立 stream/ACK 和 Conditions 当前态；本轮按安全约束未上传或运行实机测试；
-- `esp32_irrigation` Core 2.0.16 构建通过；
-- 使用非敏感完整 MQTTS 配置夹具链接，其中 CA 占位正文为 2 KiB；RAM 111204 B / 33.9%，Flash 1415033 B / 90.0%，OTA 镜像 1421616 B，slot 剩余 151248 B / 9.62%；
-- 使用当前本机私密 MQTTS 配置完整构建：RAM 111204 B / 33.9%，Flash 1416145 B / 90.0%，OTA 镜像 1422720 B，slot 剩余 150144 B / 9.55%。
+- Native 99/99 通过，涵盖控制器、流量保护、调度、校准、记录编码及既有协议。
+- `python3 scripts/test_storage_views.py` 通过：使用 Base 实际 Store 与其主机 FS 夹具，覆盖空历史、正常记录、分页及非法业务 payload；启用自动变量污染以暴露未初始化读取。
+- Core 2 正式 `esp32_irrigation` 增量构建通过，实际 Base 依赖经 PlatformIO link 描述确认是 `foundation/Esp32Base`；完整本机 MQTT 配置参与链接，无上传。RAM 103140 B，Flash 1419769 B；binary 1426352 B，最小 OTA slot 1572864 B，余量 146512 B / 9.31%，超过 8% 门禁。
+- 未运行设备端存储测试或任何硬件动作；以上不证明 Core 3、SDK 接入或真实 MQTT 链路已通过。
 
-N4 设备继续使用现有 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，避免改变分区导致现有配置和业务数据失效。IOT 固件发布门禁固定为至少 8% OTA slot 余量；当前完整配置构建高出门禁 1.55 个百分点，后续任何代码、CA 或静态资源变化都必须重新执行完整 MQTTS 配置构建。
-
-代码变更后必须重新执行这些命令，并用新的实际结果更新本节；不能保留失效的历史构建数字。
+IOT 固件使用 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，发布门禁至少 8% OTA slot 余量。完整 MQTT/TLS 配置参与链接后才报告资源，不能用空配置被 LTO 裁剪后的结果。只重跑本次改动影响的定向检查，不重复已通过且未受影响的测试。
 
 ## 6. Web 静态资源
 
@@ -171,32 +189,13 @@ custom_esp32base_webota_password = <current-web-auth-password>
 操作者确认设备空闲和维护窗口后显式执行：
 
 ```sh
-python3 ../../Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irrigation -t webota
+python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irrigation -t webota
 ```
 
 普通构建和测试不会触发 OTA。不得提交真实设备地址、账号或密码。不得配置 espota、ArduinoOTA 或 3232 端口。
 
-## 8. 实机发布验收
+## 8. 实机验证边界
 
-自动测试和构建不能替代实机。每个待发布版本至少验证：
+目标编译、主机测试、模拟 MQTT、真实服务、真实设备与水路实验分别记录。开发交付不等待长稳、满容量或反复断电；这些由用户在半生产环境逐步验证。
 
-- 写入校验、启动日志、业务 ready 和安全输出初始态；
-- 已有有效配置、WiFi、Web Auth、计划、记录和事件在非破坏升级后仍保留；
-- 六路阀互斥、切换间隔、停止和断电输出关闭；
-- 实际安装水泵时的启停延时和继电器行为；
-- 流量脉冲、校准、基准学习、无流量、高低流量和关阀后异常水流；
-- DS3231、NTP、断网启动、离线自动计划和时间倒退保护；
-- 本地 Web 桌面/窄屏、认证、跨站 POST 拒绝和并发请求；
-- 浏览器 OTA、命令行 raw HTTP OTA、失败回滚和升级后配置保留；
-- LittleFS/NVS 写失败、空间不足、重启和掉电恢复；
-- 长时间运行、最小 heap、看门狗、WiFi 恢复和温升。
-
-当前 IOT 镜像已在专用 ESP32-D0WD-V3 核心板完成串口写入和 Hash 校验，并取得以下实机证据：
-
-- WiFi、NTP、真实 CA/hostname 校验的 MQTTS 认证和 CONNECT 成功；command 与 `record-ack` 双订阅完成后，online 和八项状态均由当前 `iot-device-lab` 定义校验通过；
-- 首次完整状态发布、周期发布和多次重连后不再出现 `Stack canary watchpoint triggered (loopTask)`；页面观测的 loopTask 栈最低余量为 1.90 KiB，最小 heap 为 76.21 KiB，看门狗 trip reset 为 0；
-- 硬复位得到 retained LWT offline，重连使用新的 `connectionId`；正常 Web restart 得到同一旧周期 retained shutdown、服务端 `online → offline → online` 和新 `connectionId`，该正常周期未触发 LWT；命令 journal 中同一 stop 命令的 accepted/succeeded 证据在重启后使用新连接周期重新发布；
-- 可靠记录在没有累计 ACK 时按 5 秒窗口补发；累计 ACK 将同一 `recordStreamId` 从 sequence 1 推进到 2；因仅推进 2 条未触发低频 NVS 检查点，重启后按设计再次补发 sequence 1，同时 `recordStreamId` 保持不变；
-- 设备记录测试通过后已恢复并再次烧录真实 IOT 固件，启动进入 `business_ready`，记录存储状态正常；同一真实配置镜像随后通过命令行 raw HTTP Web OTA 写入另一 app slot，设备报告 100% 并以 software reset 启动，MQTT 与服务端均恢复在线且八项状态重新达到 fresh。
-
-当前核心板没有泵阀、水路、流量计和 DS3231，因此日志中的 DS3231 I2C 写回失败是硬件缺失，不能作为 RTC 验收；六路输出、泵延时、流量保护和现场安全仍需完整灌溉硬件完成 G6。当前镜像尚未完成浏览器 multipart OTA、至少 24 小时稳定运行和浏览器视觉验收。
+任何烧录、复位、OTA、格式化、真实 command 或水泵/阀门动作先核对具体目标和授权。过去核心板的无动作 MQTT/OTA 结果以及用户曾验证的实际水路，只说明对应旧版本和环境可用。当前升级后的设备连接、完整 TLS、互斥控制、流量保护、RTC 和现场安全尚未验证。

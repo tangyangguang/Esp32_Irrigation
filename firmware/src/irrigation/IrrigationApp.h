@@ -123,7 +123,6 @@ private:
     bool saveZoneBaselinePulseRate(uint8_t zoneId,
                                    uint32_t pulseRateX10000,
                                    uint32_t expectedConfigRevision);
-    void reportNewFlowDeviationEvents();
     uint32_t trustedEpoch() const;
 
     bool started_ = false;
@@ -138,18 +137,6 @@ private:
     bool eventConditionsInitialized_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
     uint32_t pendingLearnedBaselinePulseRateX10000_ = 0;
-    struct PendingFlowDeviationEvent {
-        std::array<char, kObjectNameCapacity> zoneName{};
-        uint32_t detectedFlowMlPerMinute = 0;
-        uint32_t baselinePulseRateX10000 = 0;
-        uint32_t baselineFlowMlPerMinute = 0;
-        bool flowBaselineAvailable = false;
-        bool pending = false;
-    };
-    std::array<PendingFlowDeviationEvent, BoardPins::kZoneCount>
-        pendingLowFlowEvents_{};
-    std::array<PendingFlowDeviationEvent, BoardPins::kZoneCount>
-        pendingHighFlowEvents_{};
     IrrigationConfig parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
     FlowCalibrationService flowCalibrationService_;
