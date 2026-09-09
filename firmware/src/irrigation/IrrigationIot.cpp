@@ -368,7 +368,9 @@ void IrrigationIot::onMessage(const Esp32BaseMqtt::MessageView& message) {
     if (std::strcmp(message.topic, commandTopic_) == 0) {
         IrrigationIotProtocol::Command command;
         const IrrigationIotProtocol::ParseError error =
-            IrrigationIotProtocol::parseCommand(packet, commandTopic_, command);
+            IrrigationIotProtocol::parseCommand(packet,
+                {IrrigationIotProtocol::kTypeKey, IrrigationIotProtocol::kTypeKey, 1,
+                 IrrigationIotProtocol::kModelKey, deviceId_}, command);
         if (error != IrrigationIotProtocol::ParseError::None) {
             ESP32BASE_LOG_W("irrigation_iot",
                             "command_rejected_before_receipt error=%s",
@@ -389,7 +391,9 @@ void IrrigationIot::onMessage(const Esp32BaseMqtt::MessageView& message) {
         // store; malformed or premature ACKs never affect command/state flow.
         IrrigationIotProtocol::RecordAck ack;
         const IrrigationIotProtocol::ParseError error =
-            IrrigationIotProtocol::parseRecordAck(packet, recordAckTopic_, ack);
+            IrrigationIotProtocol::parseRecordAck(packet,
+                {IrrigationIotProtocol::kTypeKey, IrrigationIotProtocol::kTypeKey, 1,
+                 IrrigationIotProtocol::kModelKey, deviceId_}, ack);
         if (error != IrrigationIotProtocol::ParseError::None) {
             ESP32BASE_LOG_W("irrigation_iot", "record_ack_rejected error=%s",
                             IrrigationIotProtocol::parseErrorName(error));

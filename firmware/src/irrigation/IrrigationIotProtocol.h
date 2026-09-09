@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <PlatformProtocol.h>
 
 #include "IrrigationConfig.h"
 #include "IrrigationTypes.h"
@@ -103,7 +104,7 @@ struct CommandPacket {
 };
 
 ParseError parseCommand(const CommandPacket& packet,
-                        const char* expectedTopic,
+                        const iot_device::PlatformIdentity& identity,
                         Command& command);
 const char* parseErrorName(ParseError error);
 const char* capabilityKey(CommandKind kind);
@@ -161,11 +162,10 @@ bool isValidUuid(const char* value);
 struct RecordAck {
     Uuid recordStreamId{};
     uint32_t acknowledgedThroughSequence = 0;
-    uint64_t acknowledgedAtMs = 0;
 };
 
 ParseError parseRecordAck(const CommandPacket& packet,
-                          const char* expectedTopic,
+                          const iot_device::PlatformIdentity& identity,
                           RecordAck& ack);
 
 }  // namespace IrrigationIotProtocol

@@ -5,6 +5,8 @@
 #include "irrigation/IrrigationIotProtocol.h"
 
 namespace {
+const iot_device::PlatformIdentity kIdentity{"irrigation-controller", "irrigation-controller", 1,
+    "irrigation-controller-6-zone", "33333333-3333-4333-8333-333333333333"};
 
 constexpr const char* kCommandTopic =
     "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command";
@@ -22,7 +24,7 @@ IrrigationIotProtocol::ParseError parse(const char* json,
     packet.payloadLength = std::strlen(json);
     packet.qos = qos;
     packet.retain = retain;
-    return IrrigationIotProtocol::parseCommand(packet, kCommandTopic, command);
+    return IrrigationIotProtocol::parseCommand(packet, kIdentity, command);
 }
 
 void test_timestamp_round_trip_and_rejects_noncanonical_values() {
@@ -164,11 +166,11 @@ void test_invalid_utf8_is_distinguished_from_invalid_json() {
     packet.qos = 1;
     IrrigationIotProtocol::Command command;
     TEST_ASSERT_EQUAL(IrrigationIotProtocol::ParseError::InvalidUtf8,
-                      IrrigationIotProtocol::parseCommand(packet, kCommandTopic, command));
+                      IrrigationIotProtocol::parseCommand(packet, kIdentity, command));
     const uint8_t invalidJson[] = {'{'};
     packet.payload = invalidJson;
     TEST_ASSERT_EQUAL(IrrigationIotProtocol::ParseError::InvalidJson,
-                      IrrigationIotProtocol::parseCommand(packet, kCommandTopic, command));
+                      IrrigationIotProtocol::parseCommand(packet, kIdentity, command));
 }
 
 void test_plan_replacement_preserves_only_disabled_zone_projection() {
@@ -214,7 +216,7 @@ void test_record_ack_requires_current_fixed_shape() {
     packet.qos = 1;
     IrrigationIotProtocol::RecordAck ack;
     TEST_ASSERT_EQUAL(IrrigationIotProtocol::ParseError::None,
-                      IrrigationIotProtocol::parseRecordAck(packet, kAckTopic, ack));
+                      IrrigationIotProtocol::parseRecordAck(packet, kIdentity, ack));
     TEST_ASSERT_EQUAL_STRING("9cbaf1cf-e1a9-4f9d-9a39-fd7db5a93446",
                              ack.recordStreamId);
     TEST_ASSERT_EQUAL_UINT32(42, ack.acknowledgedThroughSequence);

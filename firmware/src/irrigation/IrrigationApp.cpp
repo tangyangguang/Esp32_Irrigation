@@ -5,6 +5,7 @@
 #include <Wire.h>
 
 #include <climits>
+#include <cstdio>
 #include <cstring>
 
 #include "BoardHardware.h"
@@ -83,6 +84,9 @@ bool IrrigationApp::begin() {
     if (!IrrigationIot::instance().configure()) {
         return failStartup(hardware, statusIndicator_);
     }
+    Esp32BaseOta::setUploadGuard(allowMaintenance, this);
+    Esp32BaseStorage::setFormatGuard(allowMaintenance, this);
+    Esp32Base::setBeforeLifecycleStopCallback(beforeLifecycleStop, this);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
     Esp32BaseWeb::setAfterFormatFsCallback(afterFormatFs, this);
     if (!IrrigationParameterConfig::registerFields(parameterConfigSaved,
@@ -169,6 +173,11 @@ void IrrigationApp::handle() {
         return;
     }
 
+    if (Esp32BaseOta::isUploading() || Esp32BaseOta::status() == Esp32BaseOta::SUCCESS) {
+        BoardHardware::instance().safeShutdown();
+        Esp32Base::handle();
+        return;
+    }
     advanceBusiness();
     IrrigationIot::instance().handle(*this);
     updateStatusIndicator(nowMs);
@@ -184,6 +193,9 @@ bool IrrigationApp::businessReady() const {
 }
 
 WateringStartResult IrrigationApp::startWatering(const WateringRequest& request) {
+    if (Esp32BaseOta::isUploading() || Esp32BaseOta::status() == Esp32BaseOta::SUCCESS) {
+        return WateringStartResult::Busy;
+    }
     if (!businessReady_) {
         return WateringStartResult::NotReady;
     }
@@ -1010,6 +1022,21 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
             schedulerStorageFault_ = true;
             break;
     }
+}
+
+bool IrrigationApp::allowMaintenance(void* user) {
+    auto* app = static_cast<IrrigationApp*>(user);
+    return app && !app->wateringController_.status().active;
+}
+
+void IrrigationApp::beforeLifecycleStop(void* user) {
+    auto* app = static_cast<IrrigationApp*>(user);
+    // Hardware closure always precedes filesystem work and bounded network waits.
+    BoardHardware::instance().safeShutdown();
+    if (!app) return;
+    app->wateringController_.abortForMaintenance(millis());
+    app->consumeFinishedWatering(millis());
+    app->businessReady_ = false;
 }
 
 void IrrigationApp::afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user) {

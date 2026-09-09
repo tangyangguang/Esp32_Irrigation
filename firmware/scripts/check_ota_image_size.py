@@ -4,9 +4,7 @@ from pathlib import Path
 Import("env")
 
 
-# The production IOT image retains the existing N4 partition table so OTA
-# upgrades preserve LittleFS and user configuration. Its MQTT/TLS stack leaves
-# just over 8% with the non-secret release fixture, so 8% is the explicit floor.
+# The current 8 MiB target retains two equal OTA slots and an 8% image margin.
 MINIMUM_REMAINING_PERCENT = 8.0
 
 

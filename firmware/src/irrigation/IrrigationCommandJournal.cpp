@@ -230,7 +230,7 @@ bool IrrigationCommandJournal::valid(const PersistentState& state) const {
 }
 
 void IrrigationCommandJournal::initialize() {
-    state_ = {};
+    state_ = PersistentState{};
     state_.magic = kMagic;
     state_.version = kVersion;
     state_.crc32 = calculateCrc(state_);

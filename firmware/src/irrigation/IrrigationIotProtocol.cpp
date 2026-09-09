@@ -1,6 +1,8 @@
 #include "IrrigationIotProtocol.h"
 
 #include "IrrigationJsonCapacity.h"
+#include <CommandInput.h>
+#include "generated/IrrigationModel.h"
 
 #include <cstdio>
 #include <cstring>
@@ -10,30 +12,6 @@ namespace {
 
 constexpr uint64_t kFnvOffset = 1469598103934665603ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;
-
-bool isLeapYear(uint32_t year) {
-    return (year % 4U == 0U && year % 100U != 0U) || year % 400U == 0U;
-}
-
-uint8_t daysInMonth(uint32_t year, uint32_t month) {
-    static constexpr uint8_t kDays[] = {
-        31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-    };
-    return month == 2U && isLeapYear(year) ? 29U : kDays[month - 1U];
-}
-
-int64_t daysFromCivil(int32_t year, uint32_t month, uint32_t day) {
-    year -= month <= 2U;
-    const int32_t era = (year >= 0 ? year : year - 399) / 400;
-    const uint32_t yearOfEra = static_cast<uint32_t>(year - era * 400);
-    const uint32_t dayOfYear =
-        (153U * (month + (month > 2U ? static_cast<uint32_t>(-3) : 9U)) + 2U) /
-            5U +
-        day - 1U;
-    const uint32_t dayOfEra =
-        yearOfEra * 365U + yearOfEra / 4U - yearOfEra / 100U + dayOfYear;
-    return static_cast<int64_t>(era) * 146097LL + dayOfEra - 719468LL;
-}
 
 void civilFromDays(int64_t days, int32_t& year, uint32_t& month, uint32_t& day) {
     days += 719468LL;
@@ -50,21 +28,6 @@ void civilFromDays(int64_t days, int32_t& year, uint32_t& month, uint32_t& day) 
     day = dayOfYear - (153U * monthPrime + 2U) / 5U + 1U;
     month = monthPrime + (monthPrime < 10U ? 3U : static_cast<uint32_t>(-9));
     year += month <= 2U;
-}
-
-bool parseDigits(const char* value,
-                 std::size_t offset,
-                 std::size_t count,
-                 uint32_t& result) {
-    result = 0;
-    for (std::size_t index = 0; index < count; ++index) {
-        const char ch = value[offset + index];
-        if (ch < '0' || ch > '9') {
-            return false;
-        }
-        result = result * 10U + static_cast<uint32_t>(ch - '0');
-    }
-    return true;
 }
 
 bool hasExactFields(JsonObjectConst object,
@@ -467,77 +430,47 @@ bool parseParameters(JsonObjectConst parameters, Command& command) {
 }  // namespace
 
 ParseError parseCommand(const CommandPacket& packet,
-                        const char* expectedTopic,
+                        const iot_device::PlatformIdentity& identity,
                         Command& command) {
     command = {};
-    if (!packet.topic || !expectedTopic ||
-        std::strcmp(packet.topic, expectedTopic) != 0) {
+    if (!packet.topic || !iot_device::platformTopicMatches(identity, iot_device::Channel::Command,
+                                                          packet.topic, std::strlen(packet.topic)))
         return ParseError::UnexpectedTopic;
-    }
-    if (packet.qos != 1U) {
-        return ParseError::InvalidQos;
-    }
-    if (packet.retain) {
-        return ParseError::RetainedCommand;
-    }
-    if (!packet.payload || packet.payloadLength == 0U ||
-        packet.payloadLength > 4096U) {
+    if (packet.qos != 1U) return ParseError::InvalidQos;
+    if (packet.retain) return ParseError::RetainedCommand;
+    if (!packet.payload || !packet.payloadLength || packet.payloadLength > 4096U)
         return ParseError::InvalidJson;
-    }
 
-    if (!validUtf8(packet.payload, packet.payloadLength)) {
-        return ParseError::InvalidUtf8;
-    }
     DynamicJsonDocument document(IrrigationJsonCapacity::command);
-    const DeserializationError jsonError =
-        deserializeJson(document, packet.payload, packet.payloadLength);
-    if (jsonError || !document.is<JsonObjectConst>()) {
-        return ParseError::InvalidJson;
+    iot_device::CommandView input;
+    const auto error = iot_device::parseCommand(
+        iot_device::model_irrigation_controller_6_zone::contract, identity,
+        packet.topic, std::strlen(packet.topic), packet.qos, packet.retain,
+        packet.payload, packet.payloadLength, 0, document, input);
+    switch (error) {
+        case iot_device::CommandError::None: break;
+        case iot_device::CommandError::UnknownCapability: return ParseError::UnknownCapability;
+        case iot_device::CommandError::InvalidExpiry:
+        case iot_device::CommandError::Expired: return ParseError::InvalidExpiry;
+        case iot_device::CommandError::SchemaRejected: return ParseError::SchemaMismatch;
+        case iot_device::CommandError::InvalidFields: return ParseError::InvalidFields;
+        case iot_device::CommandError::InvalidProtocol: return ParseError::InvalidProtocol;
+        case iot_device::CommandError::InvalidCommandId: return ParseError::InvalidCommandId;
+        case iot_device::CommandError::InvalidTimestamp: return ParseError::InvalidTimestamp;
+        case iot_device::CommandError::InvalidUtf8: return ParseError::InvalidUtf8;
+        default: return ParseError::InvalidJson;
     }
-    const JsonObjectConst root = document.as<JsonObjectConst>();
-    static constexpr const char* kFields[] = {
-        "protocol", "commandId", "capabilityKey", "parameters", "issuedAt",
-        "expiresAt",
-    };
-    if (!hasExactFields(root, kFields, 6)) {
-        return ParseError::InvalidFields;
-    }
-    if (!root["protocol"].is<const char*>() ||
-        std::strcmp(root["protocol"].as<const char*>(), kProtocol) != 0) {
-        return ParseError::InvalidProtocol;
-    }
-    if (!root["commandId"].is<const char*>() ||
-        !isValidUuid(root["commandId"].as<const char*>())) {
-        return ParseError::InvalidCommandId;
-    }
-    std::strcpy(command.commandId, root["commandId"].as<const char*>());
-    if (!root["capabilityKey"].is<const char*>()) {
-        return ParseError::UnknownCapability;
-    }
-    bool capabilityValid = false;
-    command.kind = commandKind(root["capabilityKey"].as<const char*>(),
-                               capabilityValid);
-    if (!capabilityValid) {
-        return ParseError::UnknownCapability;
-    }
-    if (!root["parameters"].is<JsonObjectConst>()) {
-        return ParseError::SchemaMismatch;
-    }
-    if (!root["issuedAt"].is<const char*>() ||
-        !root["expiresAt"].is<const char*>() ||
-        !parseCanonicalTimestamp(root["issuedAt"].as<const char*>(),
-                                 command.issuedAtMs) ||
-        !parseCanonicalTimestamp(root["expiresAt"].as<const char*>(),
-                                 command.expiresAtMs)) {
+    // The SDK owns the platform envelope and model validation. Conversion and
+    // cross-field irrigation constraints stay here; no second envelope parser.
+    std::strcpy(command.commandId, input.commandId);
+    bool validKind = false;
+    command.kind = commandKind(input.capability->key, validKind);
+    if (!validKind) return ParseError::UnknownCapability;
+    command.issuedAtMs = input.issuedAtMs;
+    command.expiresAtMs = input.expiresAtMs;
+    if (command.issuedAtMs / 1000ULL > UINT32_MAX || command.expiresAtMs / 1000ULL > UINT32_MAX)
         return ParseError::InvalidTimestamp;
-    }
-    if (command.expiresAtMs <= command.issuedAtMs ||
-        command.expiresAtMs - command.issuedAtMs > commandTtlMs(command.kind)) {
-        return ParseError::InvalidExpiry;
-    }
-    if (!parseParameters(root["parameters"].as<JsonObjectConst>(), command)) {
-        return ParseError::SchemaMismatch;
-    }
+    if (!parseParameters(input.parameters, command)) return ParseError::SchemaMismatch;
     calculateSignature(command);
     return ParseError::None;
 }
@@ -759,42 +692,11 @@ const char* rejectionName(Rejection rejection) {
 }
 
 bool parseCanonicalTimestamp(const char* value, uint64_t& epochMs) {
-    epochMs = 0;
-    if (!value || std::strlen(value) != 24U || value[4] != '-' ||
-        value[7] != '-' || value[10] != 'T' || value[13] != ':' ||
-        value[16] != ':' || value[19] != '.' || value[23] != 'Z') {
-        return false;
-    }
-    uint32_t year = 0;
-    uint32_t month = 0;
-    uint32_t day = 0;
-    uint32_t hour = 0;
-    uint32_t minute = 0;
-    uint32_t second = 0;
-    uint32_t milliseconds = 0;
-    if (!parseDigits(value, 0, 4, year) ||
-        !parseDigits(value, 5, 2, month) ||
-        !parseDigits(value, 8, 2, day) ||
-        !parseDigits(value, 11, 2, hour) ||
-        !parseDigits(value, 14, 2, minute) ||
-        !parseDigits(value, 17, 2, second) ||
-        !parseDigits(value, 20, 3, milliseconds) || year < 1970U ||
-        year > 2106U || month < 1U || month > 12U || day < 1U ||
-        day > daysInMonth(year, month) || hour > 23U || minute > 59U ||
-        second > 59U) {
-        return false;
-    }
-    const int64_t days = daysFromCivil(static_cast<int32_t>(year), month, day);
-    if (days < 0) {
-        return false;
-    }
-    const uint64_t seconds =
-        static_cast<uint64_t>(days) * 86400ULL + hour * 3600ULL +
-        minute * 60ULL + second;
-    if (seconds > UINT32_MAX) {
-        return false;
-    }
-    epochMs = seconds * 1000ULL + milliseconds;
+    if (!value) return false;
+    uint64_t parsed = 0;
+    if (!iot_device::utcEpochMilliseconds(value, std::strlen(value), parsed) ||
+        parsed / 1000ULL > UINT32_MAX) return false;
+    epochMs = parsed;
     return true;
 }
 
@@ -829,79 +731,26 @@ bool formatTimestamp(uint32_t epochSec,
 }
 
 bool isValidUuid(const char* value) {
-    if (!value || std::strlen(value) != kUuidTextLength) {
-        return false;
-    }
-    for (std::size_t index = 0; index < kUuidTextLength; ++index) {
-        if (index == 8U || index == 13U || index == 18U || index == 23U) {
-            if (value[index] != '-') {
-                return false;
-            }
-            continue;
-        }
-        const char ch = value[index];
-        if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') ||
-              (ch >= 'A' && ch <= 'F'))) {
-            return false;
-        }
-    }
-    const char version = value[14];
-    const char variant = value[19];
-    return version >= '1' && version <= '8' &&
-           (variant == '8' || variant == '9' || variant == 'a' ||
-            variant == 'A' || variant == 'b' || variant == 'B');
+    uint8_t bytes[16];
+    return value && iot_device::parseUuid(value, std::strlen(value), bytes);
 }
 
 ParseError parseRecordAck(const CommandPacket& packet,
-                          const char* expectedTopic,
+                          const iot_device::PlatformIdentity& identity,
                           RecordAck& ack) {
     ack = {};
-    if (!packet.topic || !expectedTopic ||
-        std::strcmp(packet.topic, expectedTopic) != 0) {
+    if (!packet.topic || !iot_device::platformTopicMatches(identity, iot_device::Channel::RecordAck,
+                                                          packet.topic, std::strlen(packet.topic)))
         return ParseError::UnexpectedTopic;
-    }
-    if (packet.qos != 1U) {
-        return ParseError::InvalidQos;
-    }
-    if (packet.retain) {
-        return ParseError::RetainedCommand;
-    }
-    DynamicJsonDocument document(IrrigationJsonCapacity::ack);
-    if (!packet.payload || packet.payloadLength == 0U ||
-        packet.payloadLength > 4096U) {
+    if (packet.qos != 1U) return ParseError::InvalidQos;
+    if (packet.retain) return ParseError::RetainedCommand;
+    iot_device::RecordAcknowledgement input{};
+    if (!iot_device::parseRecordAcknowledgement(identity, packet.topic, std::strlen(packet.topic),
+                                                packet.qos, packet.retain, packet.payload,
+                                                packet.payloadLength, input) || input.sequence > UINT32_MAX)
         return ParseError::InvalidJson;
-    }
-    if (!validUtf8(packet.payload, packet.payloadLength)) {
-        return ParseError::InvalidUtf8;
-    }
-    if (deserializeJson(document, packet.payload, packet.payloadLength) ||
-        !document.is<JsonObjectConst>()) {
-        return ParseError::InvalidJson;
-    }
-    const JsonObjectConst root = document.as<JsonObjectConst>();
-    static constexpr const char* kFields[] = {
-        "protocol", "recordStreamId", "acknowledgedThroughSequence",
-        "acknowledgedAt",
-    };
-    if (!hasExactFields(root, kFields, 4)) {
-        return ParseError::InvalidFields;
-    }
-    if (!root["protocol"].is<const char*>() ||
-        std::strcmp(root["protocol"].as<const char*>(), kProtocol) != 0) {
-        return ParseError::InvalidProtocol;
-    }
-    if (!root["recordStreamId"].is<const char*>() ||
-        !isValidUuid(root["recordStreamId"].as<const char*>()) ||
-        !root["acknowledgedThroughSequence"].is<uint32_t>() ||
-        !root["acknowledgedAt"].is<const char*>() ||
-        !parseCanonicalTimestamp(root["acknowledgedAt"].as<const char*>(),
-                                 ack.acknowledgedAtMs)) {
-        return ParseError::SchemaMismatch;
-    }
-    std::strcpy(ack.recordStreamId,
-                root["recordStreamId"].as<const char*>());
-    ack.acknowledgedThroughSequence =
-        root["acknowledgedThroughSequence"].as<uint32_t>();
+    iot_device::uuidText(input.generation, ack.recordStreamId);
+    ack.acknowledgedThroughSequence = static_cast<uint32_t>(input.sequence);
     return ParseError::None;
 }
 

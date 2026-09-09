@@ -54,7 +54,7 @@ void test_shared_platform_command_vectors() {
     const std::string fixture = readFile(path);
     TEST_ASSERT_FALSE_MESSAGE(fixture.empty(), path.c_str());
 
-    JsonDocument document;
+    DynamicJsonDocument document(fixture.size() * 4 + 1024);
     TEST_ASSERT_FALSE(deserializeJson(document, fixture));
     TEST_ASSERT_EQUAL_STRING("1", document["schemaVersion"].as<const char*>());
     TEST_ASSERT_EQUAL_STRING("irrigation-controller",
@@ -91,7 +91,8 @@ void test_shared_platform_command_vectors() {
         packet.retain = testCase["retain"].as<bool>();
         IrrigationIotProtocol::Command command;
         const IrrigationIotProtocol::ParseError result =
-            IrrigationIotProtocol::parseCommand(packet, expectedTopic, command);
+            IrrigationIotProtocol::parseCommand(packet,
+                {"irrigation-controller", "irrigation-controller", 1, "irrigation-controller-6-zone", deviceId}, command);
         const JsonObjectConst expected = testCase["expected"].as<JsonObjectConst>();
         const bool accepted = expected["accepted"].as<bool>();
         if (accepted) {

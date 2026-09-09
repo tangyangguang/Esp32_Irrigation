@@ -55,10 +55,11 @@ def main() -> int:
             [
                 sys.executable,
                 str(PIO_WRAPPER),
-                "2",
+                "3",
+                "--tls-toolchain",
                 "run",
                 "-e",
-                "esp32_irrigation",
+                "esp32_irrigation_arduino3",
                 "--target",
                 "clean",
             ],
@@ -69,10 +70,11 @@ def main() -> int:
         command = [
             sys.executable,
             str(PIO_WRAPPER),
-            "2",
+            "3",
+            "--tls-toolchain",
             "run",
             "-e",
-            "esp32_irrigation",
+            "esp32_irrigation_arduino3",
         ]
         if args.upload_port:
             command.extend(["--target", "upload", "--upload-port", args.upload_port])

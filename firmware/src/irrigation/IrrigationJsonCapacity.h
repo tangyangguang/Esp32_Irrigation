@@ -19,5 +19,4 @@ constexpr size_t config = JSON_OBJECT_SIZE(9 + 4 + 3 + 1 + 10 + 2) +
     JSON_ARRAY_SIZE(kWateringPlanCount) + kWateringPlanCount *
         (JSON_OBJECT_SIZE(6) + JSON_ARRAY_SIZE(kPlanStartTimeCount) + JSON_ARRAY_SIZE(BoardPins::kZoneCount)) +
     2048; // all unique field names and 14 names of up to 63 UTF-8 bytes
-constexpr size_t ack = JSON_OBJECT_SIZE(4) + 512;
 }

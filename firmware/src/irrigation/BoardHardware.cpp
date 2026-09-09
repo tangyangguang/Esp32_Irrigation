@@ -42,11 +42,11 @@ bool BoardHardware::begin(uint32_t pwmFrequencyHz) {
 
     bool pwmReady = true;
     for (uint8_t channel = 0; channel < kPwmChannelCount; ++channel) {
-        if (ledcSetup(channel, pwmFrequencyHz, kPwmResolutionBits) == 0) {
+        if (!ledcAttachChannel(BoardPins::kValvePins[channel], pwmFrequencyHz,
+                               kPwmResolutionBits, channel) ||
+            !ledcWriteChannel(channel, 0)) {
             pwmReady = false;
         }
-        ledcWrite(channel, 0);
-        ledcAttachPin(BoardPins::kValvePins[channel], channel);
     }
 
     pinMode(BoardPins::kFlowMeterPin, INPUT);
@@ -78,10 +78,10 @@ bool BoardHardware::configureValvePwmFrequency(uint32_t frequencyHz) {
     safeShutdown();
     bool success = true;
     for (uint8_t channel = 0; channel < kPwmChannelCount; ++channel) {
-        if (ledcChangeFrequency(channel, frequencyHz, kPwmResolutionBits) == 0) {
+        if (ledcChangeFrequency(BoardPins::kValvePins[channel], frequencyHz, kPwmResolutionBits) == 0) {
             success = false;
         }
-        ledcWrite(channel, 0);
+        if (!ledcWriteChannel(channel, 0)) success = false;
     }
     if (!success) {
         initialized_ = false;
@@ -96,7 +96,11 @@ bool BoardHardware::openValve(uint8_t zoneId, uint8_t dutyPercent) {
 
     closeValves();
     activeZoneId_ = zoneId;
-    ledcWrite(BoardPins::zoneIndex(zoneId), dutyToRaw(dutyPercent));
+    if (!ledcWriteChannel(BoardPins::zoneIndex(zoneId), dutyToRaw(dutyPercent))) {
+        safeShutdown();
+        initialized_ = false;
+        return false;
+    }
     digitalWrite(BoardPins::kValveDriverShutdownPin, LOW);
     return true;
 }
@@ -105,7 +109,11 @@ bool BoardHardware::setActiveValveDuty(uint8_t dutyPercent) {
     if (!initialized_ || activeZoneId_ == 0 || dutyPercent == 0 || dutyPercent > 100) {
         return false;
     }
-    ledcWrite(BoardPins::zoneIndex(activeZoneId_), dutyToRaw(dutyPercent));
+    if (!ledcWriteChannel(BoardPins::zoneIndex(activeZoneId_), dutyToRaw(dutyPercent))) {
+        safeShutdown();
+        initialized_ = false;
+        return false;
+    }
     return true;
 }
 
@@ -141,7 +149,7 @@ uint32_t BoardHardware::flowPulseCount() const {
 }
 
 void IRAM_ATTR BoardHardware::onFlowPulse() {
-    ++flowPulseCount_;
+    flowPulseCount_ = flowPulseCount_ + 1U;
 }
 
 uint8_t BoardHardware::dutyToRaw(uint8_t dutyPercent) {
@@ -150,6 +158,6 @@ uint8_t BoardHardware::dutyToRaw(uint8_t dutyPercent) {
 
 void BoardHardware::writeAllValveDuties(uint8_t rawDuty) {
     for (uint8_t channel = 0; channel < kPwmChannelCount; ++channel) {
-        ledcWrite(channel, rawDuty);
+        ledcWriteChannel(channel, rawDuty);
     }
 }
