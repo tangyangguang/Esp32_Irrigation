@@ -1,5 +1,9 @@
 #include "IrrigationIot.h"
 
+static_assert(ESP32BASE_MQTT_MAX_INCOMING_PAYLOAD_BYTES >= 4096, "Irrigation commands require 4 KiB receive slots");
+static_assert(ESP32BASE_MQTT_MAX_OUTBOX_BYTES >= ESP32BASE_MQTT_MAX_PAYLOAD_BYTES +
+              ESP32BASE_MQTT_MAX_TOPIC_BYTES + 32, "MQTT outbox must fit one complete publish");
+
 #include <Arduino.h>
 #include "IrrigationJsonCapacity.h"
 #include <esp_system.h>
