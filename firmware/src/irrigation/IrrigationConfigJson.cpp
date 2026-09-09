@@ -1,6 +1,6 @@
 #include "IrrigationConfigJson.h"
 
-#include <ArduinoJson.h>
+#include "IrrigationJsonCapacity.h"
 
 #include <cstdio>
 #include <cstring>
@@ -161,7 +161,7 @@ bool IrrigationConfigJson::encode(const IrrigationConfig& config, std::string& j
         return false;
     }
 
-    JsonDocument document;
+    DynamicJsonDocument document(IrrigationJsonCapacity::config);
     document["schema_version"] = config.schemaVersion;
     document["revision"] = config.revision;
 
@@ -197,7 +197,7 @@ bool IrrigationConfigJson::encode(const IrrigationConfig& config, std::string& j
 
     JsonArray zones = document["zones"].to<JsonArray>();
     for (const ZoneConfig& zone : config.zones) {
-        JsonObject object = zones.add<JsonObject>();
+        JsonObject object = zones.createNestedObject();
         object["id"] = zone.id;
         object["enabled"] = zone.enabled;
         object["name"] = zone.name.data();
@@ -206,7 +206,7 @@ bool IrrigationConfigJson::encode(const IrrigationConfig& config, std::string& j
 
     JsonArray plans = document["plans"].to<JsonArray>();
     for (const WateringPlan& plan : config.plans) {
-        JsonObject object = plans.add<JsonObject>();
+        JsonObject object = plans.createNestedObject();
         object["id"] = plan.id;
         object["configured"] = plan.configured;
         object["schedule_enabled"] = plan.scheduleEnabled;
@@ -221,6 +221,7 @@ bool IrrigationConfigJson::encode(const IrrigationConfig& config, std::string& j
         }
     }
 
+    if (document.overflowed()) return false;
     json.clear();
     return serializeJson(document, json) > 0;
 }
@@ -229,7 +230,7 @@ bool IrrigationConfigJson::decode(const char* json, std::size_t length, Irrigati
     if (!json || length == 0) {
         return false;
     }
-    JsonDocument document;
+    DynamicJsonDocument document(IrrigationJsonCapacity::config);
     if (deserializeJson(document, json, length)) {
         return false;
     }

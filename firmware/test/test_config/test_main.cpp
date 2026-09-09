@@ -244,6 +244,32 @@ void test_config_json_round_trip_is_exact_and_strict() {
     TEST_ASSERT_FALSE(IrrigationConfigJson::decode(json.data(), json.size(), decoded));
 }
 
+void test_full_config_with_maximum_names_fits_json_pool() {
+    IrrigationConfig original = IrrigationConfigRules::createDefault();
+    std::string longestName;
+    for (int i = 0; i < 15; ++i) longestName += "🌱";
+    longestName += "ab";
+    for (auto& zone : original.zones) {
+        std::snprintf(zone.name.data(), zone.name.size(), "%c%s", 'A' + zone.id, longestName.c_str());
+    }
+    for (auto& plan : original.plans) {
+        std::snprintf(plan.name.data(), plan.name.size(), "%c%s", 'a' + plan.id, longestName.c_str());
+        plan.configured = true;
+        plan.scheduleEnabled = true;
+        plan.startMinutes = {static_cast<uint16_t>(plan.id * 10),
+            static_cast<uint16_t>(360 + plan.id * 10), static_cast<uint16_t>(720 + plan.id * 10),
+            static_cast<uint16_t>(1080 + plan.id * 10)};
+        plan.zoneDurationMinutes.fill(1);
+    }
+    std::string json;
+    TEST_ASSERT_TRUE(IrrigationConfigJson::encode(original, json));
+    IrrigationConfig decoded{};
+    TEST_ASSERT_TRUE(IrrigationConfigJson::decode(json.data(), json.size(), decoded));
+    std::string roundTrip;
+    TEST_ASSERT_TRUE(IrrigationConfigJson::encode(decoded, roundTrip));
+    TEST_ASSERT_EQUAL_STRING(json.c_str(), roundTrip.c_str());
+}
+
 void test_checkpoint_zero_is_valid_and_invalid_ranges_are_rejected() {
     IrrigationConfig config = IrrigationConfigRules::createDefault();
     config.timeSafety.aliveCheckpointHours = 0;
@@ -272,5 +298,6 @@ int main(int, char**) {
     RUN_TEST(test_calibration_target_volume_parsing_is_exact);
     RUN_TEST(test_runtime_limits_are_configurable_and_constrain_plans);
     RUN_TEST(test_config_json_round_trip_is_exact_and_strict);
+    RUN_TEST(test_full_config_with_maximum_names_fits_json_pool);
     return UNITY_END();
 }

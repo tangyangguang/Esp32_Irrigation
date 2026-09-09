@@ -1315,7 +1315,8 @@ bool IrrigationWeb::registerRoutes(IrrigationApp& app) {
     Esp32BaseWeb::setDeviceName("智能浇水");
     Esp32BaseWeb::setHomeMode(Esp32BaseWeb::HOME_APP);
     Esp32BaseWeb::setHomePath("/irrigation");
-    return Esp32BaseWeb::addPage("/irrigation", "首页", overview) &&
+    return IrrigationWebAssets::registerAssets() &&
+           Esp32BaseWeb::addPage("/irrigation", "首页", overview) &&
            Esp32BaseWeb::addPage("/irrigation/plans", "计划", plans) &&
            Esp32BaseWeb::addPage("/irrigation/zones", "水路", zones) &&
            Esp32BaseWeb::addPage("/irrigation/records", "记录", records) &&

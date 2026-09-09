@@ -1,7 +1,7 @@
 #include "IrrigationIot.h"
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
+#include "IrrigationJsonCapacity.h"
 #include <esp_system.h>
 
 #include <algorithm>
@@ -1152,7 +1152,7 @@ bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
                      completedEpoch, 0, observedAt, sizeof(observedAt)))
         return false;
 
-    JsonDocument document;
+    DynamicJsonDocument document(IrrigationJsonCapacity::record);
     document["protocol"] = IrrigationIotProtocol::kProtocol;
     document["connectionId"] = connectionId_;
     document["recordStreamId"] = IrrigationRecordSync::instance().streamId(stream);
@@ -1200,7 +1200,7 @@ bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
         for (uint8_t index = 0; index < watering.zones.size(); ++index) {
             const ZoneWateringRecord& source = watering.zones[index];
             if (source.plannedDurationSec == 0U) continue;
-            JsonObject zone = zones.add<JsonObject>();
+            JsonObject zone = zones.createNestedObject();
             zone["zoneId"] = index + 1U;
             zone["targetSeconds"] = source.plannedDurationSec;
             if (source.targetWaterMl != 0U)
@@ -1335,7 +1335,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
     if (!config) return false;
     const WateringStatus status = app.wateringStatus();
 
-    JsonDocument document;
+    DynamicJsonDocument document(IrrigationJsonCapacity::state);
     document["protocol"] = IrrigationIotProtocol::kProtocol;
     document["connectionId"] = connectionId_;
     document["seq"] = stateSeq_;
@@ -1467,7 +1467,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
         activity["highFlowActive"] = currentZone ? currentZone->highFlowActive : false;
         JsonArray steps = activity["steps"].to<JsonArray>();
         for (uint8_t index = 0; status.active && index < status.stepCount; ++index) {
-            JsonObject step = steps.add<JsonObject>();
+            JsonObject step = steps.createNestedObject();
             step["zoneId"] = status.zones[index].zoneId;
             step["targetDurationMs"] =
                 status.zones[index].plannedDurationSec * 1000U;
@@ -1506,7 +1506,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
         JsonArray plans = value["plans"].to<JsonArray>();
         for (const WateringPlan& plan : config->plans) {
             if (!plan.configured) continue;
-            JsonObject item = plans.add<JsonObject>();
+            JsonObject item = plans.createNestedObject();
             item["id"] = plan.id;
             item["name"] = plan.name.data();
             item["automaticEnabled"] = plan.scheduleEnabled;
@@ -1518,7 +1518,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
                 if (!config->zones[index].enabled ||
                     plan.zoneDurationMinutes[index] == 0)
                     continue;
-                JsonObject zone = zones.add<JsonObject>();
+                JsonObject zone = zones.createNestedObject();
                 zone["zoneId"] = config->zones[index].id;
                 zone["durationMinutes"] = plan.zoneDurationMinutes[index];
             }
@@ -1542,7 +1542,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
         JsonArray zones = value["zones"].to<JsonArray>();
         for (const ZoneConfig& zoneConfig : config->zones) {
             if (!zoneConfig.enabled) continue;
-            JsonObject zone = zones.add<JsonObject>();
+            JsonObject zone = zones.createNestedObject();
             zone["zoneId"] = zoneConfig.id;
             if (state == StateZones) {
                 zone["name"] = zoneConfig.name.data();

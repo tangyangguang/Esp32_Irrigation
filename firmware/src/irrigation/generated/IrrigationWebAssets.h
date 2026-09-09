@@ -17,6 +17,7 @@ enum class Asset : uint8_t {
     EventsStyle,
 };
 
+bool registerAssets();
 bool send(Asset asset);
 
 }  // namespace IrrigationWebAssets

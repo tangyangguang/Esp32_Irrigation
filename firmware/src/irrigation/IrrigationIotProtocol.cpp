@@ -1,6 +1,6 @@
 #include "IrrigationIotProtocol.h"
 
-#include <ArduinoJson.h>
+#include "IrrigationJsonCapacity.h"
 
 #include <cstdio>
 #include <cstring>
@@ -488,7 +488,7 @@ ParseError parseCommand(const CommandPacket& packet,
     if (!validUtf8(packet.payload, packet.payloadLength)) {
         return ParseError::InvalidUtf8;
     }
-    JsonDocument document;
+    DynamicJsonDocument document(IrrigationJsonCapacity::command);
     const DeserializationError jsonError =
         deserializeJson(document, packet.payload, packet.payloadLength);
     if (jsonError || !document.is<JsonObjectConst>()) {
@@ -866,7 +866,7 @@ ParseError parseRecordAck(const CommandPacket& packet,
     if (packet.retain) {
         return ParseError::RetainedCommand;
     }
-    JsonDocument document;
+    DynamicJsonDocument document(IrrigationJsonCapacity::ack);
     if (!packet.payload || packet.payloadLength == 0U ||
         packet.payloadLength > 4096U) {
         return ParseError::InvalidJson;
