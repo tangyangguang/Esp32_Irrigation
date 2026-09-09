@@ -30,136 +30,17 @@ void civilFromDays(int64_t days, int32_t& year, uint32_t& month, uint32_t& day) 
     year += month <= 2U;
 }
 
-bool hasExactFields(JsonObjectConst object,
-                    const char* const* fields,
-                    std::size_t fieldCount) {
-    if (object.size() != fieldCount) {
-        return false;
-    }
-    for (std::size_t index = 0; index < fieldCount; ++index) {
-        if (object[fields[index]].isUnbound()) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool validUtf8(const uint8_t* bytes, std::size_t length) {
-    if (!bytes) {
-        return false;
-    }
-    std::size_t index = 0;
-    while (index < length) {
-        const uint8_t first = bytes[index];
-        std::size_t sequenceLength = 0;
-        uint32_t codePoint = 0;
-        if (first <= 0x7FU) {
-            sequenceLength = 1;
-            codePoint = first;
-        } else if (first >= 0xC2U && first <= 0xDFU) {
-            sequenceLength = 2;
-            codePoint = first & 0x1FU;
-        } else if (first >= 0xE0U && first <= 0xEFU) {
-            sequenceLength = 3;
-            codePoint = first & 0x0FU;
-        } else if (first >= 0xF0U && first <= 0xF4U) {
-            sequenceLength = 4;
-            codePoint = first & 0x07U;
-        } else {
-            return false;
-        }
-        if (index + sequenceLength > length) {
-            return false;
-        }
-        for (std::size_t offset = 1; offset < sequenceLength; ++offset) {
-            const uint8_t next = bytes[index + offset];
-            if ((next & 0xC0U) != 0x80U) {
-                return false;
-            }
-            codePoint = (codePoint << 6U) | (next & 0x3FU);
-        }
-        if ((sequenceLength == 2 && codePoint < 0x80U) ||
-            (sequenceLength == 3 && codePoint < 0x800U) ||
-            (sequenceLength == 4 && codePoint < 0x10000U) ||
-            (codePoint >= 0xD800U && codePoint <= 0xDFFFU) ||
-            codePoint > 0x10FFFFU) {
-            return false;
-        }
-        index += sequenceLength;
-    }
-    return true;
-}
-
 bool validBusinessName(const char* value) {
-    if (!value || value[0] == '\0' || value[0] == ' ') {
-        return false;
-    }
-    const auto* bytes = reinterpret_cast<const uint8_t*>(value);
-    std::size_t byteCount = 0;
-    std::size_t characterCount = 0;
-    while (bytes[byteCount] != 0) {
-        const uint8_t first = bytes[byteCount];
-        std::size_t sequenceLength = 0;
-        uint32_t codePoint = 0;
-        if (first <= 0x7FU) {
-            sequenceLength = 1;
-            codePoint = first;
-        } else if (first >= 0xC2U && first <= 0xDFU) {
-            sequenceLength = 2;
-            codePoint = first & 0x1FU;
-        } else if (first >= 0xE0U && first <= 0xEFU) {
-            sequenceLength = 3;
-            codePoint = first & 0x0FU;
-        } else if (first >= 0xF0U && first <= 0xF4U) {
-            sequenceLength = 4;
-            codePoint = first & 0x07U;
-        } else {
-            return false;
-        }
-        if (byteCount + sequenceLength >= kObjectNameCapacity) {
-            return false;
-        }
-        for (std::size_t offset = 1; offset < sequenceLength; ++offset) {
-            const uint8_t next = bytes[byteCount + offset];
-            if ((next & 0xC0U) != 0x80U) {
-                return false;
-            }
-            codePoint = (codePoint << 6U) | (next & 0x3FU);
-        }
-        if ((sequenceLength == 3 && codePoint < 0x800U) ||
-            (sequenceLength == 4 && codePoint < 0x10000U) ||
-            (codePoint >= 0xD800U && codePoint <= 0xDFFFU) ||
-            codePoint > 0x10FFFFU || codePoint < 0x20U || codePoint == 0x7FU) {
-            return false;
-        }
-        byteCount += sequenceLength;
-        if (++characterCount > 20U) {
-            return false;
-        }
-    }
-    return byteCount <= 63U && bytes[byteCount - 1U] != ' ';
+    return IrrigationConfigRules::validateName(value, kObjectNameCapacity);
 }
 
+// Called only after SDK schema validation. Keep the destination byte bound;
+// Unicode/type/character-count checks belong to the generated model validator.
 bool copyName(JsonVariantConst value, char* output, std::size_t outputLength) {
-    if (!value.is<const char*>()) {
-        return false;
-    }
-    const char* text = value.as<const char*>();
-    const auto* bytes = reinterpret_cast<const uint8_t*>(text);
-    const std::size_t byteCount = std::strlen(text);
-    if (byteCount == 0U || byteCount > 63U || byteCount >= outputLength ||
-        !validUtf8(bytes, byteCount)) {
-        return false;
-    }
-    std::size_t characterCount = 0;
-    for (std::size_t index = 0; index < byteCount; ++characterCount) {
-        const uint8_t first = bytes[index];
-        index += first <= 0x7FU ? 1U : first <= 0xDFU ? 2U : first <= 0xEFU ? 3U : 4U;
-    }
-    if (characterCount > 20U) {
-        return false;
-    }
-    std::strcpy(output, text);
+    const JsonString text = value.as<JsonString>();
+    if (!text.c_str() || text.size() >= outputLength ||
+        std::strlen(text.c_str()) != text.size()) return false;
+    std::memcpy(output, text.c_str(), text.size() + 1);
     return true;
 }
 
@@ -173,11 +54,9 @@ bool readUint(JsonVariantConst value, uint32_t minimum, uint32_t maximum,
 }
 
 bool parseZoneDuration(JsonObjectConst object, ZoneDuration& zone) {
-    static constexpr const char* kFields[] = {"zoneId", "durationMinutes"};
     uint32_t zoneId = 0;
     uint32_t duration = 0;
-    if (!hasExactFields(object, kFields, 2) ||
-        !readUint(object["zoneId"], 1, BoardPins::kZoneCount, zoneId) ||
+    if (!readUint(object["zoneId"], 1, BoardPins::kZoneCount, zoneId) ||
         !readUint(object["durationMinutes"], 1,
                   kMaximumConfigurableZoneDurationMinutes, duration)) {
         return false;
@@ -188,9 +67,7 @@ bool parseZoneDuration(JsonObjectConst object, ZoneDuration& zone) {
 }
 
 bool parsePlans(JsonObjectConst parameters, Command& command) {
-    static constexpr const char* kFields[] = {"revision", "plans"};
-    if (!hasExactFields(parameters, kFields, 2) ||
-        !parameters["revision"].is<uint32_t>() ||
+    if (!parameters["revision"].is<uint32_t>() ||
         !parameters["plans"].is<JsonArrayConst>()) {
         return false;
     }
@@ -204,12 +81,8 @@ bool parsePlans(JsonObjectConst parameters, Command& command) {
             return false;
         }
         const JsonObjectConst object = planValue.as<JsonObjectConst>();
-        static constexpr const char* kPlanFields[] = {
-            "id", "name", "automaticEnabled", "startMinutes", "zones",
-        };
         uint32_t id = 0;
-        if (!hasExactFields(object, kPlanFields, 5) ||
-            !readUint(object["id"], 1, kWateringPlanCount, id) ||
+        if (!readUint(object["id"], 1, kWateringPlanCount, id) ||
             !object["automaticEnabled"].is<bool>() ||
             !object["startMinutes"].is<JsonArrayConst>() ||
             !object["zones"].is<JsonArrayConst>()) {
@@ -258,9 +131,7 @@ bool parsePlans(JsonObjectConst parameters, Command& command) {
 }
 
 bool parseAutomatic(JsonObjectConst parameters, Command& command) {
-    static constexpr const char* kFields[] = {"mode", "resumeAtEpoch"};
-    if (!hasExactFields(parameters, kFields, 2) ||
-        !parameters["mode"].is<const char*>()) {
+    if (!parameters["mode"].is<const char*>()) {
         return false;
     }
     const char* mode = parameters["mode"].as<const char*>();
@@ -282,9 +153,7 @@ bool parseAutomatic(JsonObjectConst parameters, Command& command) {
 }
 
 bool parseManual(JsonObjectConst parameters, Command& command) {
-    static constexpr const char* kFields[] = {"zones"};
-    if (!hasExactFields(parameters, kFields, 1) ||
-        !parameters["zones"].is<JsonArrayConst>()) {
+    if (!parameters["zones"].is<JsonArrayConst>()) {
         return false;
     }
     const JsonArrayConst zones = parameters["zones"].as<JsonArrayConst>();
@@ -320,21 +189,13 @@ bool parseSingleOutput(JsonObjectConst parameters, Command& command) {
     command.zoneId = static_cast<uint8_t>(zoneId);
     const char* mode = parameters["mode"].as<const char*>();
     if (std::strcmp(mode, "duration") == 0) {
-        static constexpr const char* kFields[] = {
-            "zoneId", "mode", "durationSeconds",
-        };
         command.singleOutputMode = SingleOutputMode::Duration;
-        return hasExactFields(parameters, kFields, 3) &&
-               readUint(parameters["durationSeconds"], 1, 43200,
+        return readUint(parameters["durationSeconds"], 1, 43200,
                         command.durationSeconds);
     }
     if (std::strcmp(mode, "volume") == 0) {
-        static constexpr const char* kFields[] = {
-            "zoneId", "mode", "targetWaterMl",
-        };
         command.singleOutputMode = SingleOutputMode::Volume;
-        return hasExactFields(parameters, kFields, 3) &&
-               readUint(parameters["targetWaterMl"], 100, 1000000,
+        return readUint(parameters["targetWaterMl"], 100, 1000000,
                         command.targetWaterMl);
     }
     return false;

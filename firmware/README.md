@@ -12,25 +12,23 @@
 
 | 状态 | 交付结果 / 责任 | 尚缺工作与边界 |
 | --- | --- | --- |
-| 待决策 | B：恢复实际 4 MiB 目标并调整分区 | 用户已否定 8 MiB 硬件目标，要求略增 OTA。当前 bin 1606112 B；保留 8% 余量需两个 1728 KiB OTA 槽，FS 剩 512 KiB。现有 watering 384 + audit 128 + FileLog 128 KiB 已超过 FS，Base 还要求至少 128 KiB 安全余量，直接改分区会触发 PartitionBudgetExceeded。建议保留全部功能，预算改为 watering 256、audit 64、FileLog 32 KiB，另留安全 128 KiB 和配置/元数据 32 KiB；历史保留容量缩减须用户确认。未修改分区或烧录。 |
+| 待办 | B：4 MiB 容量收口 | 本轮 Base 静态资源与设备重复校验优化完成，ELF 减少 4460 B，但仍超原 OTA 槽 28383 B，8% 余量也未满足。构建目标已恢复实际 4 MiB，未缩减历史容量、未降低门禁；继续随 C 阶段去除设备重复协议实现后测量。 |
 | 待办 | C：SDK 平台职责接入 | 设备阶段 `2133e72` 已提交推送，SDK 命令/ACK 信封、UUID、UTC 解析与受控型号生成已通过目标构建、33 个共享向量及 14 项相关 Native 检查；继续会话、命令生命周期、状态/证据发布，替换设备逐命令 NVS journal；保留重连幂等、启动截止点和先关输出后终态。 |
 | 待办 | D：设备 + SDK 双流可靠存储 | 保留两个业务 Store，以 Base 世代/保护释放配合 SDK 平台连续序号、恢复、ACK 和低频检查点；移除设备自建流元数据与物理 ID 直接充当平台序号。核对 ACK 丢失、记录空洞、部分释放、维护/格式化和故障隔离；当前任一流检查点失败会全局撤销 ready，须修正。 |
 | 待办 | E：定义 + 设备 + 平台投影 | 修复本地来源错标与未知时间队头阻塞；补 state.diagnostics；服务端/小程序复用既有 unknownTimeCount 展示，核对统计类型和记录呈现。JSON 依赖已收敛到 SDK 的 6.21.6，并加入完整模型有界容量，协议接入尚未完成。 |
 | 待办 | F：业务安全与集成收口 | 定向检查两流追加失败后的事实/故障处理、RTC 暂停/恢复、stop 与启动互斥、配置失败和维护出口；按最终代码运行目标编译及成功/明显故障路径测试，提交推送、记录产物和资源。 |
-| 硬件待满足 | 串口试验与现场边界 | 用户已授权直接操作本机 ESP32 试验设备。2026-09-10 实测 `/dev/cu.usbserial-57460296581` 为 ESP32-D0WD-V3、4 MiB Flash，不能写入当前 8 MiB 固件；连接容量足够的目标后直接烧录及短时接入验证。长稳、满容量、反复断电及真实水路验收由用户后续试运行完成。 |
+| 待办 | 串口试验与现场边界 | 本机 `/dev/cu.usbserial-57460296581` 已核实为 4 MiB ESP32，烧录和短时试验授权有效；当前障碍为固件容量门禁，已取消更换 8 MiB 硬件的错误要求。长稳、满容量、反复断电及真实水路验收由用户后续试运行完成。 |
 | 正式发布前 | 安全与交付边界 | 项目凭据/ACL 隔离、首次 Web 默认认证治理、完整 TLS 握手和受控工具链分发位置需在正式范围确认；不改真实账号、权限或共享环境。 |
 
 已交付基础：设备存储收尾 `3913c8d`、Web/JSON `1435fcf`、MQTT 4 KiB 收发容量修复 `575a71a`；Base 维护回调 `4f05677`、资源优化 `5469569`、静态资源与发送超时修复 `8f3176a`；SDK 完整帧诊断 `7e1a865`、型号生成规则去重 `5a1240b`。上述均已提交推送。存储读取未初始化标志及无效事件缓存已修复，旧存储过程记录已删除，未完成事项全部保留在上表。
 
-当前硬件目标已纠正为 **4 MiB ESP32**。先前 `2133e72` 的 8 MiB 分区方案已被用户否定，现有构建配置和产物暂保留用于比较，不可烧录；4 MiB 分区方案因上述存储容量冲突待决策。完整功能、TLS 与执行器安全要求不变。
+当前硬件与构建目标均为 **4 MiB ESP32**。8 MiB 分区文件已移除，保留双 1.5 MiB OTA、896 KiB LittleFS 及现有 Store/FileLog 预算；未经同意的容量缩减方案不实施。Core 3 LEDC 安全适配、维护门禁与 SDK 输入阶段 `2133e72`，以及 SDK ESP32 Topic 生命周期修复 `c4e12e0` 已提交推送。
 
-本阶段设备提交 `2133e72` 已推送。SDK ESP32 Topic 借用生命周期修复 `c4e12e0` 已推送，生产 Base MQTT + ASan/UBSan 验证分离/共享缓冲两种布局及 QoS/退出边界通过。
+本轮 Base 优化 `0579717` 已提交推送。资源复查结果：Base 公共脚本和配置页 CSS 通过现有 gzip 发送能力缓存，原文逐字无损；设备名称规则收敛到同一有界实现，删除与 SDK 重复的字段集合及 UTF-8 校验，保留数组/整数范围及业务交叉约束。内联编译选项对比无收益，已撤回，不更改最终编译策略。目标 ELF Flash **1601247 B**，相比 **1605707 B** 减少 **4460 B**；静态 RAM **100012 B** 不变。全套协议、日志和 TLS 仍参与链接。
 
-本阶段目标构建通过：`python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -e esp32_irrigation_arduino3`。ELF 静态 RAM **100012 B**，Flash **1605707 B**；bin **1606112 B**，最小 OTA 槽 **3145728 B**，余量 **1539616 B / 48.94%**，通过 8% 门禁。Core 3 LEDC 接口及失败安全关闭已适配；维护接线实现浇水/校准/学习中拒绝 OTA 和格式化，重启前关闭输出。
+验证：Base Web 22/22、gzip 协商/二进制边界与源文件无损检查、架构/安全/发布卫生通过；设备配置与协议 22 项通过，另有 33 个平台共享向量通过（初次未设置 `IOT_DEVICE_LAB_DIR` 未运行向量，补齐实际路径后通过）。命令：`python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native -f test_config -f test_iot_protocol`；共享向量使用 `IOT_DEVICE_LAB_DIR=/Users/tyg/workspace/iot/platform/iot-device-lab` 运行 `-e native_iot_vectors`。
 
-复用已通过且未受影响的定向结果：设备 99 项 Native、完整 8 计划/4 时刻/6 区域与 UTF-8 名称配置往返、10 个页面片段原文还原、实际 Base MQTT 容量 3 项 ASan/UBSan 检查；SDK 协议检查、33 个共享向量、设备输入与命令账本 14 项检查、3697 样例/40 Schema 与实际 Ajv 差分；Base Web 22 项、gzip/有界发送/架构/安全检查及 IOT Core 3 示例编译。完整平台接入仍未完成，编译不代表新固件实机验收。
-
-串口核验使用 esptool `flash-id`，仅读取芯片/Flash 信息并自动复位，未写入固件；未访问另一 ESP8266 串口。无需再次申请 ESP32 试验授权，当前烧录障碍是实际 Flash 容量，不是授权。
+实际 4 MiB 目标命令：`python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -e esp32_irrigation_arduino3`。编译和链接完成，容量检查 **失败**：1601247 B 超出 1572864 B OTA 槽 **28383 B**，不宣称构建通过或可试运行；8% 余量门禁保留。旧 8 MiB 比较产物不可烧录。本轮没有烧录、复位、Broker 业务命令或泵阀操作，完整平台接入未完成；后续任务见上表。
 
 ## 1. 当前产品范围
 
@@ -161,7 +159,7 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e esp32_rec
 
 - Native 99/99 通过，涵盖控制器、流量保护、调度、校准、记录编码及既有协议。
 - `python3 scripts/test_storage_views.py` 通过：使用 Base 实际 Store 与其主机 FS 夹具，覆盖空历史、正常记录、分页及非法业务 payload；启用自动变量污染以暴露未初始化读取。
-- Core 2 正式 `esp32_irrigation` 增量构建通过，实际 Base 依赖经 PlatformIO link 描述确认是 `foundation/Esp32Base`；完整本机 MQTT 配置参与链接，无上传。RAM 103140 B，Flash 1419769 B；binary 1426352 B，最小 OTA slot 1572864 B，余量 146512 B / 9.31%，超过 8% 门禁。
+- 历史 Core 2 `esp32_irrigation` 增量构建通过，实际 Base 依赖经 PlatformIO link 描述确认是 `foundation/Esp32Base`；完整本机 MQTT 配置参与链接，无上传。RAM 103140 B，Flash 1419769 B；binary 1426352 B，最小 OTA slot 1572864 B，余量 146512 B / 9.31%，超过 8% 门禁。
 - 未运行设备端存储测试或任何硬件动作；以上不证明 Core 3、SDK 接入或真实 MQTT 链路已通过。
 
 IOT 固件使用 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，发布门禁至少 8% OTA slot 余量。完整 MQTT/TLS 配置参与链接后才报告资源，不能用空配置被 LTO 裁剪后的结果。只重跑本次改动影响的定向检查，不重复已通过且未受影响的测试。

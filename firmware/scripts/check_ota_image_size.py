@@ -4,7 +4,7 @@ from pathlib import Path
 Import("env")
 
 
-# The current 8 MiB target retains two equal OTA slots and an 8% image margin.
+# The current 4 MiB target retains two equal OTA slots and an 8% image margin.
 MINIMUM_REMAINING_PERCENT = 8.0
 
 

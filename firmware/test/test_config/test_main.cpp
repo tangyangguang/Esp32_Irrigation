@@ -10,6 +10,19 @@
 
 namespace {
 
+void test_shared_name_validation_is_bounded() {
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validateName(nullptr, 64));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validateName("", 1));
+    const char unterminated[] = {'a', 'b'};
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validateName(unterminated, sizeof(unterminated)));
+    const char truncated[] = {char(0xe4), char(0xb8), 0};
+    const char surrogate[] = {char(0xed), char(0xa0), char(0x80), 0};
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validateName(truncated, sizeof(truncated)));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validateName(surrogate, sizeof(surrogate)));
+    TEST_ASSERT_TRUE(IrrigationConfigRules::validateName("早晨浇水", sizeof("早晨浇水")));
+    TEST_ASSERT_FALSE(IrrigationConfigRules::validateName("浇水 ", sizeof("浇水 ")));
+}
+
 void test_board_pin_mapping_matches_finalized_pcb() {
     const std::array<uint8_t, BoardPins::kZoneCount> expected = {33, 32, 26, 25, 14, 27};
     TEST_ASSERT_EQUAL_UINT8_ARRAY(expected.data(), BoardPins::kValvePins.data(), expected.size());
@@ -287,6 +300,7 @@ void test_checkpoint_zero_is_valid_and_invalid_ranges_are_rejected() {
 
 int main(int, char**) {
     UNITY_BEGIN();
+    RUN_TEST(test_shared_name_validation_is_bounded);
     RUN_TEST(test_board_pin_mapping_matches_finalized_pcb);
     RUN_TEST(test_status_indicator_patterns_match_product_states);
     RUN_TEST(test_default_config_matches_confirmed_product_defaults);

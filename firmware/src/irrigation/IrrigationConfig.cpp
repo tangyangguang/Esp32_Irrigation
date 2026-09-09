@@ -16,26 +16,16 @@ void setText(std::array<char, N>& target, const char* value) {
     std::snprintf(target.data(), target.size(), "%s", value);
 }
 
-template <std::size_t N>
-bool isTerminated(const std::array<char, N>& value) {
-    for (const char ch : value) {
-        if (ch == '\0') {
-            return true;
-        }
-    }
-    return false;
-}
+bool isValidName(const char* value, std::size_t capacity, bool allowEmpty) {
+    if (!value || !capacity) return false;
+    std::size_t length = 0;
+    while (length < capacity && value[length]) ++length;
+    if (length == capacity) return false;
 
-template <std::size_t N>
-bool isValidName(const std::array<char, N>& value, bool allowEmpty) {
-    if (!isTerminated(value)) {
-        return false;
-    }
-
-    const auto* bytes = reinterpret_cast<const uint8_t*>(value.data());
+    const auto* bytes = reinterpret_cast<const uint8_t*>(value);
     std::size_t byteCount = 0;
     std::size_t characterCount = 0;
-    while (byteCount < N && bytes[byteCount] != 0) {
+    while (byteCount < capacity && bytes[byteCount] != 0) {
         const uint8_t first = bytes[byteCount];
         std::size_t sequenceLength = 0;
         uint32_t codePoint = 0;
@@ -55,7 +45,7 @@ bool isValidName(const std::array<char, N>& value, bool allowEmpty) {
             return false;
         }
 
-        if (byteCount + sequenceLength > N - 1) {
+        if (byteCount + sequenceLength > capacity - 1) {
             return false;
         }
         for (std::size_t offset = 1; offset < sequenceLength; ++offset) {
@@ -91,6 +81,10 @@ bool isValidFlowAction(FlowAlertAction action) {
 }
 
 }  // namespace
+
+bool IrrigationConfigRules::validateName(const char* value, std::size_t capacity) {
+    return isValidName(value, capacity, false);
+}
 
 IrrigationConfig IrrigationConfigRules::createDefault() {
     IrrigationConfig config{};
@@ -185,7 +179,7 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         const ZoneConfig& zone = config.zones[index];
-        if (zone.id != index + 1 || !isValidName(zone.name, false) ||
+        if (zone.id != index + 1 || !isValidName(zone.name.data(), zone.name.size(), false) ||
             zone.baselinePulseRateX10000 > 1666666667U) {
             return false;
         }
@@ -195,7 +189,7 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
     for (std::size_t index = 0; index < config.plans.size(); ++index) {
         const WateringPlan& plan = config.plans[index];
         if (plan.id != index + 1 ||
-            !isValidName(plan.name, !plan.configured) ||
+            !isValidName(plan.name.data(), plan.name.size(), !plan.configured) ||
             (!plan.configured && plan.scheduleEnabled)) {
             return false;
         }
