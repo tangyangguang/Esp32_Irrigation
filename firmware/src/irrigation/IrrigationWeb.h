@@ -11,7 +11,6 @@ private:
     static void activeTask();
     static void plans();
     static void zones();
-    static void flowCalibration();
     static void zoneLearning();
     static void records();
     static void events();

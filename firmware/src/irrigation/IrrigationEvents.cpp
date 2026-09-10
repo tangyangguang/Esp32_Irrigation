@@ -82,8 +82,6 @@ IrrigationEvents::ReasonCode IrrigationEvents::automaticSkipReason(
     WateringStartResult result,
     const WateringStatus& status) {
     if (result == WateringStartResult::Busy) {
-        if (status.active && status.purpose == WateringPurpose::FlowCalibration)
-            return ReasonCode::PlanBusyFlowCalibration;
         if (status.active && status.purpose == WateringPurpose::ZoneFlowLearning)
             return ReasonCode::PlanBusyZoneFlowLearning;
         if (status.active && status.source == WateringSource::AutomaticPlan)
@@ -129,20 +127,6 @@ bool IrrigationEvents::recordAutomaticRun(
                         : summary.result == WateringResult::Stopped ? 1U : 2U;
     payload.objectId = summary.planId;
     return append(timing, payload);
-}
-
-void IrrigationEvents::recordFlowCalibrationSaved(
-    uint32_t,
-    uint32_t coefficientX100,
-    uint32_t pulseCount,
-    uint32_t waterMl) {
-    IrrigationAuditPayload payload;
-    payload.kind = IrrigationAuditPayload::Kind::CalibrationSaved;
-    payload.reason = static_cast<uint8_t>(ReasonCode::CalibrationCoefficientSaved);
-    payload.value1 = coefficientX100;
-    payload.value2 = pulseCount;
-    payload.value3 = waterMl;
-    append(payload);
 }
 
 void IrrigationEvents::recordZoneFlowSaved(
@@ -297,9 +281,6 @@ IrrigationEvents::EventRecord IrrigationEvents::present(
         case IrrigationAuditPayload::Kind::PlansChanged:
             event.eventCode = static_cast<uint32_t>(EventCode::ConfigurationChanged);
             break;
-        case IrrigationAuditPayload::Kind::CalibrationSaved:
-            event.eventCode = static_cast<uint32_t>(EventCode::FlowCalibrationSaved);
-            break;
         case IrrigationAuditPayload::Kind::ZoneBaselineSaved:
             event.eventCode = static_cast<uint32_t>(EventCode::ZoneFlowSaved);
             break;
@@ -312,13 +293,13 @@ IrrigationEvents::Category IrrigationEvents::category(const EventRecord& event) 
     return code == EventCode::AutomaticWateringStateChanged ||
                    code == EventCode::AutomaticPlanSkipped
                ? Category::AutomaticWatering
-               : Category::SettingsAndCalibration;
+               : Category::Settings;
 }
 
 const char* IrrigationEvents::categoryName(Category categoryValue) {
     switch (categoryValue) {
         case Category::AutomaticWatering: return "自动计划";
-        case Category::SettingsAndCalibration: return "设置与校准";
+        case Category::Settings: return "设置与维护";
         case Category::TimeAndStorage: return "时间与存储";
         default: return "浇水与流量";
     }
@@ -353,9 +334,6 @@ void IrrigationEvents::formatTitle(const EventRecord& event,
                           static_cast<unsigned long>(event.objectId),
                           event.flags == 3U ? "未执行" : "已结束");
             return;
-        case EventCode::FlowCalibrationSaved:
-            std::snprintf(out, length, "流量校准结果已保存");
-            return;
         case EventCode::ZoneFlowSaved:
             std::snprintf(out, length, "水路 %lu 的基准流量已保存",
                           static_cast<unsigned long>(event.objectId));
@@ -375,11 +353,6 @@ void IrrigationEvents::formatSummary(const EventRecord& event,
             std::snprintf(out, length,
                           event.flags == 3U ? "本次计划已跳过且不会补执行。"
                                             : "本次自动浇水已经形成完整记录。");
-            break;
-        case EventCode::FlowCalibrationSaved:
-            std::snprintf(out, length, "当前流量系数为 %lu.%02lu P/L。",
-                          static_cast<unsigned long>(event.value1 / 100),
-                          static_cast<unsigned long>(event.value1 % 100));
             break;
         case EventCode::ZoneFlowSaved:
             std::snprintf(out, length, "当前基准流量为 %ld ml/min。",

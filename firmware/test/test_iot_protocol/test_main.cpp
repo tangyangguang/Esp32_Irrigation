@@ -144,7 +144,7 @@ void test_business_evaluation_uses_runtime_limits_and_maintenance_boundary() {
     context.maximumZoneDurationMinutes = 120;
     TEST_ASSERT_EQUAL(IrrigationIotProtocol::Rejection::None,
                       IrrigationIotProtocol::evaluateCommand(command, context));
-    context.activeKind = IrrigationIotProtocol::ActiveKind::Calibration;
+    context.activeKind = IrrigationIotProtocol::ActiveKind::Learning;
     TEST_ASSERT_EQUAL(IrrigationIotProtocol::Rejection::Busy,
                       IrrigationIotProtocol::evaluateCommand(command, context));
     context.activeKind = IrrigationIotProtocol::ActiveKind::Idle;

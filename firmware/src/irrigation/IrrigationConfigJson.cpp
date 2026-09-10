@@ -48,54 +48,6 @@ bool readText(JsonObjectConst object, const char* key, std::array<char, N>& targ
     return true;
 }
 
-bool readValveDrive(JsonObjectConst root, IrrigationConfig& config) {
-    const JsonObjectConst object = root["valve_drive"].as<JsonObjectConst>();
-    return !object.isNull() &&
-           readUnsigned(object, "pull_in_time_ms", config.valveDrive.pullInTimeMs) &&
-           readUnsigned(object, "switch_delay_ms", config.valveDrive.switchDelayMs) &&
-           readUnsigned(object, "pwm_frequency_hz", config.valveDrive.pwmFrequencyHz) &&
-           readUnsigned(object, "hold_duty_percent", config.valveDrive.holdDutyPercent);
-}
-
-bool readPump(JsonObjectConst root, IrrigationConfig& config) {
-    const JsonObjectConst object = root["pump"].as<JsonObjectConst>();
-    return !object.isNull() &&
-           readBoolean(object, "enabled", config.pump.enabled) &&
-           readUnsigned(object, "start_delay_ms", config.pump.startDelayMs) &&
-           readUnsigned(object, "stop_to_valve_close_delay_ms", config.pump.stopToValveCloseDelayMs);
-}
-
-bool readFlow(JsonObjectConst root, IrrigationConfig& config) {
-    const JsonObjectConst meter = root["flow_meter"].as<JsonObjectConst>();
-    const JsonObjectConst protection = root["flow_protection"].as<JsonObjectConst>();
-    uint8_t lowAction = 0;
-    uint8_t highAction = 0;
-    if (meter.isNull() || protection.isNull() ||
-        !readUnsigned(meter, "pulses_per_liter_x100", config.flowMeter.pulsesPerLiterX100) ||
-        !readUnsigned(protection, "flow_start_timeout_sec", config.flowProtection.flowStartTimeoutSec) ||
-        !readUnsigned(protection, "no_flow_timeout_sec", config.flowProtection.noFlowTimeoutSec) ||
-        !readUnsigned(protection, "unexpected_flow_delay_sec", config.flowProtection.unexpectedFlowDelaySec) ||
-        !readUnsigned(protection, "unexpected_flow_window_sec", config.flowProtection.unexpectedFlowWindowSec) ||
-        !readUnsigned(protection, "unexpected_flow_pulse_count", config.flowProtection.unexpectedFlowPulseCount) ||
-        !readUnsigned(protection, "flow_deviation_confirm_sec", config.flowProtection.flowDeviationConfirmSec) ||
-        !readUnsigned(protection, "low_flow_percent", config.flowProtection.lowFlowPercent) ||
-        !readUnsigned(protection, "high_flow_percent", config.flowProtection.highFlowPercent) ||
-        !readUnsigned(protection, "low_flow_action", lowAction) ||
-        !readUnsigned(protection, "high_flow_action", highAction)) {
-        return false;
-    }
-    config.flowProtection.lowFlowAction = static_cast<FlowAlertAction>(lowAction);
-    config.flowProtection.highFlowAction = static_cast<FlowAlertAction>(highAction);
-    return true;
-}
-
-bool readTimeSafety(JsonObjectConst root, IrrigationConfig& config) {
-    const JsonObjectConst object = root["time_safety"].as<JsonObjectConst>();
-    return !object.isNull() &&
-           readUnsigned(object, "rtc_rollback_threshold_minutes", config.timeSafety.rtcRollbackThresholdMinutes) &&
-           readUnsigned(object, "alive_checkpoint_hours", config.timeSafety.aliveCheckpointHours);
-}
-
 bool readZones(JsonObjectConst root, IrrigationConfig& config) {
     const JsonArrayConst zones = root["zones"].as<JsonArrayConst>();
     if (zones.isNull() || zones.size() != config.zones.size()) {
@@ -165,36 +117,6 @@ bool IrrigationConfigJson::encode(const IrrigationConfig& config, std::string& j
     document["schema_version"] = config.schemaVersion;
     document["revision"] = config.revision;
 
-    JsonObject valve = document["valve_drive"].to<JsonObject>();
-    valve["pull_in_time_ms"] = config.valveDrive.pullInTimeMs;
-    valve["switch_delay_ms"] = config.valveDrive.switchDelayMs;
-    valve["pwm_frequency_hz"] = config.valveDrive.pwmFrequencyHz;
-    valve["hold_duty_percent"] = config.valveDrive.holdDutyPercent;
-
-    JsonObject pump = document["pump"].to<JsonObject>();
-    pump["enabled"] = config.pump.enabled;
-    pump["start_delay_ms"] = config.pump.startDelayMs;
-    pump["stop_to_valve_close_delay_ms"] = config.pump.stopToValveCloseDelayMs;
-
-    JsonObject meter = document["flow_meter"].to<JsonObject>();
-    meter["pulses_per_liter_x100"] = config.flowMeter.pulsesPerLiterX100;
-
-    JsonObject protection = document["flow_protection"].to<JsonObject>();
-    protection["flow_start_timeout_sec"] = config.flowProtection.flowStartTimeoutSec;
-    protection["no_flow_timeout_sec"] = config.flowProtection.noFlowTimeoutSec;
-    protection["unexpected_flow_delay_sec"] = config.flowProtection.unexpectedFlowDelaySec;
-    protection["unexpected_flow_window_sec"] = config.flowProtection.unexpectedFlowWindowSec;
-    protection["unexpected_flow_pulse_count"] = config.flowProtection.unexpectedFlowPulseCount;
-    protection["flow_deviation_confirm_sec"] = config.flowProtection.flowDeviationConfirmSec;
-    protection["low_flow_percent"] = config.flowProtection.lowFlowPercent;
-    protection["high_flow_percent"] = config.flowProtection.highFlowPercent;
-    protection["low_flow_action"] = static_cast<uint8_t>(config.flowProtection.lowFlowAction);
-    protection["high_flow_action"] = static_cast<uint8_t>(config.flowProtection.highFlowAction);
-
-    JsonObject time = document["time_safety"].to<JsonObject>();
-    time["rtc_rollback_threshold_minutes"] = config.timeSafety.rtcRollbackThresholdMinutes;
-    time["alive_checkpoint_hours"] = config.timeSafety.aliveCheckpointHours;
-
     JsonArray zones = document["zones"].to<JsonArray>();
     for (const ZoneConfig& zone : config.zones) {
         JsonObject object = zones.createNestedObject();
@@ -236,13 +158,9 @@ bool IrrigationConfigJson::decode(const char* json, std::size_t length, Irrigati
     }
     const JsonObjectConst root = document.as<JsonObjectConst>();
     IrrigationConfig decoded = IrrigationConfigRules::createDefault();
-    if (root.isNull() ||
+    if (root.isNull() || root.size() != 4 ||
         !readUnsigned(root, "schema_version", decoded.schemaVersion) ||
         !readUnsigned(root, "revision", decoded.revision) ||
-        !readValveDrive(root, decoded) ||
-        !readPump(root, decoded) ||
-        !readFlow(root, decoded) ||
-        !readTimeSafety(root, decoded) ||
         !readZones(root, decoded) ||
         !readPlans(root, decoded) ||
         !IrrigationConfigRules::validate(decoded)) {

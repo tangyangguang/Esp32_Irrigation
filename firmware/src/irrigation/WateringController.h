@@ -3,7 +3,6 @@
 #include <cstdint>
 
 #include "FlowMonitor.h"
-#include "CalibrationStabilityDetector.h"
 #include "IrrigationTypes.h"
 #include "WateringHardware.h"
 
@@ -35,10 +34,6 @@ private:
     void finishSession(WateringStopReason reason, uint32_t nowMs);
     bool checkFlowRate(uint32_t nowMs);
     void appendFlowSample(uint32_t flowMlPerMinute);
-    void captureCalibrationStop(uint32_t nowMs);
-    void fillCalibrationMetrics(ZoneWateringSummary& zone,
-                                uint32_t nowMs,
-                                uint32_t pulseCount) const;
 
     WateringHardware& hardware_;
     WateringRequest request_{};
@@ -46,7 +41,6 @@ private:
     PumpConfig pump_{};
     FlowMeterConfig flowMeter_{};
     FlowProtectionConfig flowProtection_{};
-    CalibrationStabilityConfig calibrationStability_{};
     std::array<uint32_t, BoardPins::kZoneCount> baselinePulseRateX10000_{};
     std::array<uint32_t, kLearningHistoryWindowCount> learningPulseRatesX100_{};
     std::array<uint32_t, kLearningHistoryWindowCount> learningPulseCounts_{};
@@ -56,7 +50,6 @@ private:
     std::array<uint32_t, kLearningDecisionWindowCount> terminalPulseCounts_{};
     std::array<uint32_t, kLearningDecisionWindowCount> terminalWindowDurationsMs_{};
     FlowMonitor flowMonitor_;
-    CalibrationStabilityDetector calibrationDetector_;
     WateringState state_ = WateringState::Idle;
     WateringResult lastResult_ = WateringResult::None;
     WateringStopReason lastStopReason_ = WateringStopReason::None;
@@ -77,9 +70,6 @@ private:
     uint32_t lowFlowRecoveryDurationMs_ = 0;
     uint32_t highFlowRecoveryDurationMs_ = 0;
     uint32_t currentFlowMlPerMinute_ = 0;
-    uint32_t calibrationFlowEstablishedMs_ = 0;
-    uint32_t calibrationStopMs_ = 0;
-    uint32_t calibrationStopPulseCount_ = 0;
     uint32_t flowHistoryGeneration_ = 0;
     uint32_t flowSampleSerial_ = 0;
     uint32_t learningAverageMlPerMinute_ = 0;
@@ -99,5 +89,4 @@ private:
     bool wateringEndCaptured_ = false;
     bool stopSessionAfterValveClose_ = false;
     bool finishedSessionReady_ = false;
-    bool calibrationStopCaptured_ = false;
 };

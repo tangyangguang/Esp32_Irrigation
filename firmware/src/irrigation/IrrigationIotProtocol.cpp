@@ -382,8 +382,7 @@ Rejection evaluateCommand(const Command& command,
         return Rejection::NotReady;
     }
     if (command.kind == CommandKind::Stop) {
-        return context.activeKind == ActiveKind::Calibration ||
-                       context.activeKind == ActiveKind::Learning
+        return context.activeKind == ActiveKind::Learning
                    ? Rejection::MaintenanceActivity
                    : Rejection::None;
     }

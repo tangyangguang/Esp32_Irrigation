@@ -422,118 +422,6 @@ bool IrrigationApp::resumeAutomaticWatering() {
            wateringScheduler_.resumeManually();
 }
 
-WateringStartResult IrrigationApp::startFlowCalibration(
-    uint8_t zoneId,
-    uint16_t maximumDurationMinutes,
-    uint32_t targetWaterMl) {
-    if (flowCalibrationService_.hasPendingMeasurement() ||
-        flowCalibrationService_.sampleCount() >= FlowCalibrationService::kMaximumSamples ||
-        !BoardPins::isValidZoneId(zoneId) || maximumDurationMinutes == 0 ||
-        maximumDurationMinutes > 10 ||
-        (targetWaterMl != 0 &&
-         (maximumDurationMinutes != 10 ||
-          targetWaterMl < FlowCalibrationService::kMinimumMeasuredWaterMl ||
-          targetWaterMl > FlowCalibrationService::kMaximumMeasuredWaterMl))) {
-        return WateringStartResult::InvalidRequest;
-    }
-    WateringRequest request{};
-    request.source = WateringSource::ManualZones;
-    request.purpose = WateringPurpose::FlowCalibration;
-    request.stepCount = 1;
-    request.steps[0] = {zoneId,
-                        static_cast<uint32_t>(maximumDurationMinutes) * 60U,
-                        targetWaterMl};
-    return startWatering(request);
-}
-
-bool IrrigationApp::submitFlowCalibrationMeasurement(uint32_t measuredWaterMl) {
-    return businessReady_ && !wateringController_.active() &&
-           flowCalibrationService_.addPendingMeasurement(measuredWaterMl, trustedEpoch());
-}
-
-bool IrrigationApp::markFlowCalibrationSampleInvalid() {
-    return businessReady_ && !wateringController_.active() &&
-           flowCalibrationService_.markPendingInvalid();
-}
-
-bool IrrigationApp::discardFlowCalibrationMeasurement() {
-    return businessReady_ && !wateringController_.active() &&
-           flowCalibrationService_.discardPendingMeasurement();
-}
-
-bool IrrigationApp::updateFlowCalibrationMeasurement(uint8_t index,
-                                                     uint32_t measuredWaterMl) {
-    return businessReady_ && !wateringController_.active() &&
-           flowCalibrationService_.updateMeasurement(index, measuredWaterMl, trustedEpoch());
-}
-
-bool IrrigationApp::deleteFlowCalibrationSample(uint8_t index) {
-    return businessReady_ && !wateringController_.active() &&
-           flowCalibrationService_.deleteSample(index, trustedEpoch());
-}
-
-bool IrrigationApp::applyFlowCalibrationResult() {
-    const uint32_t coefficient = flowCalibrationService_.combinedPulsesPerLiterX100();
-    if (!businessReady_ || wateringController_.active() ||
-        flowCalibrationService_.hasPendingMeasurement() ||
-        !flowCalibrationService_.resultReady() || coefficient == 0) {
-        return false;
-    }
-    FlowMeterConfig parameters{};
-    parameters.pulsesPerLiterX100 = coefficient;
-    parameters.calibrationStartupPulseCount =
-        flowCalibrationService_.combinedStartupPulseCount();
-    parameters.calibrationStartupWaterMl =
-        flowCalibrationService_.combinedStartupWaterMl();
-    if (!saveFlowCalibrationParameters(parameters)) {
-        return false;
-    }
-    flowCalibrationService_.markResultApplied(trustedEpoch(), coefficient);
-    return true;
-}
-
-bool IrrigationApp::saveFlowCalibrationParameters(
-    const FlowMeterConfig& parameters) {
-    const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.active() || !current ||
-        flowCalibrationService_.hasPendingMeasurement()) {
-        return false;
-    }
-    if (current->flowMeter.pulsesPerLiterX100 == parameters.pulsesPerLiterX100 &&
-        current->flowMeter.calibrationStartupPulseCount ==
-            parameters.calibrationStartupPulseCount &&
-        current->flowMeter.calibrationStartupWaterMl ==
-            parameters.calibrationStartupWaterMl) {
-        return true;
-    }
-    if (!IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit)) return false;
-    const uint32_t previousCoefficientX100 =
-        current->flowMeter.pulsesPerLiterX100;
-    const bool parametersSaved =
-        IrrigationParameterConfig::saveFlowCalibrationParameters(parameters);
-    if (!parametersSaved || !applyStoredParameterConfig()) {
-        return false;
-    }
-    wateringScheduler_.rebaseTimeCheck();
-    resetUnexpectedFlowMonitor(millis());
-    events_.recordFlowCalibrationSaved(
-        previousCoefficientX100,
-        parameters.pulsesPerLiterX100,
-        parameters.calibrationStartupPulseCount,
-        parameters.calibrationStartupWaterMl);
-    return true;
-}
-
-void IrrigationApp::resetFlowCalibration() {
-    if (!wateringController_.active()) {
-        flowCalibrationService_.clear();
-    }
-}
-
-const FlowCalibrationService& IrrigationApp::flowCalibration() const {
-    return flowCalibrationService_;
-}
-
 WateringStartResult IrrigationApp::startZoneFlowLearning(uint8_t zoneId) {
     if (pendingLearnedZoneId_ != 0 || !BoardPins::isValidZoneId(zoneId)) {
         return WateringStartResult::InvalidRequest;
@@ -778,9 +666,7 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
         return;
     }
 
-    if (summary->purpose == WateringPurpose::FlowCalibration) {
-        flowCalibrationService_.captureFinishedSession(*summary, trustedEpoch());
-    } else if (summary->purpose == WateringPurpose::ZoneFlowLearning &&
+    if (summary->purpose == WateringPurpose::ZoneFlowLearning &&
                summary->zoneCount == 1 &&
                summary->zones[0].suggestedBaselinePulseRateX10000 != 0) {
         pendingLearnedZoneId_ = summary->zones[0].zoneId;
@@ -1043,8 +929,7 @@ void IrrigationApp::reportSkippedPlan(uint8_t planId, WateringStartResult result
 
 bool IrrigationApp::allowMaintenance(void* user) {
     auto* app = static_cast<IrrigationApp*>(user);
-    return app && !app->wateringController_.active() &&
-           !app->flowCalibrationService_.hasPendingMeasurement() && app->pendingLearnedZoneId_ == 0;
+    return app && !app->wateringController_.active() && app->pendingLearnedZoneId_ == 0;
 }
 
 bool IrrigationApp::allowOta(void* user) {

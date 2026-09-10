@@ -19,8 +19,10 @@ uint32_t get32(const uint8_t*& cursor) {
     return value;
 }
 bool validKind(IrrigationAuditPayload::Kind kind) {
-    return kind >= IrrigationAuditPayload::Kind::AutomaticRun &&
-           kind <= IrrigationAuditPayload::Kind::ZoneBaselineSaved;
+    return kind == IrrigationAuditPayload::Kind::AutomaticRun ||
+           kind == IrrigationAuditPayload::Kind::AutomaticStateChanged ||
+           kind == IrrigationAuditPayload::Kind::PlansChanged ||
+           kind == IrrigationAuditPayload::Kind::ZoneBaselineSaved;
 }
 }  // namespace
 

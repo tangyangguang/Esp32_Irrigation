@@ -34,7 +34,7 @@ return '已采集 '+n+' 个完整窗口，窗口 #'+(n+1)+' 正在采集；当�
 }
 function poll(){
 fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){
-if(!s.active||s.purpose!==2){location.reload();return}
+if(!s.active||s.purpose!==1){location.reload();return}
 var n=Number(s.learningTotalWindowCount)||0;
 set('learn-elapsed',duration(s.elapsedSec));
 set('learn-current',liters(s.currentFlowMlPerMinute));

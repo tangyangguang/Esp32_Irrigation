@@ -113,7 +113,6 @@ enum class ActiveKind : uint8_t {
     Manual,
     Automatic,
     SingleOutput,
-    Calibration,
     Learning,
 };
 

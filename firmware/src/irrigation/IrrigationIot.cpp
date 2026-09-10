@@ -55,7 +55,6 @@ void hashValue(uint64_t& hash, const T& value) {
 
 const char* activityKindName(const WateringStatus& status) {
     if (!status.active) return "idle";
-    if (status.purpose == WateringPurpose::FlowCalibration) return "calibration";
     if (status.purpose == WateringPurpose::ZoneFlowLearning) return "learning";
     if (status.source == WateringSource::AutomaticPlan) return "automatic";
     if (status.source == WateringSource::SingleOutput) return "single-output";
@@ -120,7 +119,6 @@ const char* automaticAuditReason(uint8_t reason) {
     switch (static_cast<Reason>(reason)) {
         case Reason::PlanBusyManualWatering: return "busy_manual_watering";
         case Reason::PlanBusyAutomaticWatering: return "busy_automatic_watering";
-        case Reason::PlanBusyFlowCalibration: return "busy_flow_calibration";
         case Reason::PlanBusyZoneFlowLearning: return "busy_zone_flow_learning";
         case Reason::PlanPreviousResultPending: return "previous_result_pending";
         case Reason::PlanControllerNotReady: return "controller_not_ready";
@@ -534,8 +532,6 @@ IrrigationIotProtocol::BusinessContext IrrigationIot::businessContext(
 IrrigationIotProtocol::ActiveKind IrrigationIot::activeKind(
     const WateringStatus& status) const {
     if (!status.active) return IrrigationIotProtocol::ActiveKind::Idle;
-    if (status.purpose == WateringPurpose::FlowCalibration)
-        return IrrigationIotProtocol::ActiveKind::Calibration;
     if (status.purpose == WateringPurpose::ZoneFlowLearning)
         return IrrigationIotProtocol::ActiveKind::Learning;
     if (status.source == WateringSource::AutomaticPlan)
@@ -1073,11 +1069,6 @@ bool IrrigationIot::serializeRecord(const uint8_t generation[16], const iot_devi
             for (uint8_t planId = 1U; planId <= 8U; ++planId)
                 if ((audit.value2 & (1UL << (planId - 1U))) != 0U)
                     planIds.add(planId);
-        } else if (audit.kind == AuditKind::CalibrationSaved) {
-            eventKey = "calibration.result-saved";
-            data["coefficientPulsesPerLiterX100"] = audit.value1;
-            data["pulseCount"] = audit.value2;
-            data["waterMl"] = audit.value3;
         } else if (audit.kind == AuditKind::ZoneBaselineSaved) {
             eventKey = "zone.baseline-saved";
             data["zoneId"] = audit.objectId;
@@ -1364,9 +1355,6 @@ bool IrrigationIot::publishState(IrrigationApp& app, StateBit state) {
         capabilityKey = "state.calibration";
         value["coefficientPulsesPerLiterX100"] =
             config->flowMeter.pulsesPerLiterX100;
-        value["startupPulseCount"] =
-            config->flowMeter.calibrationStartupPulseCount;
-        value["startupWaterMl"] = config->flowMeter.calibrationStartupWaterMl;
     } else if (state == StateSystemParameters) {
         capabilityKey = "state.system-parameters";
         JsonObject valve = value["valve"].to<JsonObject>();
@@ -1380,11 +1368,6 @@ bool IrrigationIot::publishState(IrrigationApp& app, StateBit state) {
         pump["stopToValveCloseDelayMs"] = config->pump.stopToValveCloseDelayMs;
         JsonObject meter = value["meter"].to<JsonObject>();
         meter["pulsesPerLiterX100"] = config->flowMeter.pulsesPerLiterX100;
-        meter["calibrationWindowSeconds"] = config->calibrationStability.windowSec;
-        meter["calibrationRequiredWindows"] =
-            config->calibrationStability.requiredWindows;
-        meter["calibrationAllowedVariationPercent"] =
-            config->calibrationStability.allowedVariationPercent;
         meter["flowStartTimeoutSeconds"] =
             config->flowProtection.flowStartTimeoutSec;
         meter["noFlowTimeoutSeconds"] = config->flowProtection.noFlowTimeoutSec;

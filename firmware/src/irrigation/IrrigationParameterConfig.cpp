@@ -10,7 +10,7 @@ namespace {
 
 constexpr const char* kNamespace = "irr_params";
 constexpr std::size_t kRegisteredGroupCount = 6;
-constexpr std::size_t kRegisteredFieldCount = 25;
+constexpr std::size_t kRegisteredFieldCount = 22;
 static_assert(ESP32BASE_APP_CONFIG_MAX_GROUPS >= kRegisteredGroupCount,
               "Increase ESP32BASE_APP_CONFIG_MAX_GROUPS when adding a group");
 static_assert(ESP32BASE_APP_CONFIG_MAX_FIELDS >= kRegisteredFieldCount,
@@ -23,11 +23,6 @@ constexpr const char* kPumpEnabled = "pump_on";
 constexpr const char* kPumpStart = "pump_start";
 constexpr const char* kPumpStop = "pump_stop";
 constexpr const char* kCoefficient = "pulse_l";
-constexpr const char* kStartupPulses = "cal_start_p";
-constexpr const char* kStartupWater = "cal_start_ml";
-constexpr const char* kCalibrationWindow = "cal_window";
-constexpr const char* kCalibrationWindows = "cal_windows";
-constexpr const char* kCalibrationVariation = "cal_variation";
 constexpr const char* kFlowStart = "flow_start";
 constexpr const char* kNoFlow = "no_flow";
 constexpr const char* kLeakDelay = "leak_delay";
@@ -42,9 +37,9 @@ constexpr const char* kRtcRollback = "rtc_rollback";
 constexpr const char* kAliveHours = "alive_hours";
 constexpr const char* kMaximumZoneMinutes = "max_zone_min";
 constexpr const char* kMaximumOutputLiters = "max_output_l";
-constexpr char kCoefficientLabel[] = "稳态流量系数";
+constexpr char kCoefficientLabel[] = "每升脉冲数";
 constexpr char kCoefficientHelp[] =
-    "稳定出水时每升水的脉冲数；校准用多组水量拟合扣除启动影响。";
+    "填写校准得到的每升脉冲数；水量=累计脉冲÷每升脉冲数。";
 static_assert(sizeof(kCoefficientLabel) - 1U <= Esp32BaseAppConfig::LABEL_MAX_LENGTH,
               "flow coefficient label exceeds Esp32Base App Config limit");
 static_assert(sizeof(kCoefficientHelp) - 1U <= Esp32BaseAppConfig::HELP_MAX_LENGTH,
@@ -78,9 +73,6 @@ bool readSubmitted(IrrigationConfig& config) {
     READ_INT(kPumpStop, config.pump.stopToValveCloseDelayMs);
     if (!Esp32BaseAppConfig::submittedDecimal(kNamespace, kCoefficient, value)) return false;
     config.flowMeter.pulsesPerLiterX100 = static_cast<uint32_t>(value);
-    READ_INT(kCalibrationWindow, config.calibrationStability.windowSec);
-    READ_INT(kCalibrationWindows, config.calibrationStability.requiredWindows);
-    READ_INT(kCalibrationVariation, config.calibrationStability.allowedVariationPercent);
     READ_INT(kFlowStart, config.flowProtection.flowStartTimeoutSec);
     READ_INT(kNoFlow, config.flowProtection.noFlowTimeoutSec);
     READ_INT(kLeakDelay, config.flowProtection.unexpectedFlowDelaySec);
@@ -132,9 +124,6 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback,
            Esp32BaseAppConfig::addInt({"pump", kNamespace, kPumpStart, "水泵启动延时", defaults.pump.startDelayMs, 0, 60000, 100, "ms", "开阀后等待多久启动水泵，范围 0～60000 ms。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"pump", kNamespace, kPumpStop, "停泵后关阀延时", defaults.pump.stopToValveCloseDelayMs, 0, 10000, 100, "ms", "停泵后继续保持阀门开启的时间，范围 0～10000 ms。", false, nullptr}) &&
            Esp32BaseAppConfig::addDecimal({"meter", kNamespace, kCoefficient, kCoefficientLabel, static_cast<int32_t>(defaults.flowMeter.pulsesPerLiterX100), 1, 10000000, 1, 2, "P/L", kCoefficientHelp, false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationWindow, "稳态检测窗口", defaults.calibrationStability.windowSec, 1, 10, 1, "s", "按原始脉冲速率判断稳态的窗口长度，范围 1～10 s。", false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationWindows, "连续稳定窗口", defaults.calibrationStability.requiredWindows, 2, 10, 1, "个", "连续多少个窗口满足条件后确认稳态，范围 2～10 个。", false, nullptr}) &&
-           Esp32BaseAppConfig::addInt({"meter", kNamespace, kCalibrationVariation, "稳态允许波动", defaults.calibrationStability.allowedVariationPercent, 1, 30, 1, "%", "窗口脉冲速率最大与最小值的允许波动，范围 1%～30%。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kFlowStart, "流量建立超时", defaults.flowProtection.flowStartTimeoutSec, 1, 120, 1, "s", "开始出水后未检测到脉冲的最长等待时间，范围 1～120 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"meter", kNamespace, kNoFlow, "运行无流量超时", defaults.flowProtection.noFlowTimeoutSec, 1, 60, 1, "s", "浇水过程中连续无脉冲多久后停机，范围 1～60 s。", false, nullptr}) &&
            Esp32BaseAppConfig::addInt({"flow", kNamespace, kLeakDelay, "关阀后检测延时", defaults.flowProtection.unexpectedFlowDelaySec, 0, 300, 1, "s", "全部关闭后先等待该时长再检测，避免余流误报。范围 0～300 s。", false, nullptr}) &&
@@ -163,11 +152,6 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     GET_INT(kPumpStart, defaults.pump.startDelayMs, config.pump.startDelayMs);
     GET_INT(kPumpStop, defaults.pump.stopToValveCloseDelayMs, config.pump.stopToValveCloseDelayMs);
     GET_INT(kCoefficient, defaults.flowMeter.pulsesPerLiterX100, config.flowMeter.pulsesPerLiterX100);
-    GET_INT(kStartupPulses, defaults.flowMeter.calibrationStartupPulseCount, config.flowMeter.calibrationStartupPulseCount);
-    GET_INT(kStartupWater, defaults.flowMeter.calibrationStartupWaterMl, config.flowMeter.calibrationStartupWaterMl);
-    GET_INT(kCalibrationWindow, defaults.calibrationStability.windowSec, config.calibrationStability.windowSec);
-    GET_INT(kCalibrationWindows, defaults.calibrationStability.requiredWindows, config.calibrationStability.requiredWindows);
-    GET_INT(kCalibrationVariation, defaults.calibrationStability.allowedVariationPercent, config.calibrationStability.allowedVariationPercent);
     GET_INT(kFlowStart, defaults.flowProtection.flowStartTimeoutSec, config.flowProtection.flowStartTimeoutSec);
     GET_INT(kNoFlow, defaults.flowProtection.noFlowTimeoutSec, config.flowProtection.noFlowTimeoutSec);
     GET_INT(kLeakDelay, defaults.flowProtection.unexpectedFlowDelaySec, config.flowProtection.unexpectedFlowDelaySec);
@@ -187,56 +171,6 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     Esp32BaseConfig::getStr(kNamespace, kHighAction, action, sizeof(action), "alert");
     config.flowProtection.highFlowAction = std::strcmp(action, "stop") == 0 ? FlowAlertAction::StopWatering : FlowAlertAction::AlertOnly;
     return IrrigationConfigRules::validate(config);
-}
-
-bool IrrigationParameterConfig::saveFlowCalibrationParameters(
-    const FlowMeterConfig& parameters) {
-    if (parameters.pulsesPerLiterX100 < 1U ||
-        parameters.pulsesPerLiterX100 > 10000000U ||
-        parameters.calibrationStartupPulseCount > 10000000U ||
-        parameters.calibrationStartupWaterMl > 1000000U) {
-        return false;
-    }
-    const int32_t previousStartupPulses = Esp32BaseConfig::getInt(
-        kNamespace,
-        kStartupPulses,
-        static_cast<int32_t>(g_defaults.flowMeter.calibrationStartupPulseCount));
-    const int32_t previousStartupWater = Esp32BaseConfig::getInt(
-        kNamespace,
-        kStartupWater,
-        static_cast<int32_t>(g_defaults.flowMeter.calibrationStartupWaterMl));
-    const int32_t previousCoefficient = Esp32BaseConfig::getInt(
-        kNamespace,
-        kCoefficient,
-        static_cast<int32_t>(g_defaults.flowMeter.pulsesPerLiterX100));
-
-    const bool startupPulsesSaved = Esp32BaseConfig::setInt(
-        kNamespace,
-        kStartupPulses,
-        static_cast<int32_t>(parameters.calibrationStartupPulseCount));
-    const bool startupWaterSaved = Esp32BaseConfig::setInt(
-        kNamespace,
-        kStartupWater,
-        static_cast<int32_t>(parameters.calibrationStartupWaterMl));
-    const bool coefficientSaved = Esp32BaseConfig::setInt(
-        kNamespace,
-        kCoefficient,
-        static_cast<int32_t>(parameters.pulsesPerLiterX100));
-    const bool verified =
-        Esp32BaseConfig::getInt(kNamespace, kStartupPulses, -1) ==
-            static_cast<int32_t>(parameters.calibrationStartupPulseCount) &&
-        Esp32BaseConfig::getInt(kNamespace, kStartupWater, -1) ==
-            static_cast<int32_t>(parameters.calibrationStartupWaterMl) &&
-        Esp32BaseConfig::getInt(kNamespace, kCoefficient, -1) ==
-            static_cast<int32_t>(parameters.pulsesPerLiterX100);
-    if (startupPulsesSaved && startupWaterSaved && coefficientSaved && verified) {
-        return true;
-    }
-
-    Esp32BaseConfig::setInt(kNamespace, kStartupPulses, previousStartupPulses);
-    Esp32BaseConfig::setInt(kNamespace, kStartupWater, previousStartupWater);
-    Esp32BaseConfig::setInt(kNamespace, kCoefficient, previousCoefficient);
-    return false;
 }
 
 bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {

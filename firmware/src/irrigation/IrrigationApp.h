@@ -4,7 +4,6 @@
 #include "IrrigationEvents.h"
 #include "IrrigationParameterConfig.h"
 #include "StatusIndicator.h"
-#include "FlowCalibrationService.h"
 #include "DeviceAliveCheckpoint.h"
 #include "WateringRecordStore.h"
 #include "WateringScheduler.h"
@@ -64,18 +63,6 @@ public:
     bool pauseAutomaticWateringIndefinitely();
     bool pauseAutomaticWateringUntil(uint32_t resumeAtEpoch);
     bool resumeAutomaticWatering();
-    WateringStartResult startFlowCalibration(uint8_t zoneId,
-                                             uint16_t maximumDurationMinutes,
-                                             uint32_t targetWaterMl = 0);
-    bool submitFlowCalibrationMeasurement(uint32_t measuredWaterMl);
-    bool markFlowCalibrationSampleInvalid();
-    bool discardFlowCalibrationMeasurement();
-    bool updateFlowCalibrationMeasurement(uint8_t index, uint32_t measuredWaterMl);
-    bool deleteFlowCalibrationSample(uint8_t index);
-    bool applyFlowCalibrationResult();
-    bool saveFlowCalibrationParameters(const FlowMeterConfig& parameters);
-    void resetFlowCalibration();
-    const FlowCalibrationService& flowCalibration() const;
     WateringStartResult startZoneFlowLearning(uint8_t zoneId);
     bool saveLearnedZoneFlow(uint32_t expectedConfigRevision);
     bool saveManualZoneBaselineFlow(uint8_t zoneId,
@@ -145,7 +132,6 @@ private:
     uint32_t pendingLearnedBaselinePulseRateX10000_ = 0;
     IrrigationConfig parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
-    FlowCalibrationService flowCalibrationService_;
     DeviceAliveCheckpoint aliveCheckpoint_;
     IrrigationEvents events_;
     WateringController wateringController_;

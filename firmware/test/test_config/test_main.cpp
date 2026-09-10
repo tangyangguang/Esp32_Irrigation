@@ -62,12 +62,7 @@ void test_default_config_matches_confirmed_product_defaults() {
     TEST_ASSERT_EQUAL_UINT8(75, config.valveDrive.holdDutyPercent);
     TEST_ASSERT_FALSE(config.pump.enabled);
     TEST_ASSERT_EQUAL_UINT32(25000, config.flowMeter.pulsesPerLiterX100);
-    TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupPulseCount);
-    TEST_ASSERT_EQUAL_UINT32(0, config.flowMeter.calibrationStartupWaterMl);
-    TEST_ASSERT_EQUAL_UINT32(4, config.schemaVersion);
-    TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.windowSec);
-    TEST_ASSERT_EQUAL_UINT8(3, config.calibrationStability.requiredWindows);
-    TEST_ASSERT_EQUAL_UINT8(10, config.calibrationStability.allowedVariationPercent);
+    TEST_ASSERT_EQUAL_UINT32(5, config.schemaVersion);
     TEST_ASSERT_EQUAL_UINT8(5, config.timeSafety.rtcRollbackThresholdMinutes);
     TEST_ASSERT_EQUAL_UINT8(12, config.timeSafety.aliveCheckpointHours);
     TEST_ASSERT_TRUE(config.zones[0].enabled);
@@ -121,22 +116,6 @@ void test_confirmed_parameter_ranges_are_validated() {
 
     config = IrrigationConfigRules::createDefault();
     config.flowMeter.pulsesPerLiterX100 = 10000001;
-    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
-
-    config = IrrigationConfigRules::createDefault();
-    config.flowMeter.calibrationStartupPulseCount = 10000001;
-    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
-    config = IrrigationConfigRules::createDefault();
-    config.flowMeter.calibrationStartupWaterMl = 1000001;
-    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
-    config = IrrigationConfigRules::createDefault();
-    config.calibrationStability.windowSec = 0;
-    TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
-    config.calibrationStability.windowSec = 10;
-    config.calibrationStability.requiredWindows = 10;
-    config.calibrationStability.allowedVariationPercent = 30;
-    TEST_ASSERT_TRUE(IrrigationConfigRules::validate(config));
-    config.calibrationStability.allowedVariationPercent = 31;
     TEST_ASSERT_FALSE(IrrigationConfigRules::validate(config));
 
     config = IrrigationConfigRules::createDefault();
@@ -231,8 +210,8 @@ void test_config_json_round_trip_is_exact_and_strict() {
 
     std::string json;
     TEST_ASSERT_TRUE(IrrigationConfigJson::encode(original, json));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"pulses_per_liter_x100\":25037"));
-    TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"switch_delay_ms\":1000"));
+    TEST_ASSERT_EQUAL(std::string::npos, json.find("pulses_per_liter_x100"));
+    TEST_ASSERT_EQUAL(std::string::npos, json.find("switch_delay_ms"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
                           json.find("\"baseline_pulse_rate_x10000\":42000"));
     TEST_ASSERT_EQUAL(std::string::npos, json.find("learned_flow_ml_per_minute"));
@@ -244,9 +223,9 @@ void test_config_json_round_trip_is_exact_and_strict() {
     TEST_ASSERT_EQUAL_STRING(json.c_str(), encodedAgain.c_str());
 
     std::string oldSchema = json;
-    const std::size_t schema = oldSchema.find("\"schema_version\":4");
+    const std::size_t schema = oldSchema.find("\"schema_version\":5");
     TEST_ASSERT_NOT_EQUAL(std::string::npos, schema);
-    oldSchema.replace(schema, std::string("\"schema_version\":4").size(),
+    oldSchema.replace(schema, std::string("\"schema_version\":5").size(),
                       "\"schema_version\":3");
     TEST_ASSERT_FALSE(IrrigationConfigJson::decode(
         oldSchema.data(), oldSchema.size(), decoded));

@@ -11,7 +11,6 @@ struct IrrigationAuditPayload {
         AutomaticRun = 1,
         AutomaticStateChanged = 2,
         PlansChanged = 3,
-        CalibrationSaved = 4,
         ZoneBaselineSaved = 5,
     };
 

@@ -6,7 +6,7 @@
 
 #include "BoardPins.h"
 
-constexpr uint32_t kIrrigationConfigSchemaVersion = 4;
+constexpr uint32_t kIrrigationConfigSchemaVersion = 5;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
 constexpr std::size_t kFlowHistorySampleCount = 120;
@@ -39,14 +39,6 @@ struct PumpConfig {
 
 struct FlowMeterConfig {
     uint32_t pulsesPerLiterX100;
-    uint32_t calibrationStartupPulseCount;
-    uint32_t calibrationStartupWaterMl;
-};
-
-struct CalibrationStabilityConfig {
-    uint8_t windowSec;
-    uint8_t requiredWindows;
-    uint8_t allowedVariationPercent;
 };
 
 struct FlowProtectionConfig {
@@ -94,7 +86,6 @@ struct IrrigationConfig {
     ValveDriveConfig valveDrive;
     PumpConfig pump;
     FlowMeterConfig flowMeter;
-    CalibrationStabilityConfig calibrationStability;
     FlowProtectionConfig flowProtection;
     TimeSafetyConfig timeSafety;
     RunLimitsConfig runLimits;
@@ -110,7 +101,6 @@ enum class WateringSource : uint8_t {
 
 enum class WateringPurpose : uint8_t {
     Normal = 0,
-    FlowCalibration,
     ZoneFlowLearning,
 };
 
@@ -212,21 +202,6 @@ struct ZoneWateringSummary {
     bool terminalFlowAvailable;
     bool terminalFlowStable;
     uint32_t suggestedBaselinePulseRateX10000;
-    uint32_t calibrationFlowEstablishedMs;
-    uint32_t calibrationSteadyStartedMs;
-    uint32_t calibrationStartupPulses;
-    uint32_t calibrationSteadyDurationMs;
-    uint32_t calibrationSteadyPulses;
-    uint32_t calibrationStopDurationMs;
-    uint32_t calibrationStopPulses;
-    uint32_t calibrationPulseRateX100;
-    uint32_t calibrationLatestPulseRateX100;
-    uint8_t calibrationWindowSec;
-    uint8_t calibrationRequiredWindows;
-    uint8_t calibrationAllowedVariationPercent;
-    uint8_t calibrationCollectedWindows;
-    bool calibrationSteadyDetected;
-    bool calibrationSteadyLaterUnstable;
 };
 
 struct WateringStatus {

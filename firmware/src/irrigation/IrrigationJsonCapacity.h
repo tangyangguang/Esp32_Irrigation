@@ -14,7 +14,7 @@ constexpr size_t command = JSON_OBJECT_SIZE(6) + JSON_OBJECT_SIZE(2) + plans + 4
 constexpr size_t state = JSON_OBJECT_SIZE(16) + plans + 2048;
 constexpr size_t record = JSON_OBJECT_SIZE(8) + JSON_OBJECT_SIZE(32) +
     JSON_ARRAY_SIZE(BoardPins::kZoneCount) + BoardPins::kZoneCount * JSON_OBJECT_SIZE(12) + 1024;
-constexpr size_t config = JSON_OBJECT_SIZE(9 + 4 + 3 + 1 + 10 + 2) +
+constexpr size_t config = JSON_OBJECT_SIZE(4) +
     JSON_ARRAY_SIZE(BoardPins::kZoneCount) + BoardPins::kZoneCount * JSON_OBJECT_SIZE(4) +
     JSON_ARRAY_SIZE(kWateringPlanCount) + kWateringPlanCount *
         (JSON_OBJECT_SIZE(6) + JSON_ARRAY_SIZE(kPlanStartTimeCount) + JSON_ARRAY_SIZE(BoardPins::kZoneCount)) +

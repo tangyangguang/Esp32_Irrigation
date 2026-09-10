@@ -18,7 +18,6 @@ public:
         RtcRollback = 1004,
         FlowDeviation = 1201,
         ClosedValveFlow = 1006,
-        FlowCalibrationSaved = 1202,
         ZoneFlowSaved = 1203,
         ConfigurationChanged = 1009,
         WateringRecordSaveFailed = 1101,
@@ -35,7 +34,6 @@ public:
         PlanStartRejected,
         PlanBusyManualWatering,
         PlanBusyAutomaticWatering,
-        PlanBusyFlowCalibration,
         PlanBusyZoneFlowLearning,
         PlanPreviousResultPending,
         PlanControllerNotReady,
@@ -55,7 +53,6 @@ public:
         RtcRollback,
         RtcUnavailable,
         TrustedTimeUnavailable,
-        CalibrationCoefficientSaved,
         ZoneFlowSaved,
         PlanCreated,
         PlanUpdated,
@@ -73,7 +70,7 @@ public:
     enum class Category : uint8_t {
         WateringAndFlow,
         AutomaticWatering,
-        SettingsAndCalibration,
+        Settings,
         TimeAndStorage,
     };
     enum class ConditionDisplayState : uint8_t {
@@ -121,10 +118,6 @@ public:
     bool recordAutomaticRun(
         const Esp32BaseRecordStore::RecordTiming& timing,
         const WateringSessionSummary& summary);
-    void recordFlowCalibrationSaved(uint32_t previousCoefficientX100,
-                                    uint32_t coefficientX100,
-                                    uint32_t pulseCount,
-                                    uint32_t waterMl);
     void recordZoneFlowSaved(uint8_t zoneId,
                              uint32_t previousFlowMlPerMinute,
                              uint32_t pulseRateX10000,
