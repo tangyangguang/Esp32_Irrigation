@@ -18,7 +18,7 @@ public:
 
     bool begin();
     bool save(const IrrigationConfig& proposed, uint32_t expectedRevision);
-    bool applyRuntimeParameters(const IrrigationConfig& source);
+    bool applyRuntimeParameters(const IrrigationParameters& source);
 
     bool ready() const;
     const IrrigationConfig* current() const;

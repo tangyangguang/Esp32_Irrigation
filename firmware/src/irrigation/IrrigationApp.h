@@ -8,7 +8,7 @@
 #include "WateringRecordStore.h"
 #include "WateringScheduler.h"
 #include "WateringSchedulerStore.h"
-#include "WateringController.h"
+#include "WateringExecutor.h"
 #include "UnexpectedFlowMonitor.h"
 
 class IrrigationApp {
@@ -98,12 +98,12 @@ private:
     void resetUnexpectedFlowMonitor(uint32_t nowMs);
     void observeEventConditions(uint32_t nowMs, const Esp32BaseTime::Snapshot& now);
     void refreshRtcCondition(uint32_t nowMs, bool force);
-    void applyPendingHardwareConfiguration();
     void updateStatusIndicator(uint32_t nowMs);
     void handleParameterConfigSaved();
     bool applyStoredParameterConfig();
     static void parameterConfigSaved(void* user);
-    static bool validateParameterConfig(const IrrigationConfig& proposed,
+    static Esp32BaseAppConfig::ApplyStatus parameterApplyStatus();
+    static bool validateParameterConfig(const IrrigationParameters& proposed,
                                         char* error,
                                         size_t errorLength,
                                         void* user);
@@ -125,16 +125,15 @@ private:
     bool recordStorageFault_ = false;
     bool wateringRecordStoreRegistered_ = false;
     bool schedulerStorageFault_ = false;
-    bool pendingPwmReconfigure_ = false;
     bool rtcObservationInitialized_ = false;
     bool eventConditionsInitialized_ = false;
     uint8_t pendingLearnedZoneId_ = 0;
     uint32_t pendingLearnedBaselinePulseRateX10000_ = 0;
-    IrrigationConfig parameterConfigScratch_{};
+    IrrigationParameters parameterConfigScratch_{};
     IrrigationConfigStore configStore_;
     DeviceAliveCheckpoint aliveCheckpoint_;
     IrrigationEvents events_;
-    WateringController wateringController_;
+    WateringExecutor wateringController_;
     WateringRecordStore wateringRecordStore_;
     WateringSchedulerStore wateringSchedulerStore_;
     WateringScheduler wateringScheduler_;

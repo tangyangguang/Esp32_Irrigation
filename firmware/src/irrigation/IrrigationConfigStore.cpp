@@ -102,7 +102,9 @@ bool IrrigationConfigStore::save(const IrrigationConfig& proposed, uint32_t expe
         lastError_ = "config_revision_exhausted";
         return false;
     }
-    saveScratch_ = proposed;
+    saveScratch_ = config_;
+    saveScratch_.zones = proposed.zones;
+    saveScratch_.plans = proposed.plans;
     saveScratch_.schemaVersion = kIrrigationConfigSchemaVersion;
     saveScratch_.revision = config_.revision + 1U;
     if (!IrrigationConfigRules::validateRuntimeConstraints(saveScratch_)) {
@@ -118,7 +120,7 @@ bool IrrigationConfigStore::save(const IrrigationConfig& proposed, uint32_t expe
     return true;
 }
 
-bool IrrigationConfigStore::applyRuntimeParameters(const IrrigationConfig& source) {
+bool IrrigationConfigStore::applyRuntimeParameters(const IrrigationParameters& source) {
     if (!ready_) return false;
     saveScratch_ = config_;
     saveScratch_.valveDrive = source.valveDrive;

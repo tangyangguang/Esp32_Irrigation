@@ -7,7 +7,7 @@
 class IrrigationParameterConfig {
 public:
     using SavedCallback = void (*)(void* user);
-    using ValidateCallback = bool (*)(const IrrigationConfig& proposed,
+    using ValidateCallback = bool (*)(const IrrigationParameters& proposed,
                                       char* error,
                                       size_t errorLength,
                                       void* user);
@@ -15,7 +15,7 @@ public:
     static bool registerFields(SavedCallback callback,
                                ValidateCallback validateCallback,
                                void* user);
-    static bool applyStored(IrrigationConfig& config);
+    static bool applyStored(IrrigationParameters& config);
 
 private:
     static bool validatePage(char* error, size_t errorLength);

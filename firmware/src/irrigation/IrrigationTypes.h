@@ -80,15 +80,20 @@ struct WateringPlan {
     std::array<uint16_t, BoardPins::kZoneCount> zoneDurationMinutes;
 };
 
-struct IrrigationConfig {
-    uint32_t schemaVersion;
-    uint32_t revision;
+struct IrrigationParameters {
     ValveDriveConfig valveDrive;
     PumpConfig pump;
     FlowMeterConfig flowMeter;
     FlowProtectionConfig flowProtection;
     TimeSafetyConfig timeSafety;
     RunLimitsConfig runLimits;
+};
+
+// Runtime configuration combines system parameters with editable plans/zones.
+// Parameters are persisted by App Config; JSON only persists the members below.
+struct IrrigationConfig : IrrigationParameters {
+    uint32_t schemaVersion;
+    uint32_t revision;
     std::array<ZoneConfig, BoardPins::kZoneCount> zones;
     std::array<WateringPlan, kWateringPlanCount> plans;
 };

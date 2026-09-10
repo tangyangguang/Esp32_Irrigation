@@ -54,8 +54,7 @@ bool failStartup(BoardHardware& hardware, StatusIndicator& indicator) {
 }  // namespace
 
 IrrigationApp::IrrigationApp()
-    : wateringController_(BoardHardware::instance()),
-      statusIndicator_(StatusIndicator::instance()) {}
+    : statusIndicator_(StatusIndicator::instance()) {}
 
 IrrigationApp& IrrigationApp::instance() {
     static IrrigationApp app;
@@ -96,6 +95,7 @@ bool IrrigationApp::begin() {
         !IrrigationWeb::registerRoutes(*this)) {
         return failStartup(hardware, statusIndicator_);
     }
+    Esp32BaseAppConfig::setApplyStatusCallback(parameterApplyStatus);
     baseReady_ = Esp32Base::begin();
     if (!baseReady_) {
         return failStartup(hardware, statusIndicator_);
@@ -113,6 +113,10 @@ bool IrrigationApp::begin() {
     if (!config ||
         (config->valveDrive.pwmFrequencyHz != 20000U &&
          !hardware.configureValvePwmFrequency(config->valveDrive.pwmFrequencyHz))) {
+        return failStartup(hardware, statusIndicator_);
+    }
+
+    if (!wateringController_.begin(config->valveDrive.pwmFrequencyHz)) {
         return failStartup(hardware, statusIndicator_);
     }
 
@@ -168,14 +172,14 @@ bool IrrigationApp::begin() {
 void IrrigationApp::handle() {
     const uint32_t nowMs = millis();
     if (!started_ || !baseReady_) {
-        BoardHardware::instance().safeShutdown();
+        wateringController_.safeShutdown();
         statusIndicator_.setMode(StatusIndicator::Mode::Critical, nowMs);
         statusIndicator_.handle(nowMs);
         return;
     }
 
     if (Esp32BaseOta::isUploading() || Esp32BaseOta::status() == Esp32BaseOta::SUCCESS) {
-        BoardHardware::instance().safeShutdown();
+        wateringController_.safeShutdown();
         Esp32Base::handle();
         return;
     }
@@ -589,29 +593,8 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
                          change == IrrigationEvents::ConfigurationChange::PlanUpdated ||
                          change == IrrigationEvents::ConfigurationChange::PlanDeleted;
     if (audited && !IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit)) return false;
-    BoardHardware& hardware = BoardHardware::instance();
     const bool active = wateringController_.active();
-    const bool frequencyChanged = proposed.valveDrive.pwmFrequencyHz !=
-                                  current->valveDrive.pwmFrequencyHz;
-    bool hardwareChanged = false;
-    if (frequencyChanged && !active) {
-        if (!hardware.configureValvePwmFrequency(proposed.valveDrive.pwmFrequencyHz)) {
-            return false;
-        }
-        hardwareChanged = true;
-    }
-    const uint32_t previousFrequency = current->valveDrive.pwmFrequencyHz;
-    if (!configStore_.save(proposed, expectedRevision)) {
-        if (std::strcmp(configStore_.lastError(), "config_write_failed") == 0) {
-            ESP32BASE_LOG_E("irrigation", "configuration_write_failed");
-        }
-        if (hardwareChanged && !hardware.configureValvePwmFrequency(previousFrequency)) {
-            businessReady_ = false;
-            hardware.safeShutdown();
-        }
-        return false;
-    }
-    pendingPwmReconfigure_ = frequencyChanged && active;
+    if (!configStore_.save(proposed, expectedRevision)) return false;
     wateringScheduler_.rebaseTimeCheck();
     if (!active) {
         resetUnexpectedFlowMonitor(millis());
@@ -626,7 +609,8 @@ const char* IrrigationApp::configurationError() const {
 
 void IrrigationApp::advanceBusiness() {
     if (!businessReady_) {
-        BoardHardware::instance().safeShutdown();
+        wateringController_.safeShutdown();
+        consumeFinishedWatering(millis());
         return;
     }
     const uint32_t nowMs = millis();
@@ -635,8 +619,14 @@ void IrrigationApp::advanceBusiness() {
         eventConditionsInitialized_ = true;
     }
     refreshRtcCondition(nowMs, false);
-    wateringController_.handle(nowMs);
+    // A deferred hardware change may fail immediately after execution ends.
+    // Its completed fact must still reach storage while new starts are blocked.
     consumeFinishedWatering(nowMs);
+    if (!wateringController_.hardwareReady()) {
+        businessReady_ = false;
+        wateringController_.safeShutdown();
+        return;
+    }
     const IrrigationConfig* config = configStore_.current();
     if (config && !wateringController_.active()) {
         unexpectedFlowMonitor_.observe(nowMs, BoardHardware::instance().flowPulseCount());
@@ -696,7 +686,6 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
     }
 
     resetUnexpectedFlowMonitor(nowMs);
-    applyPendingHardwareConfiguration();
     wateringController_.clearFinishedSession();
     finishedWateringStored_ = false;
     wateringStartTime_ = {};
@@ -706,20 +695,6 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
 uint32_t IrrigationApp::trustedEpoch() const {
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     return now.synced ? now.epochSec : 0;
-}
-
-void IrrigationApp::applyPendingHardwareConfiguration() {
-    if (!pendingPwmReconfigure_ || wateringController_.active()) {
-        return;
-    }
-    const IrrigationConfig* config = configStore_.current();
-    if (!config || !BoardHardware::instance().configureValvePwmFrequency(
-                       config->valveDrive.pwmFrequencyHz)) {
-        businessReady_ = false;
-        BoardHardware::instance().safeShutdown();
-        return;
-    }
-    pendingPwmReconfigure_ = false;
 }
 
 void IrrigationApp::updateStatusIndicator(uint32_t nowMs) {
@@ -734,6 +709,14 @@ void IrrigationApp::updateStatusIndicator(uint32_t nowMs) {
     statusIndicator_.handle(nowMs);
 }
 
+Esp32BaseAppConfig::ApplyStatus IrrigationApp::parameterApplyStatus() {
+    const auto& app = instance();
+    if (!app.businessReady_ || !app.wateringController_.hardwareReady())
+        return Esp32BaseAppConfig::ApplyStatus::Failed;
+    return app.wateringController_.parametersPending()
+        ? Esp32BaseAppConfig::ApplyStatus::Pending : Esp32BaseAppConfig::ApplyStatus::Applied;
+}
+
 void IrrigationApp::parameterConfigSaved(void* user) {
     if (user) static_cast<IrrigationApp*>(user)->handleParameterConfigSaved();
 }
@@ -746,7 +729,7 @@ bool IrrigationApp::applyStoredParameterConfig() {
            configStore_.applyRuntimeParameters(parameterConfigScratch_);
 }
 
-bool IrrigationApp::validateParameterConfig(const IrrigationConfig& proposed,
+bool IrrigationApp::validateParameterConfig(const IrrigationParameters& proposed,
                                             char* error,
                                             size_t errorLength,
                                             void* user) {
@@ -777,25 +760,16 @@ void IrrigationApp::handleParameterConfigSaved() {
     parameterConfigScratch_ = *current;
     if (!IrrigationParameterConfig::applyStored(parameterConfigScratch_)) {
         businessReady_ = false;
-        BoardHardware::instance().safeShutdown();
+        wateringController_.safeShutdown();
         return;
     }
-    const bool frequencyChanged = parameterConfigScratch_.valveDrive.pwmFrequencyHz !=
-                                  current->valveDrive.pwmFrequencyHz;
     const bool active = wateringController_.active();
-    if (frequencyChanged && !active &&
-        !BoardHardware::instance().configureValvePwmFrequency(
-            parameterConfigScratch_.valveDrive.pwmFrequencyHz)) {
+    if (!configStore_.applyRuntimeParameters(parameterConfigScratch_) ||
+        !wateringController_.configureValvePwmFrequency(parameterConfigScratch_.valveDrive.pwmFrequencyHz)) {
         businessReady_ = false;
-        BoardHardware::instance().safeShutdown();
+        wateringController_.safeShutdown();
         return;
     }
-    if (!configStore_.applyRuntimeParameters(parameterConfigScratch_)) {
-        businessReady_ = false;
-        BoardHardware::instance().safeShutdown();
-        return;
-    }
-    pendingPwmReconfigure_ = frequencyChanged && active;
     wateringScheduler_.rebaseTimeCheck();
     if (!active) resetUnexpectedFlowMonitor(millis());
     events_.recordConfigurationChanged(
@@ -946,9 +920,8 @@ bool IrrigationApp::allowOta(void* user) {
 void IrrigationApp::beforeLifecycleStop(void* user) {
     auto* app = static_cast<IrrigationApp*>(user);
     // Hardware closure always precedes filesystem work and bounded network waits.
-    BoardHardware::instance().safeShutdown();
     if (!app) return;
-    app->wateringController_.abortForMaintenance(millis());
+    app->wateringController_.safeShutdown();
     app->consumeFinishedWatering(millis());
     app->businessReady_ = false;
 }
@@ -960,9 +933,7 @@ void IrrigationApp::afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, vo
 }
 
 void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result) {
-    BoardHardware& hardware = BoardHardware::instance();
-    wateringController_.abortForMaintenance(millis());
-    hardware.safeShutdown();
+    wateringController_.safeShutdown();
     businessReady_ = false;
 
     if (!result.formatSuccess || !result.mountSuccess) {
@@ -986,7 +957,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     if (configReady) configReady = applyStoredParameterConfig();
     const IrrigationConfig* config = configStore_.current();
     const bool pwmReady = configReady && config &&
-                          hardware.configureValvePwmFrequency(
+                          wateringController_.configureValvePwmFrequency(
                               config->valveDrive.pwmFrequencyHz);
     const bool schedulerCleared = wateringSchedulerStore_.clear();
     wateringScheduler_.setCallbacks(nullptr, nullptr, nullptr);
@@ -1019,7 +990,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
         resetUnexpectedFlowMonitor(millis());
     }
     if (!businessReady_) {
-        hardware.safeShutdown();
+        wateringController_.safeShutdown();
     }
     ESP32BASE_LOG_W("irrigation",
                     "after_format_reinitialized business_ready=%s records_ready=%s scheduler_ready=%s checkpoint_ready=%s condition_history_reset=%s",

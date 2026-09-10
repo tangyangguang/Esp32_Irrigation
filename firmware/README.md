@@ -8,7 +8,11 @@
 
 本节是唯一当前待办。此前试运行接入已完成；现按用户授权开展业务精简与 Base 资源优化。类型级验收见 [灌溉类型账本](../../../platform/iot-device-lab/device-types/irrigation-controller/README.md)。
 
-本轮开发、定向检查与提交推送已完成。完整硬件短时验证与 OTA 已完成；本机平台已同步当前定义并重启就绪，本轮无剩余编码或必要实验任务。设备 `c10d8c3` / `fd582e1`，Base `a027f68`，类型定义 `b990dbc`，小程序只读字段同步 `60ec5a4`，服务端 manifest `dc9e694` 均已推送。后续仅保留独立专业校准任务，以及用户按需安排的设备升级与现场验证。
+当前架构重构按用户确认的评审实施。第一阶段（执行任务、参数职责和生效反馈）源码及定向检查已完成，正在提交；下一阶段为双 Store 独立故障/恢复，随后统一收口文档及必要 OTA 验证。此前 4dd2194/a027f68 的完成结论仅属于上一轮精简，不代表本次新架构已实机通过。
+
+- 当前进行中：第一阶段分仓交付。
+- 待办：双 Store 故障隔离及针对性检查。
+- 待办：最新固件必要 OTA/短时检查与正式文档收口。
 
 本轮配置 JSON 仅保存 schema_version、revision、zones、plans；系统参数只保存于 NVS。配置格式为 schema 5，审计使用 v3；删除校准专用字段后不读取或迁移旧配置和旧审计；无当前配置时初始化，已有无效配置时保持安全未就绪并明确报错，不自动格式化。更新旧样机需另行确认目标配置初始化，不能用本轮构建冒充已升级。
 
@@ -99,7 +103,7 @@ cp IrrigationIotSecrets.example.h local_private/irrigation_iot_private.h
 7. 加载业务配置、命令幂等 journal、调度状态、watering/audit 两个业务 Store 及 SDK 独立记录流恢复。
 8. 只有全部必需状态有效时才进入业务 ready。
 
-正常循环先推进业务状态机和 IoT 外围适配，再调用 `Esp32Base::handle()`。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。MQTT 状态和记录序列化共用 `IrrigationIot` 长期对象中的单一 4097 B 缓冲，不在 `loopTask` 栈上创建 4 KiB 临时数组；这是当前 4096 B payload 上限下的硬性栈安全边界。
+控制器由 `WateringExecutor` 的独立任务推进（classic ESP32 core 1、优先级 3、4096 B 栈、最多等待 5 ms 或一个 RTOS tick）；它独占正常硬件操作，不调用网络、文件、NVS 或 Base 服务。Arduino loop 处理结果持久化、调度和 IoT，再调用 `Esp32Base::handle()`。唯一服务任务通过一个有界同步命令槽取得实际处理结果，停止不会被普通命令积压；只读快照用短 mutex 保护，锁不跨越 Web/存储调用。控制任务独立加入 TWDT；Flash/cache 停顿仍不是硬实时保证。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。MQTT 状态和记录序列化共用 `IrrigationIot` 长期对象中的单一 4097 B 缓冲，不在 `loopTask` 栈上创建 4 KiB 临时数组；这是当前 4096 B payload 上限下的硬性栈安全边界。
 
 IOT 在 Base 启动前注册网络停止回调，通过 SDK 发起同一 connectionId 的正常 shutdown。维护等待最多 3 秒，必须匹配最终 PUBACK 并收到断开事件才开始 OTA；失败恢复网络许可并拒绝更新。安全重启仍先关输出，退出失败不伪装成功。MQTT PUBACK 不是业务记录落库确认。
 
@@ -135,6 +139,7 @@ LittleFS 挂载失败不会自动格式化。格式化只允许用户在确认�
 python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -e esp32_irrigation_arduino3
 python3 scripts/test_storage_views.py
 python3 scripts/test_hardware.py
+python3 scripts/test_executor.py
 python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native -f test_command_journal
 ```
 
@@ -227,3 +232,11 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain r
 以上是 HTTP、串口及无水流闭环证据，不代替用户视觉确认、实际水量精度、带水泵阀性能或长期实验。不追加全量、多芯片、长期及重复测试。
 
 本机 `iot-home-server` 已使用当前 `dc9e694` 源码/manifest 构建重启，health/ready 中 database、lease、MQTT 全部正常。未部署 NUC，未上传/发布小程序，未将连接成功冒充本轮平台记录 ACK 或原生微信验收。
+
+### 2026-09-10 架构重构第一阶段
+
+- `WateringExecutor` 复用原控制器，完成结果保持到服务任务显式确认清除；维护先取得输出关闭确认。未增加公共任务框架。
+- `IrrigationParameters` 只含六组标量参数；参数默认值、校验及临时副本不再携带水路/计划。计划保存只更新计划和水路，硬件频率按目标值与已应用值协调；当前操作保留启动快照。
+- Base App Config 新增只读 `ApplyStatusCallback`，参数页独立显示持久化和应用结果；无变更保存也重新检查应用状态。硬件故障保持安全未就绪，必要时重启恢复，不伪装为保存成功即硬件成功。
+- 检查：`test_executor.py` 通过服务线程停顿 1150 ms 时吸合转维持/无流量停止、连续改频率、结果保留、停止、维护与硬件失败；生产控制器/配置 native 46 项通过；既有 host GPIO 和存储检查通过。目标受控 Core 3 构建通过；随后停止/自动结束竞态修正通过同一 executor 检查，最终镜像将在双 Store 阶段合并构建。阶段构建 bin 1567680 B，静态 RAM 95172 B，OTA 余量 201792 B（11.40%）。新增任务栈 4096 B 及任务控制块来自运行堆，不能把静态 RAM 下降当作总运行内存下降。
+- 这是主机逻辑与目标编译证据；当前阶段尚未 OTA，不代表实机时序测量。

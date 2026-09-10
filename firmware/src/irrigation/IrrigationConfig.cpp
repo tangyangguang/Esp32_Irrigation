@@ -91,24 +91,7 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
     config.schemaVersion = kIrrigationConfigSchemaVersion;
     config.revision = 1;
 
-    config.valveDrive = {3000, 1000, 20000, 75};
-    config.pump = {false, 0, 1000};
-    config.flowMeter = {25000};
-    config.flowProtection = {
-        20,
-        10,
-        30,
-        30,
-        3,
-        20,
-        30,
-        200,
-        FlowAlertAction::AlertOnly,
-        FlowAlertAction::AlertOnly,
-    };
-    config.timeSafety = {5, 12};
-    config.runLimits = {kDefaultMaximumZoneDurationMinutes,
-                        kDefaultMaximumSingleOutputLiters};
+    static_cast<IrrigationParameters&>(config) = defaultParameters();
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         ZoneConfig& zone = config.zones[index];
@@ -132,44 +115,35 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
     return config;
 }
 
+IrrigationParameters IrrigationConfigRules::defaultParameters() {
+    IrrigationParameters config{};
+    config.valveDrive = {3000, 1000, 20000, 75};
+    config.pump = {false, 0, 1000};
+    config.flowMeter = {25000};
+    config.flowProtection = {
+        20,
+        10,
+        30,
+        30,
+        3,
+        20,
+        30,
+        200,
+        FlowAlertAction::AlertOnly,
+        FlowAlertAction::AlertOnly,
+    };
+    config.timeSafety = {5, 12};
+    config.runLimits = {kDefaultMaximumZoneDurationMinutes,
+                        kDefaultMaximumSingleOutputLiters};
+
+    return config;
+}
+
 bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
     if (config.schemaVersion != kIrrigationConfigSchemaVersion || config.revision == 0) {
         return false;
     }
-    if (!inRange(config.valveDrive.pullInTimeMs, 100, 10000) ||
-        !inRange(config.valveDrive.switchDelayMs, 100, 10000) ||
-        !inRange(config.valveDrive.pwmFrequencyHz, 1000, 25000) ||
-        !inRange(config.valveDrive.holdDutyPercent, 1, 100)) {
-        return false;
-    }
-    if (!inRange(config.pump.startDelayMs, 0, 60000) ||
-        !inRange(config.pump.stopToValveCloseDelayMs, 0, 10000) ||
-        !inRange(config.flowMeter.pulsesPerLiterX100, 1, 10000000) ||
-        !inRange(config.flowProtection.flowStartTimeoutSec, 1, 120) ||
-        !inRange(config.flowProtection.noFlowTimeoutSec, 1, 60) ||
-        !inRange(config.flowProtection.unexpectedFlowDelaySec, 0, 300) ||
-        !inRange(config.flowProtection.unexpectedFlowWindowSec, 1, 300) ||
-        config.flowProtection.unexpectedFlowPulseCount == 0 ||
-        !inRange(config.flowProtection.flowDeviationConfirmSec, 1, 300) ||
-        !inRange(config.flowProtection.lowFlowPercent, 1, 99) ||
-        !inRange(config.flowProtection.highFlowPercent, 101, 1000) ||
-        !isValidFlowAction(config.flowProtection.lowFlowAction) ||
-        !isValidFlowAction(config.flowProtection.highFlowAction)) {
-        return false;
-    }
-    if (config.timeSafety.rtcRollbackThresholdMinutes < 1 ||
-        config.timeSafety.rtcRollbackThresholdMinutes > 60 ||
-        config.timeSafety.aliveCheckpointHours > 168) {
-        return false;
-    }
-    if (!inRange(config.runLimits.maximumZoneDurationMinutes,
-                 1,
-                 kMaximumConfigurableZoneDurationMinutes) ||
-        !inRange(config.runLimits.maximumSingleOutputLiters,
-                 1,
-                 kMaximumConfigurableSingleOutputLiters)) {
-        return false;
-    }
+    if (!validateParameters(config)) return false;
 
     for (std::size_t index = 0; index < config.zones.size(); ++index) {
         const ZoneConfig& zone = config.zones[index];
@@ -223,6 +197,45 @@ bool IrrigationConfigRules::validate(const IrrigationConfig& config) {
             return false;
         }
     }
+    return true;
+}
+
+bool IrrigationConfigRules::validateParameters(const IrrigationParameters& config) {
+    if (!inRange(config.valveDrive.pullInTimeMs, 100, 10000) ||
+        !inRange(config.valveDrive.switchDelayMs, 100, 10000) ||
+        !inRange(config.valveDrive.pwmFrequencyHz, 1000, 25000) ||
+        !inRange(config.valveDrive.holdDutyPercent, 1, 100)) {
+        return false;
+    }
+    if (!inRange(config.pump.startDelayMs, 0, 60000) ||
+        !inRange(config.pump.stopToValveCloseDelayMs, 0, 10000) ||
+        !inRange(config.flowMeter.pulsesPerLiterX100, 1, 10000000) ||
+        !inRange(config.flowProtection.flowStartTimeoutSec, 1, 120) ||
+        !inRange(config.flowProtection.noFlowTimeoutSec, 1, 60) ||
+        !inRange(config.flowProtection.unexpectedFlowDelaySec, 0, 300) ||
+        !inRange(config.flowProtection.unexpectedFlowWindowSec, 1, 300) ||
+        config.flowProtection.unexpectedFlowPulseCount == 0 ||
+        !inRange(config.flowProtection.flowDeviationConfirmSec, 1, 300) ||
+        !inRange(config.flowProtection.lowFlowPercent, 1, 99) ||
+        !inRange(config.flowProtection.highFlowPercent, 101, 1000) ||
+        !isValidFlowAction(config.flowProtection.lowFlowAction) ||
+        !isValidFlowAction(config.flowProtection.highFlowAction)) {
+        return false;
+    }
+    if (config.timeSafety.rtcRollbackThresholdMinutes < 1 ||
+        config.timeSafety.rtcRollbackThresholdMinutes > 60 ||
+        config.timeSafety.aliveCheckpointHours > 168) {
+        return false;
+    }
+    if (!inRange(config.runLimits.maximumZoneDurationMinutes,
+                 1,
+                 kMaximumConfigurableZoneDurationMinutes) ||
+        !inRange(config.runLimits.maximumSingleOutputLiters,
+                 1,
+                 kMaximumConfigurableSingleOutputLiters)) {
+        return false;
+    }
+
     return true;
 }
 

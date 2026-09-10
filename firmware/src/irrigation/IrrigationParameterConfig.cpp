@@ -53,10 +53,10 @@ const Esp32BaseAppConfig::EnumOption kFlowActions[] = {
 IrrigationParameterConfig::SavedCallback g_callback = nullptr;
 IrrigationParameterConfig::ValidateCallback g_validateCallback = nullptr;
 void* g_callbackUser = nullptr;
-IrrigationConfig g_defaults{};
-IrrigationConfig g_validationScratch{};
+IrrigationParameters g_defaults{};
+IrrigationParameters g_validationScratch{};
 
-bool readSubmitted(IrrigationConfig& config) {
+bool readSubmitted(IrrigationParameters& config) {
     int32_t value = 0;
     bool boolean = false;
     char action[Esp32BaseAppConfig::ENUM_VALUE_MAX_LENGTH + 1]{};
@@ -105,8 +105,8 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback,
     g_callback = callback;
     g_validateCallback = validateCallback;
     g_callbackUser = user;
-    g_defaults = IrrigationConfigRules::createDefault();
-    const IrrigationConfig& defaults = g_defaults;
+    g_defaults = IrrigationConfigRules::defaultParameters();
+    const IrrigationParameters& defaults = g_defaults;
     return Esp32BaseAppConfig::setTitle("系统参数") &&
            Esp32BaseAppConfig::setPageValidateCallback(validatePage) &&
            Esp32BaseAppConfig::setSaveCallback(handleSaved) &&
@@ -140,9 +140,9 @@ bool IrrigationParameterConfig::registerFields(SavedCallback callback,
            Esp32BaseAppConfig::addInt({"system", kNamespace, kAliveHours, "在线检查点间隔", defaults.timeSafety.aliveCheckpointHours, 0, 168, 1, "h", "空闲达到该时长才写检查点；0 表示关闭，范围 0～168 h。", false, nullptr});
 }
 
-bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
+bool IrrigationParameterConfig::applyStored(IrrigationParameters& config) {
     if (!Esp32BaseConfig::isReady()) return false;
-    const IrrigationConfig& defaults = g_defaults;
+    const IrrigationParameters& defaults = g_defaults;
 #define GET_INT(key, def, target) target = static_cast<decltype(target)>(Esp32BaseConfig::getInt(kNamespace, key, def))
     GET_INT(kPullIn, defaults.valveDrive.pullInTimeMs, config.valveDrive.pullInTimeMs);
     GET_INT(kSwitchDelay, defaults.valveDrive.switchDelayMs, config.valveDrive.switchDelayMs);
@@ -170,13 +170,13 @@ bool IrrigationParameterConfig::applyStored(IrrigationConfig& config) {
     config.flowProtection.lowFlowAction = std::strcmp(action, "stop") == 0 ? FlowAlertAction::StopWatering : FlowAlertAction::AlertOnly;
     Esp32BaseConfig::getStr(kNamespace, kHighAction, action, sizeof(action), "alert");
     config.flowProtection.highFlowAction = std::strcmp(action, "stop") == 0 ? FlowAlertAction::StopWatering : FlowAlertAction::AlertOnly;
-    return IrrigationConfigRules::validate(config);
+    return IrrigationConfigRules::validateParameters(config);
 }
 
 bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {
     g_validationScratch = g_defaults;
     if (!readSubmitted(g_validationScratch) ||
-        !IrrigationConfigRules::validate(g_validationScratch)) {
+        !IrrigationConfigRules::validateParameters(g_validationScratch)) {
         strlcpy(error, "参数组合无效，请检查范围和相互关系。", errorLength);
         return false;
     }
@@ -190,6 +190,6 @@ bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {
     return true;
 }
 
-void IrrigationParameterConfig::handleSaved(const Esp32BaseAppConfig::SaveSummary& summary) {
-    if (summary.savedCount != 0 && g_callback) g_callback(g_callbackUser);
+void IrrigationParameterConfig::handleSaved(const Esp32BaseAppConfig::SaveSummary&) {
+    if (g_callback) g_callback(g_callbackUser);
 }

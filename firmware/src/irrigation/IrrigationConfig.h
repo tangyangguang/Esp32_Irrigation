@@ -5,6 +5,8 @@
 class IrrigationConfigRules {
 public:
     static IrrigationConfig createDefault();
+    static IrrigationParameters defaultParameters();
+    static bool validateParameters(const IrrigationParameters&);
     static bool validate(const IrrigationConfig& config);
     static bool validateName(const char* value, std::size_t capacity);
     static bool validateRuntimeConstraints(const IrrigationConfig& config);
