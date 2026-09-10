@@ -12,8 +12,7 @@ namespace IrrigationIotProtocol {
 constexpr const char* kProtocol = "irrigation-controller/v1";
 constexpr const char* kTypeKey = "irrigation-controller";
 constexpr const char* kModelKey = "irrigation-controller-6-zone";
-constexpr const char* kDefinitionChecksum =
-    "c6313c760a303f73dc7e0c61321376fafb35546fb2ca7567f0d2a10fbdeeacf7";
+
 constexpr uint32_t kStateFreshnessMs = 30000U;
 constexpr uint32_t kStateRepublishMs = 24000U;
 constexpr std::size_t kUuidTextLength = 36;

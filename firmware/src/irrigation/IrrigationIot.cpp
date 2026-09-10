@@ -196,7 +196,7 @@ bool IrrigationIot::configure() {
                     "mqtt_configured device_id=%s model=%s definition=%s",
                     deviceId_,
                     IrrigationIotProtocol::kModelKey,
-                    IrrigationIotProtocol::kDefinitionChecksum);
+                    iot_device::model_irrigation_controller_6_zone::contract.definitionSha256);
     return true;
 }
 
@@ -943,7 +943,8 @@ bool IrrigationIot::serializeRecord(const uint8_t generation[16], const iot_devi
                                          : "watering.failed";
         data["sourceKey"] = watering.source == WateringSource::AutomaticPlan
                                 ? "device_schedule"
-                                : "wechat_miniprogram";
+                                : (watering.relatedCommandId != std::array<uint8_t,16>{}
+                                       ? "wechat_miniprogram" : "local_web");
         char commandId[IrrigationIotProtocol::kUuidBufferSize]{};
         if (!WateringRecordCodec::formatRelatedCommandId(
                 watering, commandId, sizeof(commandId))) return false;
@@ -953,16 +954,19 @@ bool IrrigationIot::serializeRecord(const uint8_t generation[16], const iot_devi
             data["planId"] = watering.planId;
         else
             data["planId"] = nullptr;
-        if (!timed || completedEpoch < record.timing.durationSec) return false;
-        const uint32_t startedEpoch = completedEpoch - record.timing.durationSec;
-        char startedAt[25]{};
-        if (!IrrigationIotProtocol::formatTimestamp(startedEpoch, 0, startedAt,
-                                                    sizeof(startedAt)))
-            return false;
-        data["startedAt"] = startedAt;
-        data["completedAt"] = observedAt;
+        const bool intervalTimed = timed && completedEpoch >= record.timing.durationSec;
+        if (intervalTimed) {
+            char startedAt[25]{};
+            if (!IrrigationIotProtocol::formatTimestamp(completedEpoch - record.timing.durationSec,
+                                                        0, startedAt, sizeof(startedAt))) return false;
+            data["startedAt"] = startedAt;
+            data["completedAt"] = observedAt;
+        } else {
+            data["startedAt"] = nullptr;
+            data["completedAt"] = nullptr;
+        }
         data["durationSeconds"] = record.timing.durationSec;
-        data["timeQuality"] = "trusted";
+        data["timeQuality"] = intervalTimed ? "trusted" : "unknown";
         data["result"] = watering.result == WateringResult::Completed
                              ? "completed"
                              : watering.result == WateringResult::Stopped
@@ -1016,7 +1020,8 @@ bool IrrigationIot::serializeRecord(const uint8_t generation[16], const iot_devi
                                        static_cast<WateringStopReason>(audit.reason));
             if (audit.flags == 3U || !timed) {
                 data["startedAt"] = nullptr;
-                data["durationSeconds"] = nullptr;
+                if (audit.flags == 3U) data["durationSeconds"] = nullptr;
+                else data["durationSeconds"] = record.timing.durationSec;
             } else {
                 if (completedEpoch < record.timing.durationSec) return false;
                 char startedAt[25]{};
@@ -1027,7 +1032,7 @@ bool IrrigationIot::serializeRecord(const uint8_t generation[16], const iot_devi
                 data["durationSeconds"] = record.timing.durationSec;
             }
             if (timed) data["endedAt"] = observedAt;
-            else return false;
+            else data["endedAt"] = nullptr;
             JsonObject parameters = data["parameters"].to<JsonObject>();
             parameters["planId"] = audit.objectId;
         } else if (audit.kind == AuditKind::AutomaticStateChanged) {

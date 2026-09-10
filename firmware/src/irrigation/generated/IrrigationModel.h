@@ -1144,29 +1144,23 @@ static bool validate_119(JsonVariantConst v) {
 }
 static bool validate_120(JsonVariantConst v) {
     (void)v;
-    if (!(v.is<const char*>())) return false;
-    if (!(!v.is<const char*>() || validUtcTimestamp(v.as<JsonString>().c_str(),v.as<JsonString>().size()))) return false;
-    return true;
-}
-static bool validate_121(JsonVariantConst v) {
-    (void)v;
     if (!(schema::number(v,true) || v.isNull())) return false;
     if (!(!v.is<double>() || v.as<double>() >= 0)) return false;
     return true;
 }
-static bool validate_123(JsonVariantConst v) {
+static bool validate_122(JsonVariantConst v) {
     (void)v;
     if (!(schema::number(v,true))) return false;
     if (!(!v.is<double>() || v.as<double>() >= 1)) return false;
     if (!(!v.is<double>() || v.as<double>() <= 8)) return false;
     return true;
 }
-static IOT_DEVICE_NOINLINE bool validate_122(JsonVariantConst v) {
+static IOT_DEVICE_NOINLINE bool validate_121(JsonVariantConst v) {
     (void)v;
     if (!(v.is<JsonObjectConst>())) return false;
     if(v.is<JsonObjectConst>()) {
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("planId")))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("planId")) || validate_123(v[IOT_DEVICE_JSON_KEY("planId")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("planId")) || validate_122(v[IOT_DEVICE_JSON_KEY("planId")]))) return false;
     for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
     if (!((p.key().size()==6 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("planId"),6)))) return false;
     }
@@ -1190,67 +1184,67 @@ static IOT_DEVICE_NOINLINE bool validate_114(JsonVariantConst v) {
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("status")) || validate_117(v[IOT_DEVICE_JSON_KEY("status")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("reason")) || validate_118(v[IOT_DEVICE_JSON_KEY("reason")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("startedAt")) || validate_119(v[IOT_DEVICE_JSON_KEY("startedAt")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("endedAt")) || validate_120(v[IOT_DEVICE_JSON_KEY("endedAt")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("durationSeconds")) || validate_121(v[IOT_DEVICE_JSON_KEY("durationSeconds")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("parameters")) || validate_122(v[IOT_DEVICE_JSON_KEY("parameters")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("endedAt")) || validate_119(v[IOT_DEVICE_JSON_KEY("endedAt")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("durationSeconds")) || validate_120(v[IOT_DEVICE_JSON_KEY("durationSeconds")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("parameters")) || validate_121(v[IOT_DEVICE_JSON_KEY("parameters")]))) return false;
     for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
     if (!((p.key().size()==9 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("actionKey"),9)) || (p.key().size()==9 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("sourceKey"),9)) || (p.key().size()==6 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("status"),6)) || (p.key().size()==6 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("reason"),6)) || (p.key().size()==9 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("startedAt"),9)) || (p.key().size()==7 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("endedAt"),7)) || (p.key().size()==15 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("durationSeconds"),15)) || (p.key().size()==10 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("parameters"),10)))) return false;
     }
     }
     return true;
 }
-static bool validate_125(JsonVariantConst v) {
+static bool validate_124(JsonVariantConst v) {
     (void)v;
-    if (!((IOT_DEVICE_TEXT_EQUAL(v,"wechat_miniprogram")) || (IOT_DEVICE_TEXT_EQUAL(v,"device_schedule")))) return false;
+    if (!((IOT_DEVICE_TEXT_EQUAL(v,"wechat_miniprogram")) || (IOT_DEVICE_TEXT_EQUAL(v,"local_web")) || (IOT_DEVICE_TEXT_EQUAL(v,"device_schedule")))) return false;
     return true;
 }
-static bool validate_126(JsonVariantConst v) {
+static bool validate_125(JsonVariantConst v) {
     (void)v;
     if (!(v.is<const char*>() || v.isNull())) return false;
     if (!(schema::pattern(v,0))) return false;
     return true;
 }
-static bool validate_127(JsonVariantConst v) {
+static bool validate_126(JsonVariantConst v) {
     (void)v;
     if (!(schema::number(v,true) || v.isNull())) return false;
     if (!(!v.is<double>() || v.as<double>() >= 1)) return false;
     if (!(!v.is<double>() || v.as<double>() <= 8)) return false;
     return true;
 }
-static bool validate_128(JsonVariantConst v) {
+static bool validate_127(JsonVariantConst v) {
     (void)v;
-    if (!(IOT_DEVICE_TEXT_EQUAL(v,"trusted"))) return false;
+    if (!((IOT_DEVICE_TEXT_EQUAL(v,"trusted")) || (IOT_DEVICE_TEXT_EQUAL(v,"unknown")))) return false;
     return true;
 }
-static bool validate_129(JsonVariantConst v) {
+static bool validate_128(JsonVariantConst v) {
     (void)v;
     if (!((IOT_DEVICE_TEXT_EQUAL(v,"completed")) || (IOT_DEVICE_TEXT_EQUAL(v,"stopped")) || (IOT_DEVICE_TEXT_EQUAL(v,"failed")))) return false;
     return true;
 }
-static bool validate_132(JsonVariantConst v) {
+static bool validate_131(JsonVariantConst v) {
     (void)v;
     if (!(schema::number(v,true))) return false;
     if (!(!v.is<double>() || v.as<double>() >= 1)) return false;
     return true;
 }
-static bool validate_133(JsonVariantConst v) {
+static bool validate_132(JsonVariantConst v) {
     (void)v;
     if (!(schema::number(v,true))) return false;
     if (!(!v.is<double>() || v.as<double>() >= 0)) return false;
     return true;
 }
-static bool validate_134(JsonVariantConst v) {
+static bool validate_133(JsonVariantConst v) {
     (void)v;
     if (!((IOT_DEVICE_TEXT_EQUAL(v,"completed")) || (IOT_DEVICE_TEXT_EQUAL(v,"stopped")) || (IOT_DEVICE_TEXT_EQUAL(v,"failed")) || (IOT_DEVICE_TEXT_EQUAL(v,"not-started")))) return false;
     return true;
 }
-static bool validate_135(JsonVariantConst v) {
+static bool validate_134(JsonVariantConst v) {
     (void)v;
     if (!(schema::number(v,true) || v.isNull())) return false;
     if (!(!v.is<double>() || v.as<double>() >= 0)) return false;
     return true;
 }
-static IOT_DEVICE_NOINLINE bool validate_131(JsonVariantConst v) {
+static IOT_DEVICE_NOINLINE bool validate_130(JsonVariantConst v) {
     (void)v;
     if (!(v.is<JsonObjectConst>())) return false;
     if(v.is<JsonObjectConst>()) {
@@ -1267,15 +1261,15 @@ static IOT_DEVICE_NOINLINE bool validate_131(JsonVariantConst v) {
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("lowFlowDetected")))) return false;
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("highFlowDetected")))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("zoneId")) || validate_65(v[IOT_DEVICE_JSON_KEY("zoneId")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("targetSeconds")) || validate_132(v[IOT_DEVICE_JSON_KEY("targetSeconds")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("targetSeconds")) || validate_131(v[IOT_DEVICE_JSON_KEY("targetSeconds")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("targetWaterMl")) || validate_82(v[IOT_DEVICE_JSON_KEY("targetWaterMl")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("actualSeconds")) || validate_133(v[IOT_DEVICE_JSON_KEY("actualSeconds")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("zoneResult")) || validate_134(v[IOT_DEVICE_JSON_KEY("zoneResult")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("pulseCount")) || validate_133(v[IOT_DEVICE_JSON_KEY("pulseCount")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("estimatedWaterMl")) || validate_133(v[IOT_DEVICE_JSON_KEY("estimatedWaterMl")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("actualSeconds")) || validate_132(v[IOT_DEVICE_JSON_KEY("actualSeconds")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("zoneResult")) || validate_133(v[IOT_DEVICE_JSON_KEY("zoneResult")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("pulseCount")) || validate_132(v[IOT_DEVICE_JSON_KEY("pulseCount")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("estimatedWaterMl")) || validate_132(v[IOT_DEVICE_JSON_KEY("estimatedWaterMl")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("baselinePulseRateX10000")) || validate_82(v[IOT_DEVICE_JSON_KEY("baselinePulseRateX10000")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("baselineFlowMlPerMinute")) || validate_82(v[IOT_DEVICE_JSON_KEY("baselineFlowMlPerMinute")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("averageFlowMlPerMinute")) || validate_135(v[IOT_DEVICE_JSON_KEY("averageFlowMlPerMinute")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("averageFlowMlPerMinute")) || validate_134(v[IOT_DEVICE_JSON_KEY("averageFlowMlPerMinute")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("lowFlowDetected")) || validate_47(v[IOT_DEVICE_JSON_KEY("lowFlowDetected")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("highFlowDetected")) || validate_47(v[IOT_DEVICE_JSON_KEY("highFlowDetected")]))) return false;
     for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
@@ -1284,17 +1278,50 @@ static IOT_DEVICE_NOINLINE bool validate_131(JsonVariantConst v) {
     }
     return true;
 }
-static IOT_DEVICE_NOINLINE bool validate_130(JsonVariantConst v) {
+static IOT_DEVICE_NOINLINE bool validate_129(JsonVariantConst v) {
     (void)v;
     if (!(v.is<JsonArrayConst>())) return false;
     if(v.is<JsonArrayConst>()) {
     if (!(v.size()>=1)) return false;
     if (!(v.size()<=6)) return false;
-    for(JsonVariantConst item:v.as<JsonArrayConst>()) if(!validate_131(item)) return false;
+    for(JsonVariantConst item:v.as<JsonArrayConst>()) if(!validate_130(item)) return false;
     }
     return true;
 }
-static IOT_DEVICE_NOINLINE bool validate_124(JsonVariantConst v) {
+static bool validate_136(JsonVariantConst v) {
+    (void)v;
+    if (!(IOT_DEVICE_TEXT_EQUAL(v,"unknown"))) return false;
+    return true;
+}
+static bool validate_135(JsonVariantConst v) {
+    (void)v;
+    if(v.is<JsonObjectConst>()) {
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("timeQuality")) || validate_136(v[IOT_DEVICE_JSON_KEY("timeQuality")]))) return false;
+    }
+    return true;
+}
+static bool validate_137(JsonVariantConst v) {
+    (void)v;
+    if(v.is<JsonObjectConst>()) {
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("startedAt")) || validate_57(v[IOT_DEVICE_JSON_KEY("startedAt")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("completedAt")) || validate_57(v[IOT_DEVICE_JSON_KEY("completedAt")]))) return false;
+    }
+    return true;
+}
+static bool validate_139(JsonVariantConst v) {
+    (void)v;
+    if (!(v.is<const char*>())) return false;
+    return true;
+}
+static bool validate_138(JsonVariantConst v) {
+    (void)v;
+    if(v.is<JsonObjectConst>()) {
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("startedAt")) || validate_139(v[IOT_DEVICE_JSON_KEY("startedAt")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("completedAt")) || validate_139(v[IOT_DEVICE_JSON_KEY("completedAt")]))) return false;
+    }
+    return true;
+}
+static IOT_DEVICE_NOINLINE bool validate_123(JsonVariantConst v) {
     (void)v;
     if (!(v.is<JsonObjectConst>())) return false;
     if(v.is<JsonObjectConst>()) {
@@ -1308,112 +1335,113 @@ static IOT_DEVICE_NOINLINE bool validate_124(JsonVariantConst v) {
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("result")))) return false;
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("reason")))) return false;
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("zones")))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("sourceKey")) || validate_125(v[IOT_DEVICE_JSON_KEY("sourceKey")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("relatedCommandId")) || validate_126(v[IOT_DEVICE_JSON_KEY("relatedCommandId")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("planId")) || validate_127(v[IOT_DEVICE_JSON_KEY("planId")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("startedAt")) || validate_120(v[IOT_DEVICE_JSON_KEY("startedAt")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("completedAt")) || validate_120(v[IOT_DEVICE_JSON_KEY("completedAt")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("sourceKey")) || validate_124(v[IOT_DEVICE_JSON_KEY("sourceKey")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("relatedCommandId")) || validate_125(v[IOT_DEVICE_JSON_KEY("relatedCommandId")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("planId")) || validate_126(v[IOT_DEVICE_JSON_KEY("planId")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("startedAt")) || validate_119(v[IOT_DEVICE_JSON_KEY("startedAt")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("completedAt")) || validate_119(v[IOT_DEVICE_JSON_KEY("completedAt")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("durationSeconds")) || validate_8(v[IOT_DEVICE_JSON_KEY("durationSeconds")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("timeQuality")) || validate_128(v[IOT_DEVICE_JSON_KEY("timeQuality")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("result")) || validate_129(v[IOT_DEVICE_JSON_KEY("result")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("timeQuality")) || validate_127(v[IOT_DEVICE_JSON_KEY("timeQuality")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("result")) || validate_128(v[IOT_DEVICE_JSON_KEY("result")]))) return false;
     if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("reason")) || validate_118(v[IOT_DEVICE_JSON_KEY("reason")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("zones")) || validate_130(v[IOT_DEVICE_JSON_KEY("zones")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("zones")) || validate_129(v[IOT_DEVICE_JSON_KEY("zones")]))) return false;
     for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
     if (!((p.key().size()==9 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("sourceKey"),9)) || (p.key().size()==16 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("relatedCommandId"),16)) || (p.key().size()==6 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("planId"),6)) || (p.key().size()==9 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("startedAt"),9)) || (p.key().size()==11 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("completedAt"),11)) || (p.key().size()==15 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("durationSeconds"),15)) || (p.key().size()==11 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("timeQuality"),11)) || (p.key().size()==6 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("result"),6)) || (p.key().size()==6 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("reason"),6)) || (p.key().size()==5 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("zones"),5)))) return false;
     }
     }
+    if (!(validate_135(v) ? validate_137(v) : validate_138(v))) return false;
     return true;
 }
-static bool validate_136(JsonVariantConst v) {
+static bool validate_140(JsonVariantConst v) {
     (void)v;
     if (!(int(validate_58(v)) + int(validate_60(v)) == 1)) return false;
     return true;
 }
-static bool validate_139(JsonVariantConst v) {
-    (void)v;
-    if (!(IOT_DEVICE_TEXT_EQUAL(v,"expired"))) return false;
-    return true;
-}
-static IOT_DEVICE_NOINLINE bool validate_138(JsonVariantConst v) {
-    (void)v;
-    if (!(v.is<JsonObjectConst>())) return false;
-    if(v.is<JsonObjectConst>()) {
-    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("mode")))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("mode")) || validate_139(v[IOT_DEVICE_JSON_KEY("mode")]))) return false;
-    for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
-    if (!((p.key().size()==4 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("mode"),4)))) return false;
-    }
-    }
-    return true;
-}
-static bool validate_137(JsonVariantConst v) {
-    (void)v;
-    if (!(int(validate_55(v)) + int(validate_138(v)) == 1)) return false;
-    return true;
-}
-static IOT_DEVICE_NOINLINE bool validate_141(JsonVariantConst v) {
-    (void)v;
-    if (!(v.is<JsonArrayConst>())) return false;
-    if(v.is<JsonArrayConst>()) {
-    if (!(v.size()<=8)) return false;
-    for(JsonVariantConst item:v.as<JsonArrayConst>()) if(!validate_123(item)) return false;
-    for(size_t i=0;i<v.size();++i) for(size_t j=0;j<i;++j) if(schema::equal(v[i],v[j])) return false;
-    }
-    return true;
-}
-static IOT_DEVICE_NOINLINE bool validate_140(JsonVariantConst v) {
-    (void)v;
-    if (!(v.is<JsonObjectConst>())) return false;
-    if(v.is<JsonObjectConst>()) {
-    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("revision")))) return false;
-    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("planIds")))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("revision")) || validate_8(v[IOT_DEVICE_JSON_KEY("revision")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("planIds")) || validate_141(v[IOT_DEVICE_JSON_KEY("planIds")]))) return false;
-    for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
-    if (!((p.key().size()==8 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("revision"),8)) || (p.key().size()==7 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("planIds"),7)))) return false;
-    }
-    }
-    return true;
-}
 static bool validate_143(JsonVariantConst v) {
     (void)v;
-    if (!(schema::number(v,true))) return false;
-    if (!(!v.is<double>() || v.as<double>() >= 1)) return false;
+    if (!(IOT_DEVICE_TEXT_EQUAL(v,"expired"))) return false;
     return true;
 }
 static IOT_DEVICE_NOINLINE bool validate_142(JsonVariantConst v) {
     (void)v;
     if (!(v.is<JsonObjectConst>())) return false;
     if(v.is<JsonObjectConst>()) {
-    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("coefficientPulsesPerLiterX100")))) return false;
-    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("pulseCount")))) return false;
-    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("waterMl")))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("coefficientPulsesPerLiterX100")) || validate_143(v[IOT_DEVICE_JSON_KEY("coefficientPulsesPerLiterX100")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("pulseCount")) || validate_8(v[IOT_DEVICE_JSON_KEY("pulseCount")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("waterMl")) || validate_143(v[IOT_DEVICE_JSON_KEY("waterMl")]))) return false;
+    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("mode")))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("mode")) || validate_143(v[IOT_DEVICE_JSON_KEY("mode")]))) return false;
     for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
-    if (!((p.key().size()==29 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("coefficientPulsesPerLiterX100"),29)) || (p.key().size()==10 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("pulseCount"),10)) || (p.key().size()==7 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("waterMl"),7)))) return false;
+    if (!((p.key().size()==4 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("mode"),4)))) return false;
     }
     }
     return true;
 }
-static bool validate_145(JsonVariantConst v) {
+static bool validate_141(JsonVariantConst v) {
     (void)v;
-    if (!(schema::number(v,true))) return false;
-    if (!(!v.is<double>() || v.as<double>() >= 1)) return false;
-    if (!(!v.is<double>() || v.as<double>() <= 6)) return false;
+    if (!(int(validate_55(v)) + int(validate_142(v)) == 1)) return false;
+    return true;
+}
+static IOT_DEVICE_NOINLINE bool validate_145(JsonVariantConst v) {
+    (void)v;
+    if (!(v.is<JsonArrayConst>())) return false;
+    if(v.is<JsonArrayConst>()) {
+    if (!(v.size()<=8)) return false;
+    for(JsonVariantConst item:v.as<JsonArrayConst>()) if(!validate_122(item)) return false;
+    for(size_t i=0;i<v.size();++i) for(size_t j=0;j<i;++j) if(schema::equal(v[i],v[j])) return false;
+    }
     return true;
 }
 static IOT_DEVICE_NOINLINE bool validate_144(JsonVariantConst v) {
     (void)v;
     if (!(v.is<JsonObjectConst>())) return false;
     if(v.is<JsonObjectConst>()) {
+    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("revision")))) return false;
+    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("planIds")))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("revision")) || validate_8(v[IOT_DEVICE_JSON_KEY("revision")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("planIds")) || validate_145(v[IOT_DEVICE_JSON_KEY("planIds")]))) return false;
+    for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
+    if (!((p.key().size()==8 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("revision"),8)) || (p.key().size()==7 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("planIds"),7)))) return false;
+    }
+    }
+    return true;
+}
+static bool validate_147(JsonVariantConst v) {
+    (void)v;
+    if (!(schema::number(v,true))) return false;
+    if (!(!v.is<double>() || v.as<double>() >= 1)) return false;
+    return true;
+}
+static IOT_DEVICE_NOINLINE bool validate_146(JsonVariantConst v) {
+    (void)v;
+    if (!(v.is<JsonObjectConst>())) return false;
+    if(v.is<JsonObjectConst>()) {
+    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("coefficientPulsesPerLiterX100")))) return false;
+    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("pulseCount")))) return false;
+    if (!(v.containsKey(IOT_DEVICE_JSON_KEY("waterMl")))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("coefficientPulsesPerLiterX100")) || validate_147(v[IOT_DEVICE_JSON_KEY("coefficientPulsesPerLiterX100")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("pulseCount")) || validate_8(v[IOT_DEVICE_JSON_KEY("pulseCount")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("waterMl")) || validate_147(v[IOT_DEVICE_JSON_KEY("waterMl")]))) return false;
+    for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
+    if (!((p.key().size()==29 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("coefficientPulsesPerLiterX100"),29)) || (p.key().size()==10 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("pulseCount"),10)) || (p.key().size()==7 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("waterMl"),7)))) return false;
+    }
+    }
+    return true;
+}
+static bool validate_149(JsonVariantConst v) {
+    (void)v;
+    if (!(schema::number(v,true))) return false;
+    if (!(!v.is<double>() || v.as<double>() >= 1)) return false;
+    if (!(!v.is<double>() || v.as<double>() <= 6)) return false;
+    return true;
+}
+static IOT_DEVICE_NOINLINE bool validate_148(JsonVariantConst v) {
+    (void)v;
+    if (!(v.is<JsonObjectConst>())) return false;
+    if(v.is<JsonObjectConst>()) {
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("zoneId")))) return false;
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("baselinePulseRateX10000")))) return false;
     if (!(v.containsKey(IOT_DEVICE_JSON_KEY("baselineFlowMlPerMinute")))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("zoneId")) || validate_145(v[IOT_DEVICE_JSON_KEY("zoneId")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("baselinePulseRateX10000")) || validate_143(v[IOT_DEVICE_JSON_KEY("baselinePulseRateX10000")]))) return false;
-    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("baselineFlowMlPerMinute")) || validate_143(v[IOT_DEVICE_JSON_KEY("baselineFlowMlPerMinute")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("zoneId")) || validate_149(v[IOT_DEVICE_JSON_KEY("zoneId")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("baselinePulseRateX10000")) || validate_147(v[IOT_DEVICE_JSON_KEY("baselinePulseRateX10000")]))) return false;
+    if (!(!v.containsKey(IOT_DEVICE_JSON_KEY("baselineFlowMlPerMinute")) || validate_147(v[IOT_DEVICE_JSON_KEY("baselineFlowMlPerMinute")]))) return false;
     for(JsonPairConst p:v.as<JsonObjectConst>()) { (void)p;
     if (!((p.key().size()==6 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("zoneId"),6)) || (p.key().size()==23 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("baselinePulseRateX10000"),23)) || (p.key().size()==23 && !IOT_DEVICE_MEMCMP(p.key().c_str(),IOT_DEVICE_LITERAL("baselineFlowMlPerMinute"),23)))) return false;
     }
@@ -1421,6 +1449,6 @@ static IOT_DEVICE_NOINLINE bool validate_144(JsonVariantConst v) {
     return true;
 }
 static const CapabilityContract capabilities[]={{"state.overview",CapabilityKind::State,0,validate_0},{"state.diagnostics",CapabilityKind::State,0,validate_3},{"state.runtime",CapabilityKind::State,0,validate_14},{"parameter.plans",CapabilityKind::Parameter,10000,validate_42},{"parameter.automatic-watering",CapabilityKind::Parameter,10000,validate_54},{"operation.start-manual",CapabilityKind::Process,30000,validate_62},{"operation.stop",CapabilityKind::Instant,10000,validate_67},{"operation.single-output",CapabilityKind::Process,30000,validate_68},{"state.zones",CapabilityKind::State,0,validate_76},{"state.zone-maintenance",CapabilityKind::State,0,validate_79},{"state.calibration",CapabilityKind::State,0,validate_83},{"state.system-parameters",CapabilityKind::State,0,validate_87}};
-static const RecordContract records[]={{"operation.automatic-run.completed",validate_114},{"watering.completed",validate_124},{"watering.stopped",validate_124},{"watering.failed",validate_124},{"automatic.paused",validate_136},{"automatic.resumed",validate_137},{"configuration.plans-changed",validate_140},{"calibration.result-saved",validate_142},{"zone.baseline-saved",validate_144}};
-static const ModelContract contract={"irrigation-controller","irrigation-controller",1,"irrigation-controller-6-zone",30,"b2f24fe51b7cb470c89d8638b298b2ec80aa8f070bf0f071663c50a4ffd533be",capabilities,12,records,9};
+static const RecordContract records[]={{"operation.automatic-run.completed",validate_114},{"watering.completed",validate_123},{"watering.stopped",validate_123},{"watering.failed",validate_123},{"automatic.paused",validate_140},{"automatic.resumed",validate_141},{"configuration.plans-changed",validate_144},{"calibration.result-saved",validate_146},{"zone.baseline-saved",validate_148}};
+static const ModelContract contract={"irrigation-controller","irrigation-controller",1,"irrigation-controller-6-zone",30,"60cf0733f35add60f1aba935fbd0494598a857fefdd7644c1eb68a0427d8f760",capabilities,12,records,9};
 }}
