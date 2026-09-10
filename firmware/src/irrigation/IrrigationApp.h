@@ -119,6 +119,7 @@ private:
                                         size_t errorLength,
                                         void* user);
     static bool allowMaintenance(void* user);
+    static bool allowOta(void* user);
     static void beforeLifecycleStop(void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);

@@ -85,7 +85,7 @@ bool IrrigationApp::begin() {
     if (!IrrigationIot::instance().configure()) {
         return failStartup(hardware, statusIndicator_);
     }
-    Esp32BaseOta::setUploadGuard(allowMaintenance, this);
+    Esp32BaseOta::setUploadGuard(allowOta, this);
     Esp32BaseStorage::setFormatGuard(allowMaintenance, this);
     Esp32Base::setBeforeLifecycleStopCallback(beforeLifecycleStop, this);
     Esp32BaseWeb::setDefaultAuth(kDefaultWebUser, kDefaultWebPassword);
@@ -418,7 +418,8 @@ bool IrrigationApp::pauseAutomaticWateringUntil(uint32_t resumeAtEpoch) {
 }
 
 bool IrrigationApp::resumeAutomaticWatering() {
-    return businessReady_ && wateringScheduler_.resumeManually();
+    return businessReady_ && IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit) &&
+           wateringScheduler_.resumeManually();
 }
 
 WateringStartResult IrrigationApp::startFlowCalibration(
@@ -505,6 +506,7 @@ bool IrrigationApp::saveFlowCalibrationParameters(
             parameters.calibrationStartupWaterMl) {
         return true;
     }
+    if (!IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit)) return false;
     const uint32_t previousCoefficientX100 =
         current->flowMeter.pulsesPerLiterX100;
     const bool parametersSaved =
@@ -595,6 +597,7 @@ bool IrrigationApp::saveZoneBaselinePulseRate(
         !BoardPins::isValidZoneId(zoneId) || pulseRateX10000 == 0) {
         return false;
     }
+    if (!IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit)) return false;
     IrrigationConfig next = *current;
     const uint32_t previousPulseRateX10000 =
         current->zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000;
@@ -650,6 +653,7 @@ bool IrrigationApp::clearLearnedZoneFlow(uint8_t zoneId,
         current->zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000 == 0) {
         return false;
     }
+    if (!IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit)) return false;
     IrrigationConfig next = *current;
     uint32_t previousFlowMlPerMinute = 0;
     FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
@@ -688,6 +692,10 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
     if (!businessReady_ || !current) {
         return false;
     }
+    const bool audited = change == IrrigationEvents::ConfigurationChange::PlanCreated ||
+                         change == IrrigationEvents::ConfigurationChange::PlanUpdated ||
+                         change == IrrigationEvents::ConfigurationChange::PlanDeleted;
+    if (audited && !IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit)) return false;
     BoardHardware& hardware = BoardHardware::instance();
     const bool active = wateringController_.status().active;
     const bool frequencyChanged = proposed.valveDrive.pwmFrequencyHz !=
@@ -730,7 +738,6 @@ void IrrigationApp::advanceBusiness() {
     }
     const uint32_t nowMs = millis();
     if (!eventConditionsInitialized_) {
-        events_.syncStorageStatus();
         refreshRtcCondition(nowMs, true);
         eventConditionsInitialized_ = true;
     }
@@ -1035,7 +1042,13 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
 bool IrrigationApp::allowMaintenance(void* user) {
     auto* app = static_cast<IrrigationApp*>(user);
     return app && !app->wateringController_.status().active &&
-           !app->wateringController_.finishedSession();
+           !app->flowCalibrationService_.hasPendingMeasurement() && app->pendingLearnedZoneId_ == 0;
+}
+
+bool IrrigationApp::allowOta(void* user) {
+    auto* app = static_cast<IrrigationApp*>(user);
+    return allowMaintenance(user) && !app->wateringController_.finishedSession() &&
+           !app->events_.auditStore().hasPending();
 }
 
 void IrrigationApp::beforeLifecycleStop(void* user) {
@@ -1060,12 +1073,17 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     hardware.safeShutdown();
     businessReady_ = false;
 
-    if (!result.mountSuccess) {
+    if (!result.formatSuccess || !result.mountSuccess) {
         recordStorageFault_ = true;
-        events_.syncStorageStatus();
         return;
     }
 
+    // Explicit successful formatting discards the old generation, including
+    // any completed RAM facts; they must not reappear in the new empty history.
+    wateringController_.clearFinishedSession();
+    finishedWateringStored_ = false;
+    wateringStartTime_ = {};
+    wateringStartTimeValid_ = false;
     const bool conditionHistoryReset = events_.resetConditionHistory();
     const bool iotRecordStreamReady =
         IrrigationRecordSync::instance().resetGenerationsAfterFormat();
@@ -1103,7 +1121,6 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
                         Esp32BaseRecordStore::storeStateName(wateringStatus.state),
                         Esp32BaseRecordStore::storeStateName(auditStatus.state));
     }
-    events_.syncStorageStatus();
     recordStorageFault_ = !recordsReady;
     businessReady_ = configReady && pwmReady;
     if (businessReady_) {

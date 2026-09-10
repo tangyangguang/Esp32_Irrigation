@@ -77,13 +77,31 @@ bool IrrigationAuditStore::begin() {
 }
 
 bool IrrigationAuditStore::appendInstant(const IrrigationAuditPayload& payload) {
-    const auto now=Esp32BaseTime::snapshot();
-    Esp32BaseRecordStore::RecordTiming timing{};
-    timing.completedEpochSec=now.synced ? now.epochSec : 0;
-    return appendRecorded(timing,payload);
+    if (pending_) return false; // Never overwrite the first fact that failed to commit.
+    const auto now = Esp32BaseTime::snapshot();
+    pendingTiming_ = {};
+    pendingTiming_.completedEpochSec = now.synced ? now.epochSec : 0;
+    pendingPayload_ = payload;
+    pending_ = true;
+    return flushPending();
+}
+
+bool IrrigationAuditStore::flushPending() {
+    if (!pending_) return true;
+    // Fault means the commit is uncertain: do not blindly append it again.
+    if (stream_.state() != iot_device::StreamState::Ready ||
+        !appendFact(pendingTiming_, pendingPayload_)) return false;
+    pending_ = false;
+    return true;
 }
 
 bool IrrigationAuditStore::appendRecorded(
+    const Esp32BaseRecordStore::RecordTiming& timing,
+    const IrrigationAuditPayload& payload) {
+    return !pending_ && appendFact(timing, payload);
+}
+
+bool IrrigationAuditStore::appendFact(
     const Esp32BaseRecordStore::RecordTiming& timing,
     const IrrigationAuditPayload& payload) {
     uint8_t fact[kFactBytes]{};

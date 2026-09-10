@@ -12,19 +12,14 @@ IrrigationEvents::IrrigationEvents()
       closedValveFlowCondition_(kClosedValveFlowConditionId, 0U, 0U) {}
 
 bool IrrigationEvents::begin() {
-    storageFault_ = !auditStore_.begin();
-    return !storageFault_;
+    return auditStore_.begin();
 }
 
 IrrigationAuditStore& IrrigationEvents::auditStore() { return auditStore_; }
 
-void IrrigationEvents::syncStorageStatus() {
-    storageFault_ = !IrrigationRecordSync::instance().writable(
-        IrrigationRecordSync::StreamKind::Audit);
-}
-
 bool IrrigationEvents::resetConditionHistory() {
     if (!Esp32BaseConditions::forgetAll()) return false;
+    conditionFaults_ = 0;
     rtcUnavailableState_ = ConditionDisplayState::Unknown;
     trustedTimeUnavailableState_ = ConditionDisplayState::Unknown;
     rtcRollbackState_ = ConditionDisplayState::Unknown;
@@ -32,7 +27,10 @@ bool IrrigationEvents::resetConditionHistory() {
     return true;
 }
 
-bool IrrigationEvents::storageFault() const { return storageFault_; }
+bool IrrigationEvents::storageFault() const {
+    return conditionFaults_ != 0 || !IrrigationRecordSync::instance().writable(
+        IrrigationRecordSync::StreamKind::Audit);
+}
 
 bool IrrigationEvents::readStatus(EventStatus& status) const {
     Esp32BaseConditions::ConditionsStatus conditions;
@@ -216,6 +214,13 @@ void IrrigationEvents::observe(
     Esp32BaseConditions::ObservedState observed,
     ConditionDisplayState& display) {
     const auto result = Esp32BaseConditions::observe(tracker, observed);
+    const uint8_t faultBit = static_cast<uint8_t>(1U << (tracker.conditionId() - 1U));
+    // Only a confirmed state clears this tracker's failed persistence attempt.
+    // A different healthy condition must not hide it.
+    if (result == Esp32BaseConditions::ObservationResult::Activated ||
+        result == Esp32BaseConditions::ObservationResult::Recovered ||
+        result == Esp32BaseConditions::ObservationResult::ConditionUnchanged)
+        conditionFaults_ &= static_cast<uint8_t>(~faultBit);
     switch (result) {
         case Esp32BaseConditions::ObservationResult::Activated:
             display = ConditionDisplayState::Active;
@@ -241,7 +246,7 @@ void IrrigationEvents::observe(
             break;
         }
         default:
-            storageFault_ = true;
+            conditionFaults_ |= faultBit;
             display = ConditionDisplayState::Unknown;
             break;
     }
@@ -260,7 +265,6 @@ IrrigationEvents::ConditionDisplayState IrrigationEvents::conditionState(
 
 bool IrrigationEvents::append(const IrrigationAuditPayload& payload) {
     const bool stored = IrrigationRecordSync::instance().appendAudit(payload);
-    if (!stored) storageFault_ = true;
     return stored;
 }
 
@@ -269,7 +273,6 @@ bool IrrigationEvents::append(
     const IrrigationAuditPayload& payload) {
     const bool stored =
         IrrigationRecordSync::instance().appendAudit(timing, payload);
-    if (!stored) storageFault_ = true;
     return stored;
 }
 

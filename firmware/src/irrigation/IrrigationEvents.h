@@ -107,7 +107,6 @@ public:
     IrrigationEvents();
     bool begin();
     IrrigationAuditStore& auditStore();
-    void syncStorageStatus();
     bool resetConditionHistory();
     bool storageFault() const;
     bool readStatus(EventStatus& status) const;
@@ -183,5 +182,5 @@ private:
     ConditionDisplayState trustedTimeUnavailableState_ = ConditionDisplayState::Unknown;
     ConditionDisplayState rtcRollbackState_ = ConditionDisplayState::Unknown;
     ConditionDisplayState closedValveFlowState_ = ConditionDisplayState::Unknown;
-    bool storageFault_ = true;
+    uint8_t conditionFaults_ = 0;
 };

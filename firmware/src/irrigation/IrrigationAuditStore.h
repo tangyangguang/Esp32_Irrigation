@@ -54,6 +54,9 @@ public:
     static constexpr std::size_t kFactBytes = 4 + IrrigationAuditCodec::kPayloadSize;
     static constexpr std::size_t kStoredBytes = iot_device::RecordStream::HeaderBytes + kFactBytes;
     bool appendInstant(const IrrigationAuditPayload& payload);
+    bool hasPending() const { return pending_; }
+    bool flushPending();
+    void discardPendingAfterFormat() { pending_ = false; }
     bool appendRecorded(
         const Esp32BaseRecordStore::RecordTiming& timing,
         const IrrigationAuditPayload& payload);
@@ -74,6 +77,10 @@ private:
     };
     static void readAdapter(const Esp32BaseRecordStore::RecordView&, void*);
 
+    bool appendFact(const Esp32BaseRecordStore::RecordTiming&, const IrrigationAuditPayload&);
+    bool pending_ = false;
+    Esp32BaseRecordStore::RecordTiming pendingTiming_{};
+    IrrigationAuditPayload pendingPayload_{};
     Esp32BaseRecordStore store_;
     iot_device::Esp32RecordStorage sdkStorage_{store_};
     uint8_t scratch_[kStoredBytes]{};

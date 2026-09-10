@@ -21,7 +21,7 @@ with tempfile.TemporaryDirectory(prefix='irrigation-store-') as directory:
     for include in [firmware / 'test/host_storage/stubs', firmware / 'src/irrigation', base / 'src', sdk / 'src', harness / 'stubs', unity]:
         command += ['-I', str(include)]
     command += [str(firmware / 'test/host_storage/main.cpp')]
-    command += [str(firmware / 'src/irrigation' / source) for source in ['WateringRecordStore.cpp', 'WateringRecordCodec.cpp', 'IrrigationAuditStore.cpp']]
+    command += [str(firmware / 'src/irrigation' / source) for source in ['WateringRecordStore.cpp', 'WateringRecordCodec.cpp', 'IrrigationAuditStore.cpp', 'IrrigationRecordSync.cpp', 'IrrigationEvents.cpp']]
     command += [str(sdk / 'src/RecordStream.cpp'), str(work / 'unity.o'), '-o', str(work / 'test')]
     subprocess.run(command, check=True)
     subprocess.run([str(work / 'test')], check=True)

@@ -39,10 +39,10 @@ void test_initialize_two_bounded_stores_and_sync() {
     TEST_ASSERT_TRUE(Esp32Base::begin());
     TEST_ASSERT_TRUE(g_watering.begin());
     TEST_ASSERT_TRUE(g_audit.begin());
-    TEST_ASSERT_TRUE(g_watering.baseStore().clear());
-    TEST_ASSERT_TRUE(g_audit.baseStore().clear());
 
     TEST_ASSERT_TRUE(IrrigationRecordSync::instance().begin(g_watering, g_audit));
+    Esp32BaseStorage::FormatResult formatted;
+    TEST_ASSERT_TRUE(Esp32BaseStorage::formatAndReload(formatted));
     TEST_ASSERT_TRUE(IrrigationRecordSync::instance().resetGenerationsAfterFormat());
     IrrigationRecordSync::instance().handle(millis());
     Esp32BaseRecordStore::StoreStatus wateringStatus{};

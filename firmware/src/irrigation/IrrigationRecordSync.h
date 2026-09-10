@@ -37,4 +37,5 @@ private:
     iot_device::RecordStream* streams_[2]{};
     bool registered_=false;
     uint8_t nextStream_=0;
+    uint32_t lastAuditRetryMs_=0;
 };

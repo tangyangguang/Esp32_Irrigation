@@ -19,7 +19,7 @@ bool IrrigationRecordSync::appendWatering(const Esp32BaseRecordStore::RecordStar
     return registered_ && wateringStore_->appendCompleted(start,summary,command);
 }
 bool IrrigationRecordSync::appendAudit(const IrrigationAuditPayload& payload) {
-    return writable(StreamKind::Audit) && auditStore_->appendInstant(payload);
+    return registered_ && auditStore_->appendInstant(payload);
 }
 bool IrrigationRecordSync::appendAudit(const Esp32BaseRecordStore::RecordTiming& timing,
                                       const IrrigationAuditPayload& payload) {
@@ -27,12 +27,18 @@ bool IrrigationRecordSync::appendAudit(const Esp32BaseRecordStore::RecordTiming&
 }
 bool IrrigationRecordSync::resetGenerationsAfterFormat() {
     if (!registered_) return false;
+    wateringStore_->discardPendingAfterFormat();
+    auditStore_->discardPendingAfterFormat();
     const bool watering=streams_[0]->begin(millis());
     const bool audit=streams_[1]->begin(millis());
     return watering && audit;
 }
 void IrrigationRecordSync::handle(uint32_t nowMs) {
     for (auto* stream : streams_) if (stream) stream->poll(nowMs,nullptr,nullptr);
+    if (registered_ && auditStore_->hasPending() && uint32_t(nowMs-lastAuditRetryMs_) >= 1000U) {
+        lastAuditRetryMs_=nowMs;
+        auditStore_->flushPending();
+    }
 }
 void IrrigationRecordSync::publish(uint32_t nowMs,iot_device::RecordStream::PublishFact publisher,void* context) {
     // One stream per turn; the SDK keeps its own head/retry and ACK state.
@@ -45,7 +51,8 @@ bool IrrigationRecordSync::ready() const {
 }
 bool IrrigationRecordSync::writable() const { return writable(StreamKind::Watering) && writable(StreamKind::Audit); }
 bool IrrigationRecordSync::writable(StreamKind kind) const {
-    if (!registered_ || stream(kind)->state()!=iot_device::StreamState::Ready) return false;
+    if (!registered_ || stream(kind)->state()!=iot_device::StreamState::Ready ||
+        (kind==StreamKind::Audit && auditStore_->hasPending())) return false;
     Esp32BaseRecordStore::StoreStatus status;
     const bool read=kind==StreamKind::Watering ? wateringStore_->readStatus(status) : auditStore_->readStatus(status);
     return read && status.writable && (status.recordCount<status.capacity ||

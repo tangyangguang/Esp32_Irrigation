@@ -4,6 +4,8 @@
 #undef main
 #include "WateringRecordStore.h"
 #include "IrrigationAuditStore.h"
+#include "IrrigationEvents.h"
+#include "IrrigationRecordSync.h"
 #include <cassert>
 
 static void countWatering(const StoredWateringRecord&, void* count) {
@@ -15,8 +17,10 @@ static void countAudit(const StoredIrrigationAuditRecord&, void* count) {
 int main() {
     resetHarness();
     WateringRecordStore watering;
-    IrrigationAuditStore audit;
-    assert(watering.begin() && audit.begin());
+    IrrigationEvents events;
+    auto& audit = events.auditStore();
+    assert(watering.begin() && events.begin());
+    assert(IrrigationRecordSync::instance().begin(watering, audit));
     for (const auto layout : {std::pair<uint32_t,uint32_t>{384U*1024U, 193U+24U},
                               {384U*1024U, WateringRecordStore::kStoredBytes+24U},
                               {128U*1024U, 24U+24U},
@@ -95,6 +99,25 @@ int main() {
     assert(stored.timing.completedEpochSec == frozen.completedEpochSec);
     assert(stored.timing.durationSec == 5);
 
+    // One instant audit can wait through bounded recovery without being
+    // overwritten by another operation or acquiring the retry time.
+    assert(auditStream.begin(30));
+    auto pendingAudit = fact;
+    pendingAudit.value1 = 123;
+    const uint32_t auditAt = g_time.epochSec;
+    assert(!audit.appendInstant(pendingAudit));
+    assert(audit.hasPending());
+    assert(events.storageFault());
+    pendingAudit.value1 = 999;
+    assert(!audit.appendInstant(pendingAudit));
+    g_time.epochSec += 60;
+    for (unsigned n=0;n<4;++n) auditStream.poll(31+n, nullptr, nullptr);
+    assert(audit.flushPending() && !audit.hasPending());
+    assert(!events.storageFault());
+    StoredIrrigationAuditRecord storedAudit{};
+    assert(audit.readById(2, storedAudit) == Esp32BaseRecordStore::RecordReadResult::Found);
+    assert(storedAudit.payload.value1 == 123 && storedAudit.timing.completedEpochSec == auditAt);
+
     // A failed audit append faults only that stream; a repeated attempt cannot
     // blindly duplicate an uncertain write. Watering remains usable.
     g_fileSystemWriteFails = true;
@@ -102,6 +125,7 @@ int main() {
     assert(auditStream.state() == iot_device::StreamState::Fault);
     g_fileSystemWriteFails = false;
     assert(!audit.appendInstant(fact));
+    assert(!audit.flushPending() && audit.hasPending());
     assert(stream.state() == iot_device::StreamState::Ready);
     assert(watering.captureStartTime(secondStart));
     g_time.uptimeSec += 1;
@@ -115,5 +139,30 @@ int main() {
     assert(!watering.readLatest(0, 1, countWatering, &count) && count == 0);
     assert(!watering.readLatest(0, 0, countWatering, &count));
     assert(!watering.readLatest(0, 1, nullptr));
+    // Explicit formatting, unlike clear(), may discard protected history.
+    uint8_t oldGeneration[16];
+    memcpy(oldGeneration, auditStream.generation(), 16);
+    Esp32BaseStorage::FormatResult formatted;
+    assert(Esp32BaseStorage::formatAndReload(formatted));
+    assert(formatted.formatSuccess && formatted.mountSuccess);
+    watering.discardPendingAfterFormat();
+    audit.discardPendingAfterFormat();
+    assert(auditStream.begin(40));
+    auditStream.poll(41, nullptr, nullptr);
+    assert(!audit.hasPending() && auditStream.lastSequence() == 0);
+    assert(memcmp(oldGeneration, auditStream.generation(), 16) != 0);
+
+    // Failed condition persistence stays visible despite another healthy
+    // condition, then clears after that specific condition commits.
+    assert(Esp32BaseConditions::begin());
+    assert(events.resetConditionHistory());
+    g_conditionStateWriteFails = true;
+    events.observeRtcRollback(Esp32BaseConditions::ObservedState::Active);
+    assert(events.storageFault());
+    events.observeTrustedTime(true);
+    assert(events.storageFault());
+    g_conditionStateWriteFails = false;
+    events.observeRtcRollback(Esp32BaseConditions::ObservedState::Active);
+    assert(!events.storageFault());
     puts("Actual Base Store + irrigation: reads, immutable time, recovery retry, independent ACK and checkpoint passed");
 }

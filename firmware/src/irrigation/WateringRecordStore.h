@@ -24,6 +24,7 @@ public:
     using ReadCallback = void (*)(const StoredWateringRecord& record, void* user);
 
     bool begin();
+    void discardPendingAfterFormat() { pending_ = false; }
     iot_device::RecordStream& recordStream() { return stream_; }
     static constexpr std::size_t kFactBytes = 4 + WateringRecordCodec::kPayloadSize;
     static constexpr std::size_t kStoredBytes = iot_device::RecordStream::HeaderBytes + kFactBytes;
