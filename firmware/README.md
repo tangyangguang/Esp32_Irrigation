@@ -229,3 +229,5 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irri
 2026-09-10 部署目标核对：本机 `iot-home-server` 17832 原服务为 Node 24，已按 `./server restart` 构建并启动最新源码（PID 84015），未操作 NUC。设备容量阶段 `514e149`、安全阶段 `877a606` 均已推送。
 
 Core 3 启动电平修复：实机发现 `digitalWrite` 在 `pinMode` 前被 Core 3 外设管理拒绝，改用 `gpio_set_level` 预置安全锁存值，再切换 OUTPUT；泵/阀关闭顺序不变。`python3 scripts/test_hardware.py` 使用生产 BoardHardware/StatusIndicator 验证预置顺序、Core 3 GPIO 所有权、LEDC 失败及关闭顺序，通过；目标构建通过，bin 1615680 B（8.69% 余量）。514e149 实机已证明双 Store 666/639 条、业务无存储故障、NTP 同步、MQTTS 连接且证书日期校验开启；GPIO 修复版尚待 OTA 验证。已按平台正式发现确认入口登记本机试验设备，硬件 deviceId 为 `esp32-irrigation-f42c3bf9d108`，本机业务实例 UUID 为 `ad182049-f086-443b-a46a-9bf0cfdc6862`。
+
+维护退出收口：实际 OTA 在 1 秒预算下安全拒绝，平台已收到 shutdown；核实受控 ESP-MQTT 存在 1000 ms 接收轮询，随后才处理断开请求。Base cdd1923 将可请求维护等待上限改为 3 秒，设备同步请求 3 秒，仍要求匹配 PUBACK 与断开事件。Base MQTT 26 项及架构/安全检查通过，设备目标 bin 1615696 B、余量 8.69%，GPIO 定向检查通过；等待串口更新后再次验证实际 OTA。

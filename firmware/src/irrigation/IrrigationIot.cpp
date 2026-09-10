@@ -22,7 +22,7 @@ static_assert(ESP32BASE_MQTT_MAX_OUTBOX_BYTES >= ESP32BASE_MQTT_MAX_PAYLOAD_BYTE
 namespace {
 
 constexpr uint32_t kRunningPublishIntervalMs = 5000U;
-constexpr uint16_t kShutdownNetworkGraceMs = 1000U;
+constexpr uint16_t kShutdownNetworkGraceMs = 3000U;
 constexpr uint64_t kFnvOffset = 1469598103934665603ULL;
 constexpr uint64_t kFnvPrime = 1099511628211ULL;
 
