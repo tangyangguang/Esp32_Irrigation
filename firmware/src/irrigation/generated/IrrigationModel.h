@@ -222,7 +222,7 @@ static IOT_DEVICE_NOINLINE bool validate_20(JsonVariantConst v) {
 }
 static bool validate_24(JsonVariantConst v) {
     (void)v;
-    if (!((IOT_DEVICE_TEXT_EQUAL(v,"idle")) || (IOT_DEVICE_TEXT_EQUAL(v,"manual")) || (IOT_DEVICE_TEXT_EQUAL(v,"automatic")) || (IOT_DEVICE_TEXT_EQUAL(v,"single-output")))) return false;
+    if (!((IOT_DEVICE_TEXT_EQUAL(v,"idle")) || (IOT_DEVICE_TEXT_EQUAL(v,"manual")) || (IOT_DEVICE_TEXT_EQUAL(v,"automatic")) || (IOT_DEVICE_TEXT_EQUAL(v,"single-output")) || (IOT_DEVICE_TEXT_EQUAL(v,"learning")))) return false;
     return true;
 }
 static bool validate_25(JsonVariantConst v) {
@@ -1389,5 +1389,5 @@ static IOT_DEVICE_NOINLINE bool validate_141(JsonVariantConst v) {
 }
 static const CapabilityContract capabilities[]={{"state.overview",CapabilityKind::State,0,validate_0},{"state.diagnostics",CapabilityKind::State,0,validate_3},{"state.runtime",CapabilityKind::State,0,validate_14},{"parameter.plans",CapabilityKind::Parameter,10000,validate_42},{"parameter.automatic-watering",CapabilityKind::Parameter,10000,validate_54},{"operation.start-manual",CapabilityKind::Process,30000,validate_62},{"operation.stop",CapabilityKind::Instant,10000,validate_67},{"operation.single-output",CapabilityKind::Process,30000,validate_68},{"state.zones",CapabilityKind::State,0,validate_76},{"state.zone-maintenance",CapabilityKind::State,0,validate_79},{"state.calibration",CapabilityKind::State,0,validate_83},{"state.system-parameters",CapabilityKind::State,0,validate_85}};
 static const RecordContract records[]={{"operation.automatic-run.completed",validate_109},{"watering.completed",validate_118},{"watering.stopped",validate_118},{"watering.failed",validate_118},{"automatic.paused",validate_135},{"automatic.resumed",validate_136},{"configuration.plans-changed",validate_139},{"zone.baseline-saved",validate_141}};
-static const ModelContract contract={"irrigation-controller","irrigation-controller",1,"irrigation-controller-6-zone",30,"2c1392bacb0310f25d168af041759a2614bca28dd38898fc71fe65bb377cb6e6",capabilities,12,records,8};
+static const ModelContract contract={"irrigation-controller","irrigation-controller",1,"irrigation-controller-6-zone",30,"c844cae4e5e2e18c4cb186e1b0b17b9ac48302450774b8d8bd96f0c95dbf13af",capabilities,12,records,8};
 }}

@@ -25,7 +25,6 @@ public:
 
     bool configured() const;
     const char* deviceId() const;
-    const char* activeCommandId() const;
 
 private:
     IrrigationIot();

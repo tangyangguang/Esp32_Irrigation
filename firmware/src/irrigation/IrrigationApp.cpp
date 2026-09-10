@@ -196,7 +196,7 @@ bool IrrigationApp::businessReady() const {
     return businessReady_;
 }
 
-WateringStartResult IrrigationApp::startWatering(const WateringRequest& request) {
+WateringStartResult IrrigationApp::startWatering(const WateringRequest& request, const char* commandId) {
     if (Esp32BaseOta::isUploading() || Esp32BaseOta::status() == Esp32BaseOta::SUCCESS) {
         return WateringStartResult::Busy;
     }
@@ -225,6 +225,9 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
     const bool captured = wateringRecordStore_.captureStartTime(startTime);
     const WateringStartResult result = wateringController_.start(request, *config, millis());
     if (result == WateringStartResult::Started) {
+        // Keep origin with the pending result, independent of MQTT activity lifetime.
+        std::snprintf(wateringCommandId_.data(), wateringCommandId_.size(), "%s",
+                      commandId ? commandId : "");
         wateringStartTime_ = startTime;
         wateringStartTimeValid_ = captured;
     }
@@ -232,7 +235,8 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
 }
 
 WateringStartResult IrrigationApp::startManualWatering(
-    const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes) {
+    const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes,
+    const char* commandId) {
     const IrrigationConfig* config = configStore_.current();
     if (!config) {
         return WateringStartResult::NotReady;
@@ -253,12 +257,12 @@ WateringStartResult IrrigationApp::startManualWatering(
             static_cast<uint32_t>(zoneDurationMinutes[index]) * 60U,
         };
     }
-    return startWatering(request);
+    return startWatering(request, commandId);
 }
 
 WateringStartResult IrrigationApp::startSingleOutput(uint8_t zoneId,
                                                      uint32_t targetDurationSec,
-                                                     uint32_t targetWaterMl) {
+                                                     uint32_t targetWaterMl, const char* commandId) {
     const IrrigationConfig* config = configStore_.current();
     const uint32_t maximumDurationSec = config
         ? static_cast<uint32_t>(config->runLimits.maximumZoneDurationMinutes) * 60U
@@ -278,7 +282,7 @@ WateringStartResult IrrigationApp::startSingleOutput(uint8_t zoneId,
     request.purpose = WateringPurpose::Normal;
     request.stepCount = 1;
     request.steps[0] = {zoneId, targetDurationSec, targetWaterMl};
-    return startWatering(request);
+    return startWatering(request, commandId);
 }
 
 bool IrrigationApp::stopWatering() {
@@ -672,7 +676,7 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
             finishedWateringStored_ = wateringStartTimeValid_ &&
                 IrrigationRecordSync::instance().appendWatering(
                     wateringStartTime_, *summary,
-                    IrrigationIot::instance().activeCommandId());
+                    wateringCommandId_[0] ? wateringCommandId_.data() : nullptr);
         }
         recordStorageFault_ = !finishedWateringStored_ ||
             !IrrigationRecordSync::instance().writable(
@@ -686,6 +690,7 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
     resetUnexpectedFlowMonitor(nowMs);
     wateringController_.clearFinishedSession();
     finishedWateringStored_ = false;
+    wateringCommandId_.fill(0);
     wateringStartTime_ = {};
     wateringStartTimeValid_ = false;
 }
@@ -943,6 +948,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     // any completed RAM facts; they must not reappear in the new empty history.
     wateringController_.clearFinishedSession();
     finishedWateringStored_ = false;
+    wateringCommandId_.fill(0);
     wateringStartTime_ = {};
     wateringStartTimeValid_ = false;
     const bool conditionHistoryReset = events_.resetConditionHistory();

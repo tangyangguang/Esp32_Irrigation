@@ -20,12 +20,13 @@ public:
 
     bool baseReady() const;
     bool businessReady() const;
-    WateringStartResult startWatering(const WateringRequest& request);
+    WateringStartResult startWatering(const WateringRequest& request, const char* commandId = nullptr);
     WateringStartResult startManualWatering(
-        const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes);
+        const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes,
+        const char* commandId = nullptr);
     WateringStartResult startSingleOutput(uint8_t zoneId,
                                           uint32_t targetDurationSec,
-                                          uint32_t targetWaterMl);
+                                          uint32_t targetWaterMl, const char* commandId = nullptr);
     bool stopWatering();
     WateringStatus wateringStatus() const;
     bool wateringActive() const { return wateringController_.active(); }
@@ -121,6 +122,7 @@ private:
     bool baseReady_ = false;
     bool businessReady_ = false;
     bool wateringStartTimeValid_ = false;
+    std::array<char, 37> wateringCommandId_{};
     bool finishedWateringStored_ = false;
     bool recordStorageFault_ = false;
     bool schedulerStorageFault_ = false;

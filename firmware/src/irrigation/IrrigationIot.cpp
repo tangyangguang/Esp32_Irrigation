@@ -238,11 +238,7 @@ void IrrigationIot::handle(IrrigationApp& app) {
 
 bool IrrigationIot::configured() const { return configured_; }
 const char* IrrigationIot::deviceId() const { return deviceId_; }
-const char* IrrigationIot::activeCommandId() const {
-    return activityTracked_ && activityCommandId_[0] != '\0'
-               ? activityCommandId_
-               : nullptr;
-}
+
 
 uint16_t IrrigationIot::beforeNetworkStop(void* context) {
     return context && static_cast<IrrigationIot*>(context)->publishShutdown() ? kShutdownNetworkGraceMs : 0;
@@ -483,7 +479,7 @@ bool IrrigationIot::startManual(const IrrigationIotProtocol::Command& command,
         durations[command.zones[index].zoneId - 1U] =
             command.zones[index].durationMinutes;
     }
-    return app.startManualWatering(durations) == WateringStartResult::Started;
+    return app.startManualWatering(durations, command.commandId) == WateringStartResult::Started;
 }
 
 bool IrrigationIot::startSingleOutput(
@@ -500,7 +496,7 @@ bool IrrigationIot::startSingleOutput(
         command.singleOutputMode == IrrigationIotProtocol::SingleOutputMode::Volume
             ? command.targetWaterMl
             : 0U;
-    return app.startSingleOutput(command.zoneId, duration, water) ==
+    return app.startSingleOutput(command.zoneId, duration, water, command.commandId) ==
            WateringStartResult::Started;
 }
 
