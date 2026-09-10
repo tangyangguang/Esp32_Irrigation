@@ -88,7 +88,7 @@ private:
                                 std::size_t journalIndex,
                                 uint64_t nowMs);
     bool applyPlans(const IrrigationIotProtocol::Command& command,
-                    IrrigationApp& app);
+                    IrrigationApp& app) __attribute__((noinline));
     bool applyAutomatic(const IrrigationIotProtocol::Command& command,
                         IrrigationApp& app);
     bool startManual(const IrrigationIotProtocol::Command& command,
@@ -98,10 +98,12 @@ private:
 
     IrrigationIotProtocol::BusinessContext businessContext(
         const IrrigationApp& app,
-        uint64_t nowMs) const;
+        uint64_t nowMs) const __attribute__((noinline));
     IrrigationIotProtocol::ActiveKind activeKind(
         const WateringStatus& status) const;
     void detectActivity(IrrigationApp& app, uint32_t nowMs);
+    void beginCommandActivity(IrrigationApp& app, const IrrigationIotProtocol::Command& command,
+                              std::size_t journalIndex) __attribute__((noinline));
     void beginActivity(const WateringStatus& status,
                        const IrrigationIotProtocol::Command* command,
                        std::size_t journalIndex,

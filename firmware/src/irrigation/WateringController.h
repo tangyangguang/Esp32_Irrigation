@@ -18,6 +18,7 @@ public:
     bool abortForMaintenance(uint32_t nowMs);
     void handle(uint32_t nowMs);
     WateringStatus status() const;
+    bool active() const { return active_; }
     FlowHistorySnapshot flowHistory() const;
     const WateringSessionSummary* finishedSession() const;
     void clearFinishedSession();

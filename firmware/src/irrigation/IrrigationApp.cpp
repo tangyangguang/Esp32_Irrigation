@@ -201,7 +201,7 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
     if (!businessReady_) {
         return WateringStartResult::NotReady;
     }
-    if (wateringController_.status().active) {
+    if (wateringController_.active()) {
         return WateringStartResult::Busy;
     }
     if (wateringController_.finishedSession()) {
@@ -447,34 +447,34 @@ WateringStartResult IrrigationApp::startFlowCalibration(
 }
 
 bool IrrigationApp::submitFlowCalibrationMeasurement(uint32_t measuredWaterMl) {
-    return businessReady_ && !wateringController_.status().active &&
+    return businessReady_ && !wateringController_.active() &&
            flowCalibrationService_.addPendingMeasurement(measuredWaterMl, trustedEpoch());
 }
 
 bool IrrigationApp::markFlowCalibrationSampleInvalid() {
-    return businessReady_ && !wateringController_.status().active &&
+    return businessReady_ && !wateringController_.active() &&
            flowCalibrationService_.markPendingInvalid();
 }
 
 bool IrrigationApp::discardFlowCalibrationMeasurement() {
-    return businessReady_ && !wateringController_.status().active &&
+    return businessReady_ && !wateringController_.active() &&
            flowCalibrationService_.discardPendingMeasurement();
 }
 
 bool IrrigationApp::updateFlowCalibrationMeasurement(uint8_t index,
                                                      uint32_t measuredWaterMl) {
-    return businessReady_ && !wateringController_.status().active &&
+    return businessReady_ && !wateringController_.active() &&
            flowCalibrationService_.updateMeasurement(index, measuredWaterMl, trustedEpoch());
 }
 
 bool IrrigationApp::deleteFlowCalibrationSample(uint8_t index) {
-    return businessReady_ && !wateringController_.status().active &&
+    return businessReady_ && !wateringController_.active() &&
            flowCalibrationService_.deleteSample(index, trustedEpoch());
 }
 
 bool IrrigationApp::applyFlowCalibrationResult() {
     const uint32_t coefficient = flowCalibrationService_.combinedPulsesPerLiterX100();
-    if (!businessReady_ || wateringController_.status().active ||
+    if (!businessReady_ || wateringController_.active() ||
         flowCalibrationService_.hasPendingMeasurement() ||
         !flowCalibrationService_.resultReady() || coefficient == 0) {
         return false;
@@ -495,7 +495,7 @@ bool IrrigationApp::applyFlowCalibrationResult() {
 bool IrrigationApp::saveFlowCalibrationParameters(
     const FlowMeterConfig& parameters) {
     const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.status().active || !current ||
+    if (!businessReady_ || wateringController_.active() || !current ||
         flowCalibrationService_.hasPendingMeasurement()) {
         return false;
     }
@@ -525,7 +525,7 @@ bool IrrigationApp::saveFlowCalibrationParameters(
 }
 
 void IrrigationApp::resetFlowCalibration() {
-    if (!wateringController_.status().active) {
+    if (!wateringController_.active()) {
         flowCalibrationService_.clear();
     }
 }
@@ -593,7 +593,7 @@ bool IrrigationApp::saveZoneBaselinePulseRate(
     uint32_t pulseRateX10000,
     uint32_t expectedConfigRevision) {
     const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.status().active || !current ||
+    if (!businessReady_ || wateringController_.active() || !current ||
         !BoardPins::isValidZoneId(zoneId) || pulseRateX10000 == 0) {
         return false;
     }
@@ -647,7 +647,7 @@ uint32_t IrrigationApp::pendingLearnedFlowMlPerMinute() const {
 bool IrrigationApp::clearLearnedZoneFlow(uint8_t zoneId,
                                          uint32_t expectedConfigRevision) {
     const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.status().active || !current ||
+    if (!businessReady_ || wateringController_.active() || !current ||
         pendingLearnedZoneId_ != 0 ||
         !BoardPins::isValidZoneId(zoneId) ||
         current->zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000 == 0) {
@@ -670,7 +670,7 @@ bool IrrigationApp::clearLearnedZoneFlow(uint8_t zoneId,
 }
 
 void IrrigationApp::discardLearnedZoneFlow() {
-    if (!wateringController_.status().active) {
+    if (!wateringController_.active()) {
         pendingLearnedZoneId_ = 0;
         pendingLearnedBaselinePulseRateX10000_ = 0;
     }
@@ -697,7 +697,7 @@ bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
                          change == IrrigationEvents::ConfigurationChange::PlanDeleted;
     if (audited && !IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit)) return false;
     BoardHardware& hardware = BoardHardware::instance();
-    const bool active = wateringController_.status().active;
+    const bool active = wateringController_.active();
     const bool frequencyChanged = proposed.valveDrive.pwmFrequencyHz !=
                                   current->valveDrive.pwmFrequencyHz;
     bool hardwareChanged = false;
@@ -745,7 +745,7 @@ void IrrigationApp::advanceBusiness() {
     wateringController_.handle(nowMs);
     consumeFinishedWatering(nowMs);
     const IrrigationConfig* config = configStore_.current();
-    if (config && !wateringController_.status().active) {
+    if (config && !wateringController_.active()) {
         unexpectedFlowMonitor_.observe(nowMs, BoardHardware::instance().flowPulseCount());
     }
     if (config) {
@@ -766,7 +766,7 @@ void IrrigationApp::advanceBusiness() {
                 eventStatus.eventStore.nextRecordId;
             aliveCheckpoint_.handle(now,
                                     config->timeSafety.aliveCheckpointHours,
-                                    wateringController_.status().active,
+                                    wateringController_.active(),
                                     activitySequence);
         }
     }
@@ -818,7 +818,7 @@ uint32_t IrrigationApp::trustedEpoch() const {
 }
 
 void IrrigationApp::applyPendingHardwareConfiguration() {
-    if (!pendingPwmReconfigure_ || wateringController_.status().active) {
+    if (!pendingPwmReconfigure_ || wateringController_.active()) {
         return;
     }
     const IrrigationConfig* config = configStore_.current();
@@ -836,7 +836,7 @@ void IrrigationApp::updateStatusIndicator(uint32_t nowMs) {
     if (!businessReady_ || recordStorageFault() || eventStorageFault() ||
         schedulerStorageFault_ || checkpointStorageFault() || unexpectedFlowAlarm()) {
         mode = StatusIndicator::Mode::Critical;
-    } else if (wateringController_.status().active) {
+    } else if (wateringController_.active()) {
         mode = StatusIndicator::Mode::Active;
     }
     statusIndicator_.setMode(mode, nowMs);
@@ -891,7 +891,7 @@ void IrrigationApp::handleParameterConfigSaved() {
     }
     const bool frequencyChanged = parameterConfigScratch_.valveDrive.pwmFrequencyHz !=
                                   current->valveDrive.pwmFrequencyHz;
-    const bool active = wateringController_.status().active;
+    const bool active = wateringController_.active();
     if (frequencyChanged && !active &&
         !BoardHardware::instance().configureValvePwmFrequency(
             parameterConfigScratch_.valveDrive.pwmFrequencyHz)) {
@@ -959,7 +959,7 @@ void IrrigationApp::observeEventConditions(uint32_t nowMs,
     const IrrigationConfig* config = configStore_.current();
     Esp32BaseConditions::ObservedState flowState =
         Esp32BaseConditions::ObservedState::Unknown;
-    if (config && !wateringController_.status().active &&
+    if (config && !wateringController_.active() &&
         unexpectedFlowMonitor_.observationReady(nowMs)) {
         flowState = unexpectedFlowMonitor_.alarmActive()
                         ? Esp32BaseConditions::ObservedState::Active
@@ -1020,17 +1020,7 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
             break;
         case WateringScheduler::Event::PlanSkippedBusy:
         case WateringScheduler::Event::PlanStartRejected: {
-            const IrrigationConfig* config = configStore_.current();
-            const char* planName = nullptr;
-            if (config && planId >= 1U && planId <= config->plans.size() &&
-                config->plans[planId - 1U].configured) {
-                planName = config->plans[planId - 1U].name.data();
-            }
-            events_.recordAutomaticPlanSkipped(
-                planId,
-                planName,
-                static_cast<WateringStartResult>(value),
-                wateringController_.status());
+            reportSkippedPlan(planId, static_cast<WateringStartResult>(value));
             break;
         }
         case WateringScheduler::Event::StorageFault:
@@ -1039,9 +1029,21 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
     }
 }
 
+// The full learning/status snapshot belongs only to this branch. Keep its
+// stack frame out of pause/resume -> audit -> LittleFS writes, including LTO.
+void IrrigationApp::reportSkippedPlan(uint8_t planId, WateringStartResult result) {
+    const IrrigationConfig* config = configStore_.current();
+    const char* planName = nullptr;
+    if (config && planId >= 1U && planId <= config->plans.size() &&
+        config->plans[planId - 1U].configured) {
+        planName = config->plans[planId - 1U].name.data();
+    }
+    events_.recordAutomaticPlanSkipped(planId, planName, result, wateringController_.status());
+}
+
 bool IrrigationApp::allowMaintenance(void* user) {
     auto* app = static_cast<IrrigationApp*>(user);
-    return app && !app->wateringController_.status().active &&
+    return app && !app->wateringController_.active() &&
            !app->flowCalibrationService_.hasPendingMeasurement() && app->pendingLearnedZoneId_ == 0;
 }
 

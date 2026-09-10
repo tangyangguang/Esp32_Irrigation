@@ -405,8 +405,7 @@ void IrrigationIot::executeAcceptedCommand(
             failureReason = IrrigationCommandJournal::Reason::HardwareFailure;
             break;
         case IrrigationIotProtocol::CommandKind::Stop: {
-            const WateringStatus status = app.wateringStatus();
-            if (!status.active) {
+            if (!app.wateringActive()) {
                 succeeded = true;
             } else if (app.stopWatering() &&
                        addPendingStopCommand(command.commandId, journalIndex)) {
@@ -420,7 +419,7 @@ void IrrigationIot::executeAcceptedCommand(
     }
 
     if (isProcessCommand(command.kind) && succeeded) {
-        beginActivity(app.wateringStatus(), &command, journalIndex, millis());
+        beginCommandActivity(app, command, journalIndex);
         Evidence running;
         std::strcpy(running.commandId, command.commandId);
         running.kind = command.kind;
@@ -560,6 +559,12 @@ void IrrigationIot::detectActivity(IrrigationApp& app, uint32_t nowMs) {
         finishStopCommands(currentEpochMs(), true);
         scheduleAllState();
     }
+}
+
+// Do not reserve a full status snapshot on every parameter command's stack.
+void IrrigationIot::beginCommandActivity(IrrigationApp& app,
+    const IrrigationIotProtocol::Command& command, std::size_t journalIndex) {
+    beginActivity(app.wateringStatus(), &command, journalIndex, millis());
 }
 
 void IrrigationIot::beginActivity(

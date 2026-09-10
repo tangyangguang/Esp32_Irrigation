@@ -2561,7 +2561,7 @@ void IrrigationWeb::flowCalibration() {
                       g_app->saveFlowCalibrationParameters(parameters);
         } else if (actionIs("clear")) {
             g_app->resetFlowCalibration();
-            success = !g_app->wateringStatus().active;
+            success = !g_app->wateringActive();
         }
         redirectResult("/irrigation/zones/flow-calibration", success);
         return;
@@ -3338,7 +3338,7 @@ void IrrigationWeb::events() {
         Esp32BaseWeb::sendChunk("</b><small>");
         if (condition.id != 4) {
             Esp32BaseWeb::sendChunk(condition.description);
-        } else if (g_app->wateringStatus().active) {
+        } else if (g_app->wateringActive()) {
             Esp32BaseWeb::sendChunk("浇水期间暂停，结束后重新观察");
         } else if (g_app->unexpectedFlowObservationReady()) {
             Esp32BaseWeb::sendChunk("最近完整窗口已完成判断");
