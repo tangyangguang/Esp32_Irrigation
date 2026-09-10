@@ -1093,7 +1093,43 @@ bool IrrigationIot::publishState(IrrigationApp& app, StateBit state) {
     const char* capabilityKey=nullptr;
     JsonObject value = document.to<JsonObject>();
 
-    if (state == StateRuntime) {
+    if (state == StateDiagnostics) {
+        capabilityKey = "state.diagnostics";
+        const auto mqtt = Esp32BaseMqtt::status();
+        const auto counters = Esp32BaseMqtt::diagnostics();
+        const auto time = Esp32BaseTime::snapshot();
+        char bootId[64]{};
+        std::snprintf(bootId, sizeof(bootId), "%s-%lu-%08lx", deviceId_,
+                      static_cast<unsigned long>(Esp32BaseSystem::bootCount()),
+                      static_cast<unsigned long>(time.bootId));
+        value["fwName"] = Esp32Base::firmwareName();
+        value["fwVer"] = Esp32Base::firmwareVersion();
+        value["host"] = Esp32Base::hostname();
+        value["bootId"] = bootId;
+        value["bootNo"] = Esp32BaseSystem::bootCount();
+        value["reset"] = Esp32BaseSystem::resetReason();
+        if (Esp32BaseWiFi::isConnected()) {
+            char ip[46]{};
+            value["ssid"] = Esp32BaseWiFi::ssid();
+            value["rssi"] = Esp32BaseWiFi::rssi();
+            if (Esp32BaseWiFi::ip(ip, sizeof(ip))) value["ip"] = ip;
+            else value["ip"] = nullptr;
+        } else {
+            value["ssid"] = nullptr;
+            value["rssi"] = nullptr;
+            value["ip"] = nullptr;
+        }
+        value["uptime"] = Esp32BaseSystem::uptimeMs64() / 1000ULL;
+        value["heap"] = Esp32BaseSystem::freeHeap();
+        value["heapLow"] = Esp32BaseSystem::minFreeHeap();
+        value["ntp"] = Esp32BaseNtp::isTimeSynced();
+        value["wifiAtt"] = Esp32BaseWiFi::attemptCount();
+        value["mqttConn"] = mqtt.state == Esp32BaseMqtt::CONNECTED;
+        value["mqttAtt"] = counters.connectAttempts;
+        if (mqtt.lastError == Esp32BaseMqtt::ERROR_NONE) value["mqttErr"] = nullptr;
+        else value["mqttErr"] = Esp32BaseMqtt::errorName(mqtt.lastError);
+        value["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
+    } else if (state == StateRuntime) {
         capabilityKey = "state.runtime";
         const bool ready = app.businessReady() && !app.schedulerStorageFault() &&
                            journalReady_ && IrrigationRecordSync::instance().writable();

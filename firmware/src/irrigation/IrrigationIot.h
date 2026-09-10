@@ -39,7 +39,8 @@ private:
         StateZoneMaintenance = 1U << 5U,
         StateCalibration = 1U << 6U,
         StateSystemParameters = 1U << 7U,
-        StateAll = (1U << 8U) - 1U,
+        StateDiagnostics = 1U << 8U,
+        StateAll = (1U << 9U) - 1U,
     };
 
     enum class EvidenceType : uint8_t {
