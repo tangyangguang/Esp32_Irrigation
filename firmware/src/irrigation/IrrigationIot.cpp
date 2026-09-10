@@ -16,6 +16,8 @@ static_assert(ESP32BASE_MQTT_MAX_OUTBOX_BYTES >= ESP32BASE_MQTT_MAX_PAYLOAD_BYTE
 #include "IrrigationApp.h"
 #include "IrrigationIotSecrets.h"
 #include "IrrigationRecordSync.h"
+#include "IrrigationStoredFact.h"
+#include "generated/IrrigationModel.h"
 
 namespace {
 
@@ -131,6 +133,22 @@ const char* automaticAuditReason(uint8_t reason) {
 
 }  // namespace
 
+IrrigationIot::IrrigationIot()
+    : io_{randomBytes, utcNow, iot_device::Esp32MqttPort::publish, iot_device::Esp32MqttPort::reconnect, this},
+      session_({IrrigationIotProtocol::kTypeKey, IrrigationIotProtocol::kTypeKey, 1,
+                IrrigationIotProtocol::kModelKey, deviceId_},
+               {topicWork_, topicWork_, topicWork_, sizeof(topicWork_),
+                lwtPayload_, sizeof(lwtPayload_), publishPayload_, sizeof(publishPayload_)}, io_,
+               IrrigationRecordSync::instance().streams(), 2),
+      port_(session_),
+      publisher_(iot_device::model_irrigation_controller_6_zone::contract, session_, io_,
+                 unusedRecordDocument_, topicWork_, sizeof(topicWork_), publishPayload_, sizeof(publishPayload_)) {}
+
+bool IrrigationIot::randomBytes(uint8_t output[16], void*) { esp_fill_random(output, 16); return true; }
+bool IrrigationIot::utcNow(char output[25], void* context) {
+    return static_cast<IrrigationIot*>(context)->currentObservedAt(output, 25);
+}
+
 IrrigationIot& IrrigationIot::instance() {
     static IrrigationIot adapter;
     return adapter;
@@ -141,20 +159,8 @@ bool IrrigationIot::configure() {
 
     const uint64_t chipId = ESP.getEfuseMac() & 0x0000FFFFFFFFFFFFULL;
     std::snprintf(deviceId_, sizeof(deviceId_), "esp32-irrigation-%012llx", chipId);
-    std::snprintf(topicPrefix_,
-                  sizeof(topicPrefix_),
-                  "iot/%s/v1/%s",
-                  IrrigationIotProtocol::kTypeKey,
-                  deviceId_);
-    std::snprintf(availabilityTopic_, sizeof(availabilityTopic_), "%s/availability",
-                  topicPrefix_);
-    std::snprintf(stateTopic_, sizeof(stateTopic_), "%s/state", topicPrefix_);
-    std::snprintf(eventTopic_, sizeof(eventTopic_), "%s/event", topicPrefix_);
-    std::snprintf(commandTopic_, sizeof(commandTopic_), "%s/command", topicPrefix_);
-    std::snprintf(recordAckTopic_, sizeof(recordAckTopic_), "%s/record-ack",
-                  topicPrefix_);
-    std::snprintf(receiptTopic_, sizeof(receiptTopic_), "%s/receipt", topicPrefix_);
-    std::snprintf(progressTopic_, sizeof(progressTopic_), "%s/progress", topicPrefix_);
+    if (!iot_device::platformTopic(session_.identity(), iot_device::Channel::Event,
+                                    eventTopic_, sizeof(eventTopic_))) return false;
 
     if (IRRIGATION_IOT_MQTT_HOST[0] == '\0') {
         ESP32BASE_LOG_W("irrigation_iot", "mqtt_not_configured private_settings_missing=true");
@@ -164,13 +170,6 @@ bool IrrigationIot::configure() {
         ESP32BASE_LOG_E("irrigation_iot", "mqtt_configuration_missing_ca");
         return false;
     }
-
-    prepareConnectionCycle();
-    lastWill_.topic = availabilityTopic_;
-    lastWill_.payload = reinterpret_cast<const uint8_t*>(lwtPayload_);
-    lastWill_.payloadLength = std::strlen(lwtPayload_);
-    lastWill_.qos = Esp32BaseMqtt::QOS_1;
-    lastWill_.retain = true;
 
     Esp32BaseMqtt::ConnectionConfig config;
     config.host = IRRIGATION_IOT_MQTT_HOST;
@@ -187,24 +186,10 @@ bool IrrigationIot::configure() {
     config.tls.caCertificatePem = IRRIGATION_IOT_MQTT_CA_PEM;
     config.tls.caCertificateLength =
         std::strlen(IRRIGATION_IOT_MQTT_CA_PEM) + 1U;
-    config.lastWill = &lastWill_;
-    if (!Esp32BaseMqtt::configure(config)) {
-        return false;
-    }
-
-    Esp32BaseMqtt::Subscription commandSubscription;
-    commandSubscription.topicFilter = commandTopic_;
-    commandSubscription.qos = Esp32BaseMqtt::QOS_1;
-    Esp32BaseMqtt::Subscription ackSubscription;
-    ackSubscription.topicFilter = recordAckTopic_;
-    ackSubscription.qos = Esp32BaseMqtt::QOS_1;
-    if (!Esp32BaseMqtt::addSubscription(commandSubscription) ||
-        !Esp32BaseMqtt::addSubscription(ackSubscription) ||
-        !Esp32BaseMqtt::setBeforeConnectCallback(beforeConnect, this)) {
-        return false;
-    }
-    Esp32BaseMqtt::setMessageCallback(mqttMessage, this);
-    Esp32BaseMqtt::setEventCallback(mqttEvent, this);
+    if (!port_.configure(config) ||
+        !publisher_.begin(ESP32BASE_MQTT_MAX_TOPIC_BYTES, ESP32BASE_MQTT_MAX_PAYLOAD_BYTES)) return false;
+    session_.setCommandReceiver(commandReceived, this);
+    port_.setEventObserver(mqttEvent, this);
     Esp32Base::setBeforeNetworkStopCallback(beforeNetworkStop, this);
     configured_ = true;
     ESP32BASE_LOG_I("irrigation_iot",
@@ -233,11 +218,10 @@ void IrrigationIot::handle(IrrigationApp& app) {
     app_ = &app;
     if (!configured_ || !begun_ || lifecycleStopping_) return;
     const uint32_t nowMs = millis();
-    IrrigationRecordSync::instance().handle(nowMs);
+    port_.poll();
     detectActivity(app, nowMs);
     detectStateChanges(app, nowMs);
-    if (activityTracked_ && activityCommandId_[0] != '\0' && connected_ &&
-        subscriptionsReady_ &&
+    if (activityTracked_ && activityCommandId_[0] != '\0' && session_.ready() &&
         static_cast<uint32_t>(nowMs - lastRunningEvidenceMs_) >=
             kRunningPublishIntervalMs) {
         Evidence running;
@@ -260,112 +244,34 @@ const char* IrrigationIot::activeCommandId() const {
                : nullptr;
 }
 
-void IrrigationIot::beforeConnect(void* context) {
-    if (context) static_cast<IrrigationIot*>(context)->prepareConnectionCycle();
-}
-
 uint16_t IrrigationIot::beforeNetworkStop(void* context) {
-    return context && static_cast<IrrigationIot*>(context)->publishShutdown()
-               ? kShutdownNetworkGraceMs
-               : 0U;
+    return context && static_cast<IrrigationIot*>(context)->publishShutdown() ? kShutdownNetworkGraceMs : 0;
 }
-
-void IrrigationIot::mqttMessage(const Esp32BaseMqtt::MessageView& message,
-                                void* context) {
-    if (context) static_cast<IrrigationIot*>(context)->onMessage(message);
+void IrrigationIot::commandReceived(const char* topic, size_t topicLength, uint8_t qos, bool retain,
+                                    const uint8_t* payload, size_t length, void* context) {
+    Esp32BaseMqtt::MessageView message;
+    message.topic=topic; message.topicLength=topicLength; message.payload=payload;
+    message.payloadLength=length; message.qos=static_cast<Esp32BaseMqtt::QualityOfService>(qos); message.retain=retain;
+    static_cast<IrrigationIot*>(context)->onMessage(message);
 }
-
 void IrrigationIot::mqttEvent(const Esp32BaseMqtt::Event& event, void* context) {
-    if (context) static_cast<IrrigationIot*>(context)->onEvent(event);
+    static_cast<IrrigationIot*>(context)->onEvent(event);
 }
-
-void IrrigationIot::prepareConnectionCycle() {
-    connected_ = false;
-    subscriptionsReady_ = false;
-    lifecycleStopping_ = false;
-    subscriptionAckMask_ = 0;
-    makeUuid(connectionId_, sizeof(connectionId_));
-    stateSeq_ = 0;
-    const int written = std::snprintf(
-        lwtPayload_,
-        sizeof(lwtPayload_),
-        "{\"protocol\":\"%s\",\"modelKey\":\"%s\",\"online\":false,"
-        "\"connectionId\":\"%s\",\"reason\":\"lwt\"}",
-        IrrigationIotProtocol::kProtocol,
-        IrrigationIotProtocol::kModelKey,
-        connectionId_);
-    if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(lwtPayload_)) {
-        lwtPayload_[0] = '\0';
-    }
-    lastWill_.payloadLength = std::strlen(lwtPayload_);
-    resetConnectionDelivery();
-}
-
 bool IrrigationIot::publishShutdown() {
-    if (lifecycleStopping_) return false;
-    lifecycleStopping_ = true;
-    if (!configured_ || !connected_ || connectionId_[0] == '\0' ||
-        Esp32BaseMqtt::state() != Esp32BaseMqtt::CONNECTED) {
-        ESP32BASE_LOG_W("irrigation_iot",
-                        "shutdown_publish_skipped mqtt_connected=false");
-        return false;
-    }
-
-    char observedAt[25]{};
-    char payload[320]{};
-    if (!currentObservedAt(observedAt, sizeof(observedAt))) {
-        ESP32BASE_LOG_W("irrigation_iot",
-                        "shutdown_publish_skipped trusted_time=false");
-        return false;
-    }
-    const int length = std::snprintf(
-        payload,
-        sizeof(payload),
-        "{\"protocol\":\"%s\",\"modelKey\":\"%s\",\"online\":false,"
-        "\"connectionId\":\"%s\",\"reason\":\"shutdown\","
-        "\"observedAt\":\"%s\"}",
-        IrrigationIotProtocol::kProtocol,
-        IrrigationIotProtocol::kModelKey,
-        connectionId_,
-        observedAt);
-    if (length <= 0 || static_cast<std::size_t>(length) >= sizeof(payload)) {
-        ESP32BASE_LOG_E("irrigation_iot", "shutdown_serialize_failed");
-        return false;
-    }
-
-    Esp32BaseMqtt::PublishRequest request;
-    request.topic = availabilityTopic_;
-    request.payload = reinterpret_cast<const uint8_t*>(payload);
-    request.payloadLength = static_cast<std::size_t>(length);
-    request.qos = Esp32BaseMqtt::QOS_1;
-    request.retain = true;
-    const Esp32BaseMqtt::PublishResult result = Esp32BaseMqtt::publish(request);
-    if (!result.accepted()) {
-        ESP32BASE_LOG_W("irrigation_iot",
-                        "shutdown_publish_rejected code=%u",
-                        static_cast<unsigned>(result.code));
-        return false;
-    }
-
-    connected_ = false;
-    subscriptionsReady_ = false;
-    availabilityPending_ = false;
-    ESP32BASE_LOG_I("irrigation_iot",
-                    "shutdown_publish_accepted packet_id=%u connection_id=%s",
-                    static_cast<unsigned>(result.packetId),
-                    connectionId_);
-    return true;
+    if (!configured_ || lifecycleStopping_) return false;
+    lifecycleStopping_=true;
+    return port_.beginShutdown(kShutdownNetworkGraceMs);
 }
 
 void IrrigationIot::onMessage(const Esp32BaseMqtt::MessageView& message) {
-    if (!app_ || !subscriptionsReady_) return;
+    if (!app_ || !session_.ready()) return;
     IrrigationIotProtocol::CommandPacket packet;
     packet.topic = message.topic;
     packet.payload = message.payload;
     packet.payloadLength = message.payloadLength;
     packet.qos = static_cast<uint8_t>(message.qos);
     packet.retain = message.retain;
-    if (std::strcmp(message.topic, commandTopic_) == 0) {
+    if (iot_device::platformTopicMatches(session_.identity(), iot_device::Channel::Command, message.topic, message.topicLength)) {
         IrrigationIotProtocol::Command command;
         const IrrigationIotProtocol::ParseError error =
             IrrigationIotProtocol::parseCommand(packet,
@@ -386,84 +292,21 @@ void IrrigationIot::onMessage(const Esp32BaseMqtt::MessageView& message) {
         handleCommand(command, *app_, nowMs);
         return;
     }
-    if (std::strcmp(message.topic, recordAckTopic_) == 0) {
-        // Reliable record acknowledgement is activated with the unified record
-        // store; malformed or premature ACKs never affect command/state flow.
-        IrrigationIotProtocol::RecordAck ack;
-        const IrrigationIotProtocol::ParseError error =
-            IrrigationIotProtocol::parseRecordAck(packet,
-                {IrrigationIotProtocol::kTypeKey, IrrigationIotProtocol::kTypeKey, 1,
-                 IrrigationIotProtocol::kModelKey, deviceId_}, ack);
-        if (error != IrrigationIotProtocol::ParseError::None) {
-            ESP32BASE_LOG_W("irrigation_iot", "record_ack_rejected error=%s",
-                            IrrigationIotProtocol::parseErrorName(error));
-        } else {
-            IrrigationRecordSync::StreamKind acknowledgedStream;
-            if (IrrigationRecordSync::instance().acknowledge(
-                    ack, millis(), &acknowledgedStream)) {
-                if (acknowledgedStream ==
-                    IrrigationRecordSync::StreamKind::Watering)
-                    lastWateringRecordPublishMs_ = 0;
-                else
-                    lastAuditRecordPublishMs_ = 0;
-            } else {
-                ESP32BASE_LOG_W("irrigation_iot", "record_ack_rejected error=watermark");
-            }
-        }
-    }
 }
 
 void IrrigationIot::onEvent(const Esp32BaseMqtt::Event& event) {
     switch (event.type) {
         case Esp32BaseMqtt::EVENT_CONNECTED:
-            connected_ = true;
-            subscriptionsReady_ = false;
-            subscriptionAckMask_ = 0;
-            resetConnectionDelivery();
-            break;
+            lifecycleStopping_=false; stateSeq_=0; resetConnectionDelivery(); break;
         case Esp32BaseMqtt::EVENT_DISCONNECTED:
         case Esp32BaseMqtt::EVENT_CONNECTION_REJECTED:
-            connected_ = false;
-            lastWateringRecordPublishMs_ = 0;
-            lastAuditRecordPublishMs_ = 0;
-            subscriptionsReady_ = false;
-            subscriptionAckMask_ = 0;
-            inFlightKind_ = InFlightKind::None;
-            inFlightPacketId_ = 0;
-            break;
-        case Esp32BaseMqtt::EVENT_SUBSCRIPTION_ACKNOWLEDGED:
-            if (event.subscriptionIndex < 2U) {
-                subscriptionAckMask_ |= static_cast<uint8_t>(1U << event.subscriptionIndex);
-            }
-            if (subscriptionAckMask_ == 0x03U) {
-                subscriptionsReady_ = true;
-                availabilityPending_ = true;
-                scheduleAllState();
-                if (activityTracked_ && activityCommandId_[0] != '\0') {
-                    Evidence running;
-                    std::strcpy(running.commandId, activityCommandId_);
-                    running.kind = activityCommandKind_;
-                    running.type = EvidenceType::ProgressRunning;
-                    running.observedAtMs = currentEpochMs();
-                    queueEvidence(running);
-                }
-            }
-            break;
-        case Esp32BaseMqtt::EVENT_SUBSCRIPTION_REJECTED:
-            subscriptionsReady_ = false;
-            break;
+            resetConnectionDelivery(); break;
         case Esp32BaseMqtt::EVENT_PUBLISH_ACKNOWLEDGED:
-            markPublishAcknowledged(event.packetId);
-            break;
+            markPublishAcknowledged(event.packetId); break;
         case Esp32BaseMqtt::EVENT_PUBLISH_DELIVERY_UNCERTAIN:
-            if (inFlightKind_ != InFlightKind::None &&
-                event.packetId == inFlightPacketId_) {
-                inFlightKind_ = InFlightKind::None;
-                inFlightPacketId_ = 0;
-            }
-            break;
-        default:
-            break;
+        case Esp32BaseMqtt::EVENT_MAILBOX_OVERFLOW:
+            inFlightKind_=InFlightKind::None; inFlightPacketId_=0; break;
+        default: break;
     }
 }
 
@@ -760,7 +603,7 @@ void IrrigationIot::finishActivity(const WateringStatus& status,
                                    uint64_t observedAtMs) {
     if (activityCommandId_[0] != '\0' &&
         activityJournalIndex_ < IrrigationCommandJournal::kCapacity) {
-        if (!connected_ || !subscriptionsReady_ || observedAtMs == 0U) {
+        if (!session_.ready() || observedAtMs == 0U) {
             journal_.closeWithoutFinal(activityJournalIndex_);
         } else {
             IrrigationCommandJournal::ProgressStatus finalStatus =
@@ -795,7 +638,7 @@ void IrrigationIot::finishActivity(const WateringStatus& status,
 void IrrigationIot::finishStopCommands(uint64_t observedAtMs, bool succeeded) {
     for (uint8_t index = 0; index < pendingStopCount_; ++index) {
         PendingStopCommand& pending = pendingStops_[index];
-        if (!connected_ || !subscriptionsReady_ || observedAtMs == 0U) {
+        if (!session_.ready() || observedAtMs == 0U) {
             journal_.closeWithoutFinal(pending.journalIndex);
         } else if (journal_.storeFinal(
                        pending.journalIndex,
@@ -1011,12 +854,8 @@ void IrrigationIot::removeEvidenceHead() {
 }
 
 void IrrigationIot::pump(IrrigationApp& app) {
-    if (!connected_ || !subscriptionsReady_ ||
+    if (!session_.ready() ||
         inFlightKind_ != InFlightKind::None) {
-        return;
-    }
-    if (availabilityPending_) {
-        publishAvailability();
         return;
     }
     queuePendingJournalEvidence();
@@ -1028,50 +867,7 @@ void IrrigationIot::pump(IrrigationApp& app) {
         publishState(app, static_cast<StateBit>(lowestStateBit(pendingStateMask_)));
         return;
     }
-    const uint32_t nowMs = millis();
-    for (uint8_t attempt = 0; attempt < 2U; ++attempt) {
-        const IrrigationRecordSync::StreamKind stream =
-            attempt == 0U
-                ? nextRecordStream_
-                : nextRecordStream_ == IrrigationRecordSync::StreamKind::Watering
-                      ? IrrigationRecordSync::StreamKind::Audit
-                      : IrrigationRecordSync::StreamKind::Watering;
-        uint32_t& lastPublish =
-            stream == IrrigationRecordSync::StreamKind::Watering
-                ? lastWateringRecordPublishMs_
-                : lastAuditRecordPublishMs_;
-        if (IrrigationRecordSync::instance().pendingCount(stream) == 0U ||
-            (lastPublish != 0U &&
-             static_cast<uint32_t>(nowMs - lastPublish) <
-                 IrrigationIotProtocol::kRecordAckRetryMs))
-            continue;
-        if (publishRecord(stream)) {
-            nextRecordStream_ =
-                stream == IrrigationRecordSync::StreamKind::Watering
-                    ? IrrigationRecordSync::StreamKind::Audit
-                    : IrrigationRecordSync::StreamKind::Watering;
-        }
-        return;
-    }
-}
-
-bool IrrigationIot::publishAvailability() {
-    char observedAt[25]{};
-    if (!currentObservedAt(observedAt, sizeof(observedAt))) return false;
-    char payload[320]{};
-    const int length = std::snprintf(
-        payload,
-        sizeof(payload),
-        "{\"protocol\":\"%s\",\"modelKey\":\"%s\",\"online\":true,"
-        "\"connectionId\":\"%s\",\"observedAt\":\"%s\"}",
-        IrrigationIotProtocol::kProtocol,
-        IrrigationIotProtocol::kModelKey,
-        connectionId_,
-        observedAt);
-    return length > 0 && static_cast<std::size_t>(length) < sizeof(payload) &&
-           publishBuffer(availabilityTopic_, payload,
-                         static_cast<std::size_t>(length), true,
-                         InFlightKind::Availability);
+    IrrigationRecordSync::instance().publish(millis(), publishRecordFact, this);
 }
 
 bool IrrigationIot::publishEvidence() {
@@ -1088,70 +884,44 @@ bool IrrigationIot::publishEvidence() {
                          evidence.type == EvidenceType::ReceiptRejected;
     const bool failed = evidence.type == EvidenceType::ProgressFailed;
     const bool rejected = evidence.type == EvidenceType::ReceiptRejected;
-    const char* status = nullptr;
-    switch (evidence.type) {
-        case EvidenceType::ReceiptAccepted: status = "accepted"; break;
-        case EvidenceType::ReceiptRejected: status = "rejected"; break;
-        case EvidenceType::ProgressRunning: status = "running"; break;
-        case EvidenceType::ProgressSucceeded: status = "succeeded"; break;
-        case EvidenceType::ProgressCanceled: status = "canceled"; break;
-        case EvidenceType::ProgressFailed: status = "failed"; break;
+    const char* key=IrrigationIotProtocol::capabilityKey(evidence.kind);
+    const char* reason=(rejected || failed) ? IrrigationCommandJournal::reasonName(evidence.reason) : nullptr;
+    bool accepted=false;
+    if (receipt) accepted=publisher_.receipt(evidence.commandId,key,
+        rejected ? iot_device::ReceiptStatus::Rejected : iot_device::ReceiptStatus::Accepted,reason,observedAt);
+    else {
+        const auto progress=evidence.type==EvidenceType::ProgressRunning ? iot_device::ProgressStatus::Running :
+            evidence.type==EvidenceType::ProgressSucceeded ? iot_device::ProgressStatus::Succeeded :
+            evidence.type==EvidenceType::ProgressCanceled ? iot_device::ProgressStatus::Canceled : iot_device::ProgressStatus::Failed;
+        accepted=publisher_.progress(evidence.commandId,key,progress,reason,observedAt);
     }
-    char payload[512]{};
-    const int length = (rejected || failed)
-                           ? std::snprintf(
-                                 payload, sizeof(payload),
-                                 "{\"protocol\":\"%s\",\"connectionId\":\"%s\","
-                                 "\"commandId\":\"%s\",\"capabilityKey\":\"%s\","
-                                 "\"status\":\"%s\",\"reason\":\"%s\","
-                                 "\"observedAt\":\"%s\"}",
-                                 IrrigationIotProtocol::kProtocol, connectionId_,
-                                 evidence.commandId,
-                                 IrrigationIotProtocol::capabilityKey(evidence.kind),
-                                 status,
-                                 IrrigationCommandJournal::reasonName(evidence.reason),
-                                 observedAt)
-                           : std::snprintf(
-                                 payload, sizeof(payload),
-                                 "{\"protocol\":\"%s\",\"connectionId\":\"%s\","
-                                 "\"commandId\":\"%s\",\"capabilityKey\":\"%s\","
-                                 "\"status\":\"%s\",\"observedAt\":\"%s\"}",
-                                 IrrigationIotProtocol::kProtocol, connectionId_,
-                                 evidence.commandId,
-                                 IrrigationIotProtocol::capabilityKey(evidence.kind),
-                                 status, observedAt);
-    return length > 0 && static_cast<std::size_t>(length) < sizeof(payload) &&
-           publishBuffer(receipt ? receiptTopic_ : progressTopic_, payload,
-                         static_cast<std::size_t>(length), false,
-                         InFlightKind::Evidence);
-}
-
-bool IrrigationIot::publishRecord(IrrigationRecordSync::StreamKind stream) {
-    std::size_t payloadLength = 0;
-    if (!serializeRecord(stream, publishPayload_, sizeof(publishPayload_),
-                         payloadLength)) return false;
-    const bool accepted = publishBuffer(eventTopic_, publishPayload_,
-                                        payloadLength, false,
-                                        InFlightKind::Record);
-    if (accepted) {
-        uint32_t& lastPublish =
-            stream == IrrigationRecordSync::StreamKind::Watering
-                ? lastWateringRecordPublishMs_
-                : lastAuditRecordPublishMs_;
-        lastPublish = millis();
-        inFlightRecordStream_ = stream;
-    }
+    if (accepted) { inFlightKind_=InFlightKind::Evidence; inFlightPacketId_=publisher_.packetId(); }
     return accepted;
 }
 
-bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
-                                    char* output,
-                                    std::size_t outputLength,
-                                    std::size_t& payloadLength) {
-    payloadLength = 0;
+bool IrrigationIot::publishRecordFact(const uint8_t generation[16], const iot_device::RecordFactView& fact, void* context) {
+    auto& self=*static_cast<IrrigationIot*>(context);
+    if (!self.session_.ready() || self.inFlightKind_!=InFlightKind::None) return false;
+    size_t length=0;
+    return self.serializeRecord(generation,fact,self.publishPayload_,sizeof(self.publishPayload_),length) &&
+        self.publishBuffer(self.eventTopic_,self.publishPayload_,length,false,InFlightKind::Record);
+}
+
+bool IrrigationIot::serializeRecord(const uint8_t generation[16], const iot_device::RecordFactView& fact,
+                                    char* output, std::size_t outputLength, std::size_t& payloadLength) {
+    payloadLength=0;
     IrrigationRecordSync::PendingRecord record;
-    if (!IrrigationRecordSync::instance().readOldestPending(stream, record))
-        return false;
+    const auto stream=fact.typeCode==1 ? IrrigationRecordSync::StreamKind::Watering : IrrigationRecordSync::StreamKind::Audit;
+    record.stream=stream; record.sequence=fact.sequence;
+    if (fact.dataBytes<4 || (fact.typeCode!=1 && fact.typeCode!=2)) return false;
+    if (fact.observedAtMs!=iot_device::RecordStream::UnknownTime) {
+        if (fact.observedAtMs%1000 || fact.observedAtMs/1000>UINT32_MAX) return false;
+        record.timing.completedEpochSec=uint32_t(fact.observedAtMs/1000);
+    }
+    for (unsigned n=0;n<4;++n) record.timing.durationSec|=uint32_t(fact.data[n])<<(n*8);
+    if (stream==IrrigationRecordSync::StreamKind::Watering) {
+        if (!WateringRecordCodec::decode(fact.data+4,fact.dataBytes-4,record.watering)) return false;
+    } else if (!IrrigationAuditCodec::decode(fact.data+4,fact.dataBytes-4,record.audit)) return false;
     uint32_t completedEpoch = 0;
     const bool timed = Esp32BaseRecordStore::resolveCompletedEpoch(
         record.timing, completedEpoch);
@@ -1161,17 +931,12 @@ bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
         return false;
 
     DynamicJsonDocument document(IrrigationJsonCapacity::record);
-    document["protocol"] = IrrigationIotProtocol::kProtocol;
-    document["connectionId"] = connectionId_;
-    document["recordStreamId"] = IrrigationRecordSync::instance().streamId(stream);
-    document["recordSequence"] = record.sequence;
-    if (timed) document["observedAt"] = observedAt;
-    else document["observedAt"] = nullptr;
-    JsonObject data = document["data"].to<JsonObject>();
+    const char* eventKey=nullptr;
+    JsonObject data = document.to<JsonObject>();
 
     if (stream == IrrigationRecordSync::StreamKind::Watering) {
         const WateringRecordPayload& watering = record.watering;
-        document["eventKey"] = watering.result == WateringResult::Completed
+        eventKey = watering.result == WateringResult::Completed
                                    ? "watering.completed"
                                    : watering.result == WateringResult::Stopped
                                          ? "watering.stopped"
@@ -1239,7 +1004,7 @@ bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
         const IrrigationAuditPayload& audit = record.audit;
         using AuditKind = IrrigationAuditPayload::Kind;
         if (audit.kind == AuditKind::AutomaticRun) {
-            document["eventKey"] = "operation.automatic-run.completed";
+            eventKey = "operation.automatic-run.completed";
             data["actionKey"] = "automatic.plan-run";
             data["sourceKey"] = "device_schedule";
             data["status"] = audit.flags == 0U ? "succeeded"
@@ -1270,7 +1035,7 @@ bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
             const Reason reason = static_cast<Reason>(audit.reason);
             const bool resumed = reason == Reason::ResumedManually ||
                                  reason == Reason::ResumedAutomatically;
-            document["eventKey"] = resumed ? "automatic.resumed" : "automatic.paused";
+            eventKey = resumed ? "automatic.resumed" : "automatic.paused";
             if (reason == Reason::PausedIndefinitely) {
                 data["mode"] = "paused-indefinitely";
                 data["resumeAtEpoch"] = nullptr;
@@ -1286,19 +1051,19 @@ bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
                 return false;
             }
         } else if (audit.kind == AuditKind::PlansChanged) {
-            document["eventKey"] = "configuration.plans-changed";
+            eventKey = "configuration.plans-changed";
             data["revision"] = audit.value1;
             JsonArray planIds = data["planIds"].to<JsonArray>();
             for (uint8_t planId = 1U; planId <= 8U; ++planId)
                 if ((audit.value2 & (1UL << (planId - 1U))) != 0U)
                     planIds.add(planId);
         } else if (audit.kind == AuditKind::CalibrationSaved) {
-            document["eventKey"] = "calibration.result-saved";
+            eventKey = "calibration.result-saved";
             data["coefficientPulsesPerLiterX100"] = audit.value1;
             data["pulseCount"] = audit.value2;
             data["waterMl"] = audit.value3;
         } else if (audit.kind == AuditKind::ZoneBaselineSaved) {
-            document["eventKey"] = "zone.baseline-saved";
+            eventKey = "zone.baseline-saved";
             data["zoneId"] = audit.objectId;
             data["baselinePulseRateX10000"] = audit.value1;
             data["baselineFlowMlPerMinute"] = audit.value2;
@@ -1306,54 +1071,27 @@ bool IrrigationIot::serializeRecord(IrrigationRecordSync::StreamKind stream,
             return false;
         }
     }
-    if (document.overflowed()) return false;
-    payloadLength = serializeJson(document, output, outputLength);
-    if (payloadLength == 0U || payloadLength >= outputLength ||
-        payloadLength > ESP32BASE_MQTT_MAX_PAYLOAD_BYTES) {
-        payloadLength = 0U;
-        return false;
-    }
-    inFlightRecordSequence_ = record.sequence;
-    return true;
+    if (document.overflowed() || !eventKey) return false;
+    const auto* schema=iot_device::model_irrigation_controller_6_zone::contract.record(eventKey);
+    if (!schema || !schema->validate(document.as<JsonVariantConst>())) return false;
+    payloadLength=iot_device::recordEventJson(session_.identity(),session_.connectionId(),generation,fact,
+        eventKey,document,output,outputLength,ESP32BASE_MQTT_MAX_PAYLOAD_BYTES);
+    return payloadLength!=0;
 }
 
 bool IrrigationIot::publishState(IrrigationApp& app, StateBit state) {
-    std::size_t payloadLength = 0;
-    if (!serializeState(app, state, publishPayload_, sizeof(publishPayload_),
-                        payloadLength)) {
-        return false;
-    }
-    const bool accepted = publishBuffer(stateTopic_, publishPayload_,
-                                        payloadLength, false,
-                                        InFlightKind::State,
-                                        static_cast<uint16_t>(state));
-    if (accepted) ++stateSeq_;
-    return accepted;
-}
-
-bool IrrigationIot::serializeState(IrrigationApp& app,
-                                   StateBit state,
-                                   char* output,
-                                   std::size_t outputLength,
-                                   std::size_t& payloadLength) {
-    payloadLength = 0;
-    char observedAt[25]{};
-    if (!currentObservedAt(observedAt, sizeof(observedAt))) return false;
     const IrrigationConfig* config = app.configuration();
     if (!config) return false;
     const WateringStatus status = app.wateringStatus();
 
     DynamicJsonDocument document(IrrigationJsonCapacity::state);
-    document["protocol"] = IrrigationIotProtocol::kProtocol;
-    document["connectionId"] = connectionId_;
-    document["seq"] = stateSeq_;
-    document["observedAt"] = observedAt;
-    JsonObject value = document["value"].to<JsonObject>();
+    const char* capabilityKey=nullptr;
+    JsonObject value = document.to<JsonObject>();
 
     if (state == StateRuntime) {
-        document["capabilityKey"] = "state.runtime";
+        capabilityKey = "state.runtime";
         const bool ready = app.businessReady() && !app.schedulerStorageFault() &&
-                           journalReady_;
+                           journalReady_ && IrrigationRecordSync::instance().writable();
         value["ready"] = ready;
         value["readyReason"] = !app.businessReady()
                                    ? "startup_check_failed"
@@ -1498,7 +1236,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
         if (app.recordStorageFault()) faults.add("record_storage");
         if (app.eventStorageFault()) faults.add("event_storage");
     } else if (state == StateOverview) {
-        document["capabilityKey"] = "state.overview";
+        capabilityKey = "state.overview";
         const bool critical = !app.businessReady() || !journalReady_ ||
                               app.unexpectedFlowAlarm() ||
                               app.schedulerStorageFault();
@@ -1509,7 +1247,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
         value["activity"] = status.active ? "active" : "idle";
         value["health"] = critical ? "critical" : warning ? "warning" : "normal";
     } else if (state == StatePlans) {
-        document["capabilityKey"] = "parameter.plans";
+        capabilityKey = "parameter.plans";
         value["revision"] = config->revision;
         JsonArray plans = value["plans"].to<JsonArray>();
         for (const WateringPlan& plan : config->plans) {
@@ -1532,7 +1270,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
             }
         }
     } else if (state == StateAutomatic) {
-        document["capabilityKey"] = "parameter.automatic-watering";
+        capabilityKey = "parameter.automatic-watering";
         const AutomaticWateringState automatic = app.automaticWateringState();
         if (automatic.mode == AutomaticWateringMode::Enabled) {
             value["mode"] = "enabled";
@@ -1545,7 +1283,7 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
             value["resumeAtEpoch"] = automatic.resumeAtEpoch;
         }
     } else if (state == StateZones || state == StateZoneMaintenance) {
-        document["capabilityKey"] =
+        capabilityKey =
             state == StateZones ? "state.zones" : "state.zone-maintenance";
         JsonArray zones = value["zones"].to<JsonArray>();
         for (const ZoneConfig& zoneConfig : config->zones) {
@@ -1571,14 +1309,14 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
             }
         }
     } else if (state == StateCalibration) {
-        document["capabilityKey"] = "state.calibration";
+        capabilityKey = "state.calibration";
         value["coefficientPulsesPerLiterX100"] =
             config->flowMeter.pulsesPerLiterX100;
         value["startupPulseCount"] =
             config->flowMeter.calibrationStartupPulseCount;
         value["startupWaterMl"] = config->flowMeter.calibrationStartupWaterMl;
     } else if (state == StateSystemParameters) {
-        document["capabilityKey"] = "state.system-parameters";
+        capabilityKey = "state.system-parameters";
         JsonObject valve = value["valve"].to<JsonObject>();
         valve["pullInTimeMs"] = config->valveDrive.pullInTimeMs;
         valve["switchDelayMs"] = config->valveDrive.switchDelayMs;
@@ -1624,13 +1362,10 @@ bool IrrigationIot::serializeState(IrrigationApp& app,
         return false;
     }
 
-    if (document.overflowed()) return false;
-    payloadLength = serializeJson(document, output, outputLength);
-    if (payloadLength == 0U || payloadLength >= outputLength ||
-        payloadLength > ESP32BASE_MQTT_MAX_PAYLOAD_BYTES) {
-        payloadLength = 0;
-        return false;
-    }
+    if (document.overflowed() || !capabilityKey || !publisher_.state(capabilityKey,stateSeq_,document)) return false;
+    inFlightKind_=InFlightKind::State; inFlightPacketId_=publisher_.packetId();
+    inFlightStateBit_=static_cast<uint16_t>(state);
+    pendingStateMask_ &= static_cast<uint16_t>(~inFlightStateBit_); ++stateSeq_;
     return true;
 }
 
@@ -1674,9 +1409,6 @@ void IrrigationIot::markPublishAcknowledged(uint16_t packetId) {
         return;
     }
     switch (inFlightKind_) {
-        case InFlightKind::Availability:
-            availabilityPending_ = false;
-            break;
         case InFlightKind::Evidence:
             if (evidenceCount_ != 0U) {
                 markJournalEvidenceDelivered(evidence_[evidenceRead_]);
@@ -1684,14 +1416,8 @@ void IrrigationIot::markPublishAcknowledged(uint16_t packetId) {
             removeEvidenceHead();
             break;
         case InFlightKind::State:
-            pendingStateMask_ &= static_cast<uint16_t>(~inFlightStateBit_);
             break;
         case InFlightKind::Record:
-            if (inFlightRecordStream_ ==
-                IrrigationRecordSync::StreamKind::Watering)
-                lastWateringRecordPublishMs_ = millis();
-            else
-                lastAuditRecordPublishMs_ = millis();
             break;
         case InFlightKind::None:
             break;
@@ -1699,17 +1425,11 @@ void IrrigationIot::markPublishAcknowledged(uint16_t packetId) {
     inFlightKind_ = InFlightKind::None;
     inFlightPacketId_ = 0;
     inFlightStateBit_ = 0;
-    inFlightRecordSequence_ = 0;
 }
 
 void IrrigationIot::resetConnectionDelivery() {
-    availabilityPending_ = false;
     inFlightKind_ = InFlightKind::None;
     inFlightPacketId_ = 0;
     inFlightStateBit_ = 0;
-    inFlightRecordSequence_ = 0;
-    lastWateringRecordPublishMs_ = 0;
-    lastAuditRecordPublishMs_ = 0;
-    nextRecordStream_ = IrrigationRecordSync::StreamKind::Watering;
     scheduleAllState();
 }

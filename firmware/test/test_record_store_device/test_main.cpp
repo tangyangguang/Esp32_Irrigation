@@ -1,6 +1,5 @@
 #include <Arduino.h>
 #include <Esp32Base.h>
-#include <Preferences.h>
 #include <unity.h>
 
 #include <cstring>
@@ -13,13 +12,6 @@
 namespace {
 WateringRecordStore g_watering;
 IrrigationAuditStore g_audit;
-
-void clearNamespace(const char* name) {
-    Preferences preferences;
-    TEST_ASSERT_TRUE(preferences.begin(name, false));
-    TEST_ASSERT_TRUE(preferences.clear());
-    preferences.end();
-}
 
 WateringSessionSummary makeWateringSummary() {
     WateringSessionSummary summary{};
@@ -49,27 +41,24 @@ void test_initialize_two_bounded_stores_and_sync() {
     TEST_ASSERT_TRUE(g_audit.begin());
     TEST_ASSERT_TRUE(g_watering.baseStore().clear());
     TEST_ASSERT_TRUE(g_audit.baseStore().clear());
-    clearNamespace("irr_wtr_sync");
-    clearNamespace("irr_aud_sync");
 
     TEST_ASSERT_TRUE(IrrigationRecordSync::instance().begin(g_watering, g_audit));
+    TEST_ASSERT_TRUE(IrrigationRecordSync::instance().resetGenerationsAfterFormat());
+    IrrigationRecordSync::instance().handle(millis());
     Esp32BaseRecordStore::StoreStatus wateringStatus{};
     Esp32BaseRecordStore::StoreStatus auditStatus{};
     TEST_ASSERT_TRUE(g_watering.readStatus(wateringStatus));
     TEST_ASSERT_TRUE(g_audit.readStatus(auditStatus));
-    TEST_ASSERT_EQUAL_UINT32(WateringRecordCodec::kPayloadSize + 24U,
+    TEST_ASSERT_EQUAL_UINT32(WateringRecordStore::kStoredBytes + 24U,
                              wateringStatus.slotSizeBytes);
-    TEST_ASSERT_EQUAL_UINT32(IrrigationAuditCodec::kPayloadSize + 24U,
+    TEST_ASSERT_EQUAL_UINT32(IrrigationAuditStore::kStoredBytes + 24U,
                              auditStatus.slotSizeBytes);
     TEST_ASSERT_EQUAL_UINT32(384UL * 1024UL,
                              wateringStatus.maximumStoreBytes);
     TEST_ASSERT_EQUAL_UINT32(128UL * 1024UL,
                              auditStatus.maximumStoreBytes);
-    TEST_ASSERT_NOT_EQUAL(0, std::strcmp(
-        IrrigationRecordSync::instance().streamId(
-            IrrigationRecordSync::StreamKind::Watering),
-        IrrigationRecordSync::instance().streamId(
-            IrrigationRecordSync::StreamKind::Audit)));
+    TEST_ASSERT_NOT_EQUAL(0, std::memcmp(g_watering.recordStream().generation(),
+                                         g_audit.recordStream().generation(), 16));
 }
 
 void test_compact_watering_and_audit_records_are_independent() {
@@ -88,35 +77,26 @@ void test_compact_watering_and_audit_records_are_independent() {
     TEST_ASSERT_EQUAL_UINT32(1U, IrrigationRecordSync::instance().pendingCount(
                                            IrrigationRecordSync::StreamKind::Audit));
 
-    IrrigationRecordSync::PendingRecord watering{};
-    IrrigationRecordSync::PendingRecord storedAudit{};
-    TEST_ASSERT_TRUE(IrrigationRecordSync::instance().readOldestPending(
-        IrrigationRecordSync::StreamKind::Watering, watering));
-    TEST_ASSERT_TRUE(IrrigationRecordSync::instance().readOldestPending(
-        IrrigationRecordSync::StreamKind::Audit, storedAudit));
-    TEST_ASSERT_EQUAL_UINT32(12U,
-                             watering.watering.zones[0].plannedDurationSec);
-    char relatedCommandId[IrrigationIotProtocol::kUuidBufferSize]{};
+    StoredWateringRecord watering{};
+    StoredIrrigationAuditRecord storedAudit{};
+    TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseRecordStore::RecordReadResult::Found),
+                      static_cast<int>(g_watering.readById(1, watering)));
+    TEST_ASSERT_EQUAL(static_cast<int>(Esp32BaseRecordStore::RecordReadResult::Found),
+                      static_cast<int>(g_audit.readById(1, storedAudit)));
+    TEST_ASSERT_EQUAL_UINT32(12U, watering.payload.zones[0].plannedDurationSec);
+    char relatedCommandId[37]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::formatRelatedCommandId(
-        watering.watering, relatedCommandId, sizeof(relatedCommandId)));
-    TEST_ASSERT_EQUAL_STRING("550e8400-e29b-41d4-a716-446655440000",
-                             relatedCommandId);
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(IrrigationAuditPayload::Kind::AutomaticStateChanged),
-        static_cast<uint8_t>(storedAudit.audit.kind));
-
-    IrrigationIotProtocol::RecordAck ack{};
-    std::strncpy(ack.recordStreamId,
-                 IrrigationRecordSync::instance().streamId(
-                     IrrigationRecordSync::StreamKind::Audit),
-                 sizeof(ack.recordStreamId) - 1U);
-    ack.acknowledgedThroughSequence = storedAudit.sequence;
-    IrrigationRecordSync::StreamKind acknowledgedStream{};
-    TEST_ASSERT_TRUE(IrrigationRecordSync::instance().acknowledge(
-        ack, millis(), &acknowledgedStream));
-    TEST_ASSERT_EQUAL_UINT8(
-        static_cast<uint8_t>(IrrigationRecordSync::StreamKind::Audit),
-        static_cast<uint8_t>(acknowledgedStream));
+        watering.payload, relatedCommandId, sizeof(relatedCommandId)));
+    TEST_ASSERT_EQUAL_STRING("550e8400-e29b-41d4-a716-446655440000", relatedCommandId);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(audit.kind),
+                            static_cast<uint8_t>(storedAudit.payload.kind));
+    auto& stream = g_audit.recordStream();
+    stream.setConnectionReady(true);
+    stream.poll(millis(), [](const uint8_t*, const iot_device::RecordFactView&, void*) {
+        return true;
+    }, nullptr);
+    TEST_ASSERT_TRUE(stream.acknowledge(stream.generation(), 1));
+    for (unsigned n=0;n<3;++n) stream.poll(millis(), nullptr, nullptr);
     TEST_ASSERT_EQUAL_UINT32(1U, IrrigationRecordSync::instance().pendingCount(
                                            IrrigationRecordSync::StreamKind::Watering));
     TEST_ASSERT_EQUAL_UINT32(0U, IrrigationRecordSync::instance().pendingCount(

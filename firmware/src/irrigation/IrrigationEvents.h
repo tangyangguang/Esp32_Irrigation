@@ -119,8 +119,8 @@ public:
     void recordAutomaticPlanSkipped(uint8_t planId, const char* planName,
                                     WateringStartResult result,
                                     const WateringStatus& status);
-    void recordAutomaticRun(
-        const Esp32BaseRecordStore::RecordStartTime& startTime,
+    bool recordAutomaticRun(
+        const Esp32BaseRecordStore::RecordTiming& timing,
         const WateringSessionSummary& summary);
     void recordFlowCalibrationSaved(uint32_t previousCoefficientX100,
                                     uint32_t coefficientX100,
@@ -165,7 +165,7 @@ private:
     static constexpr uint8_t kClosedValveFlowConditionId = 4;
 
     bool append(const IrrigationAuditPayload& payload);
-    bool append(const Esp32BaseRecordStore::RecordStartTime& startTime,
+    bool append(const Esp32BaseRecordStore::RecordTiming& timing,
                 const IrrigationAuditPayload& payload);
     void observe(Esp32BaseConditions::ConditionTracker& tracker,
                  Esp32BaseConditions::ObservedState state,

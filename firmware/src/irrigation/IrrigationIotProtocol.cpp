@@ -591,28 +591,4 @@ bool formatTimestamp(uint32_t epochSec,
     return written == 24;
 }
 
-bool isValidUuid(const char* value) {
-    uint8_t bytes[16];
-    return value && iot_device::parseUuid(value, std::strlen(value), bytes);
-}
-
-ParseError parseRecordAck(const CommandPacket& packet,
-                          const iot_device::PlatformIdentity& identity,
-                          RecordAck& ack) {
-    ack = {};
-    if (!packet.topic || !iot_device::platformTopicMatches(identity, iot_device::Channel::RecordAck,
-                                                          packet.topic, std::strlen(packet.topic)))
-        return ParseError::UnexpectedTopic;
-    if (packet.qos != 1U) return ParseError::InvalidQos;
-    if (packet.retain) return ParseError::RetainedCommand;
-    iot_device::RecordAcknowledgement input{};
-    if (!iot_device::parseRecordAcknowledgement(identity, packet.topic, std::strlen(packet.topic),
-                                                packet.qos, packet.retain, packet.payload,
-                                                packet.payloadLength, input) || input.sequence > UINT32_MAX)
-        return ParseError::InvalidJson;
-    iot_device::uuidText(input.generation, ack.recordStreamId);
-    ack.acknowledgedThroughSequence = static_cast<uint32_t>(input.sequence);
-    return ParseError::None;
-}
-
 }  // namespace IrrigationIotProtocol

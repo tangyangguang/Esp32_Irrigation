@@ -81,6 +81,7 @@ bool IrrigationApp::begin() {
     Wire.begin(BoardPins::kI2cSdaPin, BoardPins::kI2cSclPin);
     Esp32Base::setFirmwareInfo(kFirmwareName, kFirmwareVersion);
     Esp32BaseRtc::configure(Wire);
+    IrrigationRecordSync::instance().bind(wateringRecordStore_, events_.auditStore());
     if (!IrrigationIot::instance().configure()) {
         return failStartup(hardware, statusIndicator_);
     }
@@ -178,6 +179,7 @@ void IrrigationApp::handle() {
         Esp32Base::handle();
         return;
     }
+    IrrigationRecordSync::instance().handle(millis());
     advanceBusiness();
     IrrigationIot::instance().handle(*this);
     updateStatusIndicator(nowMs);
@@ -210,6 +212,8 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
         return WateringStartResult::NotReady;
     }
 
+    if (request.purpose == WateringPurpose::Normal && !IrrigationRecordSync::instance().writable())
+        return WateringStartResult::NotReady;
     Esp32BaseRecordStore::RecordStartTime startTime;
     const bool captured = wateringRecordStore_.captureStartTime(startTime);
     const WateringStartResult result = wateringController_.start(request, *config, millis());
@@ -778,21 +782,25 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
     }
 
     if (summary->purpose == WateringPurpose::Normal) {
-        const char* relatedCommandId =
-            IrrigationIot::instance().activeCommandId();
-        const bool appended = wateringStartTimeValid_ &&
-            IrrigationRecordSync::instance().appendWatering(
-                wateringStartTime_, *summary, relatedCommandId);
-        recordStorageFault_ = !appended ||
+        if (!finishedWateringStored_) {
+            finishedWateringStored_ = wateringStartTimeValid_ &&
+                IrrigationRecordSync::instance().appendWatering(
+                    wateringStartTime_, *summary,
+                    IrrigationIot::instance().activeCommandId());
+        }
+        recordStorageFault_ = !finishedWateringStored_ ||
             !IrrigationRecordSync::instance().writable(
                 IrrigationRecordSync::StreamKind::Watering);
-        if (appended)
-            events_.recordAutomaticRun(wateringStartTime_, *summary);
+        // Keep the finished summary until both facts commit. A failed audit must
+        // never cause a second watering append or change its completion time.
+        if (!finishedWateringStored_ ||
+            !events_.recordAutomaticRun(wateringRecordStore_.completionTiming(), *summary)) return;
     }
 
     resetUnexpectedFlowMonitor(nowMs);
     applyPendingHardwareConfiguration();
     wateringController_.clearFinishedSession();
+    finishedWateringStored_ = false;
     wateringStartTime_ = {};
     wateringStartTimeValid_ = false;
 }
@@ -1026,7 +1034,8 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
 
 bool IrrigationApp::allowMaintenance(void* user) {
     auto* app = static_cast<IrrigationApp*>(user);
-    return app && !app->wateringController_.status().active;
+    return app && !app->wateringController_.status().active &&
+           !app->wateringController_.finishedSession();
 }
 
 void IrrigationApp::beforeLifecycleStop(void* user) {

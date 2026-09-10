@@ -16,7 +16,6 @@ constexpr const char* kDefinitionChecksum =
     "c6313c760a303f73dc7e0c61321376fafb35546fb2ca7567f0d2a10fbdeeacf7";
 constexpr uint32_t kStateFreshnessMs = 30000U;
 constexpr uint32_t kStateRepublishMs = 24000U;
-constexpr uint32_t kRecordAckRetryMs = 5000U;
 constexpr std::size_t kUuidTextLength = 36;
 constexpr std::size_t kUuidBufferSize = kUuidTextLength + 1U;
 
@@ -157,15 +156,4 @@ bool formatTimestamp(uint32_t epochSec,
                      uint16_t milliseconds,
                      char* output,
                      std::size_t outputLength);
-bool isValidUuid(const char* value);
-
-struct RecordAck {
-    Uuid recordStreamId{};
-    uint32_t acknowledgedThroughSequence = 0;
-};
-
-ParseError parseRecordAck(const CommandPacket& packet,
-                          const iot_device::PlatformIdentity& identity,
-                          RecordAck& ack);
-
 }  // namespace IrrigationIotProtocol

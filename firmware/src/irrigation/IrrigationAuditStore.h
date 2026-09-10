@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Esp32Base.h>
+#include <ports/Esp32RecordStorage.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -43,15 +44,18 @@ public:
 class IrrigationAuditStore {
 public:
     static constexpr const char* kRecordTypeName = "irrigation-audit";
-    static constexpr uint16_t kStoreVersion = 1;
+    static constexpr uint16_t kStoreVersion = 2;
     static constexpr uint32_t kMaximumStoreBytes = 128UL * 1024UL;
     static constexpr uint32_t kMinimumFileSystemFreeBytes = 32UL * 1024UL;
     using ReadCallback = void (*)(const StoredIrrigationAuditRecord&, void*);
 
     bool begin();
+    iot_device::RecordStream& recordStream() { return stream_; }
+    static constexpr std::size_t kFactBytes = 4 + IrrigationAuditCodec::kPayloadSize;
+    static constexpr std::size_t kStoredBytes = iot_device::RecordStream::HeaderBytes + kFactBytes;
     bool appendInstant(const IrrigationAuditPayload& payload);
-    bool appendCompleted(
-        const Esp32BaseRecordStore::RecordStartTime& startTime,
+    bool appendRecorded(
+        const Esp32BaseRecordStore::RecordTiming& timing,
         const IrrigationAuditPayload& payload);
     bool readLatest(uint32_t offset, uint32_t limit,
                     ReadCallback callback, void* user = nullptr);
@@ -71,5 +75,8 @@ private:
     static void readAdapter(const Esp32BaseRecordStore::RecordView&, void*);
 
     Esp32BaseRecordStore store_;
-    uint8_t scratch_[IrrigationAuditCodec::kPayloadSize]{};
+    iot_device::Esp32RecordStorage sdkStorage_{store_};
+    uint8_t scratch_[kStoredBytes]{};
+    iot_device::RecordStream stream_{sdkStorage_, scratch_, sizeof(scratch_)};
+    static bool decodeFact(const uint8_t*, std::size_t, StoredIrrigationAuditRecord&);
 };

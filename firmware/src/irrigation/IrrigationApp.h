@@ -131,6 +131,7 @@ private:
     bool baseReady_ = false;
     bool businessReady_ = false;
     bool wateringStartTimeValid_ = false;
+    bool finishedWateringStored_ = false;
     bool recordStorageFault_ = false;
     bool wateringRecordStoreRegistered_ = false;
     bool schedulerStorageFault_ = false;

@@ -1,6 +1,8 @@
 #pragma once
 
 #include <Esp32Base.h>
+#include <ModelPublisher.h>
+#include <ports/Esp32MqttPort.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -26,7 +28,7 @@ public:
     const char* activeCommandId() const;
 
 private:
-    IrrigationIot() = default;
+    IrrigationIot();
 
     enum StateBit : uint16_t {
         StateRuntime = 1U << 0U,
@@ -61,7 +63,6 @@ private:
 
     enum class InFlightKind : uint8_t {
         None,
-        Availability,
         Evidence,
         State,
         Record,
@@ -69,13 +70,12 @@ private:
 
     static constexpr std::size_t kEvidenceCapacity = 32;
 
-    static void beforeConnect(void* context);
+    static bool randomBytes(uint8_t output[16], void*);
+    static bool utcNow(char output[25], void*);
     static uint16_t beforeNetworkStop(void* context);
-    static void mqttMessage(const Esp32BaseMqtt::MessageView& message,
-                            void* context);
+    static void commandReceived(const char*, size_t, uint8_t, bool, const uint8_t*, size_t, void*);
     static void mqttEvent(const Esp32BaseMqtt::Event& event, void* context);
 
-    void prepareConnectionCycle();
     bool publishShutdown();
     void onMessage(const Esp32BaseMqtt::MessageView& message);
     void onEvent(const Esp32BaseMqtt::Event& event);
@@ -123,17 +123,11 @@ private:
     bool evidenceQueued(const Evidence& evidence) const;
     void removeEvidenceHead();
     void pump(IrrigationApp& app);
-    bool publishAvailability();
     bool publishEvidence();
-    bool publishRecord(IrrigationRecordSync::StreamKind stream);
-    bool serializeRecord(IrrigationRecordSync::StreamKind stream,
-                         char* output,
-                         std::size_t outputLength,
-                         std::size_t& payloadLength);
-    bool publishState(IrrigationApp& app, StateBit state);
-    bool serializeState(IrrigationApp& app, StateBit state,
-                        char* output, std::size_t outputLength,
-                        std::size_t& payloadLength);
+    static bool publishRecordFact(const uint8_t generation[16], const iot_device::RecordFactView&, void*);
+    bool serializeRecord(const uint8_t generation[16], const iot_device::RecordFactView&,
+                         char*, std::size_t, std::size_t&);
+    bool publishState(IrrigationApp&, StateBit);
     bool publishBuffer(const char* topic,
                        const char* payload,
                        std::size_t payloadLength,
@@ -149,39 +143,26 @@ private:
 
     bool configured_ = false;
     bool begun_ = false;
-    bool connected_ = false;
-    bool subscriptionsReady_ = false;
     bool journalReady_ = false;
     bool lifecycleStopping_ = false;
-    uint8_t subscriptionAckMask_ = 0;
     uint32_t stateSeq_ = 0;
-    uint32_t lastWateringRecordPublishMs_ = 0;
-    uint32_t lastAuditRecordPublishMs_ = 0;
-    IrrigationRecordSync::StreamKind nextRecordStream_ =
-        IrrigationRecordSync::StreamKind::Watering;
     uint32_t lastStateScheduleMs_ = 0;
     uint32_t lastRunningEvidenceMs_ = 0;
     uint32_t lastActivityStateMs_ = 0;
     uint64_t lastStateFingerprint_ = 0;
     bool stateFingerprintSet_ = false;
     uint16_t pendingStateMask_ = 0;
-    bool availabilityPending_ = false;
 
     char deviceId_[48]{};
-    char topicPrefix_[128]{};
-    char availabilityTopic_[160]{};
-    char stateTopic_[160]{};
+    char topicWork_[160]{};
     char eventTopic_[160]{};
-    char commandTopic_[160]{};
-    char recordAckTopic_[160]{};
-    char receiptTopic_[160]{};
-    char progressTopic_[160]{};
-    char connectionId_[IrrigationIotProtocol::kUuidBufferSize]{};
-    char lwtPayload_[256]{};
-    // State and record payloads can reach 4096 bytes. Keep the single serialized
-    // publish buffer in static storage rather than consuming loopTask's stack.
+    char lwtPayload_[512]{};
     char publishPayload_[ESP32BASE_MQTT_MAX_PAYLOAD_BYTES + 1U]{};
-    Esp32BaseMqtt::LastWill lastWill_{};
+    iot_device::SessionIo io_;
+    iot_device::ConnectionSession session_;
+    iot_device::Esp32MqttPort port_;
+    StaticJsonDocument<16> unusedRecordDocument_;
+    iot_device::ModelPublisher publisher_;
 
     Evidence evidence_[kEvidenceCapacity]{};
     std::size_t evidenceRead_ = 0;
@@ -193,10 +174,6 @@ private:
     InFlightKind inFlightKind_ = InFlightKind::None;
     uint16_t inFlightPacketId_ = 0;
     uint16_t inFlightStateBit_ = 0;
-    uint32_t inFlightRecordSequence_ = 0;
-    IrrigationRecordSync::StreamKind inFlightRecordStream_ =
-        IrrigationRecordSync::StreamKind::Watering;
-
     bool activityTracked_ = false;
     char activityId_[IrrigationIotProtocol::kUuidBufferSize]{};
     char activityCommandId_[IrrigationIotProtocol::kUuidBufferSize]{};

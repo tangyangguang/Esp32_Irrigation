@@ -10,8 +10,7 @@ const iot_device::PlatformIdentity kIdentity{"irrigation-controller", "irrigatio
 
 constexpr const char* kCommandTopic =
     "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/command";
-constexpr const char* kAckTopic =
-    "iot/irrigation-controller/v1/33333333-3333-4333-8333-333333333333/record-ack";
+
 
 IrrigationIotProtocol::ParseError parse(const char* json,
                                         IrrigationIotProtocol::Command& command,
@@ -207,21 +206,6 @@ void test_plan_replacement_preserves_only_disabled_zone_projection() {
                              replacement.plans[1].zoneDurationMinutes[0]);
 }
 
-void test_record_ack_requires_current_fixed_shape() {
-    constexpr const char* json = R"json({"protocol":"irrigation-controller/v1","recordStreamId":"9cbaf1cf-e1a9-4f9d-9a39-fd7db5a93446","acknowledgedThroughSequence":42,"acknowledgedAt":"2026-08-25T02:00:32.000Z"})json";
-    IrrigationIotProtocol::CommandPacket packet;
-    packet.topic = kAckTopic;
-    packet.payload = reinterpret_cast<const uint8_t*>(json);
-    packet.payloadLength = std::strlen(json);
-    packet.qos = 1;
-    IrrigationIotProtocol::RecordAck ack;
-    TEST_ASSERT_EQUAL(IrrigationIotProtocol::ParseError::None,
-                      IrrigationIotProtocol::parseRecordAck(packet, kIdentity, ack));
-    TEST_ASSERT_EQUAL_STRING("9cbaf1cf-e1a9-4f9d-9a39-fd7db5a93446",
-                             ack.recordStreamId);
-    TEST_ASSERT_EQUAL_UINT32(42, ack.acknowledgedThroughSequence);
-}
-
 }  // namespace
 
 int main(int, char**) {
@@ -234,6 +218,5 @@ int main(int, char**) {
     RUN_TEST(test_business_evaluation_uses_runtime_limits_and_maintenance_boundary);
     RUN_TEST(test_invalid_utf8_is_distinguished_from_invalid_json);
     RUN_TEST(test_plan_replacement_preserves_only_disabled_zone_projection);
-    RUN_TEST(test_record_ack_requires_current_fixed_shape);
     return UNITY_END();
 }

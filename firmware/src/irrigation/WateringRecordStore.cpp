@@ -1,13 +1,18 @@
 #include "WateringRecordStore.h"
+#include "IrrigationStoredFact.h"
+#include <runtime/Esp32BaseTime.h>
 
 bool WateringRecordStore::begin() {
     Esp32BaseRecordStore::StoreDefinition definition;
     definition.recordTypeName = kRecordTypeName;
     definition.storeVersion = kStoreVersion;
-    definition.payloadSizeBytes = WateringRecordCodec::kPayloadSize;
+    definition.payloadSizeBytes = kStoredBytes;
+    definition.retentionPolicy = Esp32BaseRecordStore::RetentionPolicy::PreserveUnreleased;
     definition.maximumStoreBytes = kMaximumStoreBytes;
     definition.minimumFileSystemFreeBytes = kMinimumFileSystemFreeBytes;
-    return store_.begin(definition);
+    if (!store_.begin(definition) || !stream_.begin(millis())) return false;
+    stream_.poll(millis(), nullptr, nullptr); // Empty stores become ready in one bounded step.
+    return true;
 }
 
 Esp32BaseRecordStore& WateringRecordStore::baseStore() { return store_; }
@@ -21,10 +26,21 @@ bool WateringRecordStore::appendCompleted(
     const Esp32BaseRecordStore::RecordStartTime& startTime,
     const WateringSessionSummary& summary,
     const char* relatedCommandId) {
-    WateringRecordPayload payload{};
-    return WateringRecordCodec::fromSession(summary, relatedCommandId, payload) &&
-           WateringRecordCodec::encode(payload, scratch_, sizeof(scratch_)) &&
-           store_.appendCompleted(startTime, scratch_, sizeof(scratch_));
+    // One producer owns the controller's finished summary until this append commits.
+    // Freeze completion time, duration and correlation before a safe full/busy retry.
+    if (!pending_) {
+        const auto now=Esp32BaseTime::snapshot();
+        if (!startTime.bootId || startTime.bootId!=now.bootId || startTime.uptimeSec>now.uptimeSec) return false;
+        WateringRecordPayload payload{};
+        if (!WateringRecordCodec::fromSession(summary,relatedCommandId,payload) ||
+            !WateringRecordCodec::encode(payload,pendingFact_+4,WateringRecordCodec::kPayloadSize)) return false;
+        irrigation_fact::putDuration(pendingFact_,now.uptimeSec-startTime.uptimeSec);
+        pendingObservedAt_=now.synced ? uint64_t(now.epochSec)*1000 : iot_device::RecordStream::UnknownTime;
+        pending_=true;
+    }
+    if (!stream_.append(1,pendingObservedAt_,pendingFact_,sizeof(pendingFact_))) return false;
+    pending_=false;
+    return true;
 }
 
 bool WateringRecordStore::readLatest(uint32_t offset,
@@ -48,10 +64,10 @@ Esp32BaseRecordStore::RecordReadResult WateringRecordStore::readById(
     const Esp32BaseRecordStore::RecordReadResult result =
         store_.readById(recordId, scratch_, sizeof(scratch_), metadata);
     if (result != Esp32BaseRecordStore::RecordReadResult::Found) return result;
-    if (!WateringRecordCodec::decode(scratch_, sizeof(scratch_), record.payload))
+    if (!decodeFact(scratch_, sizeof(scratch_), record))
         return Esp32BaseRecordStore::RecordReadResult::Corrupt;
     record.recordId = metadata.recordId;
-    record.timing = metadata.timing;
+
     return Esp32BaseRecordStore::RecordReadResult::Found;
 }
 
@@ -77,13 +93,24 @@ void WateringRecordStore::readAdapter(
     void* user) {
     ReadContext* context = static_cast<ReadContext*>(user);
     StoredWateringRecord record{};
-    if (!context || view.payloadSizeBytes != WateringRecordCodec::kPayloadSize ||
-        !WateringRecordCodec::decode(view.payload, view.payloadSizeBytes,
-                                     record.payload)) {
+    if (!context || !decodeFact(view.payload, view.payloadSizeBytes, record)) {
         if (context) context->decodeFailed = true;
         return;
     }
     record.recordId = view.recordId;
-    record.timing = view.timing;
+
     context->callback(record, context->user);
+}
+
+bool WateringRecordStore::decodeFact(const uint8_t* bytes, std::size_t length, StoredWateringRecord& record) {
+    iot_device::RecordFactView fact{};
+    return irrigation_fact::decode(bytes, length, kFactBytes, record.timing, fact) && fact.typeCode == 1 &&
+           WateringRecordCodec::decode(fact.data + 4, fact.dataBytes - 4, record.payload);
+}
+
+Esp32BaseRecordStore::RecordTiming WateringRecordStore::completionTiming() const {
+    Esp32BaseRecordStore::RecordTiming timing{};
+    if (pendingObservedAt_!=iot_device::RecordStream::UnknownTime) timing.completedEpochSec=uint32_t(pendingObservedAt_/1000);
+    for (unsigned n=0;n<4;++n) timing.durationSec|=uint32_t(pendingFact_[n])<<(8*n);
+    return timing;
 }

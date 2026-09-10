@@ -13,8 +13,7 @@
 | 状态 | 交付结果 / 责任 | 尚缺工作与边界 |
 | --- | --- | --- |
 | 待办 | B：4 MiB 容量收口 | 已提交的资源优化减少 4460 B；SDK 会话/双流候选实测 Flash 1614587 B、RAM 100508 B，较已提交基线增加 13340/496 B，超 1.5 MiB OTA 槽 41723 B，8% 余量亦未满足。实际 4 MiB 目标不变，仍需优化及容量收口。 |
-| 待办 | C：SDK 平台职责接入 | 设备阶段 `2133e72` 已提交推送，SDK 命令/ACK 信封、UUID、UTC 解析与受控型号生成已通过目标构建、33 个共享向量及 14 项相关 Native 检查；SDK 双流会话 a076543 已提交推送；设备会话、状态/证据发布和双流替换为未提交候选，等待 D 的容量口径确认。之后替换设备逐命令 NVS journal；保留重连幂等、启动截止点和先关输出后终态。 |
-| 待确认 | D：设备 + SDK 双流可靠存储 | SDK 已修复检查点失败全局撤销 ready；候选已用 SDK 序号、ACK、恢复和检查点替代旧流元数据。但线性头叠加导致 watering 1809→1602 条、audit 2722→1719 条（384/128 KiB 预算不变）。不得按已保留原条数交付；需确认容量以原条数还是原字节预算为准，再收敛布局。 |
+| 进行中 | C：SDK 平台职责接入 | 设备阶段 `2133e72` 已提交推送，SDK 命令/ACK 信封、UUID、UTC 解析与受控型号生成已通过目标构建、33 个共享向量及 14 项相关 Native 检查；SDK 双流会话 a076543 已提交推送；设备会话、状态/证据发布和双流接入阶段已验证，用户已确认维持字节预算、允许历史条数变化。接下来替换设备逐命令 NVS journal；保留重连幂等、启动截止点和先关输出后终态。 |
 | 待办 | E：定义 + 设备 + 平台投影 | 修复本地来源错标与未知时间队头阻塞；补 state.diagnostics；服务端/小程序复用既有 unknownTimeCount 展示，核对统计类型和记录呈现。JSON 依赖已收敛到 SDK 的 6.21.6，并加入完整模型有界容量，协议接入尚未完成。 |
 | 待办 | F：业务安全与集成收口 | 定向检查两流追加失败后的事实/故障处理、RTC 暂停/恢复、stop 与启动互斥、配置失败和维护出口；按最终代码运行目标编译及成功/明显故障路径测试，提交推送、记录产物和资源。 |
 | 待办 | 串口试验与现场边界 | 本机 `/dev/cu.usbserial-57460296581` 已核实为 4 MiB ESP32，烧录和短时试验授权有效；当前障碍为固件容量门禁，已取消更换 8 MiB 硬件的错误要求。长稳、满容量、反复断电及真实水路验收由用户后续试运行完成。 |
@@ -30,17 +29,17 @@
 
 实际 4 MiB 目标命令：`python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -e esp32_irrigation_arduino3`。编译和链接完成，容量检查 **失败**：1601247 B 超出 1572864 B OTA 槽 **28383 B**，不宣称构建通过或可试运行；8% 余量门禁保留。旧 8 MiB 比较产物不可烧录。本轮没有烧录、复位、Broker 业务命令或泵阀操作，完整平台接入未完成；后续任务见上表。
 
-### SDK 会话与双流候选复查（2026-09-10，尚未交付）
+### SDK 会话与双流接入阶段（2026-09-10）
 
 SDK `a076543` 已推送到 `codex/record-stream`：会话按世代分发两流 ACK，维护检查点逐流尝试、故障隔离；ESP32 端口提供事件观察回调。协议、ESP32 端口及受影响的 ESP8266 单流调用定向检查通过。
 
-设备源码候选已删除旧流 NVS 元数据和手写连接/上下线/状态证据信封，复用 SDK Session、ModelPublisher、RecordStream。追加失败保留浇水完成事实及原始时间；自动运行审计失败时只重试审计，避免重复浇水记录，未落盘完成结果阻止新浇水及 OTA/格式化。尚未替换命令 journal，其他审计修改入口的失败处理仍在 F 范围。
+设备源码已删除旧流 NVS 元数据和手写连接/上下线/状态证据信封，复用 SDK Session、ModelPublisher、RecordStream。追加失败保留浇水完成事实及原始时间；自动运行审计失败时只重试审计，避免重复浇水记录，未落盘完成结果阻止新浇水及 OTA/格式化。尚未替换命令 journal，其他审计修改入口的失败处理仍在 F 范围。
 
-候选存储为 watering v7、audit v2，不读取或迁移旧格式。24 B SDK 头与 4 B 持续时间叠加现有业务编码，payload 分别为 221 B、52 B；Base 实际算法测得槽 245/76 B，对比原 217/48 B，条数变化如 D 行。该布局尚未批准为交付结果，设备代码保留在工作区，不提交这个未定方案；不更改字节预算、分区或硬件目标。
+当前存储为 watering v7、audit v2，不读取或迁移旧格式。24 B SDK 头与 4 B 持续时间叠加现有业务编码，payload 分别为 221 B、52 B；Base 实际算法测得槽 245/76 B，对比原 217/48 B，浇水 1809→1602 条、审计 2722→1719 条。用户明确允许历史条数变化，保留完整功能和字段，维持 384/128 KiB 字节预算；分区与 4 MiB 硬件目标不变。
 
 快速验证：`python3 scripts/test_storage_views.py` 使用实际 Base Store/主机 FS，通过空历史、分页、损坏业务数据、未知时间不回填、恢复期间重试的时间冻结、ACK 流隔离、检查点恢复、审计写故障隔离；`pio_arduino.py 2 test -e native -f test_records` 5 项通过，`-f test_iot_protocol` 8 项通过（删除旧 ACK wrapper 后修复残留测试注册再通过）。设备端存储测试源码已更新，未运行设备测试或烧录。以上不是业务链路验收。
 
-候选最终目标命令同上，编译/链接成功、容量检查失败：Flash **1614587 B**，RAM **100508 B**，超 OTA 槽 **41723 B**；日志 `/tmp/irrigation-session-final-size.log`。没有生成可交付烧录固件。
+本阶段最终目标命令同上，编译/链接成功、容量检查失败：Flash **1614587 B**，RAM **100508 B**，超 OTA 槽 **41723 B**；日志 `/tmp/irrigation-session-final-size.log`。没有生成可交付烧录固件。
 
 ## 1. 当前产品范围
 
@@ -107,7 +106,7 @@ cp IrrigationIotSecrets.example.h local_private/irrigation_iot_private.h
 4. 设置 Web 默认认证，注册业务 Web、App Config 和文件系统格式化回调。
 5. 调用 `Esp32Base::begin()`；失败时保持全部输出关闭并进入故障指示。
 6. 基础库启动成功后启用 WiFi modem sleep。
-7. 加载业务配置、命令幂等 journal、调度状态、watering/audit 两个业务 Store 及其独立同步元数据。
+7. 加载业务配置、命令幂等 journal、调度状态、watering/audit 两个业务 Store 及 SDK 独立记录流恢复。
 8. 只有全部必需状态有效时才进入业务 ready。
 
 正常循环先推进业务状态机和 IoT 外围适配，再调用 `Esp32Base::handle()`。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。MQTT 状态和记录序列化共用 `IrrigationIot` 长期对象中的单一 4097 B 缓冲，不在 `loopTask` 栈上创建 4 KiB 临时数组；这是当前 4096 B payload 上限下的硬性栈安全边界。
@@ -121,16 +120,16 @@ WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项�
 当前数据定义：
 
 - 灌溉 JSON 配置：schema v4，权威路径 `/app/irrigation/config.json`；
-- 浇水事实：`watering` Store v6，固定 193 B payload、384 KiB 逻辑预算；它同时是本地历史与平台补发的唯一事实源；
-- 必要审计事实：`irrigation-audit` Store v1，固定 24 B payload、128 KiB 逻辑预算；保存自动计划运行/跳过、自动总控、计划修改、校准和水路基准保存；
-- 两个 Store 各自拥有独立 `recordStreamId + recordSequence`、累计业务 ACK 和 NVS 检查点，在同一 MQTT Client 与 event topic 上公平交错发送；
+- 浇水事实：`watering` Store v7，固定 221 B payload、384 KiB 逻辑预算；它同时是本地历史与平台补发的唯一事实源；
+- 必要审计事实：`irrigation-audit` Store v2，固定 52 B payload、128 KiB 逻辑预算；保存自动计划运行/跳过、自动总控、计划修改、校准和水路基准保存；
+- 两个 Store 各自拥有独立 `recordStreamId + recordSequence`、累计业务 ACK 和 Base Store 释放检查点，在同一 MQTT Client 与 event topic 上公平交错发送；
 - MQTT 命令 journal：NVS 中固定 16 条，保存不可变签名、receipt 和可信终态；重启不为中断任务推断终态；
 - RTC 不可用、可信时间不可用、RTC 倒退和关阀异常水流只由 `Esp32BaseConditions` 在 NVS 保存当前活动位图，不形成通用历史；
 - 系统文件日志：4 × 32 KiB，默认 WARN；
 - 标量系统参数：Esp32Base App Config / NVS；
-- 自动浇水总控、调度防重复标记、在线检查点、记录流身份和低频累计 ACK 检查点：项目 NVS 小状态。
+- 自动浇水总控、调度防重复标记、在线检查点、记录流身份和低频累计 ACK 检查点：由 Base Store 控制记录维护；调度等小状态仍为项目 NVS。
 
-IoT 记录 QoS 1 PUBACK 只解除本次 MQTT 在途发布，不删除补发事实；只有匹配对应 `recordStreamId` 且不越过该 Store 日志头的累计 `record-ack` 才推进该流 RAM 水位，绝不联动另一流。各流 ACK 每累计 32 条或推进后满 24 小时才写 NVS；Store 容量满且仍有未确认记录时停止该 Store 追加，全部保留记录已确认后才允许分段轮转。
+IoT 记录 QoS 1 PUBACK 只解除本次 MQTT 在途发布，不删除补发事实；只有匹配对应 `recordStreamId` 且不越过该 Store 日志头的累计 `record-ack` 才推进该流 RAM 水位，绝不联动另一流。各流 ACK 每累计 32 条或推进后满 24 小时才保存 Base Store 释放检查点；Store 容量满且仍有未确认记录时停止该 Store 追加，全部保留记录已确认后才允许分段轮转。
 
 配置文件存在但当前副本和备份都无效时，固件保持安全停机，不用默认值覆盖。重新编译、串口烧录或 HTTP OTA 不得清理或覆盖已有有效 NVS/LittleFS 数据。只有业务结构明确不兼容时才拒绝启动并提示重新配置；不得自行猜测或迁移旧结构。
 

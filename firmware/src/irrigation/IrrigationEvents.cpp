@@ -19,7 +19,8 @@ bool IrrigationEvents::begin() {
 IrrigationAuditStore& IrrigationEvents::auditStore() { return auditStore_; }
 
 void IrrigationEvents::syncStorageStatus() {
-    storageFault_ = !auditStore_.isReady() || !auditStore_.isWritable();
+    storageFault_ = !IrrigationRecordSync::instance().writable(
+        IrrigationRecordSync::StreamKind::Audit);
 }
 
 bool IrrigationEvents::resetConditionHistory() {
@@ -117,11 +118,11 @@ void IrrigationEvents::recordAutomaticPlanSkipped(
     append(payload);
 }
 
-void IrrigationEvents::recordAutomaticRun(
-    const Esp32BaseRecordStore::RecordStartTime& startTime,
+bool IrrigationEvents::recordAutomaticRun(
+    const Esp32BaseRecordStore::RecordTiming& timing,
     const WateringSessionSummary& summary) {
     if (summary.purpose != WateringPurpose::Normal ||
-        summary.source != WateringSource::AutomaticPlan) return;
+        summary.source != WateringSource::AutomaticPlan) return true;
     IrrigationAuditPayload payload;
     payload.kind = IrrigationAuditPayload::Kind::AutomaticRun;
     payload.reason = static_cast<uint8_t>(summary.stopReason);
@@ -129,7 +130,7 @@ void IrrigationEvents::recordAutomaticRun(
                         ? 0U
                         : summary.result == WateringResult::Stopped ? 1U : 2U;
     payload.objectId = summary.planId;
-    append(startTime, payload);
+    return append(timing, payload);
 }
 
 void IrrigationEvents::recordFlowCalibrationSaved(
@@ -264,10 +265,10 @@ bool IrrigationEvents::append(const IrrigationAuditPayload& payload) {
 }
 
 bool IrrigationEvents::append(
-    const Esp32BaseRecordStore::RecordStartTime& startTime,
+    const Esp32BaseRecordStore::RecordTiming& timing,
     const IrrigationAuditPayload& payload) {
     const bool stored =
-        IrrigationRecordSync::instance().appendAudit(startTime, payload);
+        IrrigationRecordSync::instance().appendAudit(timing, payload);
     if (!stored) storageFault_ = true;
     return stored;
 }
