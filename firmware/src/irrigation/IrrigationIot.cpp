@@ -219,6 +219,8 @@ void IrrigationIot::handle(IrrigationApp& app) {
     if (!configured_ || !begun_ || lifecycleStopping_) return;
     const uint32_t nowMs = millis();
     port_.poll();
+    const auto commandTime = Esp32BaseTime::snapshot();
+    commandClockReady_ = journal_.observeTime(commandTime.synced ? uint64_t(commandTime.epochSec)*1000ULL : 0);
     detectActivity(app, nowMs);
     detectStateChanges(app, nowMs);
     if (activityTracked_ && activityCommandId_[0] != '\0' && session_.ready() &&
@@ -233,7 +235,7 @@ void IrrigationIot::handle(IrrigationApp& app) {
         lastRunningEvidenceMs_ = nowMs;
         scheduleRuntimeState();
     }
-    pump(app);
+    if (commandClockReady_) pump(app);
 }
 
 bool IrrigationIot::configured() const { return configured_; }
@@ -289,6 +291,10 @@ void IrrigationIot::onMessage(const Esp32BaseMqtt::MessageView& message) {
                             "command_rejected_before_receipt reason=time_untrusted");
             return;
         }
+        if (!journal_.admit(command, nowMs)) {
+            ESP32BASE_LOG_W("irrigation_iot", "command_ignored reason=before_boot_or_clock_rollback");
+            return;
+        }
         handleCommand(command, *app_, nowMs);
         return;
     }
@@ -324,13 +330,13 @@ void IrrigationIot::handleCommand(
         const IrrigationCommandJournal::Entry* stored = journal_.entry(journalIndex);
         if (!stored) return;
         queueJournalReceipt(*stored);
-        if (stored->progress != IrrigationCommandJournal::ProgressStatus::None) {
+        if (stored->progress != IrrigationCommandJournal::ProgressStatus::NONE) {
             queueJournalProgress(*stored);
         } else if (stored->processOpen && activityTracked_ &&
-                   std::strcmp(stored->commandId, activityCommandId_) == 0) {
+                   stored->command.idEquals(activityCommandId_)) {
             Evidence running;
-            std::strcpy(running.commandId, stored->commandId);
-            running.kind = stored->kind;
+            stored->command.formatId(running.commandId);
+            running.kind = stored->command.kind;
             running.type = EvidenceType::ProgressRunning;
             running.observedAtMs = nowMs;
             queueEvidence(running);
@@ -353,8 +359,8 @@ void IrrigationIot::handleCommand(
     if (!journalReady_ ||
         !journal_.storeReceipt(command,
                                accepted
-                                   ? IrrigationCommandJournal::ReceiptStatus::Accepted
-                                   : IrrigationCommandJournal::ReceiptStatus::Rejected,
+                                   ? IrrigationCommandJournal::ReceiptStatus::ACCEPTED
+                                   : IrrigationCommandJournal::ReceiptStatus::REJECTED,
                                reason,
                                nowMs,
                                processOpen,
@@ -364,13 +370,11 @@ void IrrigationIot::handleCommand(
         std::strcpy(rejected.commandId, command.commandId);
         rejected.kind = command.kind;
         rejected.type = EvidenceType::ReceiptRejected;
-        rejected.reason = IrrigationCommandJournal::Reason::PersistenceError;
+        rejected.reason = IrrigationCommandJournal::Reason::Busy;
         rejected.observedAtMs = nowMs;
         queueEvidence(rejected);
         return;
     }
-    journalReceiptDelivered_[journalIndex] = false;
-    journalProgressDelivered_[journalIndex] = false;
     const IrrigationCommandJournal::Entry* stored = journal_.entry(journalIndex);
     if (stored) queueJournalReceipt(*stored);
     if (!accepted) return;
@@ -428,13 +432,12 @@ void IrrigationIot::executeAcceptedCommand(
     }
 
     const IrrigationCommandJournal::ProgressStatus finalStatus =
-        succeeded ? IrrigationCommandJournal::ProgressStatus::Succeeded
-                  : IrrigationCommandJournal::ProgressStatus::Failed;
+        succeeded ? IrrigationCommandJournal::ProgressStatus::SUCCEEDED
+                  : IrrigationCommandJournal::ProgressStatus::FAILED;
     if (journal_.storeFinal(journalIndex, finalStatus,
                             succeeded ? IrrigationCommandJournal::Reason::None
                                       : failureReason,
                             nowMs)) {
-        journalProgressDelivered_[journalIndex] = false;
         const IrrigationCommandJournal::Entry* stored = journal_.entry(journalIndex);
         if (stored) queueJournalProgress(*stored);
     } else {
@@ -607,20 +610,19 @@ void IrrigationIot::finishActivity(const WateringStatus& status,
             journal_.closeWithoutFinal(activityJournalIndex_);
         } else {
             IrrigationCommandJournal::ProgressStatus finalStatus =
-                IrrigationCommandJournal::ProgressStatus::Failed;
+                IrrigationCommandJournal::ProgressStatus::FAILED;
             IrrigationCommandJournal::Reason reason =
                 wateringFailureReason(status.lastStopReason);
             if (status.lastResult == WateringResult::Completed) {
-                finalStatus = IrrigationCommandJournal::ProgressStatus::Succeeded;
+                finalStatus = IrrigationCommandJournal::ProgressStatus::SUCCEEDED;
                 reason = IrrigationCommandJournal::Reason::None;
             } else if (status.lastResult == WateringResult::Stopped &&
                        status.lastStopReason == WateringStopReason::UserStopped) {
-                finalStatus = IrrigationCommandJournal::ProgressStatus::Canceled;
+                finalStatus = IrrigationCommandJournal::ProgressStatus::CANCELED;
                 reason = IrrigationCommandJournal::Reason::None;
             }
             if (journal_.storeFinal(activityJournalIndex_, finalStatus, reason,
                                     observedAtMs)) {
-                journalProgressDelivered_[activityJournalIndex_] = false;
                 const IrrigationCommandJournal::Entry* stored =
                     journal_.entry(activityJournalIndex_);
                 if (stored) queueJournalProgress(*stored);
@@ -643,12 +645,11 @@ void IrrigationIot::finishStopCommands(uint64_t observedAtMs, bool succeeded) {
         } else if (journal_.storeFinal(
                        pending.journalIndex,
                        succeeded
-                           ? IrrigationCommandJournal::ProgressStatus::Succeeded
-                           : IrrigationCommandJournal::ProgressStatus::Failed,
+                           ? IrrigationCommandJournal::ProgressStatus::SUCCEEDED
+                           : IrrigationCommandJournal::ProgressStatus::FAILED,
                        succeeded ? IrrigationCommandJournal::Reason::None
                                  : IrrigationCommandJournal::Reason::HardwareFailure,
                        observedAtMs)) {
-            journalProgressDelivered_[pending.journalIndex] = false;
             const IrrigationCommandJournal::Entry* stored =
                 journal_.entry(pending.journalIndex);
             if (stored) queueJournalProgress(*stored);
@@ -695,6 +696,10 @@ void IrrigationIot::scheduleRuntimeState() {
 }
 
 void IrrigationIot::detectStateChanges(const IrrigationApp& app, uint32_t nowMs) {
+    if (static_cast<uint32_t>(nowMs - lastDiagnosticsScheduleMs_) >= 60000U) {
+        lastDiagnosticsScheduleMs_ = nowMs;
+        pendingStateMask_ |= StateDiagnostics;
+    }
     const uint64_t fingerprint = stateFingerprint(app);
     if (!stateFingerprintSet_ || fingerprint != lastStateFingerprint_) {
         lastStateFingerprint_ = fingerprint;
@@ -760,34 +765,35 @@ void IrrigationIot::queueEvidence(const Evidence& evidence) {
 void IrrigationIot::queueJournalReceipt(
     const IrrigationCommandJournal::Entry& entry) {
     Evidence evidence;
-    std::strcpy(evidence.commandId, entry.commandId);
-    evidence.kind = entry.kind;
-    evidence.type = entry.receipt == IrrigationCommandJournal::ReceiptStatus::Accepted
+    entry.command.formatId(evidence.commandId);
+    evidence.kind = entry.command.kind;
+    evidence.type = entry.receipt == IrrigationCommandJournal::ReceiptStatus::ACCEPTED
                         ? EvidenceType::ReceiptAccepted
                         : EvidenceType::ReceiptRejected;
-    evidence.reason = entry.receiptReason;
-    evidence.observedAtMs = entry.receiptObservedAtMs;
+    evidence.reason = entry.reason;
+    evidence.observedAtMs = entry.receiptAtMs;
     queueEvidence(evidence);
 }
 
 void IrrigationIot::queueJournalProgress(
     const IrrigationCommandJournal::Entry& entry) {
     Evidence evidence;
-    std::strcpy(evidence.commandId, entry.commandId);
-    evidence.kind = entry.kind;
-    evidence.reason = entry.progressReason;
-    evidence.observedAtMs = entry.progressObservedAtMs;
+    entry.command.formatId(evidence.commandId);
+    evidence.kind = entry.command.kind;
+    evidence.reason = entry.reason;
+    evidence.observedAtMs = entry.progressAtMs;
     switch (entry.progress) {
-        case IrrigationCommandJournal::ProgressStatus::Succeeded:
+        case IrrigationCommandJournal::ProgressStatus::SUCCEEDED:
             evidence.type = EvidenceType::ProgressSucceeded;
             break;
-        case IrrigationCommandJournal::ProgressStatus::Canceled:
+        case IrrigationCommandJournal::ProgressStatus::CANCELED:
             evidence.type = EvidenceType::ProgressCanceled;
             break;
-        case IrrigationCommandJournal::ProgressStatus::Failed:
+        case IrrigationCommandJournal::ProgressStatus::FAILED:
             evidence.type = EvidenceType::ProgressFailed;
             break;
-        case IrrigationCommandJournal::ProgressStatus::None:
+        case IrrigationCommandJournal::ProgressStatus::NONE:
+        case IrrigationCommandJournal::ProgressStatus::RUNNING:
             return;
     }
     queueEvidence(evidence);
@@ -799,15 +805,15 @@ void IrrigationIot::queuePendingJournalEvidence() {
          ++index) {
         const IrrigationCommandJournal::Entry* entry = journal_.entry(index);
         if (!entry || entry->receipt ==
-                          IrrigationCommandJournal::ReceiptStatus::None) {
+                          IrrigationCommandJournal::ReceiptStatus::NONE) {
             continue;
         }
-        if (!journalReceiptDelivered_[index]) {
+        if (entry->receiptOrder != 0) {
             queueJournalReceipt(*entry);
             if (evidenceCount_ >= kEvidenceCapacity) return;
         }
-        if (entry->progress != IrrigationCommandJournal::ProgressStatus::None &&
-            !journalProgressDelivered_[index]) {
+        if (entry->progress != IrrigationCommandJournal::ProgressStatus::NONE &&
+            entry->progressOrder != 0) {
             queueJournalProgress(*entry);
             if (evidenceCount_ >= kEvidenceCapacity) return;
         }
@@ -823,13 +829,13 @@ void IrrigationIot::markJournalEvidenceDelivered(const Evidence& evidence) {
     if (!receipt && !terminal) return;
     for (std::size_t index = 0; index < IrrigationCommandJournal::kCapacity;
          ++index) {
-        const IrrigationCommandJournal::Entry* entry = journal_.entry(index);
-        if (!entry || entry->kind != evidence.kind ||
-            std::strcmp(entry->commandId, evidence.commandId) != 0) {
+        IrrigationCommandJournal::Entry* entry = journal_.entry(index);
+        if (!entry || entry->command.kind != evidence.kind ||
+            !entry->command.idEquals(evidence.commandId)) {
             continue;
         }
-        if (receipt) journalReceiptDelivered_[index] = true;
-        if (terminal) journalProgressDelivered_[index] = true;
+        if (receipt) entry->receiptOrder = 0;
+        if (terminal) entry->progressOrder = 0;
         return;
     }
 }
@@ -1441,6 +1447,7 @@ bool IrrigationIot::currentObservedAt(char* output,
 }
 
 uint64_t IrrigationIot::currentEpochMs() const {
+    if (!commandClockReady_) return 0;
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     return now.synced ? static_cast<uint64_t>(now.epochSec) * 1000ULL : 0ULL;
 }
@@ -1469,6 +1476,9 @@ void IrrigationIot::markPublishAcknowledged(uint16_t packetId) {
 }
 
 void IrrigationIot::resetConnectionDelivery() {
+    journal_.replay();
+    pendingStateMask_ |= StateDiagnostics;
+    lastDiagnosticsScheduleMs_ = millis();
     inFlightKind_ = InFlightKind::None;
     inFlightPacketId_ = 0;
     inFlightStateBit_ = 0;

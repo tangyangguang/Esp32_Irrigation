@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Preferences.h>
+#include <CompactCommandLedger.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -11,18 +11,8 @@ class IrrigationCommandJournal {
 public:
     static constexpr std::size_t kCapacity = 16;
 
-    enum class ReceiptStatus : uint8_t {
-        None,
-        Accepted,
-        Rejected,
-    };
-
-    enum class ProgressStatus : uint8_t {
-        None,
-        Succeeded,
-        Canceled,
-        Failed,
-    };
+    using ReceiptStatus = iot_device::LedgerReceipt;
+    using ProgressStatus = iot_device::LedgerProgress;
 
     enum class Reason : uint8_t {
         None,
@@ -47,19 +37,26 @@ public:
         TargetVolumeTimeout,
     };
 
+    struct StoredCommand {
+        uint8_t id[16]{};
+        uint64_t signature = 0, expires = 0;
+        IrrigationIotProtocol::CommandKind kind = IrrigationIotProtocol::CommandKind::Stop;
+        bool assign(const IrrigationIotProtocol::Command&);
+        bool idEquals(const char*) const;
+        bool sameCommand(const IrrigationIotProtocol::Command&) const;
+        uint64_t expiresAtMs() const { return expires; }
+        void formatId(char output[37]) const;
+    };
+    // SDK ledger record shape; running evidence is transient, so no unused
+    // per-slot running timestamp is retained.
     struct Entry {
-        char commandId[IrrigationIotProtocol::kUuidBufferSize]{};
-        uint64_t signature = 0;
-        uint64_t expiresAtMs = 0;
-        uint64_t receiptObservedAtMs = 0;
-        uint64_t progressObservedAtMs = 0;
-        IrrigationIotProtocol::CommandKind kind =
-            IrrigationIotProtocol::CommandKind::Stop;
-        ReceiptStatus receipt = ReceiptStatus::None;
-        Reason receiptReason = Reason::None;
-        ProgressStatus progress = ProgressStatus::None;
-        Reason progressReason = Reason::None;
-        bool processOpen = false;
+        StoredCommand command;
+        uint64_t receiptAtMs = 0, progressAtMs = 0;
+        uint16_t receiptOrder = 0, runningOrder = 0, progressOrder = 0;
+        bool used = false, processOpen = false;
+        ReceiptStatus receipt = ReceiptStatus::NONE;
+        ProgressStatus progress = ProgressStatus::NONE;
+        Reason reason = Reason::None;
     };
 
     enum class LookupResult : uint8_t {
@@ -69,6 +66,9 @@ public:
     };
 
     bool begin();
+    bool observeTime(uint64_t nowMs);
+    bool admit(const IrrigationIotProtocol::Command&, uint64_t nowMs);
+    void replay();
     LookupResult lookup(const IrrigationIotProtocol::Command& command,
                         uint64_t nowMs,
                         std::size_t& index);
@@ -84,7 +84,6 @@ public:
                     Reason reason,
                     uint64_t observedAtMs);
     bool closeWithoutFinal(std::size_t index);
-    const Entry* entry(std::size_t index) const;
     Entry* entry(std::size_t index);
     bool ready() const;
 
@@ -93,27 +92,6 @@ public:
     static const char* progressName(ProgressStatus status);
 
 private:
-    struct PersistentState {
-        uint32_t magic = 0;
-        uint16_t version = 0;
-        uint16_t reserved = 0;
-        Entry entries[kCapacity]{};
-        uint32_t crc32 = 0;
-    };
-
-    static constexpr uint32_t kMagic = 0x494F5443UL;  // IOTC
-    static constexpr uint16_t kVersion = 1;
-    static constexpr const char* kNamespace = "irr_iot_cmd";
-    static constexpr const char* kKey = "journal";
-
-    bool save();
-    bool valid(const PersistentState& state) const;
-    void initialize();
-    void clearExpired(uint64_t nowMs);
-    std::size_t findReusableSlot(uint64_t nowMs);
-    static uint32_t calculateCrc(const PersistentState& state);
-
-    Preferences preferences_;
-    PersistentState state_{};
+    iot_device::CompactCommandLedger<Entry, kCapacity> ledger_;
     bool ready_ = false;
 };

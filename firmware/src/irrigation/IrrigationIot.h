@@ -40,7 +40,7 @@ private:
         StateCalibration = 1U << 6U,
         StateSystemParameters = 1U << 7U,
         StateDiagnostics = 1U << 8U,
-        StateAll = (1U << 9U) - 1U,
+        StateAll = (1U << 8U) - 1U,
     };
 
     enum class EvidenceType : uint8_t {
@@ -145,9 +145,11 @@ private:
     bool configured_ = false;
     bool begun_ = false;
     bool journalReady_ = false;
+    bool commandClockReady_ = false;
     bool lifecycleStopping_ = false;
     uint32_t stateSeq_ = 0;
     uint32_t lastStateScheduleMs_ = 0;
+    uint32_t lastDiagnosticsScheduleMs_ = 0;
     uint32_t lastRunningEvidenceMs_ = 0;
     uint32_t lastActivityStateMs_ = 0;
     uint64_t lastStateFingerprint_ = 0;
@@ -169,8 +171,6 @@ private:
     std::size_t evidenceRead_ = 0;
     std::size_t evidenceWrite_ = 0;
     std::size_t evidenceCount_ = 0;
-    bool journalReceiptDelivered_[IrrigationCommandJournal::kCapacity]{};
-    bool journalProgressDelivered_[IrrigationCommandJournal::kCapacity]{};
 
     InFlightKind inFlightKind_ = InFlightKind::None;
     uint16_t inFlightPacketId_ = 0;

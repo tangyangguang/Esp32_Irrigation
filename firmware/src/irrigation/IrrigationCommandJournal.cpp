@@ -1,163 +1,71 @@
 #include "IrrigationCommandJournal.h"
-
-#include <cstddef>
 #include <cstring>
 
-namespace {
-
-uint32_t updateCrc32(uint32_t crc, const uint8_t* data, std::size_t length) {
-    crc = ~crc;
-    for (std::size_t index = 0; index < length; ++index) {
-        crc ^= data[index];
-        for (uint8_t bit = 0; bit < 8U; ++bit) {
-            crc = (crc >> 1U) ^ (0xEDB88320UL &
-                                 (0U - static_cast<uint32_t>(crc & 1U)));
-        }
-    }
-    return ~crc;
+bool IrrigationCommandJournal::StoredCommand::assign(const IrrigationIotProtocol::Command& input) {
+    if (!iot_device::parseUuid(input.commandId, std::strlen(input.commandId), id)) return false;
+    signature=input.signature; expires=input.expiresAtMs; kind=input.kind;
+    return true;
 }
-
-}  // namespace
-
-bool IrrigationCommandJournal::begin() {
-    ready_ = false;
-    if (!preferences_.begin(kNamespace, false)) {
-        return false;
-    }
-    const std::size_t storedLength = preferences_.getBytesLength(kKey);
-    if (storedLength == 0U) {
-        initialize();
-        ready_ = true;
-        return true;
-    }
-    if (storedLength != sizeof(state_) ||
-        preferences_.getBytes(kKey, &state_, sizeof(state_)) != sizeof(state_) ||
-        !valid(state_)) {
-        return false;
-    }
-    ready_ = true;
-    bool interrupted = false;
-    for (Entry& entry : state_.entries) {
-        if (entry.commandId[0] != '\0' && entry.processOpen) {
-            entry.processOpen = false;
-            interrupted = true;
-        }
-    }
-    if (interrupted && !save()) {
-        ready_ = false;
-    }
-    return ready_;
+bool IrrigationCommandJournal::StoredCommand::idEquals(const char* text) const {
+    uint8_t candidate[16];
+    return text && iot_device::parseUuid(text,std::strlen(text),candidate) && !std::memcmp(id,candidate,16);
 }
-
+bool IrrigationCommandJournal::StoredCommand::sameCommand(const IrrigationIotProtocol::Command& input) const {
+    return idEquals(input.commandId) && signature==input.signature && expires==input.expiresAtMs && kind==input.kind;
+}
+void IrrigationCommandJournal::StoredCommand::formatId(char output[37]) const { iot_device::uuidText(id,output); }
+bool IrrigationCommandJournal::begin() { ready_=true; return true; }
+bool IrrigationCommandJournal::ready() const { return ready_; }
+bool IrrigationCommandJournal::observeTime(uint64_t nowMs) { return ready_ && ledger_.observeTime(nowMs); }
+bool IrrigationCommandJournal::admit(const IrrigationIotProtocol::Command& command,uint64_t nowMs) {
+    return observeTime(nowMs) && !ledger_.beforeBoot(command.issuedAtMs);
+}
 IrrigationCommandJournal::LookupResult IrrigationCommandJournal::lookup(
-    const IrrigationIotProtocol::Command& command,
-    uint64_t nowMs,
-    std::size_t& index) {
-    index = kCapacity;
-    if (!ready_) {
-        return LookupResult::NotFound;
-    }
-    clearExpired(nowMs);
-    for (std::size_t candidate = 0; candidate < kCapacity; ++candidate) {
-        const Entry& stored = state_.entries[candidate];
-        if (stored.commandId[0] != '\0' &&
-            std::strcmp(stored.commandId, command.commandId) == 0) {
-            index = candidate;
-            return stored.signature == command.signature
-                       ? LookupResult::SameCommand
-                       : LookupResult::ConflictingCommand;
+    const IrrigationIotProtocol::Command& command,uint64_t nowMs,std::size_t& index) {
+    index=kCapacity;
+    if (!ready_) return LookupResult::NotFound;
+    ledger_.purge(nowMs);
+    for (std::size_t n=0;n<kCapacity;++n) {
+        const auto* value=ledger_.at(n);
+        if (value && value->command.idEquals(command.commandId)) {
+            index=n;
+            return value->command.sameCommand(command) ? LookupResult::SameCommand : LookupResult::ConflictingCommand;
         }
     }
     return LookupResult::NotFound;
 }
-
-bool IrrigationCommandJournal::storeReceipt(
-    const IrrigationIotProtocol::Command& command,
-    ReceiptStatus status,
-    Reason reason,
-    uint64_t observedAtMs,
-    bool processOpen,
-    uint64_t nowMs,
-    std::size_t& index) {
-    index = kCapacity;
-    if (!ready_ || status == ReceiptStatus::None) {
-        return false;
-    }
-    clearExpired(nowMs);
-    index = findReusableSlot(nowMs);
-    if (index >= kCapacity) {
-        return false;
-    }
-    Entry& stored = state_.entries[index];
-    stored = {};
-    std::strcpy(stored.commandId, command.commandId);
-    stored.signature = command.signature;
-    stored.expiresAtMs = command.expiresAtMs;
-    stored.receiptObservedAtMs = observedAtMs;
-    stored.kind = command.kind;
-    stored.receipt = status;
-    stored.receiptReason = reason;
-    stored.processOpen = processOpen;
-    if (!save()) {
-        ready_ = false;
-        return false;
-    }
+bool IrrigationCommandJournal::storeReceipt(const IrrigationIotProtocol::Command& command,
+    ReceiptStatus status,Reason reason,uint64_t observedAtMs,bool processOpen,uint64_t nowMs,std::size_t& index) {
+    index=kCapacity;
+    if (status==ReceiptStatus::NONE || !observedAtMs || !admit(command,nowMs) || ledger_.find(command.commandId)) return false;
+    auto* value=ledger_.remember(command,nowMs);
+    if (!value) return false;
+    value->receipt=status; value->reason=reason; value->receiptAtMs=observedAtMs;
+    value->receiptOrder=1; value->processOpen=processOpen;
+    for (std::size_t n=0;n<kCapacity;++n) if (ledger_.at(n)==value) { index=n; return true; }
+    return false;
+}
+bool IrrigationCommandJournal::storeFinal(std::size_t index,ProgressStatus status,Reason reason,uint64_t observedAtMs) {
+    auto* value=entry(index);
+    if (!value || status==ProgressStatus::NONE || status==ProgressStatus::RUNNING || !observedAtMs ||
+        value->receipt!=ReceiptStatus::ACCEPTED || value->progress!=ProgressStatus::NONE ||
+        observedAtMs<value->receiptAtMs) return false;
+    value->progress=status; value->reason=reason; value->progressAtMs=observedAtMs;
+    value->progressOrder=1; value->processOpen=false;
     return true;
 }
-
-bool IrrigationCommandJournal::storeFinal(std::size_t index,
-                                          ProgressStatus status,
-                                          Reason reason,
-                                          uint64_t observedAtMs) {
-    if (!ready_ || index >= kCapacity || status == ProgressStatus::None ||
-        state_.entries[index].commandId[0] == '\0') {
-        return false;
-    }
-    Entry& stored = state_.entries[index];
-    stored.progress = status;
-    stored.progressReason = reason;
-    stored.progressObservedAtMs = observedAtMs;
-    stored.processOpen = false;
-    if (!save()) {
-        ready_ = false;
-        return false;
-    }
-    return true;
-}
-
 bool IrrigationCommandJournal::closeWithoutFinal(std::size_t index) {
-    if (!ready_ || index >= kCapacity ||
-        state_.entries[index].commandId[0] == '\0') {
-        return false;
-    }
-    Entry& stored = state_.entries[index];
-    stored.processOpen = false;
-    stored.progress = ProgressStatus::None;
-    stored.progressReason = Reason::None;
-    stored.progressObservedAtMs = 0;
-    if (!save()) {
-        ready_ = false;
-        return false;
-    }
+    auto* value=entry(index);
+    if (!value || value->progress!=ProgressStatus::NONE) return false;
+    value->processOpen=false; // Keep a nonterminal slot protected; never invent an outcome.
     return true;
 }
-
-const IrrigationCommandJournal::Entry* IrrigationCommandJournal::entry(
-    std::size_t index) const {
-    return index < kCapacity && state_.entries[index].commandId[0] != '\0'
-               ? &state_.entries[index]
-               : nullptr;
-}
-
-IrrigationCommandJournal::Entry* IrrigationCommandJournal::entry(
-    std::size_t index) {
-    return index < kCapacity && state_.entries[index].commandId[0] != '\0'
-               ? &state_.entries[index]
-               : nullptr;
-}
-
-bool IrrigationCommandJournal::ready() const {
-    return ready_;
+IrrigationCommandJournal::Entry* IrrigationCommandJournal::entry(std::size_t index) { return ready_ ? ledger_.at(index) : nullptr; }
+void IrrigationCommandJournal::replay() {
+    for (std::size_t n=0;n<kCapacity;++n) if (auto* value=entry(n)) {
+        value->receiptOrder=1;
+        if (value->progress!=ProgressStatus::NONE) value->progressOrder=1;
+    }
 }
 
 IrrigationCommandJournal::Reason IrrigationCommandJournal::fromRejection(
@@ -208,56 +116,11 @@ const char* IrrigationCommandJournal::reasonName(Reason reason) {
 
 const char* IrrigationCommandJournal::progressName(ProgressStatus status) {
     switch (status) {
-        case ProgressStatus::None: return "none";
-        case ProgressStatus::Succeeded: return "succeeded";
-        case ProgressStatus::Canceled: return "canceled";
-        case ProgressStatus::Failed: return "failed";
+        case ProgressStatus::NONE: return "none";
+        case ProgressStatus::RUNNING: return "running";
+        case ProgressStatus::SUCCEEDED: return "succeeded";
+        case ProgressStatus::CANCELED: return "canceled";
+        case ProgressStatus::FAILED: return "failed";
     }
     return "failed";
-}
-
-bool IrrigationCommandJournal::save() {
-    state_.magic = kMagic;
-    state_.version = kVersion;
-    state_.reserved = 0;
-    state_.crc32 = calculateCrc(state_);
-    return preferences_.putBytes(kKey, &state_, sizeof(state_)) == sizeof(state_);
-}
-
-bool IrrigationCommandJournal::valid(const PersistentState& state) const {
-    return state.magic == kMagic && state.version == kVersion &&
-           state.crc32 == calculateCrc(state);
-}
-
-void IrrigationCommandJournal::initialize() {
-    state_ = PersistentState{};
-    state_.magic = kMagic;
-    state_.version = kVersion;
-    state_.crc32 = calculateCrc(state_);
-}
-
-void IrrigationCommandJournal::clearExpired(uint64_t nowMs) {
-    for (Entry& entry : state_.entries) {
-        if (entry.commandId[0] != '\0' && !entry.processOpen &&
-            entry.expiresAtMs <= nowMs) {
-            entry = {};
-        }
-    }
-}
-
-std::size_t IrrigationCommandJournal::findReusableSlot(uint64_t nowMs) {
-    for (std::size_t index = 0; index < kCapacity; ++index) {
-        Entry& entry = state_.entries[index];
-        if (entry.commandId[0] == '\0' ||
-            (!entry.processOpen && entry.expiresAtMs <= nowMs)) {
-            return index;
-        }
-    }
-    return kCapacity;
-}
-
-uint32_t IrrigationCommandJournal::calculateCrc(const PersistentState& state) {
-    return updateCrc32(0,
-                       reinterpret_cast<const uint8_t*>(&state),
-                       offsetof(PersistentState, crc32));
 }
