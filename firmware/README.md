@@ -4,17 +4,16 @@
 
 ## 当前升级计划（2026-09-10）
 
-本节是唯一当前待办，已清理被替代的存储过程记录和旧容量结论。类型级验收见 [灌溉类型账本](../../../platform/iot-device-lab/device-types/irrigation-controller/README.md)。
+本节是唯一当前待办。当前试运行编码与平台接入已完成，无进行中的编码事项；已清理被替代的存储过程记录和旧容量结论。类型级验收见 [灌溉类型账本](../../../platform/iot-device-lab/device-types/irrigation-controller/README.md)。
 
 当前硬件是 **classic ESP32、4 MiB**，双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump。用户允许调整历史条数：watering/audit 预算为 160/48 KiB，容量为 **666/639 条**；完整记录字段、业务功能、128 KiB 日志和 128 KiB FS 安全空间保留，另留 48 KiB 元数据/配置余量。当前 bin **1615120 B**，每槽剩余 **154352 B（8.72%）**；静态 RAM **100396 B**。
 
 | 状态 | 交付结果 / 责任 | 尚缺工作与边界 |
 | --- | --- | --- |
-| 进行中 | E：平台交付收口 / server + wx + lab | 真实计划保存、无流量保护终态、业务记录落库与 record-ack 已通过，原生小程序显示已验证。正在修复服务端旧指令无回执仍永久等待的问题并同步最终证据。 |
 | 用户试运行 | 现场边界 | 本机串口试验已授权；核心板没有 DS3231、流量计或泵阀，RTC 故障提示符合现场事实。长稳、满容量、反复断电和真实水路由用户验证。 |
 | 正式发布前 | 安全与交付边界 | 单设备凭据/ACL、首次 Web 默认认证治理和受控工具链分发需单独确认；未改真实账号、权限或 NUC。 |
 
-已提交推送：设备 SDK 会话/双流 5180992、来源与未知时间 d727e24、Base 诊断 3d9483b、RAM 命令账本 4b98650、存储故障恢复 877a606、4 MiB 分区 514e149；Base WiFi 尝试计数 c206326，SDK a076543；lab b963ad0 / 7c63141，server d2046a8，wx ce16e19。设备只保留灌溉策略，Base 负责通用资源与维护，SDK 负责平台会话、消息和可靠流。
+最新修复已提交推送：设备 e961ad0（栈峰值与 active 读取）、server 21b9eb9（无回执过期收尾），Base 10505fe；lab 4a2f1e4 与 wx 5fe103c 更新实际证据。此前已提交推送：设备 SDK 会话/双流 5180992、来源与未知时间 d727e24、Base 诊断 3d9483b、RAM 命令账本 4b98650、存储故障恢复 877a606、4 MiB 分区 514e149；Base WiFi 尝试计数 c206326，SDK a076543；lab b963ad0 / 7c63141，server d2046a8，wx ce16e19。设备只保留灌溉策略，Base 负责通用资源与维护，SDK 负责平台会话、消息和可靠流。
 
 本机目标为 `/dev/cu.usbserial-57460296581`，ESP32-D0WD-V3 rev 3.1，4 MiB，MAC `08:d1:f9:3b:2c:f4`。硬件 deviceId `esp32-irrigation-f42c3bf9d108`，本机业务实例 UUID `ad182049-f086-443b-a46a-9bf0cfdc6862`。首次更新时逐段 Hash 校验通过；保留原始日志及 NVS，旧文件系统仅有可舍弃实验记录，没有业务配置文件。私密备份和串口原日志仅存放于忽略目录 `local_private/`。
 
@@ -179,3 +178,6 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain r
 - 自动总控 `9ed17407-d72b-4fc6-a42a-7faf151b6a04`、最终计划保存 `30be985e-2f0e-4e6a-97e7-7c17a3fa7746` 均 accepted → succeeded。计划测试保留空计划，仅按正常保存递增 revision。
 - 单次出水 `e16e6d3f-f406-4b4b-b700-8c90de754d2f` accepted → running → failed / flow_start_timeout；核心板没有流量计，20 秒启动保护安全结束，非实际水路成功验收。平台已收到 watering.failed，流 `e20eebc1-e2da-40f5-83ac-43eb85c58296` 序号 1 的累计业务 ACK，原生小程序显示失败结果与浇水事实。设备仍 ready、空闲、无存储故障。
 - Base API 文档宽限上限漏改已在 `10505fe` 修正推送；本次设备源码构建依赖与 `cdd1923` 相同。旧 panic 证据不能冒充新版复位原因；新版 OTA 后为 software，已验证命令期间无重启。
+
+- 最终本机 server 21b9eb9 已构建重启、ready=true；原生微信暂停 `09347a1a-06d9-408d-99cb-0917a05eb67c` 和恢复 `8e415aa1-40b2-4eab-98f3-64ceecb0102f` 均约 2 秒 succeeded，相应审计事实显示正常。结束时同一 bootCount 90、reset=software、在线/空闲、自动总控 enabled、空计划 revision 3，无存储故障。旧无回执命令已过期并退出活动区。
+- 已核对存储重构遗留：SDK 序号/世代/ACK 接管、首次启动与当前格式恢复、未确认保护、维护安全及资源容量均已实现并完成相关快速检查；旧方案中 NVS 命令账本、临时 RecordSync 和“不拦截维护”描述已删除并同步当前设计。剩余仅上表现场试运行及正式发布边界。
