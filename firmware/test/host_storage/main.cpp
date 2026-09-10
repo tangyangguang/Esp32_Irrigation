@@ -21,6 +21,14 @@ int main() {
     WateringRecordStore watering;
     IrrigationEvents events;
     auto& audit = events.auditStore();
+    // The application can reach the format callback before store initialization.
+    auto& startupSync = IrrigationRecordSync::instance();
+    startupSync.bind(watering, audit);
+    Esp32BaseStorage::FormatResult initialFormat;
+    assert(Esp32BaseStorage::formatAndReload(initialFormat));
+    assert(startupSync.resetGenerationsAfterFormat());
+    startupSync.handle(0);
+    assert(startupSync.ready() && Esp32BaseStorage::recordStoreCount() == 2);
     assert(watering.begin() && events.begin());
     assert(IrrigationRecordSync::instance().begin(watering, audit));
     const uint32_t historyBudget = WateringRecordStore::kMaximumStoreBytes +
@@ -171,5 +179,37 @@ int main() {
     g_conditionStateWriteFails = false;
     events.observeRtcRollback(Esp32BaseConditions::ObservedState::Active);
     assert(!events.storageFault());
-    puts("Actual Base Store + irrigation: reads, immutable time, recovery retry, independent ACK and checkpoint passed");
+    // Corrupt one current control file, then exercise the production startup
+    // registration and explicit recovery paths using the same registered stores.
+    for (bool failAudit : {true, false}) {
+        resetHarness();
+        g_totalBytes = 512U * 1024U;
+        watering.discardPendingAfterFormat();
+        audit.discardPendingAfterFormat();
+        assert(watering.begin() && audit.begin());
+        const std::string corruptPath = std::string(failAudit
+            ? audit.baseStore().path() : watering.baseStore().path()) + "/control.bin";
+        g_files[corruptPath] = {0, 0, 0};
+        assert(!(failAudit ? audit.begin() : watering.begin()));
+        auto& sync = IrrigationRecordSync::instance();
+        assert(sync.begin(watering, audit));
+        sync.handle(0);
+        using Kind = IrrigationRecordSync::StreamKind;
+        assert(sync.writable(Kind::Watering) == failAudit);
+        assert(sync.writable(Kind::Audit) == !failAudit);
+        assert(!sync.ready());
+        assert(Esp32BaseStorage::recordStoreCount() == 2);
+        if (failAudit) {
+            assert(watering.captureStartTime(start));
+            assert(sync.appendWatering(start, summary, nullptr));
+        } else {
+            assert(sync.appendAudit(fact));
+        }
+        assert(Esp32BaseStorage::formatAndReload(formatted));
+        assert(formatted.recordStoreReloadedCount == 2);
+        assert(sync.resetGenerationsAfterFormat());
+        sync.handle(1);
+        assert(sync.ready() && sync.writable());
+    }
+    puts("Actual Base Store + irrigation: reads, time, ACK, independent startup failures and format recovery passed");
 }

@@ -123,7 +123,6 @@ private:
     bool wateringStartTimeValid_ = false;
     bool finishedWateringStored_ = false;
     bool recordStorageFault_ = false;
-    bool wateringRecordStoreRegistered_ = false;
     bool schedulerStorageFault_ = false;
     bool rtcObservationInitialized_ = false;
     bool eventConditionsInitialized_ = false;

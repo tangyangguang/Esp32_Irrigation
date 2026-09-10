@@ -25,6 +25,7 @@ public:
     void publish(uint32_t nowMs, iot_device::RecordStream::PublishFact, void*);
     iot_device::RecordStream* const* streams() { return streams_; }
     bool ready() const;
+    bool ready(StreamKind) const;
     bool writable() const;
     bool writable(StreamKind) const;
     bool backlogFull(StreamKind) const;
@@ -35,7 +36,7 @@ private:
     WateringRecordStore* wateringStore_=nullptr;
     IrrigationAuditStore* auditStore_=nullptr;
     iot_device::RecordStream* streams_[2]{};
-    bool registered_=false;
+    bool registered_[2]{};
     uint8_t nextStream_=0;
     uint32_t lastAuditRetryMs_=0;
 };

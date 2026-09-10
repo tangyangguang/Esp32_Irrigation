@@ -12,7 +12,7 @@
 class WateringExecutor {
 public:
     WateringExecutor();
-    bool begin(uint32_t appliedFrequency);
+    bool begin(uint32_t desiredFrequency);
     WateringStartResult start(const WateringRequest&, const IrrigationConfig&, uint32_t);
     bool stop(uint32_t);
     bool abortForMaintenance(uint32_t);

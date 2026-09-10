@@ -110,9 +110,7 @@ bool IrrigationApp::begin() {
     }
 
     const IrrigationConfig* config = configStore_.current();
-    if (!config ||
-        (config->valveDrive.pwmFrequencyHz != 20000U &&
-         !hardware.configureValvePwmFrequency(config->valveDrive.pwmFrequencyHz))) {
+    if (!config) {
         return failStartup(hardware, statusIndicator_);
     }
 
@@ -122,11 +120,11 @@ bool IrrigationApp::begin() {
 
     const bool wateringStoreReady = wateringRecordStore_.begin();
     const bool auditStoreReady = events_.begin();
-    const bool recordsReady = wateringStoreReady && auditStoreReady &&
-        IrrigationRecordSync::instance().begin(wateringRecordStore_,
-                                                events_.auditStore());
-    wateringRecordStoreRegistered_ = recordsReady;
-    recordStorageFault_ = !recordsReady;
+    const bool recordsRegistered = IrrigationRecordSync::instance().begin(
+        wateringRecordStore_, events_.auditStore());
+    const bool recordsReady = wateringStoreReady && auditStoreReady && recordsRegistered;
+    // Availability is queried per stream; this flag only tracks failed results.
+    recordStorageFault_ = false;
     if (!recordsReady) {
         ESP32BASE_LOG_E("irrigation",
                         "business_record_stores_begin_failed watering=%s audit=%s",
@@ -957,7 +955,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     if (configReady) configReady = applyStoredParameterConfig();
     const IrrigationConfig* config = configStore_.current();
     const bool pwmReady = configReady && config &&
-                          wateringController_.configureValvePwmFrequency(
+                          wateringController_.begin(
                               config->valveDrive.pwmFrequencyHz);
     const bool schedulerCleared = wateringSchedulerStore_.clear();
     wateringScheduler_.setCallbacks(nullptr, nullptr, nullptr);
@@ -976,7 +974,6 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
         events_.auditStore().readStatus(auditStatus) &&
         wateringStatus.ready && wateringStatus.writable &&
         auditStatus.ready && auditStatus.writable && iotRecordStreamReady;
-    wateringRecordStoreRegistered_ = recordsReady;
     if (!recordsReady) {
         ESP32BASE_LOG_E("irrigation",
                         "business_record_stores_recovery_failed base_reload=%s watering=%s audit=%s",
@@ -984,7 +981,7 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
                         Esp32BaseRecordStore::storeStateName(wateringStatus.state),
                         Esp32BaseRecordStore::storeStateName(auditStatus.state));
     }
-    recordStorageFault_ = !recordsReady;
+    recordStorageFault_ = false; // Per-stream readiness remains visible through the sync layer.
     businessReady_ = configReady && pwmReady;
     if (businessReady_) {
         resetUnexpectedFlowMonitor(millis());

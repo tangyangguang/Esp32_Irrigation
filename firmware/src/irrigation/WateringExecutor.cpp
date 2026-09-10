@@ -5,13 +5,14 @@
 
 WateringExecutor::WateringExecutor() : controller_(BoardHardware::instance()) {}
 
-bool WateringExecutor::begin(uint32_t appliedFrequency) {
-    if (task_) return true;
+bool WateringExecutor::begin(uint32_t desiredFrequency) {
+    if (task_) return configureValvePwmFrequency(desiredFrequency);
     caller_ = xTaskGetCurrentTaskHandle();
     mutex_ = xSemaphoreCreateMutexStatic(&mutexStorage_);
     done_ = xSemaphoreCreateBinaryStatic(&doneStorage_);
     queue_ = xQueueCreateStatic(1, sizeof(Command*), queueBytes_, &queueStorage_);
-    targetFrequency_ = appliedFrequency_ = appliedFrequency;
+    targetFrequency_ = desiredFrequency;
+    appliedFrequency_ = 0; // The owner configures all channels before becoming ready.
     hardwareReady_ = BoardHardware::instance().initialized();
     // ESP-IDF task stack sizes are bytes. This task uses only controller/GPIO
     // operations. It must never acquire locks owned by the service task.
@@ -43,6 +44,9 @@ void WateringExecutor::run(void* context) {
         BoardHardware::instance().safeShutdown();
         self.unlock();
     }
+    self.lock();
+    self.applyFrequency();
+    self.unlock();
     xSemaphoreGive(self.done_);
     for (;;) {
         Command* command = nullptr;
