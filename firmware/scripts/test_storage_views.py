@@ -15,7 +15,7 @@ with tempfile.TemporaryDirectory(prefix='irrigation-store-') as directory:
     subprocess.run([os.environ.get('CC', 'cc'), '-c', str(unity / 'unity.c'), '-o', str(work / 'unity.o')], check=True)
     command = [os.environ.get('CXX', 'c++'), '-std=c++17', '-ftrivial-auto-var-init=pattern',
         '-DESP32BASE_PROFILE=ESP32BASE_PROFILE_MINIMAL', '-DESP32BASE_LOG_LEVEL=ESP32BASE_LOG_NONE',
-        '-DESP32BASE_ENABLE_FS=1', '-DESP32BASE_ENABLE_FILELOG=0', '-DESP32BASE_ENABLE_RECORD_STORE=1',
+        '-DESP32BASE_EB_FILELOG_DEFAULT_MODE=0', '-DESP32BASE_ENABLE_FS=1', '-DESP32BASE_ENABLE_FILELOG=0', '-DESP32BASE_ENABLE_RECORD_STORE=1',
         '-DESP32BASE_ENABLE_CONDITIONS=1', '-DESP32BASE_ENABLE_TIME=1',
         '-DIRRIGATION_BASE_HARNESS="' + str(harness / 'test_main.cpp') + '"']
     for include in [firmware / 'test/host_storage/stubs', firmware / 'src/irrigation', base / 'src', sdk / 'src', harness / 'stubs', unity]:

@@ -10,4 +10,4 @@
 
 当前源码已完成双 Store 存储重构：watering 保存浇水事实，irrigation-audit 保存必要审计；本地读取和平台补发使用同一份事实，四项持续条件使用 Base Conditions。旧 App Events、独立 200 条补发队列和 616 字节记录设计已经废弃。
 
-固件目前仍直接使用 Base MQTT，尚未完成最新 SDK、完整 TLS 工具链和诊断心跳接入。历史版本的核心板或平台通过结果不能证明本次候选版本可试运行。未完成事项及后续物理验证统一列于固件说明，不保留独立过程流水账。
+固件已通过最新 SDK Session、ModelPublisher、双 RecordStream 接入 Base MQTT，完整 TLS 工具链和诊断心跳已参与目标构建。当前 4 MiB 分区为双 1728 KiB OTA + 512 KiB LittleFS，历史条数按授权调整，记录字段和功能保留；当前版本尚待串口及平台链路验证。未完成事项及后续物理验证统一列于固件说明，不保留独立过程流水账。

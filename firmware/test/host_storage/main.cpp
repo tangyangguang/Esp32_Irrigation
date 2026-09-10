@@ -6,6 +6,7 @@
 #include "IrrigationAuditStore.h"
 #include "IrrigationEvents.h"
 #include "IrrigationRecordSync.h"
+#include "runtime/Esp32BaseFileLog.h"
 #include <cassert>
 
 static void countWatering(const StoredWateringRecord&, void* count) {
@@ -16,15 +17,21 @@ static void countAudit(const StoredIrrigationAuditRecord&, void* count) {
 }
 int main() {
     resetHarness();
+    g_totalBytes = 512U * 1024U;
     WateringRecordStore watering;
     IrrigationEvents events;
     auto& audit = events.auditStore();
     assert(watering.begin() && events.begin());
     assert(IrrigationRecordSync::instance().begin(watering, audit));
+    const uint32_t historyBudget = WateringRecordStore::kMaximumStoreBytes +
+                                   IrrigationAuditStore::kMaximumStoreBytes;
+    const uint32_t logBudget = ESP32BASE_EB_FILELOG_MAX_BYTES * ESP32BASE_EB_FILELOG_ROTATE_FILES;
+    assert(g_totalBytes - historyBudget - logBudget - storageSafetyReserve(g_totalBytes) >= 48U * 1024U);
+
     for (const auto layout : {std::pair<uint32_t,uint32_t>{384U*1024U, 193U+24U},
-                              {384U*1024U, WateringRecordStore::kStoredBytes+24U},
+                              {WateringRecordStore::kMaximumStoreBytes, WateringRecordStore::kStoredBytes+24U},
                               {128U*1024U, 24U+24U},
-                              {128U*1024U, IrrigationAuditStore::kStoredBytes+24U}}) {
+                              {IrrigationAuditStore::kMaximumStoreBytes, IrrigationAuditStore::kStoredBytes+24U}}) {
         const auto segment = recordStoreChooseSegmentLimit(layout.first, layout.second);
         printf("Store budget=%u slot=%u capacity=%u\n", layout.first, layout.second,
                recordStoreCalculateCapacity(layout.first, segment, layout.second));

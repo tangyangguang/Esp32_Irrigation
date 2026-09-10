@@ -53,9 +53,9 @@ void test_initialize_two_bounded_stores_and_sync() {
                              wateringStatus.slotSizeBytes);
     TEST_ASSERT_EQUAL_UINT32(IrrigationAuditStore::kStoredBytes + 24U,
                              auditStatus.slotSizeBytes);
-    TEST_ASSERT_EQUAL_UINT32(384UL * 1024UL,
+    TEST_ASSERT_EQUAL_UINT32(160UL * 1024UL,
                              wateringStatus.maximumStoreBytes);
-    TEST_ASSERT_EQUAL_UINT32(128UL * 1024UL,
+    TEST_ASSERT_EQUAL_UINT32(48UL * 1024UL,
                              auditStatus.maximumStoreBytes);
     TEST_ASSERT_NOT_EQUAL(0, std::memcmp(g_watering.recordStream().generation(),
                                          g_audit.recordStream().generation(), 16));

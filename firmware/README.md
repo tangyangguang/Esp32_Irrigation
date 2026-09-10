@@ -12,15 +12,14 @@
 
 | 状态 | 交付结果 / 责任 | 尚缺工作与边界 |
 | --- | --- | --- |
-| 待办 | B：4 MiB 容量收口 | 已提交的资源优化减少 4460 B；SDK 会话/双流候选实测 Flash 1614587 B、RAM 100508 B，较已提交基线增加 13340/496 B，超 1.5 MiB OTA 槽 41723 B，8% 余量亦未满足。实际 4 MiB 目标不变，仍需优化及容量收口。 |
 | 待办 | E：定义 + 设备 + 平台投影 | 本地来源错标、未知时间队头阻塞已修复；lab b963ad0、server d2046a8、wx ce16e19 已提交。state.diagnostics 已实现并通过目标编译链接（Base WiFi 累计尝试 c206326）；剩余为最终集成及部署验证。服务端/小程序复用既有 unknownTimeCount 展示，记录定义和呈现定向检查通过。JSON 依赖已收敛到 SDK 的 6.21.6，并加入完整模型有界容量，协议接入尚未完成。 |
 | 待办 | F：最终集成收口 | 存储故障恢复、维护出口及控制器/调度定向检查已通过；等待容量调整后的最终目标产物与串口短时检查。 |
-| 待办 | 串口试验与现场边界 | 本机 `/dev/cu.usbserial-57460296581` 已核实为 4 MiB ESP32，烧录和短时试验授权有效；当前障碍为固件容量门禁，已取消更换 8 MiB 硬件的错误要求。长稳、满容量、反复断电及真实水路验收由用户后续试运行完成。 |
+| 进行中 | 串口试验与现场边界 | 本机 `/dev/cu.usbserial-57460296581` 已核实为 4 MiB ESP32，烧录和短时试验授权有效；容量门禁已通过，当前核对目标并烧录启动。长稳、满容量、反复断电及真实水路验收由用户后续试运行完成。 |
 | 正式发布前 | 安全与交付边界 | 项目凭据/ACL 隔离、首次 Web 默认认证治理、完整 TLS 握手和受控工具链分发位置需在正式范围确认；不改真实账号、权限或共享环境。 |
 
 已交付基础：设备存储收尾 `3913c8d`、Web/JSON `1435fcf`、MQTT 4 KiB 收发容量修复 `575a71a`；Base 维护回调 `4f05677`、资源优化 `5469569`、静态资源与发送超时修复 `8f3176a`；SDK 完整帧诊断 `7e1a865`、型号生成规则去重 `5a1240b`。上述均已提交推送。存储读取未初始化标志及无效事件缓存已修复，旧存储过程记录已删除，未完成事项全部保留在上表。
 
-当前硬件与构建目标均为 **4 MiB ESP32**。8 MiB 分区文件已移除，保留双 1.5 MiB OTA、896 KiB LittleFS 及现有 Store/FileLog 预算；未经同意的容量缩减方案不实施。Core 3 LEDC 安全适配、维护门禁与 SDK 输入阶段 `2133e72`，以及 SDK ESP32 Topic 生命周期修复 `c4e12e0` 已提交推送。
+当前硬件与构建目标均为 **4 MiB ESP32**。8 MiB 分区文件已移除，按用户允许调整历史条数的决定，采用双 1728 KiB OTA、512 KiB LittleFS；完整记录字段与 FileLog 预算不变。Core 3 LEDC 安全适配、维护门禁与 SDK 输入阶段 `2133e72`，以及 SDK ESP32 Topic 生命周期修复 `c4e12e0` 已提交推送。
 
 本轮 Base 优化 `0579717`、设备去重及 4 MiB 目标纠正 `2037223` 已提交推送。资源复查结果：Base 公共脚本和配置页 CSS 通过现有 gzip 发送能力缓存，原文逐字无损；设备名称规则收敛到同一有界实现，删除与 SDK 重复的字段集合及 UTF-8 校验，保留数组/整数范围及业务交叉约束。内联编译选项对比无收益，已撤回，不更改最终编译策略。目标 ELF Flash **1601247 B**，相比 **1605707 B** 减少 **4460 B**；静态 RAM **100012 B** 不变。全套协议、日志和 TLS 仍参与链接。
 
@@ -32,9 +31,9 @@
 
 SDK `a076543` 已推送到 `codex/record-stream`：会话按世代分发两流 ACK，维护检查点逐流尝试、故障隔离；ESP32 端口提供事件观察回调。协议、ESP32 端口及受影响的 ESP8266 单流调用定向检查通过。
 
-设备源码已删除旧流 NVS 元数据和手写连接/上下线/状态证据信封，复用 SDK Session、ModelPublisher、RecordStream。追加失败保留浇水完成事实及原始时间；自动运行审计失败时只重试审计，避免重复浇水记录，未落盘完成结果阻止新浇水及 OTA/格式化。命令 journal 已改用 SDK 有界 RAM 账本；其他审计修改入口的失败处理仍在 F 范围。
+设备源码已删除旧流 NVS 元数据和手写连接/上下线/状态证据信封，复用 SDK Session、ModelPublisher、RecordStream。追加失败保留浇水完成事实及原始时间；自动运行审计失败时只重试审计，避免重复浇水记录，未落盘完成结果阻止新浇水及 OTA；用户显式格式化成功后舍弃旧世代结果。命令 journal 已改用 SDK 有界 RAM 账本；其他审计修改入口的失败处理仍在 F 范围。
 
-当前存储为 watering v7、audit v2，不读取或迁移旧格式。24 B SDK 头与 4 B 持续时间叠加现有业务编码，payload 分别为 221 B、52 B；Base 实际算法测得槽 245/76 B，对比原 217/48 B，浇水 1809→1602 条、审计 2722→1719 条。用户明确允许历史条数变化，保留完整功能和字段，维持 384/128 KiB 字节预算；分区与 4 MiB 硬件目标不变。
+当前存储为 watering v7、audit v2，不读取或迁移旧格式。24 B SDK 头与 4 B 持续时间叠加现有业务编码，payload 分别为 221 B、52 B；Base 实际算法测得槽 245/76 B，对比原 217/48 B，浇水 1809→1602 条、审计 2722→1719 条。用户明确允许历史条数变化，保留完整功能和字段；当前字节预算调整为 160/48 KiB，硬件保持 4 MiB。上述 1602/1719 是调整预算前的结果。
 
 快速验证：`python3 scripts/test_storage_views.py` 使用实际 Base Store/主机 FS，通过空历史、分页、损坏业务数据、未知时间不回填、恢复期间重试的时间冻结、ACK 流隔离、检查点恢复、审计写故障隔离；`pio_arduino.py 2 test -e native -f test_records` 5 项通过，`-f test_iot_protocol` 8 项通过（删除旧 ACK wrapper 后修复残留测试注册再通过）。设备端存储测试源码已更新，未运行设备测试或烧录。以上不是业务链路验收。
 
@@ -121,8 +120,8 @@ WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项�
 当前数据定义：
 
 - 灌溉 JSON 配置：schema v4，权威路径 `/app/irrigation/config.json`；
-- 浇水事实：`watering` Store v7，固定 221 B payload、384 KiB 逻辑预算；它同时是本地历史与平台补发的唯一事实源；
-- 必要审计事实：`irrigation-audit` Store v2，固定 52 B payload、128 KiB 逻辑预算；保存自动计划运行/跳过、自动总控、计划修改、校准和水路基准保存；
+- 浇水事实：`watering` Store v7，固定 221 B payload、160 KiB 逻辑预算；它同时是本地历史与平台补发的唯一事实源；
+- 必要审计事实：`irrigation-audit` Store v2，固定 52 B payload、48 KiB 逻辑预算；保存自动计划运行/跳过、自动总控、计划修改、校准和水路基准保存；
 - 两个 Store 各自拥有独立 `recordStreamId + recordSequence`、累计业务 ACK 和 Base Store 释放检查点，在同一 MQTT Client 与 event topic 上公平交错发送；
 - MQTT 命令账本：SDK 管理固定 16 条 RAM 记录，二进制 UUID、不可变语义签名、receipt 和可信终态；未交付证据或未终结记录不因过期覆盖。重启按 SDK 启动截止时间拒绝旧命令，不恢复任务、不推断终态；
 - RTC 不可用、可信时间不可用、RTC 倒退和关阀异常水流只由 `Esp32BaseConditions` 在 NVS 保存当前活动位图，不形成通用历史；
@@ -174,7 +173,7 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e esp32_rec
 - 历史 Core 2 `esp32_irrigation` 增量构建通过，实际 Base 依赖经 PlatformIO link 描述确认是 `foundation/Esp32Base`；完整本机 MQTT 配置参与链接，无上传。RAM 103140 B，Flash 1419769 B；binary 1426352 B，最小 OTA slot 1572864 B，余量 146512 B / 9.31%，超过 8% 门禁。
 - 未运行设备端存储测试或任何硬件动作；以上不证明 Core 3、SDK 接入或真实 MQTT 链路已通过。
 
-IOT 固件使用 1.5 MiB 双 OTA + 896 KiB LittleFS 分区，发布门禁至少 8% OTA slot 余量。完整 MQTT/TLS 配置参与链接后才报告资源，不能用空配置被 LTO 裁剪后的结果。只重跑本次改动影响的定向检查，不重复已通过且未受影响的测试。
+IOT 固件使用 1728 KiB 双 OTA + 512 KiB LittleFS 分区，发布门禁至少 8% OTA slot 余量。完整 MQTT/TLS 配置参与链接后才报告资源，不能用空配置被 LTO 裁剪后的结果。只重跑本次改动影响的定向检查，不重复已通过且未受影响的测试。
 
 ## 6. Web 静态资源
 
@@ -224,3 +223,5 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 run -e esp32_irri
 命令账本阶段：使用 CompactCommandLedger 的启动截止点、时钟倒退保护、去重与槽位保护，删除 NVS journal/CRC 和旧 Preferences 测试桩；二进制 UUID 与按需证据字段减少常驻冗余，不保存完整命令 JSON。重连重放不可变 receipt/terminal，未知终态只保留状态；容量耗尽拒绝为 busy，不执行。定向测试 4 项通过，覆盖重连/重启区别、过期但未交付记录、启动首秒与时钟倒退、未知终态保护；目标编译链接完成：Flash 1615179 B、RAM 100356 B，较诊断阶段减少 480/160 B；每次命令的 NVS 写入已消除，OTA 容量仍失败，未烧录。命令生命周期契约同步至 lab 7c63141。
 
 存储安全阶段（2026-09-10）：首次失败的即时审计保留原始时间与内容，恢复后重试，未知提交结果不盲重试；审计待写时阻止新的相关修改和 OTA，停止/暂停安全操作仍优先。显式成功格式化清理旧世代 RAM 事实，失败不初始化业务数据。事件存储故障实时反映恢复，Conditions 逐条件保护故障状态。`python3 scripts/test_storage_views.py` 使用实际 Base Store/Conditions 和 SDK 的内存 FS 测试通过，覆盖重试时间、写失败隔离、显式格式化及故障恢复；控制器/调度 50/50 通过。目标编译链接通过，Flash 1615275 B / RAM 100396 B；旧槽容量仍失败，未烧录。
+
+容量阶段（2026-09-10）：按用户允许历史条数变化的授权，4 MiB 使用双 1728 KiB OTA + 512 KiB LittleFS + 64 KiB coredump；watering/audit 预算 160/48 KiB，实际容量 666/639 条。完整字段、功能、128 KiB 日志及 128 KiB FS 安全预留不变，另留 48 KiB 元数据/配置余量。实际 Base 容量与预算定向检查通过。Core 3 完整 TLS 目标构建成功：ELF Flash 1615275 B，RAM 100396 B；bin 1615680 B，每槽余量 153792 B（8.69%），通过 8% 门禁。命令沿用上文目标构建及 `python3 scripts/test_storage_views.py`；尚未烧录。

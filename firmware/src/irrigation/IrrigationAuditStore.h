@@ -45,7 +45,7 @@ class IrrigationAuditStore {
 public:
     static constexpr const char* kRecordTypeName = "irrigation-audit";
     static constexpr uint16_t kStoreVersion = 2;
-    static constexpr uint32_t kMaximumStoreBytes = 128UL * 1024UL;
+    static constexpr uint32_t kMaximumStoreBytes = 48UL * 1024UL;
     static constexpr uint32_t kMinimumFileSystemFreeBytes = 32UL * 1024UL;
     using ReadCallback = void (*)(const StoredIrrigationAuditRecord&, void*);
 
