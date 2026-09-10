@@ -6,7 +6,7 @@
 
 ## 当前升级计划（2026-09-10）
 
-本节是唯一当前进度入口。本轮业务精简与 Base 架构重构已完成开发交付。类型级验收见 [灌溉类型账本](../../../platform/iot-device-lab/device-types/irrigation-controller/README.md)。
+本节是唯一当前进度入口。本轮业务精简与 Base 架构重构已完成开发交付。类型级验收见 [灌溉类型账本](../../../platform/iot-device/contracts/device-types/irrigation-controller/README.md)。
 
 当前架构重构按用户确认的评审实施并已推送：设备 8238ee2（执行任务与参数职责）、a71d376（双 Store 独立故障/恢复及正式文档），Base d2555ea（参数持久化与生效状态分离）。最终镜像已 OTA 到授权完整硬件实验板，运行 app0 / valid；必要宿主检查、目标编译与合并无水短时检查均通过，详见本页末节。
 
@@ -279,3 +279,7 @@ watering 与 audit 分别登记、检查底层及 SDK 就绪；加载失败的 S
 微信开发者工具运行本项目 dist/iot-home，通过 https://iot-dev.tttabc.top 实际显示“当前空闲／设备已就绪”；暂停/恢复均 succeeded，单次出水显示运行进度并得到无水保护 flow_start_timeout，停止有 succeeded 终态，维护页可见 250 脉冲/升与全部当前参数。最终镜像经同一测试服务 API 再验证启动/及时停止：启动命令 canceled、停止 succeeded、watering.stopped 记录 sourceKey=wechat_miniprogram 且 relatedCommandId 精确对应启动命令；随后当前状态 fresh/known/idle、无在途命令。另用当前 revision 原样保存空计划成功，计划内容不变，自动总控保持 enabled。终态/记录可以先于状态刷新到达，验证等待当前状态更新后再确认空闲。
 
 这是测试服务、真实 MQTT、授权完整硬件与开发者工具的闭环证据；未冒称手机扫码、真实水路精度或长期稳定性验证。旧核心板保留原设备和历史，未将其标为正常或已升级。
+
+## 2026-09-10 接入仓库整合验证
+
+SDK 和契约统一消费 `platform/iot-device`（结构提交 `824d68a`），定义内容与 SDK 运行代码未变。本轮从新路径运行 `python3 scripts/test_storage_views.py`、`IOT_DEVICE_CONTRACTS_ROOT=/Users/tyg/workspace/iot/platform/iot-device/contracts python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native_iot_vectors` 和本页受控 Core 3 TLS 构建命令，均通过。共享向量覆盖 33 个输入案例；目标 RAM 95,228 B，Flash 1,567,751 B，OTA 镜像 1,568,160 B，1728 KiB 槽剩余 201,312 B（11.38%）。本轮未烧录、OTA或操作真实负载，既有实机证据仍只对应原验证版本。

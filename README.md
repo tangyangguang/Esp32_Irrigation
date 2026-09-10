@@ -5,8 +5,8 @@
 - 硬件权威：`pcb_irrigation/` 下 2026-07-11 的 BOM 与网表。
 - 产品与安全：[当前方案](docs/当前方案/README.md)。
 - 实现、构建、验证和唯一当前待办：[固件说明](firmware/README.md)。
-- 平台定义与类型验收：[irrigation-controller](../../platform/iot-device-lab/device-types/irrigation-controller/README.md)。
-- 基础库接入：[Esp32Base](../../foundation/Esp32Base/README.md)；平台 SDK：[iot-device-sdk](../../platform/iot-device-sdk/README.md)。
+- 平台接入契约：[irrigation-controller](../../platform/iot-device/contracts/device-types/irrigation-controller/README.md)。
+- 基础库接入：[Esp32Base](../../foundation/Esp32Base/README.md)；平台 SDK：[设备 SDK](../../platform/iot-device/sdk/README.md)。
 
 当前源码已完成双 Store 存储重构：watering 保存浇水事实，irrigation-audit 保存必要审计；本地读取和平台补发使用同一份事实，四项持续条件使用 Base Conditions。旧 App Events、独立 200 条补发队列和 616 字节记录设计已经废弃。
 

@@ -7,7 +7,7 @@ import tempfile
 
 firmware = Path(__file__).resolve().parents[1]
 base = firmware.parents[2] / 'foundation/Esp32Base'
-sdk = firmware.parents[2] / 'platform/iot-device-sdk'
+sdk = firmware.parents[2] / 'platform/iot-device/sdk'
 unity = base / '.pio/libdeps/arduino2/native_record_store_harness/Unity/src'
 harness = base / 'test/test_native_record_store_harness'
 with tempfile.TemporaryDirectory(prefix='irrigation-store-') as directory:

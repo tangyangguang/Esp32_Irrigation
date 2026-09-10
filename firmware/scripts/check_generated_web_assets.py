@@ -12,8 +12,8 @@ if result.returncode != 0:
     env.Exit(result.returncode)
 
 workspace = project_dir.parents[2]
-command = [sys.executable, str(workspace / "platform/iot-device-sdk/scripts/generate_model.py"),
-           str(workspace / "platform/iot-device-lab/device-types/irrigation-controller/definition.json"),
+command = [sys.executable, str(workspace / "platform/iot-device/sdk/scripts/generate_model.py"),
+           str(workspace / "platform/iot-device/contracts/device-types/irrigation-controller/definition.json"),
            "--model", "irrigation-controller-6-zone", "--output",
            str(project_dir / "src/irrigation/generated/IrrigationModel.h"), "--check"]
 result = subprocess.run(command, cwd=project_dir)

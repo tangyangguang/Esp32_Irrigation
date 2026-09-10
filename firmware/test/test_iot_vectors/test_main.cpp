@@ -44,10 +44,10 @@ bool decodeHex(const char* text, std::vector<uint8_t>& bytes) {
 }
 
 void test_shared_platform_command_vectors() {
-    const char* labRoot = std::getenv("IOT_DEVICE_LAB_DIR");
+    const char* labRoot = std::getenv("IOT_DEVICE_CONTRACTS_ROOT");
     TEST_ASSERT_NOT_NULL_MESSAGE(
         labRoot,
-        "set IOT_DEVICE_LAB_DIR to the current iot-device-lab checkout");
+        "set IOT_DEVICE_CONTRACTS_ROOT to the current iot-device/contracts checkout");
     const std::string path =
         std::string(labRoot) +
         "/device-types/irrigation-controller/test/fixtures/platform-command-vectors.json";
