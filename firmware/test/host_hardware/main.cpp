@@ -4,12 +4,27 @@
 #include <utility>
 #include "BoardHardware.h"
 #include "BoardPins.h"
+#include "StatusIndicator.h"
 
 int levels[40]{};
+bool preloaded[40]{}, outputs[40]{};
 bool attachOk = true, writeOk = true, frequencyOk = true;
 std::vector<std::pair<int, int>> writes;
-void digitalWrite(uint8_t pin, int value) { levels[pin] = value; writes.emplace_back(pin, value); }
-void pinMode(uint8_t, int) {}
+void digitalWrite(uint8_t pin, int value) { assert(outputs[pin]); levels[pin] = value; writes.emplace_back(pin, value); }
+int gpio_set_level(int pin, uint32_t level) {
+    levels[pin] = level;
+    preloaded[pin] = true;
+    return 0;
+}
+void pinMode(uint8_t pin, int mode) {
+    if (mode == 1) {
+        assert(preloaded[pin]);
+        const bool safeHigh = pin == BoardPins::kValveDriverShutdownPin ||
+                              pin == BoardPins::kPumpSignalPin || pin == BoardPins::kStatusLedPin;
+        assert(levels[pin] == (safeHigh ? 1 : 0));
+        outputs[pin] = true;
+    }
+}
 bool ledcAttachChannel(uint8_t, uint32_t, uint8_t, uint8_t) { return attachOk; }
 bool ledcWriteChannel(uint8_t, uint32_t duty) {
     if (duty) assert(levels[BoardPins::kValveDriverShutdownPin] == 1 || BoardHardware::instance().activeZoneId() != 0);
@@ -27,6 +42,7 @@ void safe(const BoardHardware& hardware) {
     assert(hardware.activeZoneId() == 0 && !hardware.pumpSignalActive());
 }
 int main() {
+    StatusIndicator::instance().begin(0);
     auto& hardware = BoardHardware::instance();
     assert(hardware.begin(10000)); safe(hardware);
     assert(!hardware.setPumpSignal(true));

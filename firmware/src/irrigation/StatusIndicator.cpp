@@ -1,6 +1,7 @@
 #include "StatusIndicator.h"
 
 #include <Arduino.h>
+#include <driver/gpio.h>
 
 #include "BoardPins.h"
 
@@ -11,7 +12,7 @@ StatusIndicator& StatusIndicator::instance() {
 
 void StatusIndicator::begin(uint32_t nowMs) {
     // LED1 is wired from 3.3 V through R17 to GPIO13 and is active-low.
-    digitalWrite(BoardPins::kStatusLedPin, HIGH);
+    gpio_set_level(static_cast<gpio_num_t>(BoardPins::kStatusLedPin), HIGH);
     pinMode(BoardPins::kStatusLedPin, OUTPUT);
     initialized_ = true;
     outputOn_ = false;

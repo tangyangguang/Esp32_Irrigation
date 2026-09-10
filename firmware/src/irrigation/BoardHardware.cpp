@@ -1,6 +1,7 @@
 #include "BoardHardware.h"
 
 #include <Arduino.h>
+#include <driver/gpio.h>
 
 #include "BoardPins.h"
 
@@ -19,16 +20,17 @@ BoardHardware& BoardHardware::instance() {
 }
 
 bool BoardHardware::begin(uint32_t pwmFrequencyHz) {
-    // Preload safe output levels before switching the pins to OUTPUT.
-    digitalWrite(BoardPins::kValveDriverShutdownPin, HIGH);
+    // Core 3 digitalWrite requires GPIO ownership. Preload the hardware latch
+    // directly so enabling OUTPUT cannot briefly assert the active-low pump.
+    gpio_set_level(static_cast<gpio_num_t>(BoardPins::kValveDriverShutdownPin), HIGH);
     pinMode(BoardPins::kValveDriverShutdownPin, OUTPUT);
 
     // The pump PhotoMOS input is active-low on the finalized PCB.
-    digitalWrite(BoardPins::kPumpSignalPin, HIGH);
+    gpio_set_level(static_cast<gpio_num_t>(BoardPins::kPumpSignalPin), HIGH);
     pinMode(BoardPins::kPumpSignalPin, OUTPUT);
 
     for (const uint8_t pin : BoardPins::kValvePins) {
-        digitalWrite(pin, LOW);
+        gpio_set_level(static_cast<gpio_num_t>(pin), LOW);
         pinMode(pin, OUTPUT);
     }
 
