@@ -6,7 +6,7 @@
 
 本节是唯一当前待办。当前试运行编码与平台接入已完成，无进行中的编码事项；已清理被替代的存储过程记录和旧容量结论。类型级验收见 [灌溉类型账本](../../../platform/iot-device-lab/device-types/irrigation-controller/README.md)。
 
-当前硬件是 **classic ESP32、4 MiB**，双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump。用户允许调整历史条数：watering/audit 预算为 160/48 KiB，容量为 **666/639 条**；完整记录字段、业务功能、128 KiB 日志和 128 KiB FS 安全空间保留，另留 48 KiB 元数据/配置余量。当前 bin **1615120 B**，每槽剩余 **154352 B（8.72%）**；静态 RAM **100396 B**。
+固件目标保持 **classic ESP32、4 MiB 分区布局**，双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump。用户允许调整历史条数：watering/audit 预算为 160/48 KiB，容量为 **666/639 条**；完整记录字段、业务功能、128 KiB 日志和 128 KiB FS 安全空间保留，另留 48 KiB 元数据/配置余量。当前 bin **1615104 B**，每槽剩余 **154368 B（8.72%）**；静态 RAM **100396 B**。
 
 | 状态 | 交付结果 / 责任 | 尚缺工作与边界 |
 | --- | --- | --- |
@@ -15,7 +15,13 @@
 
 最新修复已提交推送：设备 e961ad0（栈峰值与 active 读取）、server 21b9eb9（无回执过期收尾），Base 10505fe；lab 4a2f1e4 与 wx 5fe103c 更新实际证据。此前已提交推送：设备 SDK 会话/双流 5180992、来源与未知时间 d727e24、Base 诊断 3d9483b、RAM 命令账本 4b98650、存储故障恢复 877a606、4 MiB 分区 514e149；Base WiFi 尝试计数 c206326，SDK a076543；lab b963ad0 / 7c63141，server d2046a8，wx ce16e19。设备只保留灌溉策略，Base 负责通用资源与维护，SDK 负责平台会话、消息和可靠流。
 
-本机目标为 `/dev/cu.usbserial-57460296581`，ESP32-D0WD-V3 rev 3.1，4 MiB，MAC `08:d1:f9:3b:2c:f4`。硬件 deviceId `esp32-irrigation-f42c3bf9d108`，本机业务实例 UUID `ad182049-f086-443b-a46a-9bf0cfdc6862`。首次更新时逐段 Hash 校验通过；保留原始日志及 NVS，旧文件系统仅有可舍弃实验记录，没有业务配置文件。私密备份和串口原日志仅存放于忽略目录 `local_private/`。
+此前核心板验证目标为 `/dev/cu.usbserial-57460296581`，ESP32-D0WD-V3 rev 3.1，4 MiB，MAC `08:d1:f9:3b:2c:f4`。硬件 deviceId `esp32-irrigation-f42c3bf9d108`，本机业务实例 UUID `ad182049-f086-443b-a46a-9bf0cfdc6862`。首次更新时逐段 Hash 校验通过；保留原始日志及 NVS，旧文件系统仅有可舍弃实验记录，没有业务配置文件。私密备份和串口原日志仅存放于忽略目录 `local_private/`。
+
+### LittleFS 启动崩溃修复（2026-09-10）
+
+当前完整实验板连接 `/dev/cu.usbserial-130`，芯片 ESP32-D0WDQ6 rev 1.0，Flash ID 厂商 `c8` / 设备 `4017`，实测物理容量 8MiB；仍使用上述 4MiB 分区布局。用户说明硬件完整但尚未接实际水路。该板原 LittleFS 分区内容无效，挂载时因缺少有效超级块、自动检测的块数量为零而除零重启；仅初始化 512KiB LittleFS 后，用户确认旧固件正常启动。
+
+Base `ac1e569` 的受控库已加入根目录及块数量校验，损坏挂载返回错误，不自动格式化。当前构建依赖固定到 `esp32-core-3.3.8-tls-fd6058a00d6b06aa`；补丁、源码哈希及定向验证说明见 [受控工具链](../../../foundation/Esp32Base/docs/14_tls_toolchain.md#littlefs-挂载校验补丁)。已按本文受控 Core 3 命令完成目标构建、OTA 容量门禁及实际安装库哈希核对。当前 `firmware.bin` SHA256 为 `f42d89794b7ab856c0661192ad77b68e978315f492a55f43503dea66c3301331`。本次修复未刷入实验板，旧固件恢复启动不能替代补丁实机验证；后续可通过正常 OTA 更新，无需重新初始化有效文件系统。
 
 ## 1. 当前产品范围
 
