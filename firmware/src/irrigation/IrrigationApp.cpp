@@ -212,8 +212,13 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
         return WateringStartResult::NotReady;
     }
 
-    if (request.purpose == WateringPurpose::Normal && !IrrigationRecordSync::instance().writable())
-        return WateringStartResult::NotReady;
+    if (request.purpose == WateringPurpose::Normal) {
+        const auto& records = IrrigationRecordSync::instance();
+        if (!records.writable(IrrigationRecordSync::StreamKind::Watering) ||
+            (request.source == WateringSource::AutomaticPlan &&
+             !records.writable(IrrigationRecordSync::StreamKind::Audit)))
+            return WateringStartResult::NotReady;
+    }
     Esp32BaseRecordStore::RecordStartTime startTime;
     const bool captured = wateringRecordStore_.captureStartTime(startTime);
     const WateringStartResult result = wateringController_.start(request, *config, millis());
@@ -322,7 +327,7 @@ IrrigationEvents::ConditionDisplayState IrrigationApp::eventConditionState(
 
 bool IrrigationApp::recordStorageFault() const {
     return recordStorageFault_ ||
-           !IrrigationRecordSync::instance().writable();
+           !IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Watering);
 }
 
 bool IrrigationApp::eventStorageFault() const {

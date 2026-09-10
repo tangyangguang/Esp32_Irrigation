@@ -1302,8 +1302,7 @@ bool IrrigationWeb::registerRoutes(IrrigationApp& app) {
            Esp32BaseWeb::addPage("/irrigation/plans", "计划", plans) &&
            Esp32BaseWeb::addPage("/irrigation/zones", "水路", zones) &&
            Esp32BaseWeb::addPage("/irrigation/records", "记录", records) &&
-           Esp32BaseWeb::addPage("/irrigation/events", "事件", events) &&
-           Esp32BaseWeb::addPage("/irrigation/settings", "设置", settings) &&
+           Esp32BaseWeb::addRoute("/irrigation/events", Esp32BaseWeb::METHOD_GET, events) &&
            Esp32BaseWeb::addRoute("/irrigation", Esp32BaseWeb::METHOD_POST, overview) &&
            Esp32BaseWeb::addRoute("/irrigation/plans", Esp32BaseWeb::METHOD_POST, plans) &&
            Esp32BaseWeb::addRoute("/irrigation/zones", Esp32BaseWeb::METHOD_POST, zones) &&
@@ -2821,6 +2820,7 @@ void IrrigationWeb::zoneLearning() {
 
 void IrrigationWeb::records() {
     if (!beginPage("浇水记录", "最新记录优先")) return;
+    Esp32BaseWeb::sendChunk("<p><a class='btnlink secondary' href='/irrigation/events'>操作事件与当前异常</a></p>");
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
     uint32_t detailId = 0;
     char idText[16]{};
@@ -2901,7 +2901,8 @@ void IrrigationWeb::records() {
 }
 
 void IrrigationWeb::events() {
-    if (!beginPage("事件", "记录设备的重要操作、报警和异常")) return;
+    if (!beginPage("事件", "查看操作记录与当前异常")) return;
+    Esp32BaseWeb::sendChunk("<p><a href='/irrigation/records'>返回浇水记录</a></p>");
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
 
     EventFilter filter{};
@@ -3061,11 +3062,6 @@ void IrrigationWeb::events() {
     }
     Esp32BaseWeb::endPanel();
     endPage();
-}
-
-void IrrigationWeb::settings() {
-    if (!Esp32BaseWeb::checkAuth()) return;
-    Esp32BaseWeb::redirectSeeOther("/esp32base/app-config");
 }
 
 void IrrigationWeb::statusApi() {

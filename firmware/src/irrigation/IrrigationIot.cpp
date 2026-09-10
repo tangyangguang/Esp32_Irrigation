@@ -512,7 +512,8 @@ IrrigationIotProtocol::BusinessContext IrrigationIot::businessContext(
     const WateringStatus status = app.wateringStatus();
     context.nowMs = nowMs;
     context.ready = app.businessReady() && config && journalReady_;
-    context.recordWritable = IrrigationRecordSync::instance().writable();
+    context.recordWritable = IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Watering);
+    context.auditWritable = IrrigationRecordSync::instance().writable(IrrigationRecordSync::StreamKind::Audit);
     context.activeKind = activeKind(status);
     if (config) {
         context.plansRevision = config->revision;
@@ -870,8 +871,21 @@ void IrrigationIot::pump(IrrigationApp& app) {
         publishEvidence();
         return;
     }
+    if (preferRecord_) {
+        IrrigationRecordSync::instance().publish(millis(), publishRecordFact, this);
+        if (inFlightKind_ == InFlightKind::Record) {
+            preferRecord_ = false;
+            return;
+        }
+    }
     if (pendingStateMask_ != 0U) {
-        publishState(app, static_cast<StateBit>(lowestStateBit(pendingStateMask_)));
+        // Rotate state groups so frequent runtime updates cannot starve parameters.
+        const uint16_t later = pendingStateMask_ & ~((lastPublishedState_ << 1U) - 1U);
+        const auto state = static_cast<StateBit>(lowestStateBit(later ? later : pendingStateMask_));
+        if (publishState(app, state)) {
+            lastPublishedState_ = state;
+            preferRecord_ = true;
+        }
         return;
     }
     IrrigationRecordSync::instance().publish(millis(), publishRecordFact, this);
@@ -1133,18 +1147,15 @@ bool IrrigationIot::publishState(IrrigationApp& app, StateBit state) {
         value["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
     } else if (state == StateRuntime) {
         capabilityKey = "state.runtime";
-        const bool ready = app.businessReady() && !app.schedulerStorageFault() &&
-                           journalReady_ && IrrigationRecordSync::instance().writable();
+        const bool ready = app.businessReady() && config && journalReady_;
         value["ready"] = ready;
         value["readyReason"] = !app.businessReady()
                                    ? "startup_check_failed"
                                    : !config
                                          ? "configuration_unavailable"
-                                         : app.schedulerStorageFault()
-                                               ? "scheduler_storage_unavailable"
-                                               : !journalReady_
-                                                     ? "configuration_unavailable"
-                                                     : "none";
+                                         : !journalReady_
+                                               ? "configuration_unavailable"
+                                               : "none";
         const Esp32BaseTime::Snapshot time = Esp32BaseTime::snapshot();
         JsonObject timeJson = value["time"].to<JsonObject>();
         timeJson["trusted"] = time.synced;

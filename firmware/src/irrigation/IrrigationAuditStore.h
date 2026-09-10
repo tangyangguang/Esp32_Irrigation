@@ -20,7 +20,6 @@ struct IrrigationAuditPayload {
     uint8_t objectId = 0;
     uint32_t value1 = 0;
     uint32_t value2 = 0;
-    uint32_t value3 = 0;
 };
 
 struct StoredIrrigationAuditRecord {
@@ -31,7 +30,7 @@ struct StoredIrrigationAuditRecord {
 
 class IrrigationAuditCodec {
 public:
-    static constexpr std::size_t kPayloadSize = 24;
+    static constexpr std::size_t kPayloadSize = 20;
     static bool encode(const IrrigationAuditPayload& payload,
                        uint8_t* output,
                        std::size_t outputSize);
@@ -43,7 +42,7 @@ public:
 class IrrigationAuditStore {
 public:
     static constexpr const char* kRecordTypeName = "irrigation-audit";
-    static constexpr uint16_t kStoreVersion = 2;
+    static constexpr uint16_t kStoreVersion = 3;
     static constexpr uint32_t kMaximumStoreBytes = 48UL * 1024UL;
     static constexpr uint32_t kMinimumFileSystemFreeBytes = 32UL * 1024UL;
     using ReadCallback = void (*)(const StoredIrrigationAuditRecord&, void*);

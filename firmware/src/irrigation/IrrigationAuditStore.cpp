@@ -4,7 +4,7 @@
 
 namespace {
 constexpr uint32_t kMagic = 0x31545541UL;  // AUT1
-constexpr uint8_t kVersion = 1;
+constexpr uint8_t kVersion = 2;
 
 void put32(uint8_t*& cursor, uint32_t value) {
     for (uint8_t shift = 0; shift < 32; shift += 8)
@@ -43,7 +43,6 @@ bool IrrigationAuditCodec::encode(const IrrigationAuditPayload& payload,
     *cursor++ = 0;
     put32(cursor, payload.value1);
     put32(cursor, payload.value2);
-    put32(cursor, payload.value3);
     return cursor == output + outputSize;
 }
 
@@ -61,7 +60,6 @@ bool IrrigationAuditCodec::decode(const uint8_t* data,
     if (*cursor++ != 0U || *cursor++ != 0U || *cursor++ != 0U) return false;
     payload.value1 = get32(cursor);
     payload.value2 = get32(cursor);
-    payload.value3 = get32(cursor);
     return cursor == data + dataSize && validKind(payload.kind);
 }
 

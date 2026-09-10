@@ -386,7 +386,9 @@ Rejection evaluateCommand(const Command& command,
                    ? Rejection::MaintenanceActivity
                    : Rejection::None;
     }
-    if (!context.recordWritable) {
+    const bool writesAudit = command.kind == CommandKind::Plans ||
+                             command.kind == CommandKind::AutomaticWatering;
+    if (!(writesAudit ? context.auditWritable : context.recordWritable)) {
         return Rejection::NotReady;
     }
     if (command.kind == CommandKind::Plans) {

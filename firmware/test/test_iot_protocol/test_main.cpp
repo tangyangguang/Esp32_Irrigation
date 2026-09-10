@@ -148,6 +148,13 @@ void test_business_evaluation_uses_runtime_limits_and_maintenance_boundary() {
     TEST_ASSERT_EQUAL(IrrigationIotProtocol::Rejection::Busy,
                       IrrigationIotProtocol::evaluateCommand(command, context));
     context.activeKind = IrrigationIotProtocol::ActiveKind::Idle;
+    context.auditWritable = false;
+    TEST_ASSERT_EQUAL(IrrigationIotProtocol::Rejection::None,
+                      IrrigationIotProtocol::evaluateCommand(command, context));
+    command.kind = IrrigationIotProtocol::CommandKind::AutomaticWatering;
+    TEST_ASSERT_EQUAL(IrrigationIotProtocol::Rejection::NotReady,
+                      IrrigationIotProtocol::evaluateCommand(command, context));
+    command.kind = IrrigationIotProtocol::CommandKind::StartManual;
     context.recordWritable = false;
     TEST_ASSERT_EQUAL(IrrigationIotProtocol::Rejection::NotReady,
                       IrrigationIotProtocol::evaluateCommand(command, context));

@@ -14,7 +14,6 @@ private:
     static void zoneLearning();
     static void records();
     static void events();
-    static void settings();
     static void statusApi();
     static void flowHistoryApi();
 };

@@ -135,6 +135,7 @@ struct BusinessContext {
     uint64_t nowMs = 0;
     bool ready = false;
     bool recordWritable = true;
+    bool auditWritable = true;
     ActiveKind activeKind = ActiveKind::Idle;
     bool enabledZones[BoardPins::kZoneCount]{};
     uint32_t plansRevision = 0;

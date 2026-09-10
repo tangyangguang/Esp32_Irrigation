@@ -155,6 +155,8 @@ private:
     uint32_t lastRunningEvidenceMs_ = 0;
     uint32_t lastActivityStateMs_ = 0;
     uint64_t lastStateFingerprint_ = 0;
+    uint16_t lastPublishedState_ = 0;
+    bool preferRecord_ = false;
     bool stateFingerprintSet_ = false;
     uint16_t pendingStateMask_ = 0;
 
