@@ -1474,7 +1474,7 @@ bool IrrigationWeb::registerRoutes(IrrigationApp& app) {
         Esp32BaseWeb::addPage("/irrigation","首页",overview) &&
         Esp32BaseWeb::addPage("/irrigation/plans","计划",plans) &&
         Esp32BaseWeb::addPage("/irrigation/records","记录",records) &&
-        Esp32BaseWeb::addPage("/irrigation/settings","设备设置",settings) &&
+        Esp32BaseWeb::addPage("/irrigation/settings","设置",settings) &&
         Esp32BaseWeb::addRoute("/irrigation",Esp32BaseWeb::METHOD_POST,overview) &&
         Esp32BaseWeb::addRoute("/irrigation/plans",Esp32BaseWeb::METHOD_POST,plans) &&
         Esp32BaseWeb::addRoute("/irrigation/zones",Esp32BaseWeb::METHOD_GET,zones) &&
@@ -1577,7 +1577,7 @@ void IrrigationWeb::overview() {
     const char* heroAction = "手动浇水";
     if (!hasEnabledZone) {
         heroDescription = "请先启用实际安装的水路，再开始浇水或配置计划。";
-        heroHref = "/irrigation/zones";
+        heroHref = "/irrigation/settings";
         heroAction = "设置水路";
     } else if (!g_app->businessReady()) {
         heroHref = "/esp32base/system";
@@ -1651,12 +1651,102 @@ void IrrigationWeb::overview() {
     endPage();
 }
 
+// Water-course management body shared by the settings page and by the
+// POST /irrigation/zones failure response. On failure the submitted values
+// are read from the POST body and the matching edit dialog reopens.
+void renderZoneManagement(bool failed, uint32_t postedZone) {
+    Esp32BaseWeb::sendChunk(
+        "<style>"
+        ".zone-meter{display:flex;align-items:center;justify-content:space-between;gap:16px}"
+        ".zone-meter-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}"
+        ".zone-meter-label{margin:0;color:var(--eb-muted);font-size:13px}"
+        ".zone-meter-value{display:flex;align-items:baseline;gap:6px;color:var(--eb-primary);line-height:1}"
+        ".zone-meter-number{font-size:18px;font-weight:650}"
+        ".zone-meter-unit{font-size:14px;color:var(--eb-muted)}"
+        ".zone-table th{font-weight:600}.zone-table td{font-weight:400}"
+        ".zone-table .tag{font-weight:500}"
+        ".zone-table .btnlink{font-weight:500}"
+        "@media(max-width:760px){.zone-meter{align-items:stretch;flex-direction:column;gap:10px}.zone-meter .btnlink{width:100%}}"
+        "</style>");
+    const IrrigationConfig* config = g_app->configuration();
+    if (!config) return;
+    char coefficient[20]{};
+    IrrigationConfigRules::formatPulsesPerLiter(
+        config->flowMeter.pulsesPerLiterX100, coefficient, sizeof(coefficient));
+    Esp32BaseWeb::beginPanel("水路管理");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part zone-table'><thead><tr><th>水路</th><th>名称</th><th>启用状态</th><th>基准流量</th><th>操作</th></tr></thead><tbody>");
+    for (const ZoneConfig& zone : config->zones) {
+        char value[20]{};
+        uint32_t flowMlPerMinute = 0;
+        if (zone.baselinePulseRateX10000 != 0 &&
+            FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
+                zone.baselinePulseRateX10000,
+                config->flowMeter.pulsesPerLiterX100,
+                flowMlPerMinute)) {
+            IrrigationConfigRules::formatLitersPerMinute(
+                flowMlPerMinute, value, sizeof(value));
+        }
+        Esp32BaseWeb::sendChunk("<tr><td>水路 "); sendUnsigned(zone.id);
+        Esp32BaseWeb::sendChunk("</td><td>"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
+        Esp32BaseWeb::sendChunk("</td><td><span class='tag ");
+        Esp32BaseWeb::sendChunk(zone.enabled ? "ok'>已启用" : "'>未启用");
+        Esp32BaseWeb::sendChunk("</span></td><td>");
+        if (zone.baselinePulseRateX10000 == 0) Esp32BaseWeb::sendChunk("<span class='muted'>未设置</span>");
+        else if (value[0] == '\0') Esp32BaseWeb::sendChunk("<span class='muted'>超出显示范围</span>");
+        else { Esp32BaseWeb::writeHtmlEscaped(value); Esp32BaseWeb::sendChunk(" L/min（已设置）"); }
+        Esp32BaseWeb::sendChunk("</td><td><div class='fsactions'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('zone-"); sendUnsigned(zone.id);
+        Esp32BaseWeb::sendChunk("').showModal()\">修改</button>");
+        Esp32BaseWeb::sendChunk("<a class='btnlink ok compact' href='/irrigation/zones/learning?zone="); sendUnsigned(zone.id); Esp32BaseWeb::sendChunk("'>"); Esp32BaseWeb::sendChunk(zone.enabled ? "学习基准流量" : "设置基准流量"); Esp32BaseWeb::sendChunk("</a>");
+        Esp32BaseWeb::sendChunk("</div></td></tr>");
+    }
+    Esp32BaseWeb::sendChunk("</tbody></table></div>");
+    Esp32BaseWeb::endPanel();
+    Esp32BaseWeb::beginPanel("流量计维护");
+    Esp32BaseWeb::sendChunk("<div class='zone-meter'><div class='zone-meter-main'><p class='zone-meter-label'>稳态流量系数</p><div class='zone-meter-value'><span class='zone-meter-number'>");
+    Esp32BaseWeb::writeHtmlEscaped(coefficient);
+    Esp32BaseWeb::sendChunk("</span><span class='zone-meter-unit'>P/L</span></div></div><a class='btnlink ok compact' href='/esp32base/app-config'>设置每升脉冲数</a></div>");
+    Esp32BaseWeb::endPanel();
+    for (const ZoneConfig& savedZone : config->zones) {
+        ZoneConfig zone = savedZone;
+        const bool retry = failed && postedZone == zone.id;
+        uint32_t formRevision = config->revision;
+        if (retry) {
+            getParam("name", zone.name.data(), zone.name.size());
+            zone.enabled = Esp32BaseWeb::hasParam("enabled");
+            uintParam("revision", 1, UINT32_MAX, formRevision);
+        }
+        Esp32BaseWeb::sendChunk("<dialog id='zone-"); sendUnsigned(zone.id);
+        Esp32BaseWeb::sendChunk("' class='panel eb-modal' data-eb-light-dismiss='1'><h2>修改水路 "); sendUnsigned(zone.id);
+        html("</h2>");
+        if (retry) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "未保存修改", formRevision != config->revision ? "配置已在其他页面更新，请关闭表单并刷新后重试。" : g_app->configurationError());
+        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones' onsubmit='return once(this)'><input type='hidden' name='action' value='save'><input type='hidden' name='zone_id' value='"); sendUnsigned(zone.id);
+        Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='"); sendUnsigned(formRevision);
+        Esp32BaseWeb::sendChunk("'><div class='fieldgrid'><p class='field full'><label>水路名称</label><input name='name' maxlength='63' required value='"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
+        Esp32BaseWeb::sendChunk("'><small>用于计划、运行和记录页面显示。</small></p><p class='field full'><label><input type='checkbox' name='enabled' value='1' "); if (zone.enabled) Esp32BaseWeb::sendChunk("checked");
+        Esp32BaseWeb::sendChunk("> 启用这条水路</label><small>未安装的水路保持关闭，正常使用页面不会显示。</small></p></div><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存'></div></form>");
+        Esp32BaseWeb::sendChunk("</dialog>");
+    }
+    if (failed && postedZone) {
+        html("<script>var d=document.getElementById('zone-"); sendUnsigned(postedZone);
+        html("');if(d)d.showModal();</script>");
+    } else if (failed) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "未保存修改", "水路参数无效。");
+    }
+}
+
 void IrrigationWeb::settings() {
-    if(!beginPage("设备设置","低频配置与维护"))return;
-    html("<section class='panel'><div class='fieldgrid'><p class='field full'><a class='btnlink secondary' href='/irrigation/zones'><b>水路设置</b></a><small>名称、启用状态、流量基准</small></p><p class='field full'><a class='btnlink secondary' href='/esp32base/app-config'><b>计量、保护与硬件参数</b></a><small>水量换算、流量保护、阀与泵</small></p><p class='field full'><a class='btnlink secondary' href='/esp32base/system'><b>设备状态与系统维护</b></a><small>时间、版本、存储、升级与重启</small></p><p class='field full'><a class='btnlink secondary' href='/esp32base/logs'><b>系统日志</b></a><small>设备诊断记录</small></p></div></section>");
-    Esp32BaseRecordStore::StoreStatus status{};
-    if(g_app->readWateringRecordStoreStatus(status)) { html("<section class='panel'><h2>本地浇水历史</h2><p>已保存 ");sendUnsigned(status.recordCount);html(" 条。按存储预算分段滚动保留最新历史，不等待平台同步。</p><p class='muted'>较早数据可能被淘汰；普通轮转不会阻止继续浇水。真实写入或校验故障会另行提示。</p></section>"); }
-    conditions(); endPage();
+    if(!beginPage("设置","水路与系统参数")) return;
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
+    char result[12]{};
+    if (getParam("result", result, sizeof(result)) && std::strcmp(result, "ok") == 0) {
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_OK, "已保存", "水路设置已更新。");
+    }
+    conditions();
+    renderZoneManagement(false, 0);
+    Esp32BaseWeb::beginPanel("系统配置");
+    html("<div class='fieldgrid'><p class='field full'><a class='btnlink secondary' href='/esp32base/app-config'><b>计量、保护与硬件参数</b></a><small>每升脉冲数、流量保护、单水路最长运行与单次水量上限、阀与泵等系统参数</small></p></div>");
+    Esp32BaseWeb::endPanel();
+    endPage();
 }
 void IrrigationWeb::plans() {
     bool failed=false; uint32_t postedPlan=0;
@@ -1971,90 +2061,30 @@ void IrrigationWeb::events() {
     if(q.matched>q.offset+q.shown){html("<a href='?offset=");sendUnsigned(q.offset+20);html("'>更早记录 ›</a>");}endPage();
 }
 void IrrigationWeb::zones() {
-    bool failed=false; uint32_t postedZone=0;
     if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
+        bool failed = false;
+        uint32_t postedZone = 0;
         if (!Esp32BaseWeb::checkPostAllowed("irrigation_zones")) return;
-        uintParam("zone_id",1,BoardPins::kZoneCount,postedZone);
-        if(actionIs("save") && saveZoneFromRequest()) { redirectResult("/irrigation/zones",true); return; }
-        failed=true;
-    }
-    if (!beginPage("水路设置", "启用实际安装的水路，并学习各水路的基准流量")) return;
-    Esp32BaseWeb::sendChunk(
-        "<style>"
-        ".zone-meter{display:flex;align-items:center;justify-content:space-between;gap:16px}"
-        ".zone-meter-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}"
-        ".zone-meter-label{margin:0;color:var(--eb-muted);font-size:13px}"
-        ".zone-meter-value{display:flex;align-items:baseline;gap:6px;color:var(--eb-primary);line-height:1}"
-        ".zone-meter-number{font-size:18px;font-weight:650}"
-        ".zone-meter-unit{font-size:14px;color:var(--eb-muted)}"
-        ".zone-table th{font-weight:600}.zone-table td{font-weight:400}"
-        ".zone-table .tag{font-weight:500}"
-        ".zone-table .btnlink{font-weight:500}"
-        "@media(max-width:760px){.zone-meter{align-items:stretch;flex-direction:column;gap:10px}.zone-meter .btnlink{width:100%}}"
-        "</style>");
-    html("<p><a class='btnlink secondary' href='/irrigation/settings'>返回设备设置</a></p>");
-    const IrrigationConfig* config = g_app->configuration();
-    if (config) {
-        char coefficient[20]{};
-        IrrigationConfigRules::formatPulsesPerLiter(
-            config->flowMeter.pulsesPerLiterX100, coefficient, sizeof(coefficient));
-        Esp32BaseWeb::beginPanel("水路列表");
-        Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part zone-table'><thead><tr><th>水路</th><th>名称</th><th>启用状态</th><th>基准流量</th><th>操作</th></tr></thead><tbody>");
-        for (const ZoneConfig& zone : config->zones) {
-            char value[20]{};
-            uint32_t flowMlPerMinute = 0;
-            if (zone.baselinePulseRateX10000 != 0 &&
-                FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
-                    zone.baselinePulseRateX10000,
-                    config->flowMeter.pulsesPerLiterX100,
-                    flowMlPerMinute)) {
-                IrrigationConfigRules::formatLitersPerMinute(
-                    flowMlPerMinute, value, sizeof(value));
-            }
-            Esp32BaseWeb::sendChunk("<tr><td>水路 "); sendUnsigned(zone.id);
-            Esp32BaseWeb::sendChunk("</td><td>"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
-            Esp32BaseWeb::sendChunk("</td><td><span class='tag ");
-            Esp32BaseWeb::sendChunk(zone.enabled ? "ok'>已启用" : "'>未启用");
-            Esp32BaseWeb::sendChunk("</span></td><td>");
-            if (zone.baselinePulseRateX10000 == 0) Esp32BaseWeb::sendChunk("<span class='muted'>未设置</span>");
-            else if (value[0] == '\0') Esp32BaseWeb::sendChunk("<span class='muted'>超出显示范围</span>");
-            else { Esp32BaseWeb::writeHtmlEscaped(value); Esp32BaseWeb::sendChunk(" L/min（已设置）"); }
-            Esp32BaseWeb::sendChunk("</td><td><div class='fsactions'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('zone-"); sendUnsigned(zone.id);
-            Esp32BaseWeb::sendChunk("').showModal()\">修改</button>");
-            Esp32BaseWeb::sendChunk("<a class='btnlink ok compact' href='/irrigation/zones/learning?zone="); sendUnsigned(zone.id); Esp32BaseWeb::sendChunk("'>"); Esp32BaseWeb::sendChunk(zone.enabled ? "学习基准流量" : "设置基准流量"); Esp32BaseWeb::sendChunk("</a>");
-            Esp32BaseWeb::sendChunk("</div></td></tr>");
+        uintParam("zone_id", 1, BoardPins::kZoneCount, postedZone);
+        if (actionIs("save") && saveZoneFromRequest()) {
+            Esp32BaseWeb::redirectSeeOther("/irrigation/settings?result=ok");
+            return;
         }
-        Esp32BaseWeb::sendChunk("</tbody></table></div>");
+        failed = true;
+        // Render the settings page with the failed dialog reopened and refilled.
+        if (!beginPage("设置", "水路与系统参数")) return;
+        IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
+        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "操作失败", "请检查水路名称后重试。");
+        conditions();
+        renderZoneManagement(failed, postedZone);
+        Esp32BaseWeb::beginPanel("系统配置");
+        html("<div class='fieldgrid'><p class='field full'><a class='btnlink secondary' href='/esp32base/app-config'><b>计量、保护与硬件参数</b></a><small>每升脉冲数、流量保护、单水路最长运行与单次水量上限、阀与泵等系统参数</small></p></div>");
         Esp32BaseWeb::endPanel();
-        Esp32BaseWeb::beginPanel("流量计维护");
-        Esp32BaseWeb::sendChunk("<div class='zone-meter'><div class='zone-meter-main'><p class='zone-meter-label'>稳态流量系数</p><div class='zone-meter-value'><span class='zone-meter-number'>");
-        Esp32BaseWeb::writeHtmlEscaped(coefficient);
-        Esp32BaseWeb::sendChunk("</span><span class='zone-meter-unit'>P/L</span></div></div><a class='btnlink ok compact' href='/esp32base/app-config'>设置每升脉冲数</a></div>");
-        Esp32BaseWeb::endPanel();
-        for (const ZoneConfig& savedZone : config->zones) {
-            ZoneConfig zone=savedZone;
-            const bool retry=failed && postedZone==zone.id;
-            uint32_t formRevision=config->revision;
-            if(retry) {
-                getParam("name",zone.name.data(),zone.name.size());
-                zone.enabled=Esp32BaseWeb::hasParam("enabled");
-                uintParam("revision",1,UINT32_MAX,formRevision);
-            }
-            Esp32BaseWeb::sendChunk("<dialog id='zone-"); sendUnsigned(zone.id);
-            Esp32BaseWeb::sendChunk("' class='panel eb-modal' data-eb-light-dismiss='1'><h2>修改水路 "); sendUnsigned(zone.id);
-            html("</h2>");
-            if(retry) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN,"未保存修改",formRevision!=config->revision ? "配置已在其他页面更新，请关闭表单并刷新后重试。" : g_app->configurationError());
-            Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/zones' onsubmit='return once(this)'><input type='hidden' name='action' value='save'><input type='hidden' name='zone_id' value='"); sendUnsigned(zone.id);
-            Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='"); sendUnsigned(formRevision);
-            Esp32BaseWeb::sendChunk("'><div class='fieldgrid'><p class='field full'><label>水路名称</label><input name='name' maxlength='63' required value='"); Esp32BaseWeb::writeHtmlEscaped(zone.name.data());
-            Esp32BaseWeb::sendChunk("'><small>用于计划、运行和记录页面显示。</small></p><p class='field full'><label><input type='checkbox' name='enabled' value='1' "); if (zone.enabled) Esp32BaseWeb::sendChunk("checked");
-            Esp32BaseWeb::sendChunk("> 启用这条水路</label><small>未安装的水路保持关闭，正常使用页面不会显示。</small></p></div><div class='actions'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>取消</button><input type='submit' value='保存'></div></form>");
-            Esp32BaseWeb::sendChunk("</dialog>");
-        }
+        endPage();
+        return;
     }
-    if(failed && postedZone) { html("<script>var d=document.getElementById('zone-");sendUnsigned(postedZone);html("');if(d)d.showModal();</script>"); }
-    else if(failed) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN,"未保存修改","水路参数无效。");
-    endPage();
+    // Water-course management now lives on the settings page.
+    Esp32BaseWeb::redirectSeeOther("/irrigation/settings");
 }
 
 void IrrigationWeb::activeTask() {
@@ -2615,7 +2645,7 @@ void IrrigationWeb::zoneLearning() {
         sendUnsigned(config->flowMeter.pulsesPerLiterX100);
         Esp32BaseWeb::sendChunk(";if(!input||!output)return;function update(){var flow=Number(input.value),rateX10000=Math.round(flow*1000*coefficientX100/600);output.textContent=Number.isFinite(flow)&&flow>0&&rateX10000>0?(rateX10000/10000).toFixed(4)+' P/s':(flow>0?'低于可保存范围':'—')}input.addEventListener('input',update);update()})();</script>");
     }
-    Esp32BaseWeb::sendChunk("<p><a class='btnlink secondary' href='/irrigation/zones'>返回水路设置</a></p>");
+    Esp32BaseWeb::sendChunk("<p><a class='btnlink secondary' href='/irrigation/settings'>返回设置</a></p>");
     if (active) {
         IrrigationWebAssets::send(IrrigationWebAssets::Asset::LearningScript);
     }
