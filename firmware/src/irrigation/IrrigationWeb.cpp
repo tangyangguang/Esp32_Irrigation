@@ -1445,12 +1445,13 @@ void historyRow(const StoredWateringRecord& record, void* user) {
     RecordRowsContext row{g_app->configuration(), 0};
     sendRecordRow(record, &row);
 }
-struct AuditRows { uint32_t day=0, offset=0, matched=0, shown=0; bool skippedOnly=false; };
+struct AuditRows { uint32_t day=0, offset=0, matched=0, shown=0; uint8_t category=0; bool skippedOnly=false; };
 void auditRow(const IrrigationEvents::EventRecord& event, void* user) {
     auto& q=*static_cast<AuditRows*>(user); uint32_t epoch=0;
     Esp32BaseRecordStore::resolveCompletedEpoch(event.timing,epoch);
     if(q.day && (!epoch || WateringHistory::localDay(epoch)!=q.day)) return;
     if(q.skippedOnly && event.eventCode!=uint32_t(IrrigationEvents::EventCode::AutomaticPlanSkipped)) return;
+    if(q.category && static_cast<uint8_t>(IrrigationEvents::category(event)) + 1U != q.category) return;
     if(q.matched++ < q.offset || q.shown>=20) return; ++q.shown;
     char title[192]{}, summary[256]{};
     const auto* config=g_app->configuration();
@@ -2050,15 +2051,47 @@ void IrrigationWeb::records() {
 void IrrigationWeb::events() {
     if(!beginPage("操作与设备异常历史","查看影响计划和水路的必要变化"))return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
-    html("<p><a href='/irrigation/records'>‹ 浇水记录</a></p><section class='panel'><h2>事件记录</h2><div class='tablewrap'><table class='event-table'><thead><tr><th>时间</th><th>等级</th><th>事件</th><th>说明</th></tr></thead><tbody>");IrrigationEvents::EventStatus status{};AuditRows q{};uintParam("offset",0,UINT32_MAX-20,q.offset);
+    html("<p><a href='/irrigation/records'>‹ 浇水记录</a></p>");
+    char date[12]{};
+    AuditRows q{};
+    uint32_t category = 0;
+    if (getParam("date", date, sizeof(date)) && std::strlen(date) == 10) {
+        char dateTime[24]{};
+        uint32_t dayEpoch = 0;
+        std::snprintf(dateTime, sizeof(dateTime), "%sT00:00", date);
+        if (IrrigationTime::parseLocalDateTimeUtc8(dateTime, dayEpoch)) q.day = WateringHistory::localDay(dayEpoch);
+    }
+    if (uintParam("category", 1, 4, category)) q.category = static_cast<uint8_t>(category);
+    uintParam("offset", 0, UINT32_MAX - 20, q.offset);
+    html("<form method='get' class='event-filter'><label>日期<input type='date' name='date' value='"); escaped(date);
+    html("'></label><label>类别<select name='category'><option value='0'>全部类别</option>");
+    for (uint8_t index = 0; index < 4; ++index) {
+        const auto categoryEnum = static_cast<IrrigationEvents::Category>(index);
+        html("<option value='"); sendUnsigned(index + 1U); html("'");
+        if (q.category == index + 1U) html(" selected");
+        html(">"); escaped(IrrigationEvents::categoryName(categoryEnum)); html("</option>");
+    }
+    html("</select></label><button>筛选</button><a href='/irrigation/events'>清除</a></form>");
+    html("<section class='panel'><h2>事件记录</h2><div class='tablewrap'><table class='event-table'><thead><tr><th>时间</th><th>等级</th><th>事件</th><th>说明</th></tr></thead><tbody>");
+    IrrigationEvents::EventStatus status{};
     const bool readable=g_app->readEventStatus(status) && status.eventStore.ready &&
         (!status.eventStore.recordCount || g_app->readLatestEvents(0,status.eventStore.recordCount,auditRow,&q));
     html("</tbody></table></div>");
     if(!readable) html("<p>历史暂时无法读取，不能据此判断没有发生过事项。</p>");
-    else if(!q.shown) html("<p>暂无历史事项。</p>");
+    else if(!q.shown) html("<p>当前筛选条件下暂无事件。</p>");
     html("</section>");
-    if(q.offset) { html("<a class='btnlink secondary' href='?offset="); sendUnsigned(q.offset>20?q.offset-20:0); html("'>上一页</a> "); }
-    if(q.matched>q.offset+q.shown){html("<a href='?offset=");sendUnsigned(q.offset+20);html("'>更早记录 ›</a>");}endPage();
+    if(q.offset || q.matched>q.offset+q.shown) {
+        auto pagingLink = [&](uint32_t nextOffset, const char* label) {
+            html("<a class='btnlink secondary' href='?date="); escaped(date);
+            html("&category="); sendUnsigned(q.category);
+            html("&offset="); sendUnsigned(nextOffset); html("'>"); html(label); html("</a> ");
+        };
+        html("<nav class='actions'>");
+        if (q.offset) pagingLink(q.offset>20?q.offset-20:0, "上一页");
+        if(q.matched>q.offset+q.shown) pagingLink(q.offset+20, "更早记录 ›");
+        html("</nav>");
+    }
+    endPage();
 }
 void IrrigationWeb::zones() {
     if (Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
