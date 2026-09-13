@@ -9,12 +9,8 @@ enum class Asset : uint8_t {
     HomeScript,
     ActiveTaskStyle,
     ActiveTaskScript,
-    PauseScript,
-    SingleOutputForm,
     LearningStyle,
     LearningScript,
-    RecordsStyle,
-    EventsStyle,
 };
 
 bool registerAssets();

@@ -22,8 +22,8 @@ public:
     const WateringSessionSummary* finishedSession() const;
     void clearFinishedSession();
 
-private:
     static bool isValidRequest(const WateringRequest& request, const IrrigationConfig& config);
+private:
     bool beginCurrentZone(uint32_t nowMs);
     bool applyValveHoldIfDue(uint32_t nowMs);
     void finishCurrentZone(uint32_t nowMs);

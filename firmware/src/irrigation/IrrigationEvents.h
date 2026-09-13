@@ -97,7 +97,6 @@ public:
     struct EventStatus {
         Esp32BaseRecordStore::StoreStatus eventStore{};
         bool conditionStateLoaded = false;
-        bool conditionStateSavePending = false;
     };
     using ReadCallback = void (*)(const EventRecord&, void*);
 
@@ -115,9 +114,6 @@ public:
     void recordAutomaticPlanSkipped(uint8_t planId, const char* planName,
                                     WateringStartResult result,
                                     const WateringStatus& status);
-    bool recordAutomaticRun(
-        const Esp32BaseRecordStore::RecordTiming& timing,
-        const WateringSessionSummary& summary);
     void recordZoneFlowSaved(uint8_t zoneId,
                              uint32_t previousFlowMlPerMinute,
                              uint32_t pulseRateX10000,
@@ -138,10 +134,6 @@ public:
     static Category category(const EventRecord& event);
     static const char* categoryName(Category category);
     static const char* levelName(Level level);
-    static bool hasWateringContext(const EventRecord&) { return false; }
-    static WateringSource wateringSource(const EventRecord&) {
-        return WateringSource::ManualZones;
-    }
     static uint8_t wateringPlanId(const EventRecord& event);
     static void formatTitle(const EventRecord& event, char* out,
                             std::size_t length,
@@ -157,8 +149,6 @@ private:
     static constexpr uint8_t kClosedValveFlowConditionId = 4;
 
     bool append(const IrrigationAuditPayload& payload);
-    bool append(const Esp32BaseRecordStore::RecordTiming& timing,
-                const IrrigationAuditPayload& payload);
     void observe(Esp32BaseConditions::ConditionTracker& tracker,
                  Esp32BaseConditions::ObservedState state,
                  ConditionDisplayState& displayState);

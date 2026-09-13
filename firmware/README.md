@@ -1,161 +1,47 @@
 # ESP32 灌溉控制器固件
 
+本轮本地 Web 与设备核心重构已完成源码实现和约定的本机验证。基础库 59/59、灌溉核心 72/72、独立执行任务及存储集成检查通过；最终 LOCAL 固件构建、静态资源一致性和 OTA 容量门禁通过。未进行浏览器验收、实机升级或真实水路测试。
 
-当前架构重构目标 Core 3 TLS 镜像 1,568,160 B，静态 RAM 95,228 B，OTA 单槽余 201,312 B（11.38%）。独立控制任务另使用 4096 B 运行栈及任务控制块，资源取舍优先保证控制时序。配置/控制器 46 项、执行任务宿主检查、真实 Base/SDK 存储故障及恢复检查通过；最终镜像已完成授权 Web OTA 及一次合并的无水短时检查。真实水路精度、物理波形和长期稳定性未验证。
-本目录包含当前唯一有效的灌溉控制器固件。产品和业务规则以 `../docs/当前方案/` 为准，硬件事实以 `../pcb_irrigation/` 下 2026-07-11 的 BOM 和网表为准，公共设备能力以`../../../foundation/Esp32Base` 当前文档和代码为准。
+## 当前待办（2026-09-13）
 
-## 当前升级计划（2026-09-10）
+- [x] 本地执行/记录边界：来源与目标方式分开，持久任务标记、未知中断结果、本地滚动历史、RAM Conditions。
+- [x] 页面结构：每日水路卡片、次级手动、计划编辑、记录详情、设备维护；同步测试源码和当前契约。
+- [x] 源码人工联动审阅及必要问题修复。
+- [x] 获批本机测试、存储集成及最终构建通过；更新验证结论。配套提交以两个责任仓的 Git 历史为准。
 
-本节是唯一当前进度入口。本轮业务精简与 Base 架构重构已完成开发交付。类型级验收见 [灌溉类型账本](../../../platform/iot-device/contracts/device-types/irrigation-controller/README.md)。
+约定的本机验证无剩余项。浏览器体验、实机升级与真实水路验证尚未执行，需单独明确目标及授权；MQTT、IoT 平台和小程序适配属于后续独立任务，不在本轮继续实施。
 
-当前架构重构按用户确认的评审实施并已推送：设备 8238ee2（执行任务与参数职责）、a71d376（双 Store 独立故障/恢复及正式文档），Base d2555ea（参数持久化与生效状态分离）。最终镜像已 OTA 到授权完整硬件实验板，运行 app0 / valid；必要宿主检查、目标编译与合并无水短时检查均通过，详见本页末节。
+## 本地运行契约
 
-完整硬件板 AA8C 的测试小程序状态、命令终态和关联业务记录已实链路验证通过，本轮源码修复无剩余项。旧核心板 F9D108 仍为旧固件，暂时保留未升级，是否继续使用待用户确认；不得把两台板的结果混用。真实水路与长期试运行由用户按需开展，不作为本轮交付前置条件；独立专业校准工具仍属后续任务。
+业务规则及状态边界以 [业务规则](../docs/当前方案/02-业务规则与安全.md) 和 [软件设计](../docs/当前方案/03-软件设计原则与边界.md) 为准。硬件依据仍为 pcb_irrigation 下 2026-07-11 的 BOM/网表；不改变阀泵顺序、独立控制任务、TWDT、无流量保护、学习时限和维护门禁。
 
-本轮配置 JSON 仅保存 schema_version、revision、zones、plans；系统参数只保存于 NVS。配置格式为 schema 5，审计使用 v3；删除校准专用字段后不读取或迁移旧配置和旧审计；无当前配置时初始化，已有无效配置时保持安全未就绪并明确报错，不自动格式化。更新旧样机需另行确认目标配置初始化，不能用本轮构建冒充已升级。
+主目标显式 LOCAL Profile，启用 RTC、RecordStore、Conditions、AppConfig；SDK 不在 lib_deps，IrrigationIot*.cpp 与 IrrigationCommandJournal.cpp 从目标排除。旧适配文件供下一任务审阅，不提供本轮兼容保证。文件日志不改。
 
-后续专业校准方案只保存在工作区临时 [待办文件](../../../TASK-流量计专业校准平台接入.md)，本轮不实现小程序/服务端校准，也不改水龙头。当前计量契约为 K=每升脉冲数，水量 L=P/K；参数应用不改变已开始任务的快照。
+配置 schema 5 保持不变。watering v8：210 B payload + 24 B Base 槽；audit v4：20 B payload + 24 B 槽。预算 160/48 KiB，均 RotateOldest，保留条数动态推导；不因未同步阻止轮转。任务标记 234 B；真正的写入/校验失败保持明确故障，输出关闭后结果不能虚报成功。旧历史不迁移、不自动清理，升级维护只能处理明确的旧测试历史，不能格式化来掩盖容量问题。
 
-固件目标保持 **classic ESP32、4 MiB 分区布局**，双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump。用户允许调整历史条数：watering/audit 预算为 160/48 KiB，容量为 **666/675 条**；完整记录字段、业务功能、128 KiB 日志和 128 KiB FS 安全空间保留，另留 48 KiB 元数据/配置余量。重构前基线 bin **1615104 B**，每槽剩余 **154368 B（8.72%）**；静态 RAM **100396 B**。当前源码数值见文首。
+最终受控 Core 3 LOCAL 构建：镜像 1,344,752 B，链接 Flash 1,344,340 B，PlatformIO 静态 RAM 75,860 B；每个 OTA 槽剩余 424,720 B（24.00%）。运行堆/栈峰值未测量。分区不变：4 MiB 布局、双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump；历史预算 208 KiB、文件日志 128 KiB、FS 安全空间及配置余量保留。控制任务 4096 B 栈来自运行堆，不能用静态 RAM 值冒充运行峰值。新增的记录 payload、任务 marker、统计上下文均有固定上限，无持久日汇总、无新消息队列。
 
-| 状态 | 交付结果 / 责任 | 尚缺工作与边界 |
-| --- | --- | --- |
-| 用户试运行 | 现场边界 | 本轮使用完整硬件但未接水路的授权实验板，OTA 与短时无水检查通过。早期核心板证据仅作历史记录；长稳、满容量、反复断电和真实水路由用户按需验证。 |
-| 正式发布前 | 安全与交付边界 | 单设备凭据/ACL、首次 Web 默认认证治理和受控工具链分发需单独确认；未改真实账号、权限或 NUC。 |
+## 验证入口与结果（再次执行需遵守工作区授权）
 
-此前试运行修复已提交推送：设备 e961ad0（栈峰值与 active 读取）、server 21b9eb9（无回执过期收尾），Base 10505fe；lab 4a2f1e4 与 wx 5fe103c 更新实际证据。此前已提交推送：设备 SDK 会话/双流 5180992、来源与未知时间 d727e24、Base 诊断 3d9483b、RAM 命令账本 4b98650、存储故障恢复 877a606、4 MiB 分区 514e149；Base WiFi 尝试计数 c206326，SDK a076543；lab b963ad0 / 7c63141，server d2046a8，wx ce16e19。设备只保留灌溉策略，Base 负责通用资源与维护，SDK 负责平台会话、消息和可靠流。
-
-此前核心板验证目标为 `/dev/cu.usbserial-57460296581`，ESP32-D0WD-V3 rev 3.1，4 MiB，MAC `08:d1:f9:3b:2c:f4`。硬件 deviceId `esp32-irrigation-f42c3bf9d108`，本机业务实例 UUID `ad182049-f086-443b-a46a-9bf0cfdc6862`。首次更新时逐段 Hash 校验通过；保留原始日志及 NVS，旧文件系统仅有可舍弃实验记录，没有业务配置文件。私密备份和串口原日志仅存放于忽略目录 `local_private/`。
-
-### LittleFS 启动崩溃修复（2026-09-10）
-
-当前完整实验板连接 `/dev/cu.usbserial-130`，芯片 ESP32-D0WDQ6 rev 1.0，Flash ID 厂商 `c8` / 设备 `4017`，实测物理容量 8MiB；仍使用上述 4MiB 分区布局。用户说明硬件完整但尚未接实际水路。该板原 LittleFS 分区内容无效，挂载时因缺少有效超级块、自动检测的块数量为零而除零重启；仅初始化 512KiB LittleFS 后，用户确认旧固件正常启动。
-
-Base `ac1e569` 的受控库已加入根目录及块数量校验，损坏挂载返回错误，不自动格式化。当前构建依赖固定到 `esp32-core-3.3.8-tls-fd6058a00d6b06aa`；补丁、源码哈希及定向验证说明见 [受控工具链](../../../foundation/Esp32Base/docs/14_tls_toolchain.md#littlefs-挂载校验补丁)。已按本文受控 Core 3 命令完成目标构建、OTA 容量门禁及实际安装库哈希核对。该阶段 `firmware.bin` SHA256 为 `f42d89794b7ab856c0661192ad77b68e978315f492a55f43503dea66c3301331`。本次修复未刷入实验板，旧固件恢复启动不能替代补丁实机验证；后续可通过正常 OTA 更新，无需重新初始化有效文件系统。
-
-## 1. 当前产品范围
-
-当前固件实现：
-
-- 6 路 12V DC 电磁阀互斥控制；
-- 可选外部水泵继电器控制；
-- 流量采集、无流量保护、高低流量告警和关阀后异常水流监测；
-- 手动浇水、每日计划、自动调度暂停与恢复；
-- 每升脉冲数设置、水路基准学习和单次出水；
-- 配置安全保存、浇水记录、业务事件和在线检查点；
-- DS3231 RTC 离线时间、NTP 校时和本地 Web；
-- 认证 Web、System 维护、文件系统日志和 HTTP Web OTA；
-- `LED1 / GPIO13` 低电平点亮的非阻塞状态指示；
-- 当前 `irrigation-controller/v1` MQTTS 外围适配：固定七个 channel Topic、QoS 1、retain/LWT/正常 shutdown、五类命令、receipt/progress、八项业务状态及独立 60 秒诊断投影和可靠业务记录流。
-
-MQTT 适配只调用现有配置、调度和浇水入口，不直接操作 GPIO，也不建立第二套网络生命周期。未提供本机私密 MQTT 配置时，固件保持本地能力可用且不尝试连接 Broker；掉线、重连或平台不可用不得阻断本地 Web、RTC 自动调度、保护和安全停机。
-
-产品永久不实现 LCD2004、本地菜单和四按钮业务交互。
-
-## 2. Esp32Base 接入契约
-
-正式固件使用：
-
-```ini
--D ESP32BASE_PROFILE=ESP32BASE_PROFILE_IOT
--D ESP32BASE_MQTT_MAX_PAYLOAD_BYTES=4096
--D ESP32BASE_MQTT_MAX_INCOMING_PAYLOAD_BYTES=4096
--D ESP32BASE_MQTT_MAX_OUTBOX_BYTES=4352
--D ESP32BASE_ENABLE_RECORD_STORE=1
--D ESP32BASE_ENABLE_CONDITIONS=1
--D ESP32BASE_ENABLE_APP_CONFIG=1
--D ESP32BASE_ENABLE_RTC=1
--D ESP32BASE_RTC_DRIVER=ESP32BASE_RTC_DRIVER_DS3231
-```
-
-设备记录测试使用 `ESP32BASE_PROFILE_OFFLINE`，只显式开启测试需要的 Record Store 和 Conditions。
-
-当前基础库只支持 `MINIMAL / OFFLINE / LOCAL / IOT` 四个 Profile。项目不得重新引入旧 Profile、`ESP32BASE_ENABLE_WEB_OTA`、`ESP32BASE_ENABLE_ARDUINO_OTA`、ArduinoOTA/espota、3232 监听端口或已删除的认证读取 API。其它项目接入或适配当前基础库时，先阅读：
-
-- `../../../foundation/Esp32Base/docs/13_integration_and_upgrade.md`
-- `../../../foundation/Esp32Base/docs/02_profiles.md`
-- `../../../foundation/Esp32Base/docs/04_web.md`
-- `../../../foundation/Esp32Base/docs/05_ota.md`
-
-项目业务代码只实现灌溉领域能力，不复制 Esp32Base 的 WiFi、Web、认证、OTA、文件系统、日志、时间、RTC、配置、健康和看门狗实现。
-
-MQTT 私密配置只放在 Git 忽略的 `local_private/irrigation_iot_private.h`：
+在工作区根目录：
 
 ```sh
-mkdir -p local_private
-cp IrrigationIotSecrets.example.h local_private/irrigation_iot_private.h
+python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d foundation/Esp32Base -e native_record_store_harness -e native_config_harness
+python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d devices/Esp32_Irrigation/firmware -e native
+python3 devices/Esp32_Irrigation/firmware/scripts/test_storage_views.py
+python3 devices/Esp32_Irrigation/firmware/scripts/test_executor.py
+python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
 ```
 
-填写 Broker 主机、8883 端口、项目用户名/密码和签发 Broker 证书的 CA PEM。不得提交该文件、设备凭据或正式环境地址。Client ID 和协议 `deviceId` 均由运行时芯片 MAC 生成的永久 `esp32-irrigation-{12位小写十六进制}`，不允许私密文件覆盖身份。当前固定 Arduino Core 3.3.8 与 Base 受控完整 TLS 工具链；CA、hostname 和证书 notBefore/notAfter 均校验，不启用跳过日期检查的例外。
+本轮上述入口均通过。验证中修复了旧事件上下文接口的遗留引用、宿主时间接口，以及审计待存事实在 OTA 写入暂停期间应保留原时间并延后写入的判断；只重测相关存储集成和主目标，未重复未受影响的已通过批次。
 
-## 3. 启动与运行边界
+覆盖 codec/调度/控制器、本地滚动/重启记账/未知统计、Base Conditions 和 blob 读取错误、原执行任务隔离。构建同时通过静态资源漂移与 OTA 容量门禁。全部操作仅生成本机产物，未烧录、OTA、启动服务或浏览器，也未触发真实水路。编译器仅提示 LTO 串行执行，不影响构建通过。
 
-启动顺序固定为：
+`test_storage_views.py` 使用真实 Base 存储引擎与内存文件系统，NVS 标记用受控夹具；不代表物理掉电验证。`esp32_record_test` 会格式化设备文件系统，不能随本机批次运行。测试失败后按工作区规则先只读定位及修复，再申请有限重测。
 
-1. 第一项初始化 `BoardHardware`，关闭泵信号、全部阀 PWM 和阀驱动总使能。
-2. 在输出安全关闭后初始化状态灯。
-3. 初始化 I2C，并将 DS3231 总线交给 `Esp32BaseRtc`。
-4. 设置 Web 默认认证，注册业务 Web、App Config 和文件系统格式化回调。
-5. 调用 `Esp32Base::begin()`；失败时保持全部输出关闭并进入故障指示。
-6. 基础库启动成功后启用 WiFi modem sleep。
-7. 加载业务配置、命令幂等 journal、调度状态、watering/audit 两个业务 Store 及 SDK 独立记录流恢复。
-8. 只有全部必需状态有效时才进入业务 ready。
+## Web 源与生成物
 
-控制器由 `WateringExecutor` 的独立任务推进（classic ESP32 core 1、优先级 3、4096 B 栈、最多等待 5 ms 或一个 RTOS tick）；它独占正常硬件操作，不调用网络、文件、NVS 或 Base 服务。Arduino loop 处理结果持久化、调度和 IoT，再调用 `Esp32Base::handle()`。唯一服务任务通过一个有界同步命令槽取得实际处理结果，停止不会被普通命令积压；只读快照用短 mutex 保护，锁不跨越 Web/存储调用。控制任务独立加入 TWDT；Flash/cache 停顿仍不是硬实时保证。Web/MQTT handler 不执行校准、等待出水或其它长时间流程；MQTT 消息由 Esp32Base 有界邮箱串行分发。中断只累计流量脉冲，不做日志、存储、业务判断或硬件切换。MQTT 状态和记录序列化共用 `IrrigationIot` 长期对象中的单一 4097 B 缓冲，不在 `loopTask` 栈上创建 4 KiB 临时数组；这是当前 4096 B payload 上限下的硬性栈安全边界。
-
-IOT 在 Base 启动前注册网络停止回调，通过 SDK 发起同一 connectionId 的正常 shutdown。维护等待最多 3 秒，必须匹配最终 PUBACK 并收到断开事件才开始 OTA；失败恢复网络许可并拒绝更新。安全重启仍先关输出，退出失败不伪装成功。MQTT PUBACK 不是业务记录落库确认。
-
-WiFi modem sleep 保持 STA、Web、NTP、OTA、调度和保护可用；本项目不进入 Deep-sleep，不降低 CPU 频率，也不改变泵阀控制时序。OTA 期间由 Esp32Base 临时关闭 power save，结束后恢复。
-
-## 4. 配置与持久数据
-
-当前数据定义：
-
-- 灌溉 JSON 配置：schema v5，权威路径 `/app/irrigation/config.json`；
-- 浇水事实：`watering` Store v7，固定 221 B payload、160 KiB 逻辑预算；它同时是本地历史与平台补发的唯一事实源；
-- 必要审计事实：`irrigation-audit` Store v3，固定 48 B payload、48 KiB 逻辑预算；保存自动计划运行/跳过、自动总控、计划修改和水路基准保存；
-- 两个 Store 各自拥有独立 `recordStreamId + recordSequence`、累计业务 ACK 和 Base Store 释放检查点，在同一 MQTT Client 与 event topic 上公平交错发送；
-- MQTT 命令账本：SDK 管理固定 16 条 RAM 记录，二进制 UUID、不可变语义签名、receipt 和可信终态；未交付证据或未终结记录不因过期覆盖。重启按 SDK 启动截止时间拒绝旧命令，不恢复任务、不推断终态；
-- RTC 不可用、可信时间不可用、RTC 倒退和关阀异常水流只由 `Esp32BaseConditions` 在 NVS 保存当前活动位图，不形成通用历史；
-- 系统文件日志：4 × 32 KiB，默认 WARN；
-- 标量系统参数：Esp32Base App Config / NVS；
-- 自动浇水总控、调度防重复标记、在线检查点、记录流身份和低频累计 ACK 检查点：由 Base Store 控制记录维护；调度等小状态仍为项目 NVS。
-
-IoT 记录 QoS 1 PUBACK 只解除本次 MQTT 在途发布，不删除补发事实；只有匹配对应 `recordStreamId` 且不越过该 Store 日志头的累计 `record-ack` 才推进该流 RAM 水位，绝不联动另一流。各流 ACK 每累计 32 条或推进后满 24 小时才保存 Base Store 释放检查点；Store 容量满且仍有未确认记录时停止该 Store 追加，全部保留记录已确认后才允许分段轮转。
-
-配置文件存在但当前副本和备份都无效时，固件保持安全停机，不用默认值覆盖。重新编译、串口烧录或 HTTP OTA 不得清理或覆盖已有有效 NVS/LittleFS 数据。只有业务结构明确不兼容时才拒绝启动并提示重新配置；不得自行猜测或迁移旧结构。
-
-LittleFS 挂载失败不会自动格式化。格式化只允许用户在确认没有需保留数据后从 System 页明确执行；它不会清 WiFi、Web Auth 或其它 NVS。格式化完成后，业务回调负责重建当前配置和存储。
-
-当前应用在源码中提供 `admin/admin` 作为首次启动 Web 默认认证，已保存的 `eb_web` 认证优先。该共享默认值只适用于受控本地初始化，部署后必须立即在 Web Auth 页面修改；在进入批量交付前应改为每台设备唯一的受控初始化凭据方案，不能把共享默认值当作量产安全边界。
-
-## 5. 构建与自动测试
-
-在本目录执行；复用 Base 已准备的受控 Core 3 TLS 工具链，不重复重建工具链或全量测试矩阵：
-
-```sh
-python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -e esp32_irrigation_arduino3
-python3 scripts/test_storage_views.py
-python3 scripts/test_hardware.py
-python3 scripts/test_executor.py
-python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native -f test_command_journal
-```
-
-按改动选择定向检查。当前证据：实际 Base Store/Conditions + SDK 内存 FS 检查通过（容量/预算、读写损坏、原始时间冻结、恢复重试、双流 ACK 隔离、显式格式化、故障恢复）；GPIO/LEDC 安全预置与故障注入通过；命令账本 4 项、控制器/调度 50 项通过；lab 协议 8 项/定义校验、server 定义加载 3 项/统计 1 项/源码类型检查、wx records 8 项通过。Base 维护 MQTT 26 项及架构/安全检查通过。
-
-完整本机 MQTT/TLS 配置参与目标链接，bin 通过每槽至少 8% 余量门禁。无私密配置时可用 `scripts/build_iot_release_fixture.py` 检查链接容量；它使用无效 CA 夹具，不能用于真实联网验收。设备端存储测试仅适用于明确可清空的试验设备，本轮未执行该测试固件。
-
-## 6. Web 静态资源
-
-大段业务 HTML、CSS 和 JavaScript 在 `web-src/` 维护，通过以下命令确定性生成压缩固件数组：
-
-```sh
-python3 scripts/generate_web_assets.py
-```
-
-正式构建前置脚本会执行 `--check`，源文件与生成物不一致时拒绝构建。CSS/JS 预生成 gzip，通过 Esp32Base 静态资源接口发送，由浏览器解压；10 个资源均要求认证，带内容摘要版本和 private 缓存。表单 HTML 原样分块输出，不再常驻解压缓冲或调用 ROM miniz；不写入 LittleFS，不绕过基础 Web 生命周期。
-
-页面样式修改通过构建后可以在获得当次授权时烧录；烧录后由用户在实机浏览器完成最终视觉验收，自动化工具不替代视觉确认。
+`web-src/` 为 CSS/JS 权威源，`python3 scripts/generate_web_assets.py` 只生成 gzip 固件静态源。构建执行 `--check` 漂移检查；本轮生成物一致性检查通过，浏览器视觉与交互验收未执行。样式不使用卡片左侧彩色竖条。后续视觉调整应只影响此展示层。
 
 ## 7. HTTP Web OTA
 
@@ -181,6 +67,11 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain r
 ```
 
 普通构建和测试不会触发 OTA。不得提交真实设备地址、账号或密码。不得配置 espota、ArduinoOTA 或 3232 端口。
+
+
+## 历史验证证据（以下均非本轮验收）
+
+以下保留先前版本的实机与平台证据，其中旧 API、尺寸、通过状态及“本轮”均指原日期的任务，不能用于当前 LOCAL 重构验收或扩大本次测试授权。
 
 ## 8. 实机验证边界
 

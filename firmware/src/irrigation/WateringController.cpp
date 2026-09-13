@@ -48,6 +48,7 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     stopSessionAfterValveClose_ = false;
     sessionSummary_ = {};
     sessionSummary_.source = request.source;
+    sessionSummary_.targetMode = request.targetMode;
     sessionSummary_.purpose = request.purpose;
     sessionSummary_.planId = request.planId;
     sessionSummary_.planName = request.planName;
@@ -186,7 +187,7 @@ void WateringController::handle(uint32_t nowMs) {
                 break;
             }
             if (elapsed(nowMs, stateStartedMs_, step.targetDurationSec * 1000U)) {
-                if (request_.source == WateringSource::SingleOutput &&
+                if (request_.targetMode == WateringTargetMode::Volume &&
                     step.targetWaterMl != 0) {
                     finishSession(WateringStopReason::TargetVolumeTimeout, nowMs);
                 } else {
@@ -234,6 +235,7 @@ WateringStatus WateringController::status() const {
     result.active = active_;
     result.state = state_;
     result.source = request_.source;
+    result.targetMode = request_.targetMode;
     result.planId = request_.planId;
     result.stepCount = request_.stepCount;
     result.activeZoneId = static_cast<uint8_t>(active_ && currentStepIndex_ < request_.stepCount
@@ -364,22 +366,21 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
     if (request.stepCount == 0 || request.stepCount > request.steps.size()) {
         return false;
     }
-    if ((request.source != WateringSource::ManualZones &&
-         request.source != WateringSource::SingleOutput &&
+    if ((request.source != WateringSource::Manual &&
          request.source != WateringSource::AutomaticPlan) ||
         (request.purpose != WateringPurpose::Normal &&
          request.purpose != WateringPurpose::ZoneFlowLearning)) {
         return false;
     }
-    const bool manualSource = request.source == WateringSource::ManualZones ||
-                              request.source == WateringSource::SingleOutput;
+    const bool manualSource = request.source == WateringSource::Manual;
     if ((manualSource && request.planId != 0) ||
         (!manualSource &&
          (request.planId == 0 || request.planId > kWateringPlanCount))) {
         return false;
     }
-    if (request.source == WateringSource::SingleOutput &&
-        (request.purpose != WateringPurpose::Normal || request.stepCount != 1)) {
+    if (request.targetMode != WateringTargetMode::Duration && request.targetMode != WateringTargetMode::Volume) return false;
+    if (request.targetMode == WateringTargetMode::Volume &&
+        (request.source != WateringSource::Manual || request.steps[0].targetWaterMl == 0 || request.purpose != WateringPurpose::Normal || request.stepCount != 1)) {
         return false;
     }
 
@@ -393,9 +394,9 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
             (request.purpose == WateringPurpose::Normal &&
              step.targetDurationSec >
                  static_cast<uint32_t>(config.runLimits.maximumZoneDurationMinutes) * 60U) ||
-            (request.source != WateringSource::SingleOutput &&
+            (request.targetMode != WateringTargetMode::Volume &&
              step.targetWaterMl != 0) ||
-            (request.source == WateringSource::SingleOutput &&
+            (request.targetMode == WateringTargetMode::Volume &&
              step.targetWaterMl != 0 &&
              (step.targetWaterMl < 100U ||
               step.targetWaterMl >
@@ -409,6 +410,7 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
 
 bool WateringController::beginCurrentZone(uint32_t nowMs) {
     const WateringStep& step = request_.steps[currentStepIndex_];
+    sessionSummary_.zones[currentStepIndex_].startedOffsetSec = (nowMs - sessionStartedMs_) / 1000U;
     zoneStartedPulseCount_ = hardware_.flowPulseCount();
     currentZoneStarted_ = false;
     currentZoneFinalized_ = false;
@@ -437,6 +439,7 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
     learningMinimumMlPerMinute_ = 0;
     learningMaximumMlPerMinute_ = 0;
     if (!hardware_.openValve(step.zoneId, 100)) {
+        sessionSummary_.zones[currentStepIndex_].result = ZoneWateringResult::Failed;
         return false;
     }
     currentZoneStarted_ = true;

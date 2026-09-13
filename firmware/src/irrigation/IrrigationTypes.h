@@ -99,10 +99,11 @@ struct IrrigationConfig : IrrigationParameters {
 };
 
 enum class WateringSource : uint8_t {
-    ManualZones = 0,
-    SingleOutput = 1,
+    Manual = 0,
     AutomaticPlan = 2,
 };
+
+enum class WateringTargetMode : uint8_t { Duration = 0, Volume = 1 };
 
 enum class WateringPurpose : uint8_t {
     Normal = 0,
@@ -123,6 +124,7 @@ enum class WateringResult : uint8_t {
     Completed,
     Stopped,
     Failed,
+    Incomplete,
 };
 
 enum class WateringStopReason : uint8_t {
@@ -137,6 +139,7 @@ enum class WateringStopReason : uint8_t {
     HardwareFailure,
     MaintenanceInterrupted,
     TargetVolumeTimeout,
+    RebootInterrupted,
 };
 
 enum class WateringStartResult : uint8_t {
@@ -174,6 +177,7 @@ struct WateringStep {
 
 struct WateringRequest {
     WateringSource source;
+    WateringTargetMode targetMode;
     WateringPurpose purpose;
     uint8_t planId;
     std::array<char, kObjectNameCapacity> planName;
@@ -182,6 +186,7 @@ struct WateringRequest {
 };
 
 struct ZoneWateringSummary {
+    uint32_t startedOffsetSec;
     uint8_t zoneId;
     std::array<char, kObjectNameCapacity> zoneName;
     ZoneWateringResult result;
@@ -213,6 +218,7 @@ struct WateringStatus {
     bool active;
     WateringState state;
     WateringSource source;
+    WateringTargetMode targetMode;
     uint8_t planId;
     uint8_t stepCount;
     uint8_t activeZoneId;
@@ -267,6 +273,7 @@ struct FlowHistorySnapshot {
 
 struct WateringSessionSummary {
     WateringSource source;
+    WateringTargetMode targetMode;
     WateringPurpose purpose;
     uint8_t planId;
     std::array<char, kObjectNameCapacity> planName;

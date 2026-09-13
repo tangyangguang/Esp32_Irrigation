@@ -15,12 +15,8 @@ ASSETS = [
     ("HomeScript", "home-script.html"),
     ("ActiveTaskStyle", "active-task-style.html"),
     ("ActiveTaskScript", "active-task-script.html"),
-    ("PauseScript", "pause-script.html"),
-    ("SingleOutputForm", "single-output-form.html"),
     ("LearningStyle", "learning-style.html"),
     ("LearningScript", "learning-script.html"),
-    ("RecordsStyle", "records-style.html"),
-    ("EventsStyle", "events-style.html"),
 ]
 
 

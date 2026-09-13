@@ -35,14 +35,14 @@ WateringSessionSummary summary() {
     return value;
 }
 
-void test_layout_is_fixed_193_bytes() {
-    TEST_ASSERT_EQUAL_UINT32(193U, WateringRecordCodec::kPayloadSize);
+void test_layout_is_fixed_210_bytes() {
+    TEST_ASSERT_EQUAL_UINT32(210U, WateringRecordCodec::kPayloadSize);
 }
 
 void test_round_trip_keeps_only_core_evidence() {
     WateringRecordPayload payload{};
     TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(
-        summary(), "550e8400-e29b-41d4-a716-446655440000", payload));
+        summary(), payload));
     uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
     WateringRecordPayload decoded{};
@@ -54,33 +54,45 @@ void test_round_trip_keeps_only_core_evidence() {
     TEST_ASSERT_EQUAL_UINT32(150U, decoded.zones[2].pulseCount);
     TEST_ASSERT_EQUAL_UINT32(5000U,
                              decoded.zones[0].baselinePulseRateX10000);
-    char uuid[37]{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::formatRelatedCommandId(
-        decoded, uuid, sizeof(uuid)));
-    TEST_ASSERT_EQUAL_STRING("550e8400-e29b-41d4-a716-446655440000", uuid);
 }
 
-void test_empty_command_id_round_trips_as_empty() {
-    WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary(), nullptr, payload));
-    char uuid[37]{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::formatRelatedCommandId(
-        payload, uuid, sizeof(uuid)));
-    TEST_ASSERT_EQUAL_STRING("", uuid);
+void test_task_identity_and_start_offsets_round_trip() {
+    auto session = summary(); session.zones[1].startedOffsetSec = 28;
+    WateringRecordPayload payload{}, decoded{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(session, payload));
+    payload.taskId = 42; payload.startedEpoch = 1800000000;
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_EQUAL_UINT32(42, decoded.taskId);
+    TEST_ASSERT_EQUAL_UINT32(1800000000, decoded.startedEpoch);
+    TEST_ASSERT_EQUAL_UINT32(28, decoded.zones[2].startedOffsetSec);
 }
-
-void test_invalid_uuid_and_zone_order_are_rejected() {
-    WateringRecordPayload payload{};
-    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(
-        summary(), "not-a-uuid", payload));
-    WateringSessionSummary invalid = summary();
-    invalid.zones[1].zoneId = 1U;
-    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(invalid, nullptr, payload));
+void test_unknown_recovery_does_not_claim_zero_or_measured_progress() {
+    WateringRecordPayload p{}; p.taskId = 9;
+    p.result = WateringResult::Incomplete; p.stopReason = WateringStopReason::RebootInterrupted;
+    p.zones[0].plannedDurationSec = 60;
+    p.zones[0].flags = WateringRecordCodec::kZoneFlagUnknown;
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(p, bytes, sizeof(bytes)));
+    p.zones[0].actualWateringSec = 1;
+    TEST_ASSERT_FALSE(WateringRecordCodec::encode(p, bytes, sizeof(bytes)));
+}
+void test_volume_is_manual_single_zone_and_zone_order_is_validated() {
+    WateringRecordPayload p{}; auto session = summary();
+    session.zones[1].zoneId = 1;
+    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(session, p));
+    session = summary(); session.source = WateringSource::Manual; session.planId = 0;
+    session.targetMode = WateringTargetMode::Volume; session.zoneCount = 1;
+    session.zones[0].targetWaterMl = 500;
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(session, p));
+    session.source = WateringSource::AutomaticPlan; session.planId = 1;
+    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(session, p));
 }
 
 void test_corrupted_header_and_invalid_result_pair_are_rejected() {
     WateringRecordPayload payload{};
-    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary(), nullptr, payload));
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary(), payload));
     uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
     TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
     bytes[0] ^= 0x01U;
@@ -94,10 +106,11 @@ void test_corrupted_header_and_invalid_result_pair_are_rejected() {
 
 int main(int, char**) {
     UNITY_BEGIN();
-    RUN_TEST(test_layout_is_fixed_193_bytes);
+    RUN_TEST(test_layout_is_fixed_210_bytes);
     RUN_TEST(test_round_trip_keeps_only_core_evidence);
-    RUN_TEST(test_empty_command_id_round_trips_as_empty);
-    RUN_TEST(test_invalid_uuid_and_zone_order_are_rejected);
+    RUN_TEST(test_task_identity_and_start_offsets_round_trip);
+    RUN_TEST(test_unknown_recovery_does_not_claim_zero_or_measured_progress);
+    RUN_TEST(test_volume_is_manual_single_zone_and_zone_order_is_validated);
     RUN_TEST(test_corrupted_header_and_invalid_result_pair_are_rejected);
     return UNITY_END();
 }

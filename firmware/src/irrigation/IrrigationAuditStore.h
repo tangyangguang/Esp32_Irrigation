@@ -1,20 +1,20 @@
 #pragma once
 
 #include <Esp32Base.h>
-#include <ports/Esp32RecordStorage.h>
 
 #include <cstddef>
 #include <cstdint>
 
 struct IrrigationAuditPayload {
     enum class Kind : uint8_t {
-        AutomaticRun = 1,
+        PlanSkipped = 1,
         AutomaticStateChanged = 2,
         PlansChanged = 3,
         ZoneBaselineSaved = 5,
+        ClosedFlowChanged = 6,
     };
 
-    Kind kind = Kind::AutomaticRun;
+    Kind kind = Kind::PlanSkipped;
     uint8_t reason = 0;
     uint8_t flags = 0;
     uint8_t objectId = 0;
@@ -42,22 +42,18 @@ public:
 class IrrigationAuditStore {
 public:
     static constexpr const char* kRecordTypeName = "irrigation-audit";
-    static constexpr uint16_t kStoreVersion = 3;
+    static constexpr uint16_t kStoreVersion = 4;
     static constexpr uint32_t kMaximumStoreBytes = 48UL * 1024UL;
     static constexpr uint32_t kMinimumFileSystemFreeBytes = 32UL * 1024UL;
     using ReadCallback = void (*)(const StoredIrrigationAuditRecord&, void*);
 
     bool begin();
-    iot_device::RecordStream& recordStream() { return stream_; }
-    static constexpr std::size_t kFactBytes = 4 + IrrigationAuditCodec::kPayloadSize;
-    static constexpr std::size_t kStoredBytes = iot_device::RecordStream::HeaderBytes + kFactBytes;
+    static constexpr std::size_t kStoredBytes = IrrigationAuditCodec::kPayloadSize;
     bool appendInstant(const IrrigationAuditPayload& payload);
     bool hasPending() const { return pending_; }
     bool flushPending();
     void discardPendingAfterFormat() { pending_ = false; }
-    bool appendRecorded(
-        const Esp32BaseRecordStore::RecordTiming& timing,
-        const IrrigationAuditPayload& payload);
+
     bool readLatest(uint32_t offset, uint32_t limit,
                     ReadCallback callback, void* user = nullptr);
     Esp32BaseRecordStore::RecordReadResult readById(
@@ -80,8 +76,6 @@ private:
     Esp32BaseRecordStore::RecordTiming pendingTiming_{};
     IrrigationAuditPayload pendingPayload_{};
     Esp32BaseRecordStore store_;
-    iot_device::Esp32RecordStorage sdkStorage_{store_};
     uint8_t scratch_[kStoredBytes]{};
-    iot_device::RecordStream stream_{sdkStorage_, scratch_, sizeof(scratch_)};
     static bool decodeFact(const uint8_t*, std::size_t, StoredIrrigationAuditRecord&);
 };

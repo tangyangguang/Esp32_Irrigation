@@ -1,8 +1,9 @@
 #include "IrrigationEvents.h"
+#include <runtime/Esp32BaseTime.h>
 
 #include <cstdio>
 
-#include "IrrigationRecordSync.h"
+#include "IrrigationRecords.h"
 
 IrrigationEvents::IrrigationEvents()
     : rtcUnavailableCondition_(kRtcUnavailableConditionId, 60000U, 60000U),
@@ -28,8 +29,8 @@ bool IrrigationEvents::resetConditionHistory() {
 }
 
 bool IrrigationEvents::storageFault() const {
-    return conditionFaults_ != 0 || !IrrigationRecordSync::instance().writable(
-        IrrigationRecordSync::StreamKind::Audit);
+    return conditionFaults_ != 0 || !IrrigationRecords::instance().writable(
+        IrrigationRecords::StoreKind::Audit);
 }
 
 bool IrrigationEvents::readStatus(EventStatus& status) const {
@@ -37,7 +38,6 @@ bool IrrigationEvents::readStatus(EventStatus& status) const {
     if (!auditStore_.readStatus(status.eventStore) ||
         !Esp32BaseConditions::readStatus(conditions)) return false;
     status.conditionStateLoaded = conditions.stateLoaded;
-    status.conditionStateSavePending = false;
     return true;
 }
 
@@ -107,26 +107,11 @@ void IrrigationEvents::recordAutomaticPlanSkipped(
     const WateringStatus& status) {
     if (result == WateringStartResult::Started) return;
     IrrigationAuditPayload payload;
-    payload.kind = IrrigationAuditPayload::Kind::AutomaticRun;
+    payload.kind = IrrigationAuditPayload::Kind::PlanSkipped;
     payload.reason = static_cast<uint8_t>(automaticSkipReason(result, status));
     payload.flags = 3U;  // skipped
     payload.objectId = planId;
     append(payload);
-}
-
-bool IrrigationEvents::recordAutomaticRun(
-    const Esp32BaseRecordStore::RecordTiming& timing,
-    const WateringSessionSummary& summary) {
-    if (summary.purpose != WateringPurpose::Normal ||
-        summary.source != WateringSource::AutomaticPlan) return true;
-    IrrigationAuditPayload payload;
-    payload.kind = IrrigationAuditPayload::Kind::AutomaticRun;
-    payload.reason = static_cast<uint8_t>(summary.stopReason);
-    payload.flags = summary.result == WateringResult::Completed
-                        ? 0U
-                        : summary.result == WateringResult::Stopped ? 1U : 2U;
-    payload.objectId = summary.planId;
-    return append(timing, payload);
 }
 
 void IrrigationEvents::recordZoneFlowSaved(
@@ -151,7 +136,9 @@ void IrrigationEvents::recordConfigurationChanged(
     if (change == ConfigurationChange::PlanCreated) reason = ReasonCode::PlanCreated;
     else if (change == ConfigurationChange::PlanUpdated) reason = ReasonCode::PlanUpdated;
     else if (change == ConfigurationChange::PlanDeleted) reason = ReasonCode::PlanDeleted;
-    else return;  // Zone/system settings remain available as current state.
+    else if (change == ConfigurationChange::ZoneUpdated) reason = ReasonCode::ZoneUpdated;
+    else if (change == ConfigurationChange::SystemParametersUpdated) reason = ReasonCode::SystemParametersUpdated;
+    else return;
     IrrigationAuditPayload payload;
     payload.kind = IrrigationAuditPayload::Kind::PlansChanged;
     payload.reason = static_cast<uint8_t>(reason);
@@ -184,13 +171,18 @@ void IrrigationEvents::observeRtcRollback(
     observe(rtcRollbackCondition_, state, rtcRollbackState_);
 }
 
-void IrrigationEvents::observeClosedValveFlow(
-    Esp32BaseConditions::ObservedState state,
-    uint32_t,
-    uint32_t,
-    uint16_t,
-    uint16_t) {
+void IrrigationEvents::observeClosedValveFlow(Esp32BaseConditions::ObservedState state,
+    uint32_t pulses, uint32_t, uint16_t windowSec, uint16_t) {
+    const auto previous = closedValveFlowState_;
     observe(closedValveFlowCondition_, state, closedValveFlowState_);
+    const bool active = closedValveFlowState_ == ConditionDisplayState::Active &&
+                        previous != ConditionDisplayState::Active && previous != ConditionDisplayState::ConfirmingRecovery;
+    const bool recovered = closedValveFlowState_ == ConditionDisplayState::Normal &&
+        (previous == ConditionDisplayState::Active || previous == ConditionDisplayState::ConfirmingRecovery);
+    if (!active && !recovered) return;
+    IrrigationAuditPayload payload{}; payload.kind = IrrigationAuditPayload::Kind::ClosedFlowChanged;
+    payload.flags = active ? 1 : 0; payload.value1 = pulses; payload.value2 = windowSec;
+    append(payload);
 }
 
 void IrrigationEvents::observe(
@@ -199,7 +191,7 @@ void IrrigationEvents::observe(
     ConditionDisplayState& display) {
     const auto result = Esp32BaseConditions::observe(tracker, observed);
     const uint8_t faultBit = static_cast<uint8_t>(1U << (tracker.conditionId() - 1U));
-    // Only a confirmed state clears this tracker's failed persistence attempt.
+    // Only a confirmed observation clears this tracker's readiness error.
     // A different healthy condition must not hide it.
     if (result == Esp32BaseConditions::ObservationResult::Activated ||
         result == Esp32BaseConditions::ObservationResult::Recovered ||
@@ -248,15 +240,7 @@ IrrigationEvents::ConditionDisplayState IrrigationEvents::conditionState(
 }
 
 bool IrrigationEvents::append(const IrrigationAuditPayload& payload) {
-    const bool stored = IrrigationRecordSync::instance().appendAudit(payload);
-    return stored;
-}
-
-bool IrrigationEvents::append(
-    const Esp32BaseRecordStore::RecordTiming& timing,
-    const IrrigationAuditPayload& payload) {
-    const bool stored =
-        IrrigationRecordSync::instance().appendAudit(timing, payload);
+    const bool stored = IrrigationRecords::instance().appendAudit(payload);
     return stored;
 }
 
@@ -271,7 +255,11 @@ IrrigationEvents::EventRecord IrrigationEvents::present(
     event.value2 = static_cast<int32_t>(stored.payload.value2);
     event.flags = stored.payload.flags;
     switch (stored.payload.kind) {
-        case IrrigationAuditPayload::Kind::AutomaticRun:
+        case IrrigationAuditPayload::Kind::ClosedFlowChanged:
+            event.eventCode = static_cast<uint32_t>(EventCode::ClosedValveFlow);
+            event.level = stored.payload.flags ? Level::Warning : Level::Info;
+            break;
+        case IrrigationAuditPayload::Kind::PlanSkipped:
             event.eventCode = static_cast<uint32_t>(EventCode::AutomaticPlanSkipped);
             event.level = stored.payload.flags == 0U ? Level::Info : Level::Warning;
             break;
@@ -338,28 +326,47 @@ void IrrigationEvents::formatTitle(const EventRecord& event,
             std::snprintf(out, length, "水路 %lu 的基准流量已保存",
                           static_cast<unsigned long>(event.objectId));
             return;
+        case EventCode::ClosedValveFlow:
+            std::snprintf(out, length, "%s", event.flags ? "关阀后水流异常" : "关阀后水流已恢复"); return;
         case EventCode::ConfigurationChanged:
             std::snprintf(out, length, "灌溉设置已修改");
+            return;
+        default:
+            std::snprintf(out, length, "未识别的历史事项");
             return;
     }
 }
 
-void IrrigationEvents::formatSummary(const EventRecord& event,
-                                     char* out,
-                                     std::size_t length) {
-    if (!out || length == 0U) return;
-    switch (static_cast<EventCode>(event.eventCode)) {
-        case EventCode::AutomaticPlanSkipped:
-            std::snprintf(out, length,
-                          event.flags == 3U ? "本次计划已跳过且不会补执行。"
-                                            : "本次自动浇水已经形成完整记录。");
-            break;
-        case EventCode::ZoneFlowSaved:
-            std::snprintf(out, length, "当前基准流量为 %ld ml/min。",
-                          static_cast<long>(event.value2));
-            break;
-        default:
-            std::snprintf(out, length, "当前设置已保存。");
-            break;
+void IrrigationEvents::formatSummary(const EventRecord& event, char* out, std::size_t length) {
+    if (!out || !length) return;
+    if (event.eventCode == static_cast<uint32_t>(EventCode::ClosedValveFlow)) {
+        std::snprintf(out, length, "%s", event.flags ? "关闭输出后仍检测到持续水流，请检查阀门、水源及现场管路。" : "完整观察窗口已无脉冲，当前异常解除；历史不代表现在状态。"); return;
     }
+    const char* message = "设置已更新，仅影响之后的任务。";
+    switch (static_cast<ReasonCode>(event.reasonCode)) {
+        case ReasonCode::PausedIndefinitely: message = "自动浇水持续暂停，手动恢复后生效；当前任务不受影响。"; break;
+        case ReasonCode::PausedUntil: {
+            char time[32]{};
+            Esp32BaseTime::formatEpoch(static_cast<uint32_t>(event.value1), time, sizeof(time), "%m-%d %H:%M");
+            std::snprintf(out, length, "暂停至 %s；暂停期间的计划不会补执行。", time); return;
+        }
+        case ReasonCode::ResumedManually: message = "用户恢复自动浇水，将按之后的启动时间执行。"; break;
+        case ReasonCode::ResumedAutomatically: message = "暂停时间已到，自动浇水恢复；错过的计划不补执行。"; break;
+        case ReasonCode::PlanBusyManualWatering: message = "当时正在手动浇水，本次计划未执行，不会补浇。"; break;
+        case ReasonCode::PlanBusyAutomaticWatering: message = "当时另一计划正在运行，本次计划未执行，不会补浇。"; break;
+        case ReasonCode::PlanBusyZoneFlowLearning: message = "当时正在学习水路基准，本次计划未执行。"; break;
+        case ReasonCode::PlanPreviousResultPending: message = "上一任务的结果尚未完成保存，本次计划未执行。"; break;
+        case ReasonCode::PlanControllerNotReady: message = "当时设备或记录存储未就绪，本次计划未执行。"; break;
+        case ReasonCode::PlanInvalidRequest: message = "计划参数或水路配置无效，本次计划未执行。"; break;
+        case ReasonCode::PlanHardwareFailure: message = "控制输出启动失败，本次计划未执行，请检查设备。"; break;
+        case ReasonCode::PlanStartRejected: case ReasonCode::PlanBusy: message = "设备拒绝本次计划启动，不会自动补执行。"; break;
+        case ReasonCode::ZoneFlowSaved: std::snprintf(out, length, "基准设置为 %.3f L/min，用于高低流量判断；不是计量系数校准。", event.value2 / 1000.0); return;
+        case ReasonCode::PlanCreated: message = "新建计划；保存不会立即出水。"; break;
+        case ReasonCode::PlanUpdated: message = "更新计划；正在执行的任务仍使用启动时的配置。"; break;
+        case ReasonCode::PlanDeleted: message = "计划已删除，不再按该计划自动启动。"; break;
+        case ReasonCode::ZoneUpdated: message = "水路名称或启用状态已更新；正在执行的任务不受影响。"; break;
+        case ReasonCode::SystemParametersUpdated: message = "设备参数已更新，后续任务使用新参数。"; break;
+        default: break;
+    }
+    std::snprintf(out, length, "%s", message);
 }

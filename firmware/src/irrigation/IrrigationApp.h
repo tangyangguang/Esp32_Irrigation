@@ -6,6 +6,7 @@
 #include "StatusIndicator.h"
 #include "DeviceAliveCheckpoint.h"
 #include "WateringRecordStore.h"
+#include "WateringHistory.h"
 #include "WateringScheduler.h"
 #include "WateringSchedulerStore.h"
 #include "WateringExecutor.h"
@@ -20,17 +21,12 @@ public:
 
     bool baseReady() const;
     bool businessReady() const;
-    WateringStartResult startWatering(const WateringRequest& request, const char* commandId = nullptr);
-    WateringStartResult startManualWatering(
-        const std::array<uint16_t, BoardPins::kZoneCount>& zoneDurationMinutes,
-        const char* commandId = nullptr);
-    WateringStartResult startSingleOutput(uint8_t zoneId,
-                                          uint32_t targetDurationSec,
-                                          uint32_t targetWaterMl, const char* commandId = nullptr);
+    WateringStartResult startWatering(const WateringRequest& request);
     bool stopWatering();
     WateringStatus wateringStatus() const;
     bool wateringActive() const { return wateringController_.active(); }
     FlowHistorySnapshot wateringFlowHistory() const;
+    WateringDaySummary wateringDay(uint32_t day);
     bool readLatestWateringRecords(uint32_t offset,
                                    uint32_t limit,
                                    WateringRecordStore::ReadCallback callback,
@@ -122,7 +118,6 @@ private:
     bool baseReady_ = false;
     bool businessReady_ = false;
     bool wateringStartTimeValid_ = false;
-    std::array<char, 37> wateringCommandId_{};
     bool finishedWateringStored_ = false;
     bool recordStorageFault_ = false;
     bool schedulerStorageFault_ = false;

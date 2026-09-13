@@ -32,8 +32,11 @@ if(!n)return '窗口 #1 正在采集；每个窗口约 5 秒且互不重叠。';
 var min=Number(s.learningMinimumPulseRateX100)||0,max=Number(s.learningMaximumPulseRateX100)||0,allow=Number(s.learningAllowedPulseRateSpreadX100)||0,first=Math.max(1,n-4);
 return '已采集 '+n+' 个完整窗口，窗口 #'+(n+1)+' 正在采集；当前使用 #'+first+'～#'+n+' 判断。原始脉冲速率为 '+rate(min)+'～'+rate(max)+'，跨度 '+rate(max-min)+'，允许 '+rate(allow)+'。收满 5 窗、每窗均有脉冲且跨度不超过允许值时完成。'
 }
+var timer=0,failures=0,loading=false,stale=document.createElement('p');stale.className='caption';stale.setAttribute('role','status');document.getElementById('learn-rule').after(stale);
 function poll(){
-fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){return r.json()}).then(function(s){
+if(document.hidden||loading)return;loading=true;
+fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){if(!r.ok)throw Error();return r.json()}).then(function(s){
+failures=0;stale.textContent='更新于 '+new Date().toLocaleTimeString();
 if(!s.active||s.purpose!==1){location.reload();return}
 var n=Number(s.learningTotalWindowCount)||0;
 set('learn-elapsed',duration(s.elapsedSec));
@@ -44,9 +47,9 @@ set('learn-rule',updateRule(s));
 set('learn-total-windows',n);
 set('learn-total-pulses',s.pulseCount);
 updateWindows(s);
-setTimeout(poll,1000)
-}).catch(function(){setTimeout(poll,2000)})
+}).catch(function(){failures++;stale.textContent='状态未能更新，显示可能已过时。请检查与设备的连接。'}).finally(function(){loading=false;if(!document.hidden)timer=setTimeout(poll,Math.min(30000,1000*Math.pow(2,failures)))})
 }
-setTimeout(poll,1000)
+document.addEventListener('visibilitychange',function(){clearTimeout(timer);if(!document.hidden)poll()});
+timer=setTimeout(poll,1000)
 })();
 </script>

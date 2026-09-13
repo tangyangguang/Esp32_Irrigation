@@ -9,6 +9,7 @@
 struct ZoneWateringRecord {
     ZoneWateringResult result = ZoneWateringResult::NotStarted;
     uint8_t flags = 0;
+    uint32_t startedOffsetSec = 0;
     uint16_t plannedDurationSec = 0;
     uint16_t actualWateringSec = 0;
     uint32_t targetWaterMl = 0;
@@ -20,11 +21,13 @@ struct ZoneWateringRecord {
 };
 
 struct WateringRecordPayload {
-    WateringSource source = WateringSource::ManualZones;
+    WateringSource source = WateringSource::Manual;
+    WateringTargetMode targetMode = WateringTargetMode::Duration;
     uint8_t planId = 0;
     WateringResult result = WateringResult::Failed;
     WateringStopReason stopReason = WateringStopReason::None;
-    std::array<uint8_t, 16> relatedCommandId{};
+    uint32_t taskId = 0;
+    uint32_t startedEpoch = 0;
     std::array<ZoneWateringRecord, BoardPins::kZoneCount> zones{};
 };
 
@@ -38,14 +41,14 @@ struct WateringRecordTotals {
 
 class WateringRecordCodec {
 public:
-    static constexpr std::size_t kPayloadSize = 193;
+    static constexpr std::size_t kPayloadSize = 210;
+    static constexpr uint8_t kZoneFlagUnknown = 1U << 4U;
     static constexpr uint8_t kZoneFlagWaterEstimateCapped = 1U << 0U;
     static constexpr uint8_t kZoneFlagLowFlow = 1U << 1U;
     static constexpr uint8_t kZoneFlagHighFlow = 1U << 2U;
     static constexpr uint8_t kZoneFlagFlowBaselineAvailable = 1U << 3U;
 
     static bool fromSession(const WateringSessionSummary& summary,
-                            const char* relatedCommandId,
                             WateringRecordPayload& payload);
     static bool encode(const WateringRecordPayload& payload,
                        uint8_t* output,
@@ -53,8 +56,5 @@ public:
     static bool decode(const uint8_t* data,
                        std::size_t dataSize,
                        WateringRecordPayload& payload);
-    static bool formatRelatedCommandId(const WateringRecordPayload& payload,
-                                       char* output,
-                                       std::size_t outputSize);
     static WateringRecordTotals calculateTotals(const WateringRecordPayload& payload);
 };

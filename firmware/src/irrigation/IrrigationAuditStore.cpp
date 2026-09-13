@@ -1,5 +1,4 @@
 #include "IrrigationAuditStore.h"
-#include "IrrigationStoredFact.h"
 #include <runtime/Esp32BaseTime.h>
 
 namespace {
@@ -19,10 +18,11 @@ uint32_t get32(const uint8_t*& cursor) {
     return value;
 }
 bool validKind(IrrigationAuditPayload::Kind kind) {
-    return kind == IrrigationAuditPayload::Kind::AutomaticRun ||
+    return kind == IrrigationAuditPayload::Kind::PlanSkipped ||
            kind == IrrigationAuditPayload::Kind::AutomaticStateChanged ||
            kind == IrrigationAuditPayload::Kind::PlansChanged ||
-           kind == IrrigationAuditPayload::Kind::ZoneBaselineSaved;
+           kind == IrrigationAuditPayload::Kind::ZoneBaselineSaved ||
+           kind == IrrigationAuditPayload::Kind::ClosedFlowChanged;
 }
 }  // namespace
 
@@ -68,12 +68,10 @@ bool IrrigationAuditStore::begin() {
     definition.recordTypeName = kRecordTypeName;
     definition.storeVersion = kStoreVersion;
     definition.payloadSizeBytes = kStoredBytes;
-    definition.retentionPolicy = Esp32BaseRecordStore::RetentionPolicy::PreserveUnreleased;
+    definition.retentionPolicy = Esp32BaseRecordStore::RetentionPolicy::RotateOldest;
     definition.maximumStoreBytes = kMaximumStoreBytes;
     definition.minimumFileSystemFreeBytes = kMinimumFileSystemFreeBytes;
-    if (!store_.begin(definition) || !stream_.begin(millis())) return false;
-    stream_.poll(millis(), nullptr, nullptr); // Empty stores become ready in one bounded step.
-    return true;
+    return store_.begin(definition);
 }
 
 bool IrrigationAuditStore::appendInstant(const IrrigationAuditPayload& payload) {
@@ -81,6 +79,8 @@ bool IrrigationAuditStore::appendInstant(const IrrigationAuditPayload& payload) 
     const auto now = Esp32BaseTime::snapshot();
     pendingTiming_ = {};
     pendingTiming_.completedEpochSec = now.synced ? now.epochSec : 0;
+    pendingTiming_.completedBootId = now.bootId;
+    pendingTiming_.completedUptimeSec = now.uptimeSec;
     pendingPayload_ = payload;
     pending_ = true;
     return flushPending();
@@ -88,27 +88,21 @@ bool IrrigationAuditStore::appendInstant(const IrrigationAuditPayload& payload) 
 
 bool IrrigationAuditStore::flushPending() {
     if (!pending_) return true;
+    const auto storageState = Esp32BaseStorage::state();
+    if (storageState == Esp32BaseStorage::StorageState::OtaWriteSuspended ||
+        storageState == Esp32BaseStorage::StorageState::Maintenance) return false;
     // Fault means the commit is uncertain: do not blindly append it again.
-    if (stream_.state() != iot_device::StreamState::Ready ||
+    if (!store_.isWritable() ||
         !appendFact(pendingTiming_, pendingPayload_)) return false;
     pending_ = false;
     return true;
 }
 
-bool IrrigationAuditStore::appendRecorded(
-    const Esp32BaseRecordStore::RecordTiming& timing,
-    const IrrigationAuditPayload& payload) {
-    return !pending_ && appendFact(timing, payload);
-}
-
 bool IrrigationAuditStore::appendFact(
     const Esp32BaseRecordStore::RecordTiming& timing,
     const IrrigationAuditPayload& payload) {
-    uint8_t fact[kFactBytes]{};
-    irrigation_fact::putDuration(fact,timing.durationSec);
-    return IrrigationAuditCodec::encode(payload,fact+4,IrrigationAuditCodec::kPayloadSize) &&
-           stream_.append(2,timing.completedEpochSec ? uint64_t(timing.completedEpochSec)*1000 : iot_device::RecordStream::UnknownTime,
-                          fact,sizeof(fact));
+    return IrrigationAuditCodec::encode(payload, scratch_, sizeof(scratch_)) &&
+           store_.appendRecorded(timing, scratch_, sizeof(scratch_));
 }
 
 bool IrrigationAuditStore::readLatest(uint32_t offset,
@@ -133,6 +127,7 @@ Esp32BaseRecordStore::RecordReadResult IrrigationAuditStore::readById(
     if (!decodeFact(scratch_, sizeof(scratch_), record))
         return Esp32BaseRecordStore::RecordReadResult::Corrupt;
     record.recordId = metadata.recordId;
+    record.timing = metadata.timing;
 
     return result;
 }
@@ -155,12 +150,11 @@ void IrrigationAuditStore::readAdapter(
         return;
     }
     record.recordId = view.recordId;
+    record.timing = view.timing;
 
     context->callback(record, context->user);
 }
 
 bool IrrigationAuditStore::decodeFact(const uint8_t* bytes, std::size_t length, StoredIrrigationAuditRecord& record) {
-    iot_device::RecordFactView fact{};
-    return irrigation_fact::decode(bytes, length, kFactBytes, record.timing, fact) && fact.typeCode == 2 &&
-           IrrigationAuditCodec::decode(fact.data + 4, fact.dataBytes - 4, record.payload);
+    return IrrigationAuditCodec::decode(bytes, length, record.payload);
 }

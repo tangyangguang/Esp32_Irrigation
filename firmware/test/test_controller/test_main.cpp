@@ -68,7 +68,7 @@ public:
 
 WateringRequest requestFor(uint8_t firstZone, uint32_t firstDurationSec) {
     WateringRequest request{};
-    request.source = WateringSource::ManualZones;
+    request.source = WateringSource::Manual;
     request.planId = 0;
     request.stepCount = 1;
     request.steps[0] = {firstZone, firstDurationSec};
@@ -806,6 +806,9 @@ void test_invalid_request_and_hardware_failure_are_rejected_safely() {
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::HardwareFailure),
                       static_cast<int>(controller.start(requestFor(1, 60), config, 0)));
     TEST_ASSERT_EQUAL_UINT8(1, hardware.safeShutdownCalls);
+    TEST_ASSERT_NOT_NULL(controller.finishedSession());
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Failed),
+                      static_cast<int>(controller.finishedSession()->zones[0].result));
 }
 
 void test_timers_work_across_millis_wraparound() {
@@ -856,7 +859,8 @@ void test_single_output_stops_at_target_volume() {
     IrrigationConfig config = IrrigationConfigRules::createDefault();
     config.flowMeter.pulsesPerLiterX100 = 25000;
     WateringRequest request = requestFor(1, 60);
-    request.source = WateringSource::SingleOutput;
+    request.source = WateringSource::Manual;
+    request.targetMode = WateringTargetMode::Volume;
     request.steps[0].targetWaterMl = 400;
 
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
@@ -885,7 +889,8 @@ void test_single_output_volume_fails_at_configured_time_limit() {
     config.runLimits.maximumZoneDurationMinutes = 1;
     config.flowProtection.noFlowTimeoutSec = 120;
     WateringRequest request = requestFor(1, 60);
-    request.source = WateringSource::SingleOutput;
+    request.source = WateringSource::Manual;
+    request.targetMode = WateringTargetMode::Volume;
     request.steps[0].targetWaterMl = 1000;
 
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),

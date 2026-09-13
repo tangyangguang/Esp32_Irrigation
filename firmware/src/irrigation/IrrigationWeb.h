@@ -8,6 +8,8 @@ public:
 
 private:
     static void overview();
+    static void manual();
+    static void settings();
     static void activeTask();
     static void plans();
     static void zones();

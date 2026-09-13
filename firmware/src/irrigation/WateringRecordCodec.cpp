@@ -6,10 +6,11 @@
 namespace {
 
 constexpr uint32_t kMagic = 0x31525457UL;  // WTR1
-constexpr uint8_t kVersion = 1;
-constexpr std::size_t kHeaderSize = 25;
-constexpr std::size_t kZoneSize = 28;
+constexpr uint8_t kVersion = 2;
+constexpr std::size_t kHeaderSize = 18;
+constexpr std::size_t kZoneSize = 32;
 constexpr uint8_t kKnownZoneFlags =
+    WateringRecordCodec::kZoneFlagUnknown |
     WateringRecordCodec::kZoneFlagWaterEstimateCapped |
     WateringRecordCodec::kZoneFlagLowFlow |
     WateringRecordCodec::kZoneFlagHighFlow |
@@ -58,59 +59,24 @@ uint32_t get32(const uint8_t*& cursor) {
     return value;
 }
 
-int hexNibble(char value) {
-    if (value >= '0' && value <= '9') return value - '0';
-    if (value >= 'a' && value <= 'f') return value - 'a' + 10;
-    if (value >= 'A' && value <= 'F') return value - 'A' + 10;
-    return -1;
-}
-
-bool parseUuid(const char* value, std::array<uint8_t, 16>& output) {
-    output.fill(0);
-    if (!value || value[0] == '\0') return true;
-    if (std::strlen(value) != 36U || value[14] < '1' || value[14] > '8' ||
-        (value[19] != '8' && value[19] != '9' && value[19] != 'a' &&
-         value[19] != 'A' && value[19] != 'b' && value[19] != 'B'))
-        return false;
-    std::size_t source = 0;
-    std::size_t target = 0;
-    while (source < 36U && target < output.size()) {
-        if (source == 8U || source == 13U || source == 18U || source == 23U) {
-            if (value[source++] != '-') return false;
-        }
-        const int high = hexNibble(value[source++]);
-        const int low = hexNibble(value[source++]);
-        if (high < 0 || low < 0) return false;
-        output[target++] = static_cast<uint8_t>((high << 4) | low);
-    }
-    return source == 36U && target == output.size() && value[source] == '\0';
-}
-
-bool emptyUuid(const std::array<uint8_t, 16>& value) {
-    for (uint8_t byte : value) {
-        if (byte != 0U) return false;
-    }
-    return true;
-}
-
 bool validSource(WateringSource value) {
-    return value == WateringSource::ManualZones ||
-           value == WateringSource::SingleOutput ||
+    return value == WateringSource::Manual ||
            value == WateringSource::AutomaticPlan;
 }
 
 bool validResult(WateringResult value) {
     return value == WateringResult::Completed ||
            value == WateringResult::Stopped ||
-           value == WateringResult::Failed;
+           value == WateringResult::Failed || value == WateringResult::Incomplete;
 }
 
 bool validReason(WateringStopReason value) {
     return value >= WateringStopReason::Completed &&
-           value <= WateringStopReason::TargetVolumeTimeout;
+           value <= WateringStopReason::RebootInterrupted;
 }
 
 bool validResultPair(WateringResult result, WateringStopReason reason) {
+    if (result == WateringResult::Incomplete) return reason == WateringStopReason::RebootInterrupted;
     if (result == WateringResult::Completed)
         return reason == WateringStopReason::Completed;
     if (result == WateringResult::Stopped)
@@ -118,21 +84,23 @@ bool validResultPair(WateringResult result, WateringStopReason reason) {
     return result == WateringResult::Failed &&
            reason != WateringStopReason::None &&
            reason != WateringStopReason::Completed &&
-           reason != WateringStopReason::UserStopped;
+           reason != WateringStopReason::UserStopped &&
+           reason != WateringStopReason::RebootInterrupted;
 }
 
 bool validPayload(const WateringRecordPayload& payload) {
     if (!validSource(payload.source) || !validResult(payload.result) ||
         !validReason(payload.stopReason) ||
         !validResultPair(payload.result, payload.stopReason) ||
-        ((payload.source == WateringSource::ManualZones ||
-          payload.source == WateringSource::SingleOutput) &&
+        (payload.source == WateringSource::Manual &&
          payload.planId != 0U) ||
         (payload.source == WateringSource::AutomaticPlan &&
          (payload.planId == 0U || payload.planId > kWateringPlanCount))) {
         return false;
     }
-    bool included = false;
+    if (payload.targetMode != WateringTargetMode::Duration && payload.targetMode != WateringTargetMode::Volume) return false;
+    if (payload.targetMode == WateringTargetMode::Volume && payload.source != WateringSource::Manual) return false;
+    uint8_t included = 0;
     bool started = false;
     uint64_t pulses = 0;
     for (const ZoneWateringRecord& zone : payload.zones) {
@@ -145,7 +113,7 @@ bool validPayload(const WateringRecordPayload& payload) {
             return false;
         }
         if (zone.plannedDurationSec == 0U) {
-            if (zone.result != ZoneWateringResult::NotStarted || zone.flags != 0U ||
+            if (zone.result != ZoneWateringResult::NotStarted || zone.startedOffsetSec != 0U || zone.flags != 0U ||
                 zone.actualWateringSec != 0U || zone.targetWaterMl != 0U ||
                 zone.pulseCount != 0U || zone.estimatedWaterMl != 0U ||
                 zone.averageFlowMlPerMinute != 0U ||
@@ -153,7 +121,17 @@ bool validPayload(const WateringRecordPayload& payload) {
                 zone.baselineFlowMlPerMinute != 0U) return false;
             continue;
         }
-        included = true;
+        ++included;
+        if (payload.targetMode == WateringTargetMode::Volume &&
+            (zone.targetWaterMl < 100U || zone.targetWaterMl > kMaximumConfigurableSingleOutputLiters * 1000U)) return false;
+        if (payload.result == WateringResult::Incomplete) {
+            if (zone.flags != WateringRecordCodec::kZoneFlagUnknown || zone.actualWateringSec ||
+                zone.pulseCount || zone.estimatedWaterMl || zone.averageFlowMlPerMinute ||
+                zone.result != ZoneWateringResult::NotStarted || zone.startedOffsetSec ||
+                zone.baselinePulseRateX10000 || zone.baselineFlowMlPerMinute) return false;
+            continue;
+        }
+        if (zone.flags & WateringRecordCodec::kZoneFlagUnknown) return false;
         started |= zone.result != ZoneWateringResult::NotStarted;
         if (zone.result == ZoneWateringResult::NotStarted &&
             (zone.flags != 0U || zone.actualWateringSec != 0U ||
@@ -174,11 +152,11 @@ bool validPayload(const WateringRecordPayload& payload) {
             !baseline) return false;
         pulses += zone.pulseCount;
     }
-    if (payload.source != WateringSource::SingleOutput) {
+    if (payload.targetMode != WateringTargetMode::Volume) {
         for (const ZoneWateringRecord& zone : payload.zones)
             if (zone.targetWaterMl != 0U) return false;
     }
-    return included && started &&
+    return included && (payload.targetMode != WateringTargetMode::Volume || included == 1) && (started || payload.result == WateringResult::Incomplete) &&
            (payload.result != WateringResult::Completed || pulses != 0U);
 }
 
@@ -189,15 +167,14 @@ static_assert(WateringRecordCodec::kPayloadSize ==
               "watering record payload layout changed");
 
 bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
-                                      const char* relatedCommandId,
                                       WateringRecordPayload& payload) {
     payload = {};
     for (ZoneWateringRecord& zone : payload.zones)
         zone.result = ZoneWateringResult::NotStarted;
     if (summary.purpose != WateringPurpose::Normal || summary.zoneCount == 0U ||
-        summary.zoneCount > summary.zones.size() ||
-        !parseUuid(relatedCommandId, payload.relatedCommandId)) return false;
+        summary.zoneCount > summary.zones.size()) return false;
     payload.source = summary.source;
+    payload.targetMode = summary.targetMode;
     payload.planId = summary.planId;
     payload.result = summary.result;
     payload.stopReason = summary.stopReason;
@@ -212,6 +189,7 @@ bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
         ZoneWateringRecord& target =
             payload.zones[BoardPins::zoneIndex(source.zoneId)];
         target.result = source.result;
+        target.startedOffsetSec = source.startedOffsetSec;
         target.flags = source.waterEstimateCapped ? kZoneFlagWaterEstimateCapped : 0U;
         target.flags |= source.lowFlowDetected ? kZoneFlagLowFlow : 0U;
         target.flags |= source.highFlowDetected ? kZoneFlagHighFlow : 0U;
@@ -241,13 +219,16 @@ bool WateringRecordCodec::encode(const WateringRecordPayload& payload,
     put32(cursor, kMagic);
     *cursor++ = kVersion;
     *cursor++ = static_cast<uint8_t>(payload.source);
+    *cursor++ = static_cast<uint8_t>(payload.targetMode);
     *cursor++ = payload.planId;
     *cursor++ = static_cast<uint8_t>(payload.result);
     *cursor++ = static_cast<uint8_t>(payload.stopReason);
-    for (uint8_t byte : payload.relatedCommandId) *cursor++ = byte;
+    put32(cursor, payload.taskId);
+    put32(cursor, payload.startedEpoch);
     for (const ZoneWateringRecord& zone : payload.zones) {
         *cursor++ = static_cast<uint8_t>(zone.result) |
                     static_cast<uint8_t>(zone.flags << 2U);
+        put32(cursor, zone.startedOffsetSec);
         put16(cursor, zone.plannedDurationSec);
         put16(cursor, zone.actualWateringSec);
         put24(cursor, zone.targetWaterMl);
@@ -268,14 +249,17 @@ bool WateringRecordCodec::decode(const uint8_t* data,
     const uint8_t* cursor = data;
     if (get32(cursor) != kMagic || *cursor++ != kVersion) return false;
     payload.source = static_cast<WateringSource>(*cursor++);
+    payload.targetMode = static_cast<WateringTargetMode>(*cursor++);
     payload.planId = *cursor++;
     payload.result = static_cast<WateringResult>(*cursor++);
     payload.stopReason = static_cast<WateringStopReason>(*cursor++);
-    for (uint8_t& byte : payload.relatedCommandId) byte = *cursor++;
+    payload.taskId = get32(cursor);
+    payload.startedEpoch = get32(cursor);
     for (ZoneWateringRecord& zone : payload.zones) {
         const uint8_t resultAndFlags = *cursor++;
         zone.result = static_cast<ZoneWateringResult>(resultAndFlags & 0x03U);
         zone.flags = resultAndFlags >> 2U;
+        zone.startedOffsetSec = get32(cursor);
         zone.plannedDurationSec = get16(cursor);
         zone.actualWateringSec = get16(cursor);
         zone.targetWaterMl = get24(cursor);
@@ -290,23 +274,6 @@ bool WateringRecordCodec::decode(const uint8_t* data,
         return false;
     }
     return true;
-}
-
-bool WateringRecordCodec::formatRelatedCommandId(
-    const WateringRecordPayload& payload,
-    char* output,
-    std::size_t outputSize) {
-    if (!output || outputSize < 37U) return false;
-    if (emptyUuid(payload.relatedCommandId)) {
-        output[0] = '\0';
-        return true;
-    }
-    const uint8_t* b = payload.relatedCommandId.data();
-    return std::snprintf(output, outputSize,
-                         "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-"
-                         "%02x%02x%02x%02x%02x%02x",
-                         b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7],
-                         b[8], b[9], b[10], b[11], b[12], b[13], b[14], b[15]) == 36;
 }
 
 WateringRecordTotals WateringRecordCodec::calculateTotals(

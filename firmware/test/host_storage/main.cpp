@@ -1,215 +1,119 @@
-// Use the Base's in-memory filesystem fixture and actual storage engine.
+// Actual Base storage with its in-memory FS fixture; no device or MQTT connection.
 #define main baseHarnessMain
 #include IRRIGATION_BASE_HARNESS
 #undef main
 #include "WateringRecordStore.h"
-#include "IrrigationAuditStore.h"
+#include "WateringHistory.h"
 #include "IrrigationEvents.h"
-#include "IrrigationRecordSync.h"
-#include "runtime/Esp32BaseFileLog.h"
+#include "IrrigationRecords.h"
 #include <cassert>
+#include <ctime>
 
-static void countWatering(const StoredWateringRecord&, void* count) {
-    ++*static_cast<unsigned*>(count);
+bool Esp32BaseTime::formatEpoch(uint32_t epoch, char* out, size_t size, const char* format) {
+    const std::time_t local = static_cast<std::time_t>(epoch) + 28800;
+    std::tm date{};
+    return out && size && gmtime_r(&local, &date) &&
+        std::strftime(out, size, format ? format : "%Y-%m-%d %H:%M:%S", &date) != 0;
 }
-static void countAudit(const StoredIrrigationAuditRecord&, void* count) {
-    ++*static_cast<unsigned*>(count);
+
+
+static std::vector<uint8_t> taskMarker;
+static bool markerWriteFails = false, markerReadFails = false;
+bool Esp32BaseConfig::setBlob(const char*, const char*, const void* data, size_t size) {
+    if (markerWriteFails) return false;
+    taskMarker.assign(static_cast<const uint8_t*>(data), static_cast<const uint8_t*>(data) + size);
+    return true;
+}
+Esp32BaseConfig::BlobReadResult Esp32BaseConfig::readBlob(const char*, const char*, void* out, size_t size) {
+    if (markerReadFails) return BlobReadResult::Error;
+    if (taskMarker.empty()) return BlobReadResult::NotFound;
+    if (taskMarker.size() != size) return BlobReadResult::Error;
+    memcpy(out, taskMarker.data(), size); return BlobReadResult::Found;
+}
+static uint32_t count(WateringRecordStore& store) {
+    Esp32BaseRecordStore::StoreStatus status{}; assert(store.readStatus(status)); return status.recordCount;
+}
+static StoredWateringRecord latest(WateringRecordStore& store) {
+    StoredWateringRecord result{};
+    assert(store.readLatest(0, 1, [](const StoredWateringRecord& r, void* user) {
+        *static_cast<StoredWateringRecord*>(user) = r;
+    }, &result));
+    return result;
 }
 int main() {
-    resetHarness();
-    g_totalBytes = 512U * 1024U;
-    WateringRecordStore watering;
-    IrrigationEvents events;
-    auto& audit = events.auditStore();
-    // The application can reach the format callback before store initialization.
-    auto& startupSync = IrrigationRecordSync::instance();
-    startupSync.bind(watering, audit);
-    Esp32BaseStorage::FormatResult initialFormat;
-    assert(Esp32BaseStorage::formatAndReload(initialFormat));
-    assert(startupSync.resetGenerationsAfterFormat());
-    startupSync.handle(0);
-    assert(startupSync.ready() && Esp32BaseStorage::recordStoreCount() == 2);
+    resetHarness(); g_totalBytes = 512U * 1024U;
+    WateringRecordStore watering; IrrigationEvents events; auto& audit = events.auditStore();
+    auto& records = IrrigationRecords::instance(); records.bind(watering, audit);
+    Esp32BaseStorage::FormatResult formatted{};
+    assert(Esp32BaseStorage::formatAndReload(formatted));
+    assert(records.reloadAfterFormat());
     assert(watering.begin() && events.begin());
-    assert(IrrigationRecordSync::instance().begin(watering, audit));
-    const uint32_t historyBudget = WateringRecordStore::kMaximumStoreBytes +
-                                   IrrigationAuditStore::kMaximumStoreBytes;
-    const uint32_t logBudget = ESP32BASE_EB_FILELOG_MAX_BYTES * ESP32BASE_EB_FILELOG_ROTATE_FILES;
-    assert(g_totalBytes - historyBudget - logBudget - storageSafetyReserve(g_totalBytes) >= 48U * 1024U);
-
-    for (const auto layout : {std::pair<uint32_t,uint32_t>{384U*1024U, 193U+24U},
-                              {WateringRecordStore::kMaximumStoreBytes, WateringRecordStore::kStoredBytes+24U},
-                              {128U*1024U, 24U+24U},
-                              {IrrigationAuditStore::kMaximumStoreBytes, IrrigationAuditStore::kStoredBytes+24U}}) {
-        const auto segment = recordStoreChooseSegmentLimit(layout.first, layout.second);
-        printf("Store budget=%u slot=%u capacity=%u\n", layout.first, layout.second,
-               recordStoreCalculateCapacity(layout.first, segment, layout.second));
-    }
-    unsigned count = 0;
-    // An empty successful read must not inherit a stack garbage failure flag.
-    assert(watering.readLatest(0, 10, countWatering, &count) && count == 0);
-    assert(audit.readLatest(0, 10, countAudit, &count) && count == 0);
-    IrrigationAuditPayload fact;
-    fact.kind = IrrigationAuditPayload::Kind::PlansChanged;
-    assert(audit.appendInstant(fact));
-    assert(audit.readLatest(0, 10, countAudit, &count) && count == 1);
-    WateringSessionSummary summary{};
-    summary.purpose = WateringPurpose::Normal;
-    summary.source = WateringSource::ManualZones;
-    summary.result = WateringResult::Completed;
-    summary.stopReason = WateringStopReason::Completed;
-    summary.zoneCount = 1;
-    summary.zones[0].zoneId = 1;
-    summary.zones[0].result = ZoneWateringResult::Completed;
-    summary.zones[0].plannedDurationSec = 60;
-    summary.zones[0].actualWateringSec = 60;
+    assert(records.begin(watering, audit));
+    assert(count(watering) == 0);
+    WateringRequest request{}; request.stepCount = 1; request.steps[0] = {1, 60, 0};
+    WateringSessionSummary summary{}; summary.source = WateringSource::Manual;
+    summary.purpose = WateringPurpose::Normal; summary.result = WateringResult::Completed;
+    summary.stopReason = WateringStopReason::Completed; summary.zoneCount = 1;
+    summary.zones[0].zoneId = 1; summary.zones[0].result = ZoneWateringResult::Completed;
+    summary.zones[0].plannedDurationSec = summary.zones[0].actualWateringSec = 60;
     summary.zones[0].pulseCount = 100;
-    Esp32BaseRecordStore::RecordStartTime start;
-    assert(watering.captureStartTime(start));
+    Esp32BaseRecordStore::RecordStartTime start{};
+    assert(watering.prepareTask(request) && watering.captureStartTime(start));
     g_time.uptimeSec += 60;
     assert(watering.appendCompleted(start, summary));
-    count = 0;
-    assert(watering.readLatest(0, 10, countWatering, &count) && count == 1);
-    assert(watering.readLatest(1, 10, countWatering, &count) && count == 1);
-    // The fact stays unknown even when the clock later becomes trustworthy.
-    g_time.synced = true;
-    g_time.epochSec = 1800000000;
-    StoredWateringRecord stored{};
-    assert(watering.readById(1, stored) == Esp32BaseRecordStore::RecordReadResult::Found);
-    assert(stored.timing.completedEpochSec == 0 && stored.timing.completedBootId == 0);
-    assert(stored.timing.durationSec == 60);
-
-    auto& stream = watering.recordStream();
-    auto& auditStream = audit.recordStream();
-    unsigned published = 0;
-    auto publish = [](const uint8_t*, const iot_device::RecordFactView& value, void* user) {
-        assert(value.sequence == 1 && value.typeCode == 1);
-        assert(value.observedAtMs == iot_device::RecordStream::UnknownTime);
-        ++*static_cast<unsigned*>(user);
-        return true;
-    };
-    stream.setConnectionReady(true);
-    stream.poll(1, publish, &published);
-    assert(published == 1);
-    assert(!stream.acknowledge(auditStream.generation(), 1));
-    assert(stream.acknowledge(stream.generation(), 1));
-    for (unsigned n=0;n<4;++n) stream.poll(2+n, nullptr, nullptr);
-    assert(stream.acknowledgedSequence() == 1 && auditStream.acknowledgedSequence() == 0);
-    assert(stream.checkpoint(10));
-
-    // A safe retry during bounded recovery preserves its original completion.
-    assert(stream.begin(11));
-    Esp32BaseRecordStore::RecordStartTime secondStart;
-    assert(watering.captureStartTime(secondStart));
-    g_time.uptimeSec += 5;
-    assert(!watering.appendCompleted(secondStart, summary));
-    const auto frozen = watering.completionTiming();
-    g_time.uptimeSec += 100;
-    g_time.epochSec += 100;
-    for (unsigned n=0;n<4;++n) stream.poll(12+n, nullptr, nullptr);
-    assert(stream.state() == iot_device::StreamState::Ready);
-    assert(stream.lastSequence() == 1 && stream.acknowledgedSequence() == 1);
-    assert(watering.appendCompleted(secondStart, summary));
-    assert(stream.lastSequence() == 2);
-    assert(watering.readById(2, stored) == Esp32BaseRecordStore::RecordReadResult::Found);
-    assert(stored.timing.completedEpochSec == frozen.completedEpochSec);
-    assert(stored.timing.durationSec == 5);
-
-    // One instant audit can wait through bounded recovery without being
-    // overwritten by another operation or acquiring the retry time.
-    assert(auditStream.begin(30));
-    auto pendingAudit = fact;
-    pendingAudit.value1 = 123;
-    const uint32_t auditAt = g_time.epochSec;
-    assert(!audit.appendInstant(pendingAudit));
-    assert(audit.hasPending());
-    assert(events.storageFault());
-    pendingAudit.value1 = 999;
-    assert(!audit.appendInstant(pendingAudit));
-    g_time.epochSec += 60;
-    for (unsigned n=0;n<4;++n) auditStream.poll(31+n, nullptr, nullptr);
-    assert(audit.flushPending() && !audit.hasPending());
-    assert(!events.storageFault());
+    const auto first = latest(watering);
+    assert(first.payload.startedEpoch == 0 && first.timing.completedEpochSec == 0);
+    assert(first.timing.completedBootId == 1 && first.timing.durationSec == 60);
+    // Committed fact + failed marker cleanup: reboot does not append a duplicate.
+    markerWriteFails = true; assert(!watering.cancelPreparedTask());
+    markerWriteFails = false; ++g_time.bootId; g_time.uptimeSec = 10;
+    assert(watering.begin() && count(watering) == 1);
+    // A durable start without final evidence becomes one incomplete task.
+    g_time.synced = true; g_time.epochSec = 1800000000;
+    assert(watering.prepareTask(request));
+    ++g_time.bootId; g_time.uptimeSec = 10;
+    assert(watering.begin() && count(watering) == 2);
+    auto interrupted = latest(watering);
+    assert(interrupted.payload.result == WateringResult::Incomplete);
+    assert(interrupted.payload.zones[0].flags == WateringRecordCodec::kZoneFlagUnknown);
+    assert(watering.begin() && count(watering) == 2);
+    auto day = WateringHistory::localDay(1800000000);
+    auto daily = WateringHistory::summarize(watering, day, WateringStatus{}, 0);
+    assert(daily.readable && daily.zones[0].unknown == 1 && daily.zones[0].count == 0);
+    assert(daily.unknownTimeCount == 1);
+    // Read failure is not an absent marker and cannot permit a new task.
+    markerReadFails = true; assert(!watering.begin() && !watering.isWritable());
+    markerReadFails = false; assert(watering.begin());
+    // Frozen pending audit time survives a temporary write suspension.
+    IrrigationAuditPayload fact{}; fact.kind = IrrigationAuditPayload::Kind::PlansChanged; fact.value1 = 123;
+    assert(Esp32BaseStorage::setOtaWriteSuspended(true));
+    assert(!audit.appendInstant(fact) && audit.hasPending());
+    const auto at = g_time.epochSec; g_time.epochSec += 100;
+    fact.value1 = 999; assert(!audit.appendInstant(fact));
+    assert(Esp32BaseStorage::setOtaWriteSuspended(false));
+    assert(audit.flushPending());
     StoredIrrigationAuditRecord storedAudit{};
-    assert(audit.readById(2, storedAudit) == Esp32BaseRecordStore::RecordReadResult::Found);
-    assert(storedAudit.payload.value1 == 123 && storedAudit.timing.completedEpochSec == auditAt);
-
-    // A failed audit append faults only that stream; a repeated attempt cannot
-    // blindly duplicate an uncertain write. Watering remains usable.
-    g_fileSystemWriteFails = true;
-    assert(!audit.appendInstant(fact));
-    assert(auditStream.state() == iot_device::StreamState::Fault);
-    g_fileSystemWriteFails = false;
-    assert(!audit.appendInstant(fact));
-    assert(!audit.flushPending() && audit.hasPending());
-    assert(stream.state() == iot_device::StreamState::Ready);
-    assert(watering.captureStartTime(secondStart));
-    g_time.uptimeSec += 1;
-    assert(watering.appendCompleted(secondStart, summary));
-    assert(stream.lastSequence() == 3);
-
-    // Valid Base container but invalid application payload must report failure.
+    assert(audit.readById(1, storedAudit) == Esp32BaseRecordStore::RecordReadResult::Found);
+    assert(storedAudit.payload.value1 == 123 && storedAudit.timing.completedEpochSec == at);
+    // NVS observation failure is irrelevant to RAM-only conditions.
+    assert(Esp32BaseConditions::begin()); g_conditionStateWriteFails = true;
+    events.observeRtcRollback(Esp32BaseConditions::ObservedState::Active);
+    assert(!events.storageFault() && g_conditionStateWriteCount == 0);
+    // No acknowledgement/release is ever issued: full histories still rotate.
+    Esp32BaseRecordStore::StoreStatus state{}; assert(watering.readStatus(state));
+    WateringRecordPayload payload{}; assert(WateringRecordCodec::fromSession(summary, payload));
+    payload.startedEpoch = 1800000000;
+    for (uint32_t i = 0; i < state.capacity + 2; ++i) {
+        payload.taskId = 1000 + i; assert(watering.appendPayload(payload));
+    }
+    assert(watering.readStatus(state) && state.writable && state.oldestRecordId > 1);
+    daily = WateringHistory::summarize(watering, day, WateringStatus{}, 0);
+    assert(daily.readable && daily.truncated);
+    // Corrupt business bytes cannot be treated as an empty successful read.
     uint8_t invalid[WateringRecordStore::kStoredBytes]{};
     assert(watering.baseStore().appendInstant(invalid, sizeof(invalid)));
-    count = 0;
-    assert(!watering.readLatest(0, 1, countWatering, &count) && count == 0);
-    assert(!watering.readLatest(0, 0, countWatering, &count));
-    assert(!watering.readLatest(0, 1, nullptr));
-    // Explicit formatting, unlike clear(), may discard protected history.
-    uint8_t oldGeneration[16];
-    memcpy(oldGeneration, auditStream.generation(), 16);
-    Esp32BaseStorage::FormatResult formatted;
-    assert(Esp32BaseStorage::formatAndReload(formatted));
-    assert(formatted.formatSuccess && formatted.mountSuccess);
-    watering.discardPendingAfterFormat();
-    audit.discardPendingAfterFormat();
-    assert(auditStream.begin(40));
-    auditStream.poll(41, nullptr, nullptr);
-    assert(!audit.hasPending() && auditStream.lastSequence() == 0);
-    assert(memcmp(oldGeneration, auditStream.generation(), 16) != 0);
-
-    // Failed condition persistence stays visible despite another healthy
-    // condition, then clears after that specific condition commits.
-    assert(Esp32BaseConditions::begin());
-    assert(events.resetConditionHistory());
-    g_conditionStateWriteFails = true;
-    events.observeRtcRollback(Esp32BaseConditions::ObservedState::Active);
-    assert(events.storageFault());
-    events.observeTrustedTime(true);
-    assert(events.storageFault());
-    g_conditionStateWriteFails = false;
-    events.observeRtcRollback(Esp32BaseConditions::ObservedState::Active);
-    assert(!events.storageFault());
-    // Corrupt one current control file, then exercise the production startup
-    // registration and explicit recovery paths using the same registered stores.
-    for (bool failAudit : {true, false}) {
-        resetHarness();
-        g_totalBytes = 512U * 1024U;
-        watering.discardPendingAfterFormat();
-        audit.discardPendingAfterFormat();
-        assert(watering.begin() && audit.begin());
-        const std::string corruptPath = std::string(failAudit
-            ? audit.baseStore().path() : watering.baseStore().path()) + "/control.bin";
-        g_files[corruptPath] = {0, 0, 0};
-        assert(!(failAudit ? audit.begin() : watering.begin()));
-        auto& sync = IrrigationRecordSync::instance();
-        assert(sync.begin(watering, audit));
-        sync.handle(0);
-        using Kind = IrrigationRecordSync::StreamKind;
-        assert(sync.writable(Kind::Watering) == failAudit);
-        assert(sync.writable(Kind::Audit) == !failAudit);
-        assert(!sync.ready());
-        assert(Esp32BaseStorage::recordStoreCount() == 2);
-        if (failAudit) {
-            assert(watering.captureStartTime(start));
-            assert(sync.appendWatering(start, summary, nullptr));
-        } else {
-            assert(sync.appendAudit(fact));
-        }
-        assert(Esp32BaseStorage::formatAndReload(formatted));
-        assert(formatted.recordStoreReloadedCount == 2);
-        assert(sync.resetGenerationsAfterFormat());
-        sync.handle(1);
-        assert(sync.ready() && sync.writable());
-    }
-    puts("Actual Base Store + irrigation: reads, time, ACK, independent startup failures and format recovery passed");
+    assert(!watering.readLatest(0, 1, [](const StoredWateringRecord&, void*) {}));
+    assert(Esp32BaseStorage::formatAndReload(formatted) && records.reloadAfterFormat());
+    assert(count(watering) == 0 && watering.isWritable());
+    puts("Local retention, task recovery, unknown measurements and independent audit cases passed");
 }
