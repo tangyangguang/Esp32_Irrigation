@@ -90,6 +90,29 @@ void test_volume_is_manual_single_zone_and_zone_order_is_validated() {
     TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(session, p));
 }
 
+void test_mixed_mode_round_trips_duration_and_volume_steps() {
+    auto session = summary();
+    session.source = WateringSource::Manual;
+    session.planId = 0;
+    session.targetMode = WateringTargetMode::Mixed;
+    session.zones[1].targetWaterMl = 500U;  // zones 1 and 3: one duration, one volume
+    WateringRecordPayload payload{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(session, payload));
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
+    WateringRecordPayload decoded{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringTargetMode::Mixed),
+                            static_cast<uint8_t>(decoded.targetMode));
+    TEST_ASSERT_EQUAL_UINT32(0U, decoded.zones[0].targetWaterMl);
+    TEST_ASSERT_EQUAL_UINT32(500U, decoded.zones[2].targetWaterMl);
+
+    // A Mixed payload must actually contain both kinds of steps.
+    WateringRecordPayload volumeOnly = payload;
+    volumeOnly.zones[0].targetWaterMl = 400U;
+    TEST_ASSERT_FALSE(WateringRecordCodec::encode(volumeOnly, bytes, sizeof(bytes)));
+}
+
 void test_corrupted_header_and_invalid_result_pair_are_rejected() {
     WateringRecordPayload payload{};
     TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary(), payload));
@@ -111,6 +134,7 @@ int main(int, char**) {
     RUN_TEST(test_task_identity_and_start_offsets_round_trip);
     RUN_TEST(test_unknown_recovery_does_not_claim_zero_or_measured_progress);
     RUN_TEST(test_volume_is_manual_single_zone_and_zone_order_is_validated);
+    RUN_TEST(test_mixed_mode_round_trips_duration_and_volume_steps);
     RUN_TEST(test_corrupted_header_and_invalid_result_pair_are_rejected);
     return UNITY_END();
 }

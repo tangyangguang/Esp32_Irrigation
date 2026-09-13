@@ -16,7 +16,6 @@ ASSETS = [
     ("ActiveTaskStyle", "active-task-style.html"),
     ("ActiveTaskScript", "active-task-script.html"),
     ("PauseScript", "pause-script.html"),
-    ("SingleOutputForm", "single-output-form.html"),
     ("RecordsStyle", "records-style.html"),
     ("EventsStyle", "events-style.html"),
     ("LearningStyle", "learning-style.html"),

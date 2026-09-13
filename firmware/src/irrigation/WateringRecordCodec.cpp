@@ -98,8 +98,12 @@ bool validPayload(const WateringRecordPayload& payload) {
          (payload.planId == 0U || payload.planId > kWateringPlanCount))) {
         return false;
     }
-    if (payload.targetMode != WateringTargetMode::Duration && payload.targetMode != WateringTargetMode::Volume) return false;
-    if (payload.targetMode == WateringTargetMode::Volume && payload.source != WateringSource::Manual) return false;
+    if (payload.targetMode != WateringTargetMode::Duration &&
+        payload.targetMode != WateringTargetMode::Volume &&
+        payload.targetMode != WateringTargetMode::Mixed) return false;
+    if ((payload.targetMode == WateringTargetMode::Volume ||
+         payload.targetMode == WateringTargetMode::Mixed) &&
+        payload.source != WateringSource::Manual) return false;
     uint8_t included = 0;
     bool started = false;
     uint64_t pulses = 0;
@@ -122,7 +126,7 @@ bool validPayload(const WateringRecordPayload& payload) {
             continue;
         }
         ++included;
-        if (payload.targetMode == WateringTargetMode::Volume &&
+        if (zone.targetWaterMl != 0U &&
             (zone.targetWaterMl < 100U || zone.targetWaterMl > kMaximumConfigurableSingleOutputLiters * 1000U)) return false;
         if (payload.result == WateringResult::Incomplete) {
             if (zone.flags != WateringRecordCodec::kZoneFlagUnknown || zone.actualWateringSec ||
@@ -152,10 +156,13 @@ bool validPayload(const WateringRecordPayload& payload) {
             !baseline) return false;
         pulses += zone.pulseCount;
     }
-    if (payload.targetMode != WateringTargetMode::Volume) {
-        for (const ZoneWateringRecord& zone : payload.zones)
-            if (zone.targetWaterMl != 0U) return false;
-    }
+    uint8_t volumeSteps = 0;
+    for (const ZoneWateringRecord& zone : payload.zones)
+        if (zone.targetWaterMl != 0U) ++volumeSteps;
+    if (payload.targetMode == WateringTargetMode::Duration && volumeSteps != 0U) return false;
+    if (payload.targetMode == WateringTargetMode::Volume && volumeSteps != 1U) return false;
+    if (payload.targetMode == WateringTargetMode::Mixed &&
+        (volumeSteps == 0U || volumeSteps >= included)) return false;
     return included && (payload.targetMode != WateringTargetMode::Volume || included == 1) && (started || payload.result == WateringResult::Incomplete) &&
            (payload.result != WateringResult::Completed || pulses != 0U);
 }

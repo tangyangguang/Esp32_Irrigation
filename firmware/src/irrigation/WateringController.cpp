@@ -187,8 +187,7 @@ void WateringController::handle(uint32_t nowMs) {
                 break;
             }
             if (elapsed(nowMs, stateStartedMs_, step.targetDurationSec * 1000U)) {
-                if (request_.targetMode == WateringTargetMode::Volume &&
-                    step.targetWaterMl != 0) {
+                if (step.targetWaterMl != 0) {
                     finishSession(WateringStopReason::TargetVolumeTimeout, nowMs);
                 } else {
                     finishCurrentZone(nowMs);
@@ -378,12 +377,20 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
          (request.planId == 0 || request.planId > kWateringPlanCount))) {
         return false;
     }
-    if (request.targetMode != WateringTargetMode::Duration && request.targetMode != WateringTargetMode::Volume) return false;
+    if (request.targetMode != WateringTargetMode::Duration &&
+        request.targetMode != WateringTargetMode::Volume &&
+        request.targetMode != WateringTargetMode::Mixed) return false;
     if (request.targetMode == WateringTargetMode::Volume &&
         (request.source != WateringSource::Manual || request.steps[0].targetWaterMl == 0 || request.purpose != WateringPurpose::Normal || request.stepCount != 1)) {
         return false;
     }
+    if (request.targetMode == WateringTargetMode::Mixed &&
+        (request.source != WateringSource::Manual ||
+         request.purpose != WateringPurpose::Normal)) {
+        return false;
+    }
 
+    uint8_t volumeSteps = 0;
     uint8_t previousZoneId = 0;
     for (uint8_t index = 0; index < request.stepCount; ++index) {
         const WateringStep& step = request.steps[index];
@@ -394,17 +401,18 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
             (request.purpose == WateringPurpose::Normal &&
              step.targetDurationSec >
                  static_cast<uint32_t>(config.runLimits.maximumZoneDurationMinutes) * 60U) ||
-            (request.targetMode != WateringTargetMode::Volume &&
-             step.targetWaterMl != 0) ||
-            (request.targetMode == WateringTargetMode::Volume &&
-             step.targetWaterMl != 0 &&
+            (step.targetWaterMl != 0 &&
              (step.targetWaterMl < 100U ||
               step.targetWaterMl >
                   static_cast<uint32_t>(config.runLimits.maximumSingleOutputLiters) * 1000U))) {
             return false;
         }
+        if (step.targetWaterMl != 0) ++volumeSteps;
         previousZoneId = step.zoneId;
     }
+    if (request.targetMode == WateringTargetMode::Duration && volumeSteps != 0) return false;
+    if (request.targetMode == WateringTargetMode::Mixed &&
+        (volumeSteps == 0 || volumeSteps >= request.stepCount)) return false;
     return true;
 }
 

@@ -909,6 +909,67 @@ void test_single_output_volume_fails_at_configured_time_limit() {
                       static_cast<int>(summary->stopReason));
 }
 
+void test_mixed_duration_and_volume_steps_run_in_order() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.flowMeter.pulsesPerLiterX100 = 25000;
+    WateringRequest request{};
+    request.source = WateringSource::Manual;
+    request.purpose = WateringPurpose::Normal;
+    request.targetMode = WateringTargetMode::Mixed;
+    request.stepCount = 2;
+    request.steps[0] = {1, 1, 0};       // zone 1: one minute-free 1 s duration step
+    request.steps[1] = {2, 60, 400};    // zone 2: target 400 ml, 60 s safety window
+    TEST_ASSERT_TRUE(WateringController::isValidRequest(request, config));
+
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    establishFlow(controller, hardware, 0);
+    ++hardware.pulses;
+    controller.handle(1001);
+    TEST_ASSERT_EQUAL_UINT8(1, controller.status().currentStepIndex);
+
+    hardware.pulses += 4;
+    controller.handle(2000);
+    controller.handle(2001);
+    establishFlow(controller, hardware, 2001);
+    hardware.pulses += 99;
+    controller.handle(2003);
+    TEST_ASSERT_FALSE(controller.status().active);
+    const WateringSessionSummary* summary = controller.finishedSession();
+    TEST_ASSERT_NOT_NULL(summary);
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringResult::Completed),
+                      static_cast<int>(summary->result));
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStopReason::Completed),
+                      static_cast<int>(summary->stopReason));
+    TEST_ASSERT_EQUAL(static_cast<int>(ZoneWateringResult::Completed),
+                      static_cast<int>(summary->zones[0].result));
+    TEST_ASSERT_EQUAL_UINT32(0, summary->zones[0].targetWaterMl);
+    TEST_ASSERT_EQUAL_UINT32(400, summary->zones[1].targetWaterMl);
+}
+
+void test_mixed_request_validation_requires_both_step_kinds() {
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest durationOnly{};
+    durationOnly.source = WateringSource::Manual;
+    durationOnly.purpose = WateringPurpose::Normal;
+    durationOnly.targetMode = WateringTargetMode::Mixed;
+    durationOnly.stepCount = 2;
+    durationOnly.steps[0] = {1, 60, 0};
+    durationOnly.steps[1] = {2, 60, 0};
+    TEST_ASSERT_FALSE(WateringController::isValidRequest(durationOnly, config));
+
+    WateringRequest volumeOnly = durationOnly;
+    volumeOnly.steps[0] = {1, 60, 400};
+    volumeOnly.steps[1] = {2, 60, 400};
+    TEST_ASSERT_FALSE(WateringController::isValidRequest(volumeOnly, config));
+
+    WateringRequest mixed = durationOnly;
+    mixed.steps[1] = {2, 60, 400};
+    TEST_ASSERT_TRUE(WateringController::isValidRequest(mixed, config));
+}
+
 }  // namespace
 
 int main(int, char**) {
@@ -946,5 +1007,7 @@ int main(int, char**) {
     RUN_TEST(test_maintenance_abort_immediately_closes_outputs_and_keeps_result);
     RUN_TEST(test_single_output_stops_at_target_volume);
     RUN_TEST(test_single_output_volume_fails_at_configured_time_limit);
+    RUN_TEST(test_mixed_duration_and_volume_steps_run_in_order);
+    RUN_TEST(test_mixed_request_validation_requires_both_step_kinds);
     return UNITY_END();
 }

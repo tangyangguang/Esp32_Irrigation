@@ -1,5 +1,21 @@
 # ESP32 灌溉控制器固件
 
+## 手动浇水弹层化与按水量混排（2026-09-13，进行中）
+
+- 撤销独立手动浇水页 `/irrigation/manual`（含“精确到秒”），手动浇水恢复为首页弹层：每条启用水路一行，可单独选择“按时长”（整分钟）或“按水量”（L，步进 0.1），允许同次任务时长/水量混排，数值 0 即本次不执行；计划模板只填时长。提交失败时弹层保持打开并回填内容。
+- 删除旧“单次出水”独立 Web 入口及其静态资产；`WateringTargetMode` 新增 `Mixed`，记录编解码、控制器安全时限和完成判定支持混排；平台侧 IrrigationIot 的单次出水命令不在本次范围（文件未参与本机构建）。
+- 本机检查（工作区根目录）：
+
+```sh
+python3 devices/Esp32_Irrigation/firmware/scripts/test_web_assets.py
+python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d devices/Esp32_Irrigation/firmware -e native
+python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
+```
+
+- 结果：资产一致性与 JS 语法通过（静态资产由 10 项减为 9 项）；native 72 项全部通过，含新增混排控制器/校验与记录往返用例；主固件构建通过。镜像 **1,380,368 B**，静态 RAM **75,860 B**，OTA 槽剩余 **389,104 B（21.99%）**，SHA256 `65c7dc4b2e6a79c32745f7511866c869b2b283ea1b8a8964d2e23d33ace1a259`。浏览器页面检查与实机烧录未进行，待用户授权；运行堆/栈峰值未测量。
+
+## 页面还原与验证结果（2026-09-13）
+
 本轮本地 Web、设备核心及原有页面恢复任务已收尾。核心与基础库定向检查通过；最终 LOCAL 固件已串口烧录实验核心板，完成启动、静态资源一致性、浏览器交互和手动启动/停止记录验证。真实水路计量、完整自动运行周期、长期稳定性、真实断电恢复及运行堆/栈峰值未验证，不将实验核心板结果等同完整灌溉硬件验收。
 
 ## 当前交付边界

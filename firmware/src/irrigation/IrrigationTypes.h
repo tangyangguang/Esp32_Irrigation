@@ -103,7 +103,9 @@ enum class WateringSource : uint8_t {
     AutomaticPlan = 2,
 };
 
-enum class WateringTargetMode : uint8_t { Duration = 0, Volume = 1 };
+// Duration: every step runs for a duration. Volume: a single volume step.
+// Mixed: one manual request contains both duration and volume steps.
+enum class WateringTargetMode : uint8_t { Duration = 0, Volume = 1, Mixed = 2 };
 
 enum class WateringPurpose : uint8_t {
     Normal = 0,

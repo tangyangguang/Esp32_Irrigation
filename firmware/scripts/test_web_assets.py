@@ -59,5 +59,5 @@ int main(int argc, char** argv) {
             script_path.write_text(script)
             subprocess.run(["node", "--check", str(script_path)], check=True)
     assert subprocess.run([str(work / "check"), "255"], cwd=work).returncode == 3
-    assert len(list(work.glob("*.gz"))) == 10
-print("PASS: all 10 generated fragments preserve exact source content; gzip, registration, JavaScript syntax and invalid asset checked")
+    assert len(list(work.glob("*.gz"))) == 9
+print("PASS: all 9 generated fragments preserve exact source content; gzip, registration, JavaScript syntax and invalid asset checked")
