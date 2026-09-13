@@ -12,6 +12,7 @@ import re
 
 ASSETS = [
     ("HomeStyle", "home-style.html"),
+    ("PlansStyle", "plans-style.html"),
     ("HomeScript", "home-script.html"),
     ("ActiveTaskStyle", "active-task-style.html"),
     ("ActiveTaskScript", "active-task-script.html"),

@@ -1656,19 +1656,6 @@ void IrrigationWeb::overview() {
 // POST /irrigation/zones failure response. On failure the submitted values
 // are read from the POST body and the matching edit dialog reopens.
 void renderZoneManagement(bool failed, uint32_t postedZone) {
-    Esp32BaseWeb::sendChunk(
-        "<style>"
-        ".zone-meter{display:flex;align-items:center;justify-content:space-between;gap:16px}"
-        ".zone-meter-main{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px}"
-        ".zone-meter-label{margin:0;color:var(--eb-muted);font-size:13px}"
-        ".zone-meter-value{display:flex;align-items:baseline;gap:6px;color:var(--eb-primary);line-height:1}"
-        ".zone-meter-number{font-size:18px;font-weight:650}"
-        ".zone-meter-unit{font-size:14px;color:var(--eb-muted)}"
-        ".zone-table th{font-weight:600}.zone-table td{font-weight:400}"
-        ".zone-table .tag{font-weight:500}"
-        ".zone-table .btnlink{font-weight:500}"
-        "@media(max-width:760px){.zone-meter{align-items:stretch;flex-direction:column;gap:10px}.zone-meter .btnlink{width:100%}}"
-        "</style>");
     const IrrigationConfig* config = g_app->configuration();
     if (!config) return;
     char coefficient[20]{};
@@ -1772,62 +1759,7 @@ void IrrigationWeb::plans() {
         failed=true;
     }
     if (!beginPage("浇水计划", "管理自动执行，并为手动浇水提供可编辑的时长模板")) return;
-    Esp32BaseWeb::sendChunk(
-        "<style>"
-        ".plan-toolbar{display:flex;align-items:center;justify-content:flex-end;margin:-4px 0 12px}"
-        ".plan-auto{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 14px 14px 16px;border:1px solid #cfe1e5;border-radius:10px;background:linear-gradient(135deg,#f4faf7,#fff)}"
-        ".plan-auto.paused{border-color:#efcf96;background:linear-gradient(135deg,var(--eb-warn-soft),#fff)}"
-        ".plan-auto h3{margin:0 0 4px;font-size:17px}.plan-auto p{margin:0;color:var(--eb-muted)}.plan-auto-actions{display:flex;gap:8px;flex:0 0 auto}.plan-auto-actions form{margin:0}"
-        ".plan-pause-modal{width:min(620px,calc(100vw - 28px))}.plan-pause-options{display:grid;gap:10px;margin-top:14px}.plan-pause-option{padding:14px;border:1px solid var(--eb-line-soft);border-radius:9px;background:var(--eb-soft)}.plan-pause-option h3{margin:0 0 3px;font-size:15px}.plan-pause-option>small{display:block;margin-bottom:12px;color:var(--eb-muted)}.plan-pause-fields{display:grid;gap:12px}.plan-pause-field{margin:0}.plan-pause-field input{width:100%;max-width:none;margin:5px 0 0}.plan-pause-shortcuts{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px}.plan-pause-shortcuts button{min-height:32px;padding:5px 10px}.plan-pause-shortcuts button.selected{border-color:var(--eb-primary);background:var(--eb-primary-soft);color:var(--eb-primary)}.plan-pause-unavailable{margin:0;padding:9px 11px;border-radius:7px;background:var(--eb-warn-soft);color:var(--eb-warn);font-size:13px}.plan-pause-submit{display:flex;justify-content:flex-end;margin-top:12px}.plan-pause-indefinite{display:flex;align-items:center;justify-content:space-between;gap:14px}.plan-pause-indefinite h3{margin-bottom:3px}.plan-pause-indefinite p{margin:0}.plan-pause-indefinite form{margin:0;flex:0 0 auto}"
-        ".plan-toolbar .btnlink{min-height:36px}"
-        ".plan-list{display:grid;gap:12px}"
-        ".plan-card{padding:16px;border:1px solid #cfe1e5;border-radius:10px;background:linear-gradient(135deg,#f6fbfc 0,#fff 58%)}"
-        ".plan-card.disabled{border-color:#d8dee5;background:linear-gradient(135deg,#f3f5f7 0,#fff 62%)}"
-        ".plan-card.disabled .plan-card-body{border-top-color:#dfe3e8}.plan-card.disabled .plan-time-chip{border-color:#d8dee5;background:#f7f8f9;color:#667085}.plan-card.disabled .plan-zone-item{background:#f7f8f9}.plan-status-off{border-color:#d1d6dd!important;background:#eef1f4!important;color:#566170!important}"
-        ".plan-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}"
-        ".plan-card-title{min-width:0}.plan-card-title-row{display:flex;align-items:center;flex-wrap:wrap;gap:8px}"
-        ".plan-card-title h3{margin:0;font-size:18px;line-height:1.35;overflow-wrap:anywhere}"
-        ".plan-card-title small{display:block;margin-top:3px;color:var(--eb-muted)}"
-        ".plan-card-edit{flex:0 0 auto;min-width:68px}"
-        ".plan-card-body{display:grid;grid-template-columns:minmax(170px,.65fr) minmax(0,2fr);gap:18px;margin-top:14px;padding-top:14px;border-top:1px solid var(--eb-line-soft)}"
-        ".plan-summary-label{display:block;margin-bottom:7px;color:var(--eb-muted);font-size:12px;font-weight:650}"
-        ".plan-time-list{display:flex;flex-wrap:wrap;gap:7px}"
-        ".plan-time-chip{display:inline-flex;align-items:center;min-height:30px;padding:4px 10px;border:1px solid #cfe1e5;border-radius:999px;background:#fff;color:var(--eb-primary);font-weight:650;font-variant-numeric:tabular-nums}"
-        ".plan-empty-value{color:var(--eb-muted)}"
-        ".plan-zone-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:7px}"
-        ".plan-zone-item{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid var(--eb-line-soft);border-radius:7px;background:#fff}"
-        ".plan-zone-item b{min-width:0;font-size:13px;font-weight:600;overflow-wrap:anywhere}.plan-zone-item span{flex:0 0 auto;color:var(--eb-primary);font-weight:650;white-space:nowrap}"
-        ".plan-zone-item.zero span{color:var(--eb-muted);font-weight:500}"
-        ".plan-modal{width:min(820px,calc(100vw - 28px))}"
-        ".plan-editor{display:grid;gap:14px;margin-top:12px}"
-        ".plan-group{padding:14px;border:1px solid var(--eb-line);border-radius:9px;background:var(--eb-soft)}"
-        ".plan-group h3{margin:0 0 3px;font-size:15px}"
-        ".plan-group>small{display:block;margin-bottom:12px;color:var(--eb-muted)}"
-        ".plan-basic{display:grid;grid-template-columns:minmax(0,2fr) minmax(220px,1fr);gap:14px}"
-        ".plan-basic .field,.plan-zone{margin:0}"
-        ".plan-basic input[type=text]{margin-bottom:0}"
-        ".plan-switch{padding:10px 12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}"
-        ".plan-switch label{display:flex;align-items:center;gap:8px;margin:0}"
-        ".plan-switch small{display:block;margin-top:5px;color:var(--eb-muted)}"
-        ".plan-times,.plan-zones{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}"
-        ".plan-time,.plan-zone{padding:10px 12px;border:1px solid var(--eb-line-soft);border-radius:8px;background:#fff}"
-        ".plan-time-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center}"
-        ".plan-time input[type=time]{width:100%;min-width:0;min-height:34px;margin:0;padding:5px 8px}"
-        ".plan-time .clear-time{min-width:56px}"
-        ".plan-zone input{width:100%;max-width:none;margin:0}"
-        ".plan-zone small{display:block;margin-top:5px;color:var(--eb-muted)}"
-        ".plan-form-actions{padding-top:2px}"
-        "@media(max-width:760px){"
-        ".plan-auto{align-items:stretch;flex-direction:column}.plan-auto-actions,.plan-auto-actions form,.plan-auto-actions .btnlink{width:100%}.plan-pause-indefinite{align-items:stretch;flex-direction:column}.plan-pause-indefinite form,.plan-pause-indefinite input,.plan-pause-submit input{width:100%}"
-        ".plan-toolbar{margin-top:0}.plan-toolbar .btnlink{width:100%}"
-        ".plan-card{padding:13px}.plan-card-head{gap:10px}.plan-card-title h3{font-size:17px}.plan-card-edit{min-width:60px}"
-        ".plan-card-body{grid-template-columns:1fr;gap:13px;margin-top:12px;padding-top:12px}"
-        ".plan-zone-summary{grid-template-columns:repeat(2,minmax(0,1fr))}"
-        ".plan-modal{width:calc(100vw - 20px)}"
-        ".plan-basic,.plan-times,.plan-zones{grid-template-columns:1fr}"
-        ".plan-group{padding:12px}"
-        "}"
-        "</style>");
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::PlansStyle);
     if(failed) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,"操作未完成",g_app->configurationError());
     const IrrigationConfig* config = g_app->configuration();
     if (config) {
