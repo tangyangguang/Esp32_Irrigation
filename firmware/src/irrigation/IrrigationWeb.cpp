@@ -833,19 +833,6 @@ void sendRecordFlowAlertSummary(const WateringRecordPayload& payload,
     }
 }
 
-struct LatestRecordContext {
-    bool found = false;
-    StoredWateringRecord record{};
-};
-
-void collectLatestRecord(const StoredWateringRecord& record, void* user) {
-    auto* context = static_cast<LatestRecordContext*>(user);
-    if (context && !context->found) {
-        context->record = record;
-        context->found = true;
-    }
-}
-
 void html(const char* text) { Esp32BaseWeb::sendChunk(text); }
 void escaped(const char* text) { Esp32BaseWeb::writeHtmlEscaped(text ? text : ""); }
 void hidden(const char* name, uint32_t value) {
@@ -890,7 +877,114 @@ void conditions() {
     if (g_app->unexpectedFlowAlarm()) html("<details class='notice danger'><summary>关闭输出后仍检测到水流</summary><p>可能存在阀未关严、余流或其他水流来源，请检查现场；必要时关闭上游水源。设备无法仅凭总流量计判定具体漏水位置。</p></details>");
     html("</section>");
 }
-void renderDay(uint32_t day) {
+struct DayPlanSlot {
+    uint8_t planIndex;
+    uint16_t minuteOfDay;
+};
+
+// Scheduled start points of one local day, in chronological order. Mirrors the
+// scheduler's configured/scheduleEnabled/start-minute filters; slots of plans
+// without any runnable zone are kept and flagged in the UI, matching the
+// scheduler which still selects them and records a skip when they come due.
+void renderDayPlans(uint32_t day,
+                    const NextAutomaticWatering& next,
+                    const AutomaticWateringState& automatic,
+                    WateringScheduler::TimeState schedulerTime,
+                    uint32_t today,
+                    uint16_t currentMinute,
+                    bool currentTimeKnown) {
+    if (today && day < today) return;
+    const IrrigationConfig* config = g_app->configuration();
+    if (!config) return;
+    const bool isToday = today && day == today;
+    DayPlanSlot slots[kWateringPlanCount * kPlanStartTimeCount]{};
+    uint8_t slotCount = 0;
+    bool anyScheduledPlan = false;
+    for (uint8_t planIndex = 0; planIndex < config->plans.size(); ++planIndex) {
+        const WateringPlan& plan = config->plans[planIndex];
+        if (!plan.configured) continue;
+        for (uint16_t minute : plan.startMinutes) {
+            if (minute == kUnusedStartMinute) continue;
+            if (plan.scheduleEnabled) {
+                anyScheduledPlan = true;
+                slots[slotCount++] = {planIndex, minute};
+            }
+        }
+    }
+    for (uint8_t i = 1; i < slotCount; ++i) {
+        const DayPlanSlot value = slots[i];
+        int8_t j = static_cast<int8_t>(i) - 1;
+        while (j >= 0 && slots[j].minuteOfDay > value.minuteOfDay) {
+            slots[j + 1] = slots[j];
+            --j;
+        }
+        slots[j + 1] = value;
+    }
+    const char* heading = isToday ? "今日计划" : (today && day == today + 1U ? "明日计划" : "当日计划");
+    html("<div class='home-day-plans'><div class='home-day-plans-head'><h3>");
+    html(heading);
+    html("</h3>");
+    if (schedulerTime != WateringScheduler::TimeState::Ready) {
+        html("<span class='tag warn'>时间未就绪</span>");
+    } else if (automatic.mode != AutomaticWateringMode::Enabled) {
+        html("<span class='tag warn'>自动浇水已暂停</span>");
+    } else {
+        html("<span class='tag ok'>自动浇水正常</span>");
+    }
+    html("</div>");
+    if (automatic.mode == AutomaticWateringMode::PausedIndefinitely) {
+        html("<p class='notice warn'>自动浇水已暂停，到点计划不会执行，也不会补浇。<a href='/irrigation/plans'>恢复自动浇水</a></p>");
+    } else if (automatic.mode == AutomaticWateringMode::PausedUntil) {
+        char pauseText[64]{};
+        html("<p class='notice warn'>自动浇水暂停中");
+        if (formatFullDateTime(automatic.resumeAtEpoch, pauseText, sizeof(pauseText))) {
+            html("，计划于 ");
+            Esp32BaseWeb::writeHtmlEscaped(pauseText);
+            html(" 自动恢复");
+        }
+        html("。<a href='/irrigation/plans'>管理暂停</a></p>");
+    }
+    if (!anyScheduledPlan) {
+        html("<p class='muted'>还没有开启自动执行的计划。<a href='/irrigation/plans'>去设置计划</a></p></div>");
+        return;
+    }
+    bool listed = false;
+    for (uint8_t i = 0; i < slotCount; ++i) {
+        const DayPlanSlot& slot = slots[i];
+        if (isToday && currentTimeKnown && slot.minuteOfDay <= currentMinute) continue;
+        const WateringPlan& plan = config->plans[slot.planIndex];
+        uint8_t zoneCount = 0;
+        uint32_t totalMinutes = 0;
+        for (uint8_t zoneIndex = 0; zoneIndex < plan.zoneDurationMinutes.size(); ++zoneIndex) {
+            if (!config->zones[zoneIndex].enabled || plan.zoneDurationMinutes[zoneIndex] == 0) continue;
+            ++zoneCount;
+            totalMinutes += plan.zoneDurationMinutes[zoneIndex];
+        }
+        const uint32_t slotEpoch = day * 86400U + static_cast<uint32_t>(slot.minuteOfDay) * 60U - 8U * 3600U;
+        const bool isNext = next.status == NextAutomaticWateringStatus::Available &&
+                            next.planId == plan.id && next.scheduledEpoch == slotEpoch;
+        html("<div class='home-day-plan");
+        if (isNext) html(" is-next");
+        html("'><b class='home-day-plan-time'>");
+        char clock[8]{};
+        std::snprintf(clock, sizeof(clock), "%02u:%02u",
+                      static_cast<unsigned>(slot.minuteOfDay / 60U),
+                      static_cast<unsigned>(slot.minuteOfDay % 60U));
+        html(clock);
+        if (isNext) html("<span class='tag info'>下一次</span>");
+        html("</b><span class='home-day-plan-name'>");
+        Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
+        html("</span><small>");
+        if (zoneCount == 0) html("计划内没有可执行水路，到点会记为跳过");
+        else { sendUnsigned(zoneCount); html(" 路 · 共 "); sendUnsigned(totalMinutes); html(" 分钟"); }
+        html("</small></div>");
+        listed = true;
+    }
+    if (!listed) html("<p class='muted'>今天剩余时间没有已排期的自动浇水。</p>");
+    html("<p class='home-day-plans-link'><a href='/irrigation/plans'>管理计划</a></p></div>");
+}
+
+void renderDay(uint32_t day, bool includePlans) {
     if (!day) { html("<p class='muted'>设备时间未知，日期统计暂不可用。仍可查看全部浇水记录。</p>"); return; }
     const auto daily = g_app->wateringDay(day); const auto* config = g_app->configuration();
     if (!daily.readable) { html("<p class='notice warn'>记录暂时无法读取，不能据此判断没有浇水。</p>"); return; }
@@ -917,6 +1011,20 @@ void renderDay(uint32_t day) {
     if (daily.truncated) html("<p class='notice warn'>较早历史已滚动淘汰，本日统计可能不完整。</p>");
     if (daily.unknownTimeCount) { html("<p class='muted'>另有 "); sendUnsigned(daily.unknownTimeCount); html(" 条时间未知的记录未计入日期统计。</p>"); }
     html("<p class='muted'>按各水路开始日期归属；跨日任务不拆分。时长为实际浇水时间，水量为估算值。</p>");
+    if (includePlans) {
+        const Esp32BaseTime::Snapshot snapshot = Esp32BaseTime::snapshot();
+        const uint32_t today = snapshot.synced ? WateringHistory::localDay(snapshot.epochSec) : 0U;
+        const uint16_t currentMinute = snapshot.synced
+                                           ? static_cast<uint16_t>(((snapshot.epochSec + 8U * 3600U) % 86400U) / 60U)
+                                           : 0U;
+        renderDayPlans(day,
+                       g_app->nextAutomaticWatering(),
+                       g_app->automaticWateringState(),
+                       g_app->schedulerTimeState(),
+                       today,
+                       currentMinute,
+                       snapshot.synced);
+    }
 }
 
 void renderManualDialog(const IrrigationConfig& config) {
@@ -1328,7 +1436,6 @@ void IrrigationWeb::overview() {
     if (!Esp32BaseWeb::checkAuth()) return;
     Esp32BaseWeb::sendHeader("智能浇水");
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
-    const AutomaticWateringState automatic = g_app->automaticWateringState();
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     const WateringScheduler::TimeState schedulerTime = g_app->schedulerTimeState();
     const bool timeTrusted = now.synced && schedulerTime == WateringScheduler::TimeState::Ready;
@@ -1346,13 +1453,7 @@ void IrrigationWeb::overview() {
             if (zone.enabled) hasEnabledZone = true;
         }
     }
-    const NextAutomaticWatering next = g_app->nextAutomaticWatering();
-    LatestRecordContext latest;
-    if (!g_app->recordStorageFault()) {
-        g_app->readLatestWateringRecords(0, 1, collectLatestRecord, &latest);
-    }
     char value[96]{};
-    char secondary[96]{};
 
     char result[12]{};
     if (getParam("result", result, sizeof(result))) {
@@ -1543,165 +1644,8 @@ void IrrigationWeb::overview() {
     Esp32BaseWeb::beginPanel("每日浇水");
     const uint32_t day = selectedDay();
     if (day) dateNav(day);
-    renderDay(day);
+    renderDay(day, true);
     Esp32BaseWeb::endPanel();
-    Esp32BaseWeb::sendChunk("<div class='home-grid'>");
-
-    Esp32BaseWeb::sendChunk("<section class='home-card'><div class='home-card-head'><h2>下一次自动浇水</h2>");
-    if (automatic.mode == AutomaticWateringMode::Enabled) {
-        Esp32BaseWeb::sendChunk("<span class='tag ok'>自动浇水正常</span></div>");
-    } else {
-        Esp32BaseWeb::sendChunk("<span class='tag warn'>自动浇水已暂停</span></div>");
-    }
-    if (automatic.mode == AutomaticWateringMode::PausedIndefinitely) {
-        Esp32BaseWeb::sendChunk("<div class='home-main'>等待你手动恢复</div><p class='home-sub'>暂停期间到点的计划不会执行，也不会补执行。</p>");
-    } else {
-        if (automatic.mode == AutomaticWateringMode::PausedUntil) {
-            if (formatFriendlyDateTime(automatic.resumeAtEpoch, now.epochSec, value, sizeof(value)) &&
-                formatFullDateTime(automatic.resumeAtEpoch, secondary, sizeof(secondary))) {
-                Esp32BaseWeb::sendChunk("<div class='home-main'>将在");
-                Esp32BaseWeb::writeHtmlEscaped(value);
-                Esp32BaseWeb::sendChunk("自动恢复</div><p class='home-sub'>");
-                Esp32BaseWeb::writeHtmlEscaped(secondary);
-                if (!timeTrusted) Esp32BaseWeb::sendChunk("；设备时间恢复可信后才会判断是否到期");
-                Esp32BaseWeb::sendChunk("</p>");
-            }
-        }
-        if (next.status == NextAutomaticWateringStatus::Available &&
-            formatFriendlyDateTime(next.scheduledEpoch, now.epochSec, value, sizeof(value)) &&
-            formatFullDateTime(next.scheduledEpoch, secondary, sizeof(secondary))) {
-            const WateringPlan* nextPlan =
-                config && next.planId != 0 && next.planId <= config->plans.size()
-                    ? &config->plans[next.planId - 1U]
-                    : nullptr;
-            if (automatic.mode == AutomaticWateringMode::Enabled) {
-                Esp32BaseWeb::sendChunk("<div class='home-main'>");
-                Esp32BaseWeb::writeHtmlEscaped(value);
-                Esp32BaseWeb::sendChunk("</div><p class='home-sub'>");
-                Esp32BaseWeb::writeHtmlEscaped(secondary);
-                Esp32BaseWeb::sendChunk("</p>");
-            }
-            Esp32BaseWeb::sendChunk("<div class='home-plan'><span>");
-            Esp32BaseWeb::sendChunk(automatic.mode == AutomaticWateringMode::Enabled ? "执行计划" : "恢复后的计划");
-            Esp32BaseWeb::sendChunk("</span><b>");
-            const char* nextPlanName = planNameById(config, next.planId);
-            if (nextPlanName) {
-                Esp32BaseWeb::writeHtmlEscaped(nextPlanName);
-            } else {
-                Esp32BaseWeb::sendChunk("计划 ");
-                sendUnsigned(next.planId);
-            }
-            Esp32BaseWeb::sendChunk("</b></div>");
-            uint8_t nextZoneCount = 0;
-            uint32_t nextTotalMinutes = 0;
-            if (nextPlan) {
-                for (uint8_t index = 0;
-                     index < nextPlan->zoneDurationMinutes.size();
-                     ++index) {
-                    if (!config->zones[index].enabled ||
-                        nextPlan->zoneDurationMinutes[index] == 0) {
-                        continue;
-                    }
-                    ++nextZoneCount;
-                    nextTotalMinutes += nextPlan->zoneDurationMinutes[index];
-                }
-            }
-            Esp32BaseWeb::sendChunk("<div class='home-facts'><div class='home-fact'><span>执行内容</span><b>");
-            sendUnsigned(nextZoneCount);
-            Esp32BaseWeb::sendChunk(" 个水路 · 预计 ");
-            sendUnsigned(nextTotalMinutes);
-            Esp32BaseWeb::sendChunk(" 分钟</b></div>");
-            if (nextPlan && nextZoneCount != 0) {
-                Esp32BaseWeb::sendChunk("<div class='home-fact'><span>水路安排</span><b>");
-                uint8_t emitted = 0;
-                for (uint8_t index = 0;
-                     index < nextPlan->zoneDurationMinutes.size() && emitted < 3;
-                     ++index) {
-                    const uint16_t duration =
-                        nextPlan->zoneDurationMinutes[index];
-                    if (!config->zones[index].enabled || duration == 0) continue;
-                    if (emitted != 0) Esp32BaseWeb::sendChunk(" · ");
-                    Esp32BaseWeb::writeHtmlEscaped(
-                        config->zones[index].name.data());
-                    Esp32BaseWeb::sendChunk(" ");
-                    sendUnsigned(duration);
-                    Esp32BaseWeb::sendChunk(" 分");
-                    ++emitted;
-                }
-                if (nextZoneCount > emitted) {
-                    Esp32BaseWeb::sendChunk(" · 另有 ");
-                    sendUnsigned(nextZoneCount - emitted);
-                    Esp32BaseWeb::sendChunk(" 个水路");
-                }
-                Esp32BaseWeb::sendChunk("</b></div>");
-            }
-            if (automatic.mode == AutomaticWateringMode::PausedUntil) {
-                Esp32BaseWeb::sendChunk("<div class='home-fact'><span>下一次执行</span><b>");
-                Esp32BaseWeb::writeHtmlEscaped(value);
-                Esp32BaseWeb::sendChunk("</b></div>");
-            }
-            Esp32BaseWeb::sendChunk("</div>");
-        } else if (next.status == NextAutomaticWateringStatus::NoEnabledPlans) {
-            Esp32BaseWeb::sendChunk("<div class='home-empty'>还没有开启自动执行的计划。设置计划和启动时间后，下一次浇水会显示在这里。</div>");
-        } else if (next.status == NextAutomaticWateringStatus::RtcRollback) {
-            Esp32BaseWeb::sendChunk("<div class='home-empty'>设备时间发生倒退，暂时无法计算下一次浇水。</div>");
-        } else if (next.status == NextAutomaticWateringStatus::TimeUnavailable) {
-            Esp32BaseWeb::sendChunk("<div class='home-empty'>设备时间尚未就绪，暂时无法计算下一次浇水。</div>");
-        }
-    }
-    Esp32BaseWeb::sendChunk("<div class='home-card-actions'><a class='btnlink secondary' href='/irrigation/plans'>管理计划</a></div></section>");
-
-    Esp32BaseWeb::sendChunk("<section id='home-recent-card' class='home-card");
-    if (latest.found) {
-        Esp32BaseWeb::sendChunk(" ");
-        Esp32BaseWeb::sendChunk(recordOutcomeTone(latest.record.payload));
-    }
-    Esp32BaseWeb::sendChunk("'><div class='home-card-head'><h2>最近一次浇水</h2>");
-    if (latest.found) {
-        Esp32BaseWeb::sendChunk("<span class='tag ");
-        Esp32BaseWeb::sendChunk(recordOutcomeTone(latest.record.payload));
-        Esp32BaseWeb::sendChunk("'>");
-        Esp32BaseWeb::sendChunk(outcome(latest.record.payload));
-        Esp32BaseWeb::sendChunk("</span>");
-    } else {
-        Esp32BaseWeb::sendChunk("<a class='btnlink compact secondary' href='/irrigation/records'>全部记录</a>");
-    }
-    Esp32BaseWeb::sendChunk("</div>");
-    if (g_app->recordStorageFault()) {
-        Esp32BaseWeb::sendChunk("<div class='home-empty'>浇水记录存储异常，暂时无法读取最近记录。</div>");
-    } else if (!latest.found) {
-        Esp32BaseWeb::sendChunk("<div class='home-empty'>还没有浇水记录。第一次浇水执行结束后，无论完成、停止或失败，结果都会显示在这里。</div>");
-    } else {
-        const WateringRecordTotals totals = WateringRecordCodec::calculateTotals(
-            latest.record.payload);
-        Esp32BaseWeb::sendChunk("<div class='home-main'>");
-        Esp32BaseWeb::writeHtmlEscaped(sourceName(latest.record.payload.source));
-        const char* recordPlanName = planNameById(config, latest.record.payload.planId);
-        if (recordPlanName) {
-            Esp32BaseWeb::sendChunk(" · ");
-            Esp32BaseWeb::writeHtmlEscaped(recordPlanName);
-        }
-        Esp32BaseWeb::sendChunk("</div><p class='home-sub'>");
-        if (latest.record.payload.result == WateringResult::Incomplete) { epochText(latest.record.payload.startedEpoch); html(" · 中断时间未知"); }
-        else sendRecordTimeRange(latest.record.timing);
-        Esp32BaseWeb::sendChunk("</p><p class='home-outcome'>");
-        sendRecordOutcomeSummary(latest.record.payload, config);
-        Esp32BaseWeb::sendChunk("</p><div class='home-facts'><div class='home-fact'><span>执行目标</span><b>");
-        const uint32_t latestTargetWaterMl = recordTargetWaterMl(latest.record.payload);
-        if (latestTargetWaterMl != 0) sendCompactWaterVolume(latestTargetWaterMl);
-        else { formatElapsed(totals.plannedDurationSec, value, sizeof(value)); Esp32BaseWeb::writeHtmlEscaped(value); }
-        Esp32BaseWeb::sendChunk("</b></div><div class='home-fact'><span>实际浇水</span><b>");
-        if (latest.record.payload.result == WateringResult::Incomplete) std::snprintf(value, sizeof(value), "未知");
-        else formatElapsed(totals.actualWateringSec, value, sizeof(value));
-        Esp32BaseWeb::writeHtmlEscaped(value);
-        Esp32BaseWeb::sendChunk("</b></div><div class='home-fact'><span>估算用水量</span><b>");
-        if (latest.record.payload.result == WateringResult::Incomplete) html("未知");
-        else sendCompactWaterVolume(totals.estimatedWaterMl);
-        Esp32BaseWeb::sendChunk("</b></div></div><div class='home-card-actions'><a class='btnlink info' href='/irrigation/records?id=");
-        sendUnsigned(latest.record.recordId);
-        Esp32BaseWeb::sendChunk("'>查看完整记录</a><a class='btnlink secondary' href='/irrigation/records'>全部记录</a></div>");
-    }
-    Esp32BaseWeb::sendChunk("</section></div>");
 
     const uint32_t checkpointEpoch = g_app->lastKnownAliveEpoch();
     const char* resetReason = Esp32BaseSystem::resetReason();
@@ -2329,7 +2273,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::endPanel();
     }
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::ActiveTaskScript);
-    html("<section class='panel'><h2>每日浇水</h2>"); const uint32_t day=selectedDay(); if(day) dateNav(day); renderDay(day); html("</section>");
+    html("<section class='panel'><h2>每日浇水</h2>"); const uint32_t day=selectedDay(); if(day) dateNav(day); renderDay(day, false); html("</section>");
     endPage();
 }
 
