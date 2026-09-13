@@ -1,6 +1,13 @@
 # ESP32 灌溉控制器固件
 
-本轮本地 Web 与设备核心重构已完成源码实现和约定的本机验证。基础库 59/59、灌溉核心 72/72、独立执行任务及存储集成检查通过；最终 LOCAL 固件构建、静态资源一致性和 OTA 容量门禁通过。未进行浏览器验收、实机升级或真实水路测试。
+本轮本地 Web、设备核心及原有页面恢复任务已收尾。核心与基础库定向检查通过；最终 LOCAL 固件已串口烧录实验核心板，完成启动、静态资源一致性、浏览器交互和手动启动/停止记录验证。真实水路计量、完整自动运行周期、长期稳定性、真实断电恢复及运行堆/栈峰值未验证，不将实验核心板结果等同完整灌溉硬件验收。
+
+## 当前交付边界
+
+- 设备核心提交 `d14a0a8`、页面恢复提交 `46deee3`，配套 Esp32Base 提交 `419cd53` 均已提交推送。页面以 `b831ee3` 为视觉基准，保留新信息结构和业务契约，不回退安全控制与滚动记录逻辑。
+- 本次收尾仅同步文档，人工核对实现、链接和差异；不改变固件产物，复用未受影响的已有验证证据，不追加构建、烧录或测试。
+- 当前范围内无剩余代码工作。真实水路及长期现场试运行由用户按需安排；MQTT、IoT 平台、小程序适配和专业计量校准属于后续独立任务。
+- 下文“历史验证证据”仅用于追溯旧版本，旧导航、ACK 策略、平台连接及镜像尺寸均不适用于当前 LOCAL 固件。
 
 ## 页面还原与验证结果（2026-09-13）
 
@@ -42,9 +49,9 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/esptool --chip esp32 --port 
 
 配置 schema 5 保持不变。watering v8：210 B payload + 24 B Base 槽；audit v4：20 B payload + 24 B 槽。预算 160/48 KiB，均 RotateOldest，保留条数动态推导；不因未同步阻止轮转。任务标记 234 B；真正的写入/校验失败保持明确故障，输出关闭后结果不能虚报成功。旧历史不迁移、不自动清理，升级维护只能处理明确的旧测试历史，不能格式化来掩盖容量问题。
 
-最终受控 Core 3 LOCAL 构建：镜像 1,344,752 B，链接 Flash 1,344,340 B，PlatformIO 静态 RAM 75,860 B；每个 OTA 槽剩余 424,720 B（24.00%）。运行堆/栈峰值未测量。分区不变：4 MiB 布局、双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump；历史预算 208 KiB、文件日志 128 KiB、FS 安全空间及配置余量保留。控制任务 4096 B 栈来自运行堆，不能用静态 RAM 值冒充运行峰值。新增的记录 payload、任务 marker、统计上下文均有固定上限，无持久日汇总、无新消息队列。
+当前最终镜像、静态 RAM 与 OTA 余量见上方“页面还原与验证结果”，不使用页面恢复前的核心阶段镜像作为最终产物。运行堆/栈峰值未测量。分区不变：4 MiB 布局、双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump；历史预算 208 KiB、文件日志 128 KiB、FS 安全空间及配置余量保留。控制任务 4096 B 栈来自运行堆，不能用静态 RAM 值冒充运行峰值。新增的记录 payload、任务 marker、统计上下文均有固定上限，无持久日汇总、无新消息队列。
 
-## 验证入口与结果（再次执行需遵守工作区授权）
+## 核心阶段验证入口与结果（复用证据）
 
 在工作区根目录：
 
@@ -56,19 +63,19 @@ python3 devices/Esp32_Irrigation/firmware/scripts/test_executor.py
 python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
 ```
 
-本轮上述入口均通过。验证中修复了旧事件上下文接口的遗留引用、宿主时间接口，以及审计待存事实在 OTA 写入暂停期间应保留原时间并延后写入的判断；只重测相关存储集成和主目标，未重复未受影响的已通过批次。
+核心重构阶段上述入口均通过：基础库 59/59、灌溉核心 72/72，独立执行任务及存储集成检查通过。验证中修复了旧事件上下文接口的遗留引用、宿主时间接口，以及审计待存事实在 OTA 写入暂停期间应保留原时间并延后写入的判断；只重测相关存储集成和主目标，未重复未受影响的已通过批次。
 
-覆盖 codec/调度/控制器、本地滚动/重启记账/未知统计、Base Conditions 和 blob 读取错误、原执行任务隔离。构建同时通过静态资源漂移与 OTA 容量门禁。全部操作仅生成本机产物，未烧录、OTA、启动服务或浏览器，也未触发真实水路。编译器仅提示 LTO 串行执行，不影响构建通过。
+覆盖 codec/调度/控制器、本地滚动/重启记账/未知统计、Base Conditions 和 blob 读取错误、原执行任务隔离。构建同时通过静态资源漂移与 OTA 容量门禁。这些核心阶段命令仅生成本机产物，不含烧录或浏览器验证；后续最终固件的实验板烧录和浏览器结果见上文，两阶段证据不混用。编译器仅提示 LTO 串行执行，不影响构建通过。
 
-`test_storage_views.py` 使用真实 Base 存储引擎与内存文件系统，NVS 标记用受控夹具；不代表物理掉电验证。`esp32_record_test` 会格式化设备文件系统，不能随本机批次运行。测试失败后按工作区规则先只读定位及修复，再申请有限重测。
+`test_storage_views.py` 使用真实 Base 存储引擎与内存文件系统，NVS 标记用受控夹具；不代表物理掉电验证。`esp32_record_test` 会格式化设备文件系统，不能随本机批次运行。再次执行或重测按当前工作区规则和对应操作授权范围处理。
 
 ## Web 源与生成物
 
 `web-src/` 为 CSS/JS 权威源，`python3 scripts/generate_web_assets.py` 只生成 gzip 固件静态源。构建执行 `--check` 漂移检查；当前页面还原的生成物一致性、脚本语法及实验板页面验证通过，范围见上文。样式不使用卡片左侧彩色竖条。后续视觉调整应只影响此展示层。
 
-## 7. HTTP Web OTA
+## HTTP Web OTA
 
-项目只使用 Esp32Base HTTP Web OTA。复制本地模板：
+网络升级只使用 Esp32Base HTTP Web OTA；实验板串口烧录是独立操作。以下配置与 OTA 命令从本目录（`devices/Esp32_Irrigation/firmware`）执行，仅为操作入口，不代表本次收尾重新执行。复制本地模板：
 
 ```sh
 cp platformio.example.ini platformio.local.ini
@@ -96,7 +103,7 @@ python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain r
 
 以下保留先前版本的实机与平台证据，其中旧 API、尺寸、通过状态及“本轮”均指原日期的任务，不能用于当前 LOCAL 重构验收或扩大本次测试授权。
 
-## 8. 实机验证边界
+### 旧版本实机验证边界
 
 514e149 版本已串口烧录、校验并启动，双 Store 就绪、业务无存储故障；NTP 同步、MQTTS 连接（含证书日期校验），平台收到完整业务状态和诊断。实机发现 Core 3 初始 GPIO 电平预置失效及 OTA 退出预算不足，两项修复已进入 f76f37b / Base cdd1923，两项已通过实机与 Web OTA。
 
@@ -194,6 +201,6 @@ watering 与 audit 分别登记、检查底层及 SDK 就绪；加载失败的 S
 
 这是测试服务、真实 MQTT、授权完整硬件与开发者工具的闭环证据；未冒称手机扫码、真实水路精度或长期稳定性验证。旧核心板保留原设备和历史，未将其标为正常或已升级。
 
-## 2026-09-10 接入仓库整合验证
+### 2026-09-10 接入仓库整合验证
 
 SDK 和契约统一消费 `platform/iot-device`（结构提交 `824d68a`），定义内容与 SDK 运行代码未变。本轮从新路径运行 `python3 scripts/test_storage_views.py`、`IOT_DEVICE_CONTRACTS_ROOT=/Users/tyg/workspace/iot/platform/iot-device/contracts python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native_iot_vectors` 和本页受控 Core 3 TLS 构建命令，均通过。共享向量覆盖 33 个输入案例；目标 RAM 95,228 B，Flash 1,567,751 B，OTA 镜像 1,568,160 B，1728 KiB 槽剩余 201,312 B（11.38%）。本轮未烧录、OTA或操作真实负载，既有实机证据仍只对应原验证版本。
