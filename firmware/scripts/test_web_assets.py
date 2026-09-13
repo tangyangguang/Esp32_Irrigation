@@ -54,6 +54,10 @@ int main(int argc, char** argv) {
             return f"<{tag}>{body}</{tag}>"
         reconstructed = re.sub(r'<script src="([^"]+)"></script>|<link rel="stylesheet" href="([^"]+)">', restore, emitted)
         assert reconstructed == (ROOT / "web-src" / filename).read_text(), filename
+        for script_index, script in enumerate(re.findall(r"<script>(.*?)</script>", reconstructed, re.S)):
+            script_path = work / f"{index}-{script_index}.js"
+            script_path.write_text(script)
+            subprocess.run(["node", "--check", str(script_path)], check=True)
     assert subprocess.run([str(work / "check"), "255"], cwd=work).returncode == 3
     assert len(list(work.glob("*.gz"))) == 10
-print("PASS: all 10 generated fragments preserve exact source content; gzip, registration and invalid asset checked")
+print("PASS: all 10 generated fragments preserve exact source content; gzip, registration, JavaScript syntax and invalid asset checked")

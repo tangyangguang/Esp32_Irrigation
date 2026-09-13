@@ -32,7 +32,7 @@ if(!n)return '窗口 #1 正在采集；每个窗口约 5 秒且互不重叠。';
 var min=Number(s.learningMinimumPulseRateX100)||0,max=Number(s.learningMaximumPulseRateX100)||0,allow=Number(s.learningAllowedPulseRateSpreadX100)||0,first=Math.max(1,n-4);
 return '已采集 '+n+' 个完整窗口，窗口 #'+(n+1)+' 正在采集；当前使用 #'+first+'～#'+n+' 判断。原始脉冲速率为 '+rate(min)+'～'+rate(max)+'，跨度 '+rate(max-min)+'，允许 '+rate(allow)+'。收满 5 窗、每窗均有脉冲且跨度不超过允许值时完成。'
 }
-var timer=0,failures=0,loading=false,stale=document.createElement('p');stale.className='caption';stale.setAttribute('role','status');document.getElementById('learn-rule').after(stale);
+var timer=0,failures=0,loading=false,stale=document.createElement('p');stale.className='muted';stale.setAttribute('role','status');document.getElementById('learn-rule').after(stale);
 function poll(){
 if(document.hidden||loading)return;loading=true;
 fetch('/irrigation/api/status',{cache:'no-store',credentials:'same-origin'}).then(function(r){if(!r.ok)throw Error();return r.json()}).then(function(s){

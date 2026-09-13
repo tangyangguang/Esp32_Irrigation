@@ -2,14 +2,37 @@
 
 本轮本地 Web 与设备核心重构已完成源码实现和约定的本机验证。基础库 59/59、灌溉核心 72/72、独立执行任务及存储集成检查通过；最终 LOCAL 固件构建、静态资源一致性和 OTA 容量门禁通过。未进行浏览器验收、实机升级或真实水路测试。
 
-## 当前待办（2026-09-13）
+## 页面还原与验证结果（2026-09-13）
 
-- [x] 本地执行/记录边界：来源与目标方式分开，持久任务标记、未知中断结果、本地滚动历史、RAM Conditions。
-- [x] 页面结构：每日水路卡片、次级手动、计划编辑、记录详情、设备维护；同步测试源码和当前契约。
-- [x] 源码人工联动审阅及必要问题修复。
-- [x] 获批本机测试、存储集成及最终构建通过；更新验证结论。配套提交以两个责任仓的 Git 历史为准。
+- [x] 以 b831ee3 为视觉基准恢复首页、计划、手动浇水、水路、运行、基准学习和记录的原有组件/布局，撤掉全局主题覆盖；保留最新页面入口归属。
+- [x] 对接当前统一浇水请求、秒级时长、按水量子模式、每日统计、滚动历史和中断未知结果；保留原表单弹窗及失败输入，人工审阅必要联动。
+- [x] 资源还原、JavaScript 语法、主固件构建、容量门禁通过；修正实机页面中设备设置入口和额外秒数字段的栅格跨度。
+- [x] 经用户追加授权，串口烧录实验核心板并核对启动、设备返回的全部资源和实际页面；保持空闲，保留一次启动/停止实验记录。
 
-约定的本机验证无剩余项。浏览器体验、实机升级与真实水路验证尚未执行，需单独明确目标及授权；MQTT、IoT 平台和小程序适配属于后续独立任务，不在本轮继续实施。
+必要验证命令（工作区根目录）：
+
+```sh
+python3 devices/Esp32_Irrigation/firmware/scripts/test_web_assets.py
+python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
+```
+
+以上本机检查通过。首次构建 51.98 秒，发现页面入口栅格跨度遗漏后只改展示标记，最终增量构建 32.49 秒通过；未重复未受影响的核心测试。后续实验板验证为用户明确追加授权，与平台和真实水路实验分开。
+
+资源预算：恢复旧页面以 Flash 中的文字、CSS/JS 为主，预留增量上限 64 KiB（原 OTA 槽余量 424,720 B）；静态资源登记共 10 项，沿用现有容量，不扩展路由、持久结构或任务栈。页面仍分块发送，记录每页最多 20 条。最终 Flash/RAM 以获批构建的链接产物为准，运行峰值未测量。
+
+最终镜像 **1,384,992 B**，静态 RAM **75,860 B**，OTA 槽剩余 **384,480 B（21.73%）**；镜像较核心重构版增加 40,240 B，低于 64 KiB 预算。SHA256：`6f20f18809ec9440a9214fba01a46796555c0f205caf41c7f5a1bb87289a44a9`。产物为 `.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin`，不是其他构建目录中已有的旧镜像。
+
+实验目标：`/dev/cu.usbserial-57460296581`，ESP32-D0WD-V3，MAC `08:d1:f9:3b:2c:f4`，物理 Flash 4 MiB，运行地址 `192.168.2.141`。首次按 0x1000/0x8000/0xe000/0x10000 分段写入 bootloader、分区表、boot_app0 和应用，没有整片擦除；最终只更新 app0：
+
+```sh
+foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/esptool --chip esp32 --port /dev/cu.usbserial-57460296581 --baud 460800 write-flash 0x10000 devices/Esp32_Irrigation/firmware/.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin
+```
+
+写入哈希校验通过。115200 波特率监测重启，最终日志确认 LOCAL、app0、`business_ready records_fault=no events_fault=no scheduler_fault=no`、Wi-Fi 连接及 Web ready。未清除 Wi-Fi、凭据、配置或历史。设备有硬件时钟不可用提示，未把核心板当作完整 RTC/水路硬件验收。
+
+从实验板实际获取 10 项 gzip 资源，解压后逐字节匹配当前源码。通过仅监听本机的临时只读转发查看原始设备响应（凭据不进入浏览器）；核对首页、计划编辑弹窗、水路列表/编辑弹窗、手动时长、按水量、基准维护、记录详情和事件页。另以 390 px 宽度确认旧水路表格能横向滚动并打开编辑弹窗；桌面设备设置入口修正后文字完整。临时转发和串口监测在收尾时关闭。
+
+一次实验请求把 1 分钟 + 3 秒提交给核心，状态返回 `plannedDurationSec=63`；随后立即停止，设备回到空闲并生成一条“已停止”记录。详情显示目标 1 分 3 秒、实际 0 秒、水量 0，符合未建立水流的实验事实。没有执行真实出水量、长时间运行、自动计划或 RTC 精度实验；这些不属于本次页面还原验证结论。
 
 ## 本地运行契约
 
@@ -41,7 +64,7 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d dev
 
 ## Web 源与生成物
 
-`web-src/` 为 CSS/JS 权威源，`python3 scripts/generate_web_assets.py` 只生成 gzip 固件静态源。构建执行 `--check` 漂移检查；本轮生成物一致性检查通过，浏览器视觉与交互验收未执行。样式不使用卡片左侧彩色竖条。后续视觉调整应只影响此展示层。
+`web-src/` 为 CSS/JS 权威源，`python3 scripts/generate_web_assets.py` 只生成 gzip 固件静态源。构建执行 `--check` 漂移检查；当前页面还原的生成物一致性、脚本语法及实验板页面验证通过，范围见上文。样式不使用卡片左侧彩色竖条。后续视觉调整应只影响此展示层。
 
 ## 7. HTTP Web OTA
 
