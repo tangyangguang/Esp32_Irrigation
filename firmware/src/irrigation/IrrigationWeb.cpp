@@ -859,23 +859,128 @@ void dateNav(uint32_t day) {
     html("' onchange='this.form.submit()'><noscript><button>查看</button></noscript></form><a class='btnlink secondary' href='?date="); dayText(day + 1);
     html("' aria-label='后一天'>›</a><a href='?'>今天</a></nav>");
 }
-void conditions() {
-    html("<section id='conditions' class='conditions' aria-label='设备状态'>");
-    if (!g_app->businessReady()) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,"灌溉功能未就绪","输出保持关闭；请到设备设置检查配置、存储及系统状态。");
-    if (g_app->recordStorageFault()) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,"浇水记录无法可靠保存","暂不能开始新任务。正常历史轮转不会导致此状态；请检查存储或任务恢复信息。");
-    if (g_app->eventStorageFault()) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN,"操作记录保存异常","部分配置操作暂不可用，请检查设备存储。");
-    if (g_app->schedulerStorageFault()) Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER,"自动调度状态不可用","自动计划不能执行，请检查设备状态。");
-    const auto time = g_app->schedulerTimeState();
-    if (time != WateringScheduler::TimeState::Ready) {
-        html("<details class='notice warn'><summary>");
-        html(time == WateringScheduler::TimeState::RtcRollback ? "设备时间倒退，自动计划暂停" : "设备时间尚不可信，自动计划暂停");
-        html("</summary><p>等待硬件时钟或网络校时恢复；手动浇水仍受现场保护。错过的计划不会自动补浇。</p></details>");
+enum class ConditionLevel : uint8_t { Danger, Warn };
+
+struct ConditionItem {
+    ConditionLevel level;
+    const char* title;
+};
+
+// All current abnormalities in severity order. Details are rendered by
+// renderConditionDetail; the badges and the dialog share the same item list.
+uint8_t collectConditions(ConditionItem* items, uint8_t capacity) {
+    uint8_t count = 0;
+    auto add = [&](ConditionLevel level, const char* title) {
+        if (count < capacity) items[count++] = {level, title};
+    };
+    const auto rtcState = g_app->eventConditionState(1);
+    const bool rtcUnavailable =
+        rtcState == IrrigationEvents::ConditionDisplayState::Active ||
+        rtcState == IrrigationEvents::ConditionDisplayState::ConfirmingRecovery;
+    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+    const uint32_t checkpointEpoch = g_app->lastKnownAliveEpoch();
+    const char* resetReason = Esp32BaseSystem::resetReason();
+    const bool possiblePowerLoss =
+        now.synced && checkpointEpoch != 0 &&
+        now.bootStartEpochSec >= checkpointEpoch &&
+        (std::strcmp(resetReason, "poweron") == 0 ||
+         std::strcmp(resetReason, "brownout") == 0);
+    if (g_app->unexpectedFlowAlarm()) add(ConditionLevel::Danger, "关阀后水流异常");
+    if (!g_app->businessReady()) add(ConditionLevel::Danger, "灌溉功能未就绪");
+    if (g_app->recordStorageFault()) add(ConditionLevel::Danger, "浇水记录存储异常");
+    if (g_app->schedulerStorageFault()) add(ConditionLevel::Danger, "自动调度不可用");
+    if (g_app->eventStorageFault()) add(ConditionLevel::Warn, "操作记录保存异常");
+    if (g_app->schedulerTimeState() == WateringScheduler::TimeState::RtcRollback)
+        add(ConditionLevel::Warn, "设备时间倒退");
+    else if (g_app->schedulerTimeState() != WateringScheduler::TimeState::Ready)
+        add(ConditionLevel::Warn, "设备时间未就绪");
+    if (rtcUnavailable) add(ConditionLevel::Warn, "硬件时钟不可用");
+    if (possiblePowerLoss) add(ConditionLevel::Warn, "可能发生断电");
+    return count;
+}
+
+void conditionDetail(const char* title) {
+    html("<dt>是什么</dt><dd>");
+    if (std::strcmp(title, "关阀后水流异常") == 0) {
+        const uint16_t observedSec = g_app->unexpectedFlowObservedWindowSec();
+        char estimatedFlow[20]{};
+        IrrigationConfigRules::formatLitersPerMinute(
+            g_app->unexpectedFlowEstimatedMlPerMinute(), estimatedFlow, sizeof(estimatedFlow));
+        html("水泵和全部阀门均已关闭，但近 ");
+        sendUnsigned(observedSec == 0 ? 1 : observedSec);
+        html(" 秒的关阀后监测窗口内仍检测到 ");
+        sendUnsigned(g_app->unexpectedFlowObservedPulseCount());
+        html(" 个水流脉冲，估算平均流量 ");
+        Esp32BaseWeb::writeHtmlEscaped(estimatedFlow);
+        html(" L/min。</dd><dt>影响</dt><dd>可能存在阀门未关严、余流或其他水流来源；设备只有一个总流量计，无法判断具体是哪条水路。</dd><dt>建议处理</dt><dd>请检查阀门、管路和流量计，必要时立即关闭上游水源；排除现场问题后该状态会在后续观察恢复正常时消除。");
+    } else if (std::strcmp(title, "灌溉功能未就绪") == 0) {
+        const auto loadResult = g_app->configurationLoadResult();
+        if (loadResult == IrrigationConfigStore::LoadResult::StorageUnavailable) {
+            html("设备存储不可用，新设备首次烧录后可能尚未初始化文件系统。</dd><dt>影响</dt><dd>配置无法读取，水泵和全部阀门保持关闭，不能开始浇水。</dd><dt>建议处理</dt><dd>确认设备中没有需要保留的数据后，可到<a href='/esp32base/system'>系统工具</a>格式化 LittleFS；如果设备此前已经使用过，请勿直接格式化，先查看系统状态和日志。");
+        } else if (loadResult == IrrigationConfigStore::LoadResult::InvalidConfig) {
+            html("当前配置结构不兼容，或配置文件没有有效副本。</dd><dt>影响</dt><dd>全部输出保持关闭，不能开始浇水。</dd><dt>建议处理</dt><dd>如需保留现有配置请先备份，不要直接格式化；备份后到<a href='/esp32base/system'>系统工具</a>格式化 LittleFS 并重新配置。");
+        } else if (loadResult == IrrigationConfigStore::LoadResult::WriteFailed) {
+            html("文件系统可以读取，但配置写入或写入后校验失败。</dd><dt>影响</dt><dd>全部输出保持关闭，配置修改不能可靠保存。</dd><dt>建议处理</dt><dd>请先查看<a href='/esp32base/system'>系统状态</a>和<a href='/esp32base/logs'>系统日志</a>，不要直接格式化。");
+        } else {
+            html("启动检查未能完成，灌溉功能没有进入就绪状态。</dd><dt>影响</dt><dd>全部输出保持关闭，不能开始浇水。</dd><dt>建议处理</dt><dd>请查看<a href='/esp32base/system'>系统状态</a>和<a href='/esp32base/logs'>系统日志</a>，不要直接格式化。");
+        }
+    } else if (std::strcmp(title, "浇水记录存储异常") == 0) {
+        html("浇水历史无法可靠写入或读取；正常的历史滚动淘汰不会造成这个状态。</dd><dt>影响</dt><dd>为避免丢失任务结果，设备暂时拒绝开始新的浇水任务。</dd><dt>建议处理</dt><dd>请检查<a href='/esp32base/system'>设备存储状态</a>和任务恢复信息；存储恢复后自动解除。");
+    } else if (std::strcmp(title, "自动调度不可用") == 0) {
+        html("自动调度防重复状态无法读取或写入。</dd><dt>影响</dt><dd>自动计划不会启动，以免同一计划被重复执行；手动浇水仍可正常使用。</dd><dt>建议处理</dt><dd>请检查<a href='/esp32base/system'>设备存储状态</a>；恢复后自动调度自行恢复。");
+    } else if (std::strcmp(title, "操作记录保存异常") == 0) {
+        html("操作审计事件无法可靠保存。</dd><dt>影响</dt><dd>修改计划、水路和自动总控等配置操作暂时不可用；浇水本身不受此故障影响。</dd><dt>建议处理</dt><dd>请检查<a href='/esp32base/system'>设备存储状态</a>。");
+    } else if (std::strcmp(title, "设备时间倒退") == 0) {
+        html("检测到设备时间相对已确认的可信时刻发生明显倒退。</dd><dt>影响</dt><dd>自动计划已停止，避免按旧时间重复浇水；手动浇水仍可使用，期间错过的计划不会补浇。</dd><dt>建议处理</dt><dd>等待 NTP 网络校时恢复后设备会自动重新判断；若反复出现请检查 RTC 接线与电池。");
+    } else if (std::strcmp(title, "设备时间未就绪") == 0) {
+        html("当前还没有来自 RTC 或 NTP 的可信时间。</dd><dt>影响</dt><dd>自动计划暂时不会运行；手动浇水仍可使用，现场保护照常生效。</dd><dt>建议处理</dt><dd>联网后通常由 NTP 自动校时；长期断网使用请检查 RTC 接线与电池，可在<a href='/esp32base/system'>系统状态</a>查看时间来源。");
+    } else if (std::strcmp(title, "硬件时钟不可用") == 0) {
+        html("RTC 硬件时钟观察为不可用（缺失或读数异常）。</dd><dt>影响</dt><dd>有可信网络时间时自动浇水仍可执行；断网失去可信时间后，自动计划会暂停。</dd><dt>建议处理</dt><dd>请检查 RTC 接线和电池；时间状态可在<a href='/esp32base/system'>系统状态</a>查看。");
+    } else if (std::strcmp(title, "可能发生断电") == 0) {
+        const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+        char checkpointText[24]{}, bootText[24]{};
+        html("本次启动原因为上电或欠压复位，且晚于最后一次存活检查点");
+        if (Esp32BaseTime::formatEpoch(g_app->lastKnownAliveEpoch(), checkpointText, sizeof(checkpointText), "%m-%d %H:%M") &&
+            Esp32BaseTime::formatEpoch(now.bootStartEpochSec, bootText, sizeof(bootText), "%m-%d %H:%M")) {
+            html("（可能范围 ");
+            Esp32BaseWeb::writeHtmlEscaped(checkpointText);
+            html(" 至 ");
+            Esp32BaseWeb::writeHtmlEscaped(bootText);
+            html("）");
+        }
+        html("。</dd><dt>影响</dt><dd>这只是根据检查点推断的可能范围，不是精确停电时间；若断电时正在浇水，对应任务会记录为中断且结果不完整。</dd><dt>建议处理</dt><dd>可到<a href='/irrigation/records'>浇水记录</a>核对中断任务；确认后无需处理，本提示仅本次启动期间显示。");
     }
-    const auto rtc = g_app->eventConditionState(1);
-    if (rtc == IrrigationEvents::ConditionDisplayState::Active || rtc == IrrigationEvents::ConditionDisplayState::ConfirmingRecovery)
-        html("<details class='notice warn'><summary>硬件时钟不可用</summary><p>有可信网络时间时仍可自动执行；失去可信时间后自动计划暂停。请检查 RTC 接线与电池。</p></details>");
-    if (g_app->unexpectedFlowAlarm()) html("<details class='notice danger'><summary>关闭输出后仍检测到水流</summary><p>可能存在阀未关严、余流或其他水流来源，请检查现场；必要时关闭上游水源。设备无法仅凭总流量计判定具体漏水位置。</p></details>");
-    html("</section>");
+    html("</dd>");
+}
+
+void conditions() {
+    ConditionItem items[9]{};
+    const uint8_t count = collectConditions(items, 9);
+    if (count == 0) return;
+    html("<section id='conditions' class='conditions' aria-label='设备状态'><div class='cond-badges'>");
+    for (uint8_t i = 0; i < count; ++i) {
+        html("<button type='button' class='cond-badge ");
+        html(items[i].level == ConditionLevel::Danger ? "danger" : "warn");
+        html("' onclick=\"document.getElementById('device-conditions').showModal()\">");
+        Esp32BaseWeb::writeHtmlEscaped(items[i].title);
+        html("</button>");
+    }
+    html("</div><dialog id='device-conditions' class='panel eb-modal cond-modal' data-eb-light-dismiss='1'>"
+         "<h2>设备状态</h2><p class='muted'>以下是当前需要关注的问题，按严重程度排列；没有列出的项目状态正常。</p>");
+    for (uint8_t i = 0; i < count; ++i) {
+        html("<article class='cond-item ");
+        html(items[i].level == ConditionLevel::Danger ? "danger" : "warn");
+        html("'><div class='cond-item-head'><span class='tag ");
+        html(items[i].level == ConditionLevel::Danger ? "danger" : "warn");
+        html("'>");
+        html(items[i].level == ConditionLevel::Danger ? "严重" : "提醒");
+        html("</span><h3>");
+        Esp32BaseWeb::writeHtmlEscaped(items[i].title);
+        html("</h3></div><dl class='cond-detail'>");
+        conditionDetail(items[i].title);
+        html("</dl></article>");
+    }
+    html("<div class='actions'><button type='button' class='secondary' onclick=\"this.closest('dialog').close()\">知道了</button></div></dialog></section>");
 }
 struct DayPlanSlot {
     uint8_t planIndex;
@@ -1439,8 +1544,6 @@ void IrrigationWeb::overview() {
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     const WateringScheduler::TimeState schedulerTime = g_app->schedulerTimeState();
     const bool timeTrusted = now.synced && schedulerTime == WateringScheduler::TimeState::Ready;
-    const bool storageFault = g_app->recordStorageFault() || g_app->eventStorageFault() ||
-                              g_app->schedulerStorageFault() || g_app->checkpointStorageFault();
     const IrrigationEvents::ConditionDisplayState rtcCondition =
         g_app->eventConditionState(1);
     const bool rtcUnavailable =
@@ -1465,7 +1568,8 @@ void IrrigationWeb::overview() {
         }
     }
 
-    const char* heroTone = "";
+    // The hero stays neutral: every abnormality appears as a compact badge
+    // with what/impact/action detail in the device-status dialog.
     const char* heroEyebrow = "当前状态";
     const char* heroTitle = "当前没有浇水";
     const char* heroDescription = "自动计划会按设定时间运行，也可以随时手动开始。";
@@ -1475,72 +1579,13 @@ void IrrigationWeb::overview() {
         heroDescription = "请先启用实际安装的水路，再开始浇水或配置计划。";
         heroHref = "/irrigation/zones";
         heroAction = "设置水路";
-    }
-    if (!g_app->businessReady()) {
-        heroTone = " danger";
-        const IrrigationConfigStore::LoadResult loadResult =
-            g_app->configurationLoadResult();
-        if (loadResult == IrrigationConfigStore::LoadResult::StorageUnavailable) {
-            heroTitle = "设备存储不可用";
-            heroDescription = "新设备首次烧录后可能需要初始化文件系统。全部输出已保持关闭。确认设备中没有需要保留的数据后，请到系统工具格式化 LittleFS；如果设备此前已经使用过，请勿直接格式化。";
-        } else if (loadResult == IrrigationConfigStore::LoadResult::InvalidConfig) {
-            heroTitle = "灌溉配置需要重新建立";
-            heroDescription = "当前配置结构不兼容或配置文件没有有效副本，全部输出已保持关闭。如需保留现有数据，请勿直接格式化；完成备份后再到系统工具格式化 LittleFS 并重新配置。";
-        } else if (loadResult == IrrigationConfigStore::LoadResult::WriteFailed) {
-            heroTitle = "灌溉配置无法保存";
-            heroDescription = "文件系统可以读取，但配置写入或校验失败，全部输出已保持关闭。请先查看系统状态和日志，不要直接格式化。";
-        } else {
-            heroTitle = "灌溉功能未就绪";
-            heroDescription = "启动检查未能完成，全部输出已保持关闭。请查看系统状态和日志，不要直接格式化。";
-        }
+    } else if (!g_app->businessReady()) {
         heroHref = "/esp32base/system";
         heroAction = "打开系统工具";
-    } else if (g_app->schedulerStorageFault()) {
-        heroTone = " danger";
-        heroTitle = "自动浇水暂不可用";
-        heroDescription = "调度状态无法可靠保存；手动浇水仍可使用。";
-        heroHref = "/esp32base";
-        heroAction = "查看系统状态";
-    } else if (schedulerTime == WateringScheduler::TimeState::RtcRollback) {
-        heroTone = " warn";
-        heroTitle = "设备时间异常，自动浇水已停止";
-        heroDescription = "检测到 RTC 时间明显倒退，等待 NTP 校时后自动恢复判断。";
-        heroHref = "/esp32base";
-        heroAction = "查看时间状态";
-    } else if (!timeTrusted) {
-        heroTone = " warn";
-        heroTitle = "设备时间尚未就绪";
-        heroDescription = "自动计划暂时不会运行，手动浇水仍可使用。";
-        heroHref = "/esp32base";
-        heroAction = "查看时间状态";
-    } else if (storageFault) {
-        heroTone = " warn";
-        heroTitle = "部分数据存储异常";
-        heroDescription = "请查看下方具体说明；记录写入故障会阻止新的浇水任务。";
-        heroHref = "/esp32base";
-        heroAction = "查看系统状态";
     }
-    const char* defaultHeroTone = heroTone;
-    const char* defaultHeroTitle = heroTitle;
-    const char* defaultHeroDescription = heroDescription;
-    const char* defaultHeroHref = heroHref;
-    const char* defaultHeroAction = heroAction;
     const bool flowAlarm = g_app->businessReady() && g_app->unexpectedFlowAlarm();
-    if (flowAlarm) {
-        heroTone = " danger";
-        heroTitle = "关阀后水流异常";
-        heroDescription = "水泵和全部阀门均已关闭，但仍检测到水流。请检查阀门、管路或流量计。";
-    }
-    Esp32BaseWeb::sendChunk("<section class='home-hero");
-    Esp32BaseWeb::sendChunk(heroTone);
-    Esp32BaseWeb::sendChunk("' id='home-hero' data-flow-alarm='");
+    Esp32BaseWeb::sendChunk("<section class='home-hero' id='home-hero' data-flow-alarm='");
     html(flowAlarm ? "1" : "0");
-    html("' data-default-tone='");
-    Esp32BaseWeb::writeHtmlEscaped(defaultHeroTone);
-    Esp32BaseWeb::sendChunk("' data-default-title='");
-    Esp32BaseWeb::writeHtmlEscaped(defaultHeroTitle);
-    Esp32BaseWeb::sendChunk("' data-default-description='");
-    Esp32BaseWeb::writeHtmlEscaped(defaultHeroDescription);
     Esp32BaseWeb::sendChunk("' data-rtc-unavailable='");
     Esp32BaseWeb::sendChunk(rtcUnavailable ? "1" : "0");
     Esp32BaseWeb::sendChunk("'><div><span class='home-eyebrow'>");
@@ -1549,37 +1594,7 @@ void IrrigationWeb::overview() {
     Esp32BaseWeb::writeHtmlEscaped(heroTitle);
     Esp32BaseWeb::sendChunk("</h1><p id='home-hero-description'>");
     Esp32BaseWeb::writeHtmlEscaped(heroDescription);
-    if (watering.active) {
-        Esp32BaseWeb::sendChunk(" · ");
-        Esp32BaseWeb::writeHtmlEscaped(wateringStateName(watering.state));
-        Esp32BaseWeb::sendChunk(watering.flowEstablished ? " · 水流正常" : " · 正在等待水流");
-    }
-    Esp32BaseWeb::sendChunk("</p><span id='home-flow-monitor' class='home-monitor");
-    if (flowAlarm) Esp32BaseWeb::sendChunk(" danger");
-    Esp32BaseWeb::sendChunk("'>");
-    if (flowAlarm) {
-        const uint16_t observedSec =
-            g_app->unexpectedFlowObservedWindowSec();
-        const uint32_t pulseCount =
-            g_app->unexpectedFlowObservedPulseCount();
-        char estimatedFlow[20]{};
-        IrrigationConfigRules::formatLitersPerMinute(
-            g_app->unexpectedFlowEstimatedMlPerMinute(),
-            estimatedFlow,
-            sizeof(estimatedFlow));
-        Esp32BaseWeb::sendChunk("近 ");
-        sendUnsigned(observedSec == 0 ? 1 : observedSec);
-        Esp32BaseWeb::sendChunk(" 秒检测到 ");
-        sendUnsigned(pulseCount);
-        Esp32BaseWeb::sendChunk(" 个水流脉冲 · 估算平均流量 ");
-        Esp32BaseWeb::writeHtmlEscaped(estimatedFlow);
-        Esp32BaseWeb::sendChunk(" L/min");
-    } else if (g_app->unexpectedFlowObservationReady()) {
-        Esp32BaseWeb::sendChunk("关阀后水流监测已开启");
-    } else {
-        Esp32BaseWeb::sendChunk("关阀后水流监测中");
-    }
-    Esp32BaseWeb::sendChunk("</span></div><div class='home-hero-side'><div id='home-clock' class='home-clock");
+    Esp32BaseWeb::sendChunk("</p></div><div class='home-hero-side'><div id='home-clock' class='home-clock");
     if (!timeTrusted) Esp32BaseWeb::sendChunk(" pending");
     if (rtcUnavailable) Esp32BaseWeb::sendChunk(" has-warning");
     Esp32BaseWeb::sendChunk("'");
@@ -1605,41 +1620,22 @@ void IrrigationWeb::overview() {
     }
     Esp32BaseWeb::sendChunk("</span>");
     if (rtcUnavailable) {
-        Esp32BaseWeb::sendChunk("<a class='home-clock-warning' href='#conditions'>硬件时钟不可用 · 断网后计划可能暂停</a>");
+        Esp32BaseWeb::sendChunk("<button type='button' class='home-clock-warning' onclick=\"document.getElementById('device-conditions').showModal()\">硬件时钟不可用 · 断网后计划可能暂停</button>");
     }
     Esp32BaseWeb::sendChunk("</div>");
-    Esp32BaseWeb::sendChunk("<span id='home-default-action' class='home-action");
-    if (flowAlarm) Esp32BaseWeb::sendChunk(" hidden");
-    Esp32BaseWeb::sendChunk("'>");
-    if (defaultHeroHref) {
+    Esp32BaseWeb::sendChunk("<span id='home-default-action' class='home-action'>");
+    if (heroHref) {
         Esp32BaseWeb::sendChunk("<a class='btnlink info' href='");
-        Esp32BaseWeb::writeHtmlEscaped(defaultHeroHref);
+        Esp32BaseWeb::writeHtmlEscaped(heroHref);
         Esp32BaseWeb::sendChunk("'>");
-        Esp32BaseWeb::writeHtmlEscaped(defaultHeroAction);
+        Esp32BaseWeb::writeHtmlEscaped(heroAction);
         Esp32BaseWeb::sendChunk("</a>");
     } else if (config && hasEnabledZone) {
         Esp32BaseWeb::sendChunk("<button type='button' class='btnlink info' onclick=\"document.getElementById('manual-watering').showModal()\">");
-        Esp32BaseWeb::writeHtmlEscaped(defaultHeroAction);
+        Esp32BaseWeb::writeHtmlEscaped(heroAction);
         Esp32BaseWeb::sendChunk("</button>");
     }
-    Esp32BaseWeb::sendChunk("</span><a id='home-alarm-action' class='home-action btnlink info");
-    if (!flowAlarm) Esp32BaseWeb::sendChunk(" hidden");
-    Esp32BaseWeb::sendChunk("' href='#conditions'>查看异常说明</a></div></section>");
-    const bool heroShowsOtherPriority = watering.active || g_app->unexpectedFlowAlarm();
-    if (heroShowsOtherPriority && g_app->schedulerStorageFault()) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER, "自动浇水暂不可用",
-                                 "调度状态无法可靠保存；当前或手动浇水不受影响。");
-    } else if (heroShowsOtherPriority && schedulerTime == WateringScheduler::TimeState::RtcRollback) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "设备时间异常",
-                                 "自动计划已停止，等待 NTP 校时后恢复判断。");
-    } else if (heroShowsOtherPriority && !timeTrusted) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "设备时间尚未就绪",
-                                 "自动计划暂时不会运行，手动浇水仍可使用。");
-    }
-    if (heroShowsOtherPriority && storageFault && !g_app->schedulerStorageFault()) {
-        Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "部分数据存储异常",
-                                 "请在当前浇水结束后查看系统状态。");
-    }
+    Esp32BaseWeb::sendChunk("</span></div></section>");
     conditions();
     Esp32BaseWeb::beginPanel("每日浇水");
     const uint32_t day = selectedDay();
@@ -1647,23 +1643,6 @@ void IrrigationWeb::overview() {
     renderDay(day, true);
     Esp32BaseWeb::endPanel();
 
-    const uint32_t checkpointEpoch = g_app->lastKnownAliveEpoch();
-    const char* resetReason = Esp32BaseSystem::resetReason();
-    if (now.synced && checkpointEpoch != 0 && now.bootStartEpochSec >= checkpointEpoch &&
-        (std::strcmp(resetReason, "poweron") == 0 ||
-         std::strcmp(resetReason, "brownout") == 0)) {
-        char checkpointText[24]{};
-        char bootText[24]{};
-        char message[96]{};
-        if (Esp32BaseTime::formatEpoch(checkpointEpoch, checkpointText,
-                                       sizeof(checkpointText), "%Y-%m-%d %H:%M") &&
-            Esp32BaseTime::formatEpoch(now.bootStartEpochSec, bootText,
-                                       sizeof(bootText), "%Y-%m-%d %H:%M")) {
-            std::snprintf(message, sizeof(message), "%s 至 %s；仅为可能范围，不是精确停电时间",
-                          checkpointText, bootText);
-            Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "可能断电范围", message);
-        }
-    }
     if (config && hasEnabledZone && g_app->businessReady()) renderManualDialog(*config);
     Esp32BaseRecordStore::StoreStatus history{};
     g_app->readWateringRecordStoreStatus(history);
@@ -2125,7 +2104,7 @@ void IrrigationWeb::activeTask() {
     }
     Esp32BaseWeb::sendChunk("</span>");
     if (rtcUnavailable) {
-        Esp32BaseWeb::sendChunk("<a class='run-clock-warning' href='/irrigation#conditions'>硬件时钟不可用 · 断网后计划可能暂停</a>");
+        Esp32BaseWeb::sendChunk("<button type='button' class='run-clock-warning' onclick=\"document.getElementById('device-conditions').showModal()\">硬件时钟不可用 · 断网后计划可能暂停</button>");
     }
     Esp32BaseWeb::sendChunk("</div></section><script>(function(){var clock=document.getElementById('run-clock'),time=document.getElementById('run-clock-time'),date=document.getElementById('run-clock-date');if(!clock||!clock.dataset.epoch)return;var base=Number(clock.dataset.epoch),started=performance.now();function pad(v){return String(v).padStart(2,'0')}function update(){var epoch=base+Math.floor((performance.now()-started)/1000),d=new Date((epoch+28800)*1000);if(time)time.textContent=pad(d.getUTCHours())+':'+pad(d.getUTCMinutes())+':'+pad(d.getUTCSeconds());if(date)date.textContent=d.getUTCFullYear()+'年'+(d.getUTCMonth()+1)+'月'+d.getUTCDate()+'日'}update();setInterval(update,1000)})();</script>");
     if (status.purpose != WateringPurpose::Normal) {
