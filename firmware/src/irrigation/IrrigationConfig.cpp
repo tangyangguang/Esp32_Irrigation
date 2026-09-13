@@ -98,7 +98,7 @@ IrrigationConfig IrrigationConfigRules::createDefault() {
         zone.id = static_cast<uint8_t>(index + 1);
         zone.enabled = index < 2;
         char name[kObjectNameCapacity];
-        std::snprintf(name, sizeof(name), "区域 %u", static_cast<unsigned>(zone.id));
+        std::snprintf(name, sizeof(name), "水路 %u", static_cast<unsigned>(zone.id));
         setText(zone.name, name);
         zone.baselinePulseRateX10000 = 0;
     }

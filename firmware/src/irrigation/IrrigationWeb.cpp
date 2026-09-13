@@ -247,10 +247,10 @@ void endPage() {
 const char* wateringStateName(WateringState state) {
     switch (state) {
         case WateringState::Idle: return "空闲";
-        case WateringState::StartingZone: return "区域启动中";
+        case WateringState::StartingZone: return "水路启动中";
         case WateringState::WaitingForFlow: return "等待水流";
         case WateringState::WateringZone: return "正在浇水";
-        case WateringState::StoppingZone: return "区域停止中";
+        case WateringState::StoppingZone: return "水路停止中";
         case WateringState::SwitchingZone: return "水路切换中";
     }
     return "未知";
