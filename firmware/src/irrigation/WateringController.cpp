@@ -52,6 +52,7 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     sessionSummary_.purpose = request.purpose;
     sessionSummary_.planId = request.planId;
     sessionSummary_.planName = request.planName;
+    sessionSummary_.commandId = request.commandId;
     sessionSummary_.zoneCount = request.stepCount;
     for (uint8_t index = 0; index < request.stepCount; ++index) {
         sessionSummary_.zones[index].zoneId = request.steps[index].zoneId;
@@ -365,13 +366,13 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
     if (request.stepCount == 0 || request.stepCount > request.steps.size()) {
         return false;
     }
-    if ((request.source != WateringSource::Manual &&
+    if ((!isManualWateringSource(request.source) &&
          request.source != WateringSource::AutomaticPlan) ||
         (request.purpose != WateringPurpose::Normal &&
          request.purpose != WateringPurpose::ZoneFlowLearning)) {
         return false;
     }
-    const bool manualSource = request.source == WateringSource::Manual;
+    const bool manualSource = isManualWateringSource(request.source);
     if ((manualSource && request.planId != 0) ||
         (!manualSource &&
          (request.planId == 0 || request.planId > kWateringPlanCount))) {
@@ -381,11 +382,11 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
         request.targetMode != WateringTargetMode::Volume &&
         request.targetMode != WateringTargetMode::Mixed) return false;
     if (request.targetMode == WateringTargetMode::Volume &&
-        (request.source != WateringSource::Manual || request.steps[0].targetWaterMl == 0 || request.purpose != WateringPurpose::Normal || request.stepCount != 1)) {
+        (!manualSource || request.steps[0].targetWaterMl == 0 || request.purpose != WateringPurpose::Normal || request.stepCount != 1)) {
         return false;
     }
     if (request.targetMode == WateringTargetMode::Mixed &&
-        (request.source != WateringSource::Manual ||
+        (!manualSource ||
          request.purpose != WateringPurpose::Normal)) {
         return false;
     }

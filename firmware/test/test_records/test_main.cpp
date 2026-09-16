@@ -35,8 +35,8 @@ WateringSessionSummary summary() {
     return value;
 }
 
-void test_layout_is_fixed_210_bytes() {
-    TEST_ASSERT_EQUAL_UINT32(210U, WateringRecordCodec::kPayloadSize);
+void test_layout_is_fixed_246_bytes() {
+    TEST_ASSERT_EQUAL_UINT32(246U, WateringRecordCodec::kPayloadSize);
 }
 
 void test_round_trip_keeps_only_core_evidence() {
@@ -68,6 +68,24 @@ void test_task_identity_and_start_offsets_round_trip() {
     TEST_ASSERT_EQUAL_UINT32(1800000000, decoded.startedEpoch);
     TEST_ASSERT_EQUAL_UINT32(28, decoded.zones[2].startedOffsetSec);
 }
+void test_wechat_source_and_command_id_round_trip() {
+    auto session = summary();
+    session.source = WateringSource::WechatMiniprogram;
+    session.planId = 0;
+    static constexpr char kCommandId[] = "12345678-1234-4321-8abc-def012345678";
+    std::memcpy(session.commandId.data(), kCommandId, session.commandId.size());
+    WateringRecordPayload payload{}, decoded{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(session, payload));
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(WateringSource::WechatMiniprogram),
+        static_cast<uint8_t>(decoded.source));
+    TEST_ASSERT_EQUAL_MEMORY(kCommandId, decoded.commandId.data(),
+                            decoded.commandId.size());
+}
+
 void test_unknown_recovery_does_not_claim_zero_or_measured_progress() {
     WateringRecordPayload p{}; p.taskId = 9;
     p.result = WateringResult::Incomplete; p.stopReason = WateringStopReason::RebootInterrupted;
@@ -82,7 +100,7 @@ void test_volume_is_manual_single_zone_and_zone_order_is_validated() {
     WateringRecordPayload p{}; auto session = summary();
     session.zones[1].zoneId = 1;
     TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(session, p));
-    session = summary(); session.source = WateringSource::Manual; session.planId = 0;
+    session = summary(); session.source = WateringSource::LocalWeb; session.planId = 0;
     session.targetMode = WateringTargetMode::Volume; session.zoneCount = 1;
     session.zones[0].targetWaterMl = 500;
     TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(session, p));
@@ -92,7 +110,7 @@ void test_volume_is_manual_single_zone_and_zone_order_is_validated() {
 
 void test_mixed_mode_round_trips_duration_and_volume_steps() {
     auto session = summary();
-    session.source = WateringSource::Manual;
+    session.source = WateringSource::LocalWeb;
     session.planId = 0;
     session.targetMode = WateringTargetMode::Mixed;
     session.zones[1].targetWaterMl = 500U;  // zones 1 and 3: one duration, one volume
@@ -129,7 +147,8 @@ void test_corrupted_header_and_invalid_result_pair_are_rejected() {
 
 int main(int, char**) {
     UNITY_BEGIN();
-    RUN_TEST(test_layout_is_fixed_210_bytes);
+    RUN_TEST(test_layout_is_fixed_246_bytes);
+    RUN_TEST(test_wechat_source_and_command_id_round_trip);
     RUN_TEST(test_round_trip_keeps_only_core_evidence);
     RUN_TEST(test_task_identity_and_start_offsets_round_trip);
     RUN_TEST(test_unknown_recovery_does_not_claim_zero_or_measured_progress);

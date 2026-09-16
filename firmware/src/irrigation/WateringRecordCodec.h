@@ -21,13 +21,15 @@ struct ZoneWateringRecord {
 };
 
 struct WateringRecordPayload {
-    WateringSource source = WateringSource::Manual;
+    WateringSource source = WateringSource::LocalWeb;
     WateringTargetMode targetMode = WateringTargetMode::Duration;
     uint8_t planId = 0;
     WateringResult result = WateringResult::Failed;
     WateringStopReason stopReason = WateringStopReason::None;
     uint32_t taskId = 0;
     uint32_t startedEpoch = 0;
+    // Platform command UUID text for WeChat-started watering; all zero otherwise.
+    std::array<char, kCommandIdTextLength> commandId{};
     std::array<ZoneWateringRecord, BoardPins::kZoneCount> zones{};
 };
 
@@ -41,7 +43,7 @@ struct WateringRecordTotals {
 
 class WateringRecordCodec {
 public:
-    static constexpr std::size_t kPayloadSize = 210;
+    static constexpr std::size_t kPayloadSize = 246;
     static constexpr uint8_t kZoneFlagUnknown = 1U << 4U;
     static constexpr uint8_t kZoneFlagWaterEstimateCapped = 1U << 0U;
     static constexpr uint8_t kZoneFlagLowFlow = 1U << 1U;

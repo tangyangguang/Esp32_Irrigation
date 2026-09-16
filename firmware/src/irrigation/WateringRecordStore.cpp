@@ -1,20 +1,53 @@
 #include "WateringRecordStore.h"
-#include <runtime/Esp32BaseTime.h>
+
 #include <cstring>
+
+#include <runtime/Esp32BaseTime.h>
+
+#include "IrrigationStoredFact.h"
+#include "IrrigationPlatform.h"
+
+namespace {
+constexpr uint32_t kCrcPolynomial = 0xedb88320U;
+
+uint32_t markerCrc(const uint8_t* data, size_t length) {
+    uint32_t crc = UINT32_MAX;
+    for (size_t i = 0; i < length; ++i) {
+        crc ^= data[i];
+        for (unsigned bit = 0; bit < 8; ++bit)
+            crc = (crc >> 1) ^ (kCrcPolynomial & (0U - (crc & 1U)));
+    }
+    return ~crc;
+}
+
+uint16_t resultTypeCode(WateringResult result) {
+    switch (result) {
+        case WateringResult::Completed:
+            return IrrigationPlatform::FactWateringCompleted;
+        case WateringResult::Stopped:
+            return IrrigationPlatform::FactWateringStopped;
+        default:
+            return IrrigationPlatform::FactWateringFailed;
+    }
+}
+}  // namespace
 
 bool WateringRecordStore::begin() {
     Esp32BaseRecordStore::StoreDefinition definition;
     definition.recordTypeName = kRecordTypeName;
     definition.storeVersion = kStoreVersion;
     definition.payloadSizeBytes = kStoredBytes;
-    definition.retentionPolicy = Esp32BaseRecordStore::RetentionPolicy::RotateOldest;
+    definition.retentionPolicy =
+        Esp32BaseRecordStore::RetentionPolicy::PreserveUnreleased;
     definition.maximumStoreBytes = kMaximumStoreBytes;
     definition.minimumFileSystemFreeBytes = kMinimumFileSystemFreeBytes;
-    taskReady_ = false; taskId_ = 0; startedEpoch_ = 0; pending_ = false;
-    return store_.begin(definition) && (taskReady_ = recoverTask());
+    pending_ = false;
+    taskReady_ = false;
+    startedEpoch_ = 0;
+    if (!store_.begin(definition) || !stream_.begin(millis())) return false;
+    stream_.poll(millis(), nullptr, nullptr);  // bounded step toward Ready
+    return recoverTask();
 }
-
-Esp32BaseRecordStore& WateringRecordStore::baseStore() { return store_; }
 
 bool WateringRecordStore::captureStartTime(
     Esp32BaseRecordStore::RecordStartTime& startTime) const {
@@ -25,25 +58,31 @@ bool WateringRecordStore::appendCompleted(
     const Esp32BaseRecordStore::RecordStartTime& startTime,
     const WateringSessionSummary& summary) {
     if (!pending_) {
-        if (!taskId_ || !WateringRecordCodec::fromSession(summary, pendingPayload_)) return false;
         const auto now = Esp32BaseTime::snapshot();
-        if (!startTime.bootId || startTime.bootId != now.bootId || startTime.uptimeSec > now.uptimeSec) return false;
-        pendingPayload_.taskId = taskId_;
-        pendingPayload_.startedEpoch = startedEpoch_;
-        pendingTiming_ = {now.synced ? now.epochSec : 0, now.bootId, now.uptimeSec, now.uptimeSec - startTime.uptimeSec};
+        if (!startTime.bootId || startTime.bootId != now.bootId ||
+            startTime.uptimeSec > now.uptimeSec)
+            return false;
+        WateringRecordPayload payload{};
+        if (!WateringRecordCodec::fromSession(summary, payload)) return false;
+        const uint32_t durationSec = now.uptimeSec - startTime.uptimeSec;
+        irrigation_fact::putDuration(pendingFact_, durationSec);
+        if (!WateringRecordCodec::encode(
+                payload, pendingFact_ + 4,
+                WateringRecordCodec::kPayloadSize))
+            return false;
+        pendingObservedAt_ =
+            now.synced ? uint64_t(now.epochSec) * 1000ULL
+                       : iot_device::RecordStream::UnknownTime;
+        pendingType_ = resultTypeCode(summary.result);
         pending_ = true;
     }
-    if (!WateringRecordCodec::encode(pendingPayload_, scratch_, sizeof(scratch_)) ||
-        !store_.appendRecorded(pendingTiming_, scratch_, sizeof(scratch_))) return false;
+    if (!stream_.append(pendingType_, pendingObservedAt_, pendingFact_,
+                        sizeof(pendingFact_)))
+        return false;
     pending_ = false;
-    // Caller keeps the completed task until the marker can be cleared. A failed
+    // Caller keeps the finished task until the marker is cleared. A failed
     // cleanup never causes a second append, including after a reboot.
-    return true;
-}
-
-bool WateringRecordStore::appendPayload(const WateringRecordPayload& payload) {
-    return WateringRecordCodec::encode(payload, scratch_, sizeof(scratch_)) &&
-           store_.appendInstant(scratch_, sizeof(scratch_));
+    return cancelPreparedTask();
 }
 
 bool WateringRecordStore::readLatest(uint32_t offset,
@@ -54,8 +93,9 @@ bool WateringRecordStore::readLatest(uint32_t offset,
     ReadContext context;
     context.callback = callback;
     context.user = user;
-    const bool read = store_.readLatest(offset, limit, scratch_, sizeof(scratch_),
-                                        readAdapter, &context);
+    const bool read =
+        store_.readLatest(offset, limit, scratch_, sizeof(scratch_),
+                          readAdapter, &context);
     return read && !context.decodeFailed;
 }
 
@@ -71,7 +111,6 @@ Esp32BaseRecordStore::RecordReadResult WateringRecordStore::readById(
         return Esp32BaseRecordStore::RecordReadResult::Corrupt;
     record.recordId = metadata.recordId;
     record.timing = metadata.timing;
-
     return Esp32BaseRecordStore::RecordReadResult::Found;
 }
 
@@ -81,7 +120,10 @@ bool WateringRecordStore::readStatus(
 }
 
 bool WateringRecordStore::isReady() const { return store_.isReady(); }
-bool WateringRecordStore::isWritable() const { return taskReady_ && store_.isWritable(); }
+bool WateringRecordStore::isWritable() const {
+    return taskReady_ && store_.isWritable() &&
+           stream_.state() == iot_device::StreamState::Ready;
+}
 Esp32BaseRecordStore::StoreState WateringRecordStore::state() const {
     return store_.state();
 }
@@ -103,86 +145,144 @@ void WateringRecordStore::readAdapter(
     }
     record.recordId = view.recordId;
     record.timing = view.timing;
-
     context->callback(record, context->user);
 }
 
-bool WateringRecordStore::decodeFact(const uint8_t* bytes, std::size_t length, StoredWateringRecord& record) {
-    return WateringRecordCodec::decode(bytes, length, record.payload);
+bool WateringRecordStore::decodeFact(const uint8_t* bytes,
+                                     std::size_t length,
+                                     StoredWateringRecord& record) {
+    iot_device::RecordFactView fact{};
+    return irrigation_fact::decode(bytes, length, kFactBytes, record.timing,
+                                   fact) &&
+           fact.typeCode >= IrrigationPlatform::FactWateringCompleted &&
+           fact.typeCode <= IrrigationPlatform::FactWateringFailed &&
+           WateringRecordCodec::decode(fact.data + 4, fact.dataBytes - 4,
+                                       record.payload);
 }
 
-namespace {
-constexpr size_t kTaskMarkerBytes = 4 + 16 + WateringRecordCodec::kPayloadSize + 4;
-static_assert(kTaskMarkerBytes <= Esp32BaseConfig::CONFIG_BLOB_MAX_LEN, "task marker exceeds NVS blob budget");
-uint32_t taskCrc(const uint8_t* data, size_t length) {
-    uint32_t crc = UINT32_MAX;
-    for (size_t i = 0; i < length; ++i) {
-        crc ^= data[i];
-        for (unsigned bit = 0; bit < 8; ++bit) crc = (crc >> 1) ^ (0xedb88320U & (0U - (crc & 1U)));
-    }
-    return ~crc;
-}
-}
-bool WateringRecordStore::writeTaskMarker(const WateringRecordPayload* payload) {
-    uint8_t bytes[kTaskMarkerBytes]{};
-    bytes[0] = 'I'; bytes[1] = 'T'; bytes[2] = 1; bytes[3] = payload ? 1 : 0;
-    Esp32BaseRecordStore::StoreStatus status{};
-    if (!store_.readStatus(status)) return false;
-    memcpy(bytes + 4, status.storageGeneration, 16);
-    if (payload && !WateringRecordCodec::encode(*payload, bytes + 20, WateringRecordCodec::kPayloadSize)) return false;
-    const uint32_t crc = taskCrc(bytes, sizeof(bytes) - 4);
-    for (unsigned n = 0; n < 4; ++n) bytes[sizeof(bytes) - 4 + n] = uint8_t(crc >> (8 * n));
+// ---- task marker (reboot incomplete recovery) ----------------------------
+
+bool WateringRecordStore::writeTaskMarker(const WateringTaskMarker& marker) {
+    uint8_t bytes[sizeof(WateringTaskMarker) + 4]{};
+    memcpy(bytes, &marker, sizeof(WateringTaskMarker));
+    const uint32_t crc = markerCrc(bytes, sizeof(WateringTaskMarker));
+    for (unsigned n = 0; n < 4; ++n)
+        bytes[sizeof(WateringTaskMarker) + n] =
+            uint8_t(crc >> (8 * n));
     return Esp32BaseConfig::setBlob("irrigation", "task", bytes, sizeof(bytes));
 }
+
 bool WateringRecordStore::prepareTask(const WateringRequest& request) {
-    if (!isWritable() || taskId_) return false;
+    if (!isWritable() || taskReady_) return false;
     Esp32BaseRecordStore::StoreStatus status{};
     if (!store_.readStatus(status) || !status.nextRecordId) return false;
-    WateringRecordPayload intent{};
-    intent.taskId = status.nextRecordId;
+    WateringTaskMarker marker{};
+    marker.active = 1;
+    memcpy(marker.generation, status.storageGeneration, 16);
+    marker.taskId = status.nextRecordId;
     const auto now = Esp32BaseTime::snapshot();
-    intent.startedEpoch = now.synced ? now.epochSec : 0;
-    intent.source = request.source; intent.targetMode = request.targetMode; intent.planId = request.planId;
-    intent.result = WateringResult::Incomplete; intent.stopReason = WateringStopReason::RebootInterrupted;
+    marker.startedEpoch = now.synced ? now.epochSec : 0;
+    marker.source = static_cast<uint8_t>(request.source);
+    marker.targetMode = static_cast<uint8_t>(request.targetMode);
+    marker.planId = request.planId;
+    marker.stepCount = request.stepCount;
+    memcpy(marker.commandId, request.commandId.data(),
+           request.commandId.size());
     for (uint8_t i = 0; i < request.stepCount; ++i) {
-        const auto& step = request.steps[i];
+        auto& target = marker.steps[i];
+        target.zoneId = request.steps[i].zoneId;
+        target.targetDurationSec = request.steps[i].targetDurationSec;
+        target.targetWaterMl = request.steps[i].targetWaterMl;
+    }
+    if (!writeTaskMarker(marker)) {
+        taskReady_ = false;
+        return false;
+    }
+    taskReady_ = true;
+    startedEpoch_ = marker.startedEpoch;
+    return true;
+}
+
+bool WateringRecordStore::cancelPreparedTask() {
+    if (!writeTaskMarker(WateringTaskMarker{})) {
+        taskReady_ = false;
+        return false;
+    }
+    taskReady_ = true;
+    startedEpoch_ = 0;
+    return true;
+}
+
+bool WateringRecordStore::recoverTask() {
+    uint8_t bytes[sizeof(WateringTaskMarker) + 4]{};
+    const auto read =
+        Esp32BaseConfig::readBlob("irrigation", "task", bytes, sizeof(bytes));
+    if (read == Esp32BaseConfig::BlobReadResult::NotFound) {
+        taskReady_ = true;
+        return true;
+    }
+    WateringTaskMarker marker{};
+    if (read != Esp32BaseConfig::BlobReadResult::Found ||
+        bytes[0] != 'I' || bytes[1] != 'T' || bytes[2] != 2 || bytes[3] > 1)
+        return false;
+    uint32_t storedCrc = 0;
+    for (unsigned n = 0; n < 4; ++n)
+        storedCrc |= uint32_t(bytes[sizeof(WateringTaskMarker) + n])
+                     << (8 * n);
+    if (storedCrc != markerCrc(bytes, sizeof(WateringTaskMarker))) return false;
+    memcpy(&marker, bytes, sizeof(WateringTaskMarker));
+
+    Esp32BaseRecordStore::StoreStatus status{};
+    if (!store_.readStatus(status)) return false;
+    if (!marker.active) {
+        taskReady_ = true;
+        return true;
+    }
+    if (memcmp(marker.generation, status.storageGeneration, 16))
+        return cancelPreparedTask();
+
+    // Rebuild the Incomplete fact the marker promised before the reboot.
+    WateringRecordPayload intent{};
+    intent.taskId = marker.taskId;
+    intent.startedEpoch = marker.startedEpoch;
+    intent.source = static_cast<WateringSource>(marker.source);
+    intent.targetMode = static_cast<WateringTargetMode>(marker.targetMode);
+    intent.planId = marker.planId;
+    memcpy(intent.commandId.data(), marker.commandId,
+           intent.commandId.size());
+    intent.result = WateringResult::Incomplete;
+    intent.stopReason = WateringStopReason::RebootInterrupted;
+    for (uint8_t i = 0; i < marker.stepCount && i < BoardPins::kZoneCount;
+         ++i) {
+        const auto& step = marker.steps[i];
+        if (!BoardPins::isValidZoneId(step.zoneId)) return false;
         auto& zone = intent.zones[step.zoneId - 1];
         zone.plannedDurationSec = uint16_t(step.targetDurationSec);
         zone.targetWaterMl = step.targetWaterMl;
         zone.flags = WateringRecordCodec::kZoneFlagUnknown;
     }
-    if (!writeTaskMarker(&intent)) { taskReady_ = false; return false; }
-    taskId_ = intent.taskId; startedEpoch_ = intent.startedEpoch;
-    return true;
-}
-bool WateringRecordStore::cancelPreparedTask() {
-    if (!writeTaskMarker(nullptr)) { taskReady_ = false; return false; }
-    taskId_ = 0; startedEpoch_ = 0; taskReady_ = true;
-    return true;
-}
-bool WateringRecordStore::recoverTask() {
-    uint8_t bytes[kTaskMarkerBytes]{};
-    const auto read = Esp32BaseConfig::readBlob("irrigation", "task", bytes, sizeof(bytes));
-    if (read == Esp32BaseConfig::BlobReadResult::NotFound) return true;
-    if (read != Esp32BaseConfig::BlobReadResult::Found || bytes[0] != 'I' || bytes[1] != 'T' || bytes[2] != 1 || bytes[3] > 1) return false;
-    uint32_t storedCrc = 0;
-    for (unsigned n = 0; n < 4; ++n) storedCrc |= uint32_t(bytes[sizeof(bytes) - 4 + n]) << (8 * n);
-    if (storedCrc != taskCrc(bytes, sizeof(bytes) - 4)) return false;
-    Esp32BaseRecordStore::StoreStatus status{};
-    if (!store_.readStatus(status)) return false;
-    // Explicit history initialization/clear changes generation. Do not resurrect
-    // a task from the discarded generation.
-    if (!bytes[3]) return true;
-    if (memcmp(bytes + 4, status.storageGeneration, 16)) return cancelPreparedTask();
-    WateringRecordPayload intent{};
-    if (!WateringRecordCodec::decode(bytes + 20, WateringRecordCodec::kPayloadSize, intent) || !intent.taskId) return false;
-    // No next task can start before this marker is cleared. The latest committed
-    // payload therefore identifies this task even when a torn slot consumed an ID.
-    struct Latest { uint32_t taskId = 0; } latest;
+    if (!marker.taskId) return false;
+
+    // No next task can start before this marker is cleared. The latest
+    // committed payload identifies this task even when a torn slot consumed
+    // an ID, preventing a duplicate Incomplete fact.
+    struct Latest {
+        uint32_t taskId = 0;
+    } latest;
     auto remember = [](const StoredWateringRecord& record, void* user) {
         static_cast<Latest*>(user)->taskId = record.payload.taskId;
     };
     if (status.recordCount && !readLatest(0, 1, remember, &latest)) return false;
-    if (latest.taskId != intent.taskId && !appendPayload(intent)) return false;
+    if (latest.taskId != intent.taskId) {
+        uint8_t fact[kFactBytes]{};
+        irrigation_fact::putDuration(fact, 0);
+        if (!WateringRecordCodec::encode(
+                intent, fact + 4, WateringRecordCodec::kPayloadSize))
+            return false;
+        if (!stream_.append(IrrigationPlatform::FactWateringFailed,
+                            iot_device::RecordStream::UnknownTime, fact,
+                            sizeof(fact)))
+            return false;
+    }
     return cancelPreparedTask();
 }

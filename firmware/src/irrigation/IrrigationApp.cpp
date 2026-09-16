@@ -11,6 +11,7 @@
 #include "BoardHardware.h"
 #include "BoardPins.h"
 #include "IrrigationRecords.h"
+#include "IrrigationPlatform.h"
 #include "IrrigationWeb.h"
 
 namespace {
@@ -93,6 +94,9 @@ bool IrrigationApp::begin() {
         return failStartup(hardware, statusIndicator_);
     }
     Esp32BaseAppConfig::setApplyStatusCallback(parameterApplyStatus);
+    // Peripheral MQTT adapter claims Base MQTT before begin; absent
+    // provisioning safely leaves the device local-only.
+    IrrigationPlatform::configure();
     baseReady_ = Esp32Base::begin();
     if (!baseReady_) {
         return failStartup(hardware, statusIndicator_);
@@ -160,6 +164,8 @@ bool IrrigationApp::begin() {
                     recordStorageFault_ ? "yes" : "no",
                     events_.storageFault() ? "yes" : "no",
                     schedulerStorageFault_ ? "yes" : "no");
+    IrrigationPlatform::bindStores(wateringRecordStore_, events_.auditStore());
+    IrrigationPlatform::begin();
     return true;
 }
 
@@ -181,6 +187,7 @@ void IrrigationApp::handle() {
     advanceBusiness();
     updateStatusIndicator(nowMs);
     Esp32Base::handle();
+    IrrigationPlatform::poll();
 }
 
 bool IrrigationApp::baseReady() const {
@@ -383,7 +390,7 @@ WateringStartResult IrrigationApp::startZoneFlowLearning(uint8_t zoneId) {
         return WateringStartResult::InvalidRequest;
     }
     WateringRequest request{};
-    request.source = WateringSource::Manual;
+    request.source = WateringSource::LocalWeb;
     request.purpose = WateringPurpose::ZoneFlowLearning;
     request.stepCount = 1;
     request.steps[0] = {zoneId, 10U * 60U};

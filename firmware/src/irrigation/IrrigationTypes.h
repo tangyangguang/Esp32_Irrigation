@@ -7,6 +7,7 @@
 #include "BoardPins.h"
 
 constexpr uint32_t kIrrigationConfigSchemaVersion = 5;
+constexpr std::size_t kCommandIdTextLength = 36;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
 constexpr std::size_t kFlowHistorySampleCount = 120;
@@ -98,10 +99,18 @@ struct IrrigationConfig : IrrigationParameters {
     std::array<WateringPlan, kWateringPlanCount> plans;
 };
 
+// Manual entries carry the real entry point (local web page vs. WeChat
+// miniprogram through the platform); automatic plans stay a distinct source.
 enum class WateringSource : uint8_t {
-    Manual = 0,
-    AutomaticPlan = 2,
+    LocalWeb = 0,
+    AutomaticPlan = 1,
+    WechatMiniprogram = 2,
 };
+
+constexpr bool isManualWateringSource(WateringSource source) {
+    return source == WateringSource::LocalWeb ||
+           source == WateringSource::WechatMiniprogram;
+}
 
 // Duration: every step runs for a duration. Volume: a single volume step.
 // Mixed: one manual request contains both duration and volume steps.
@@ -183,6 +192,9 @@ struct WateringRequest {
     WateringPurpose purpose;
     uint8_t planId;
     std::array<char, kObjectNameCapacity> planName;
+    // Platform command UUID (36 chars, no terminator needed for fixed length);
+    // all zeros/empty for local web and automatic plans.
+    std::array<char, kCommandIdTextLength> commandId{};
     uint8_t stepCount;
     std::array<WateringStep, BoardPins::kZoneCount> steps;
 };
@@ -279,6 +291,7 @@ struct WateringSessionSummary {
     WateringPurpose purpose;
     uint8_t planId;
     std::array<char, kObjectNameCapacity> planName;
+    std::array<char, kCommandIdTextLength> commandId{};
     uint8_t zoneCount;
     uint32_t elapsedSec;
     WateringResult result;

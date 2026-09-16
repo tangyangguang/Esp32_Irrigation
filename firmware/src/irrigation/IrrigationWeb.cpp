@@ -164,7 +164,7 @@ bool actionIs(const char* expected) {
 // Duration and volume steps may be mixed; they execute in zone number order.
 bool buildManualWateringRequest(const IrrigationConfig& config, WateringRequest& request) {
     request = {};
-    request.source = WateringSource::Manual;
+    request.source = WateringSource::LocalWeb;
     request.purpose = WateringPurpose::Normal;
     bool hasVolume = false;
     bool hasDuration = false;
@@ -284,7 +284,8 @@ const char* zoneResultName(ZoneWateringResult result) {
 
 const char* sourceName(WateringSource source) {
     switch (source) {
-        case WateringSource::Manual: return "手动浇水";
+        case WateringSource::LocalWeb: return "本地手动";
+        case WateringSource::WechatMiniprogram: return "小程序";
         case WateringSource::AutomaticPlan: return "自动计划";
     }
     return "未知";

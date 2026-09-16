@@ -15,7 +15,7 @@ IrrigationAuditStore g_audit;
 
 WateringSessionSummary makeWateringSummary() {
     WateringSessionSummary summary{};
-    summary.source = WateringSource::Manual;
+    summary.source = WateringSource::LocalWeb;
     summary.purpose = WateringPurpose::Normal;
     summary.zoneCount = 1U;
     summary.elapsedSec = 12U;

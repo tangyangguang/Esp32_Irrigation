@@ -51,7 +51,7 @@ int main() {
     assert(records.begin(watering, audit));
     assert(count(watering) == 0);
     WateringRequest request{}; request.stepCount = 1; request.steps[0] = {1, 60, 0};
-    WateringSessionSummary summary{}; summary.source = WateringSource::Manual;
+    WateringSessionSummary summary{}; summary.source = WateringSource::LocalWeb;
     summary.purpose = WateringPurpose::Normal; summary.result = WateringResult::Completed;
     summary.stopReason = WateringStopReason::Completed; summary.zoneCount = 1;
     summary.zones[0].zoneId = 1; summary.zones[0].result = ZoneWateringResult::Completed;

@@ -68,7 +68,7 @@ public:
 
 WateringRequest requestFor(uint8_t firstZone, uint32_t firstDurationSec) {
     WateringRequest request{};
-    request.source = WateringSource::Manual;
+    request.source = WateringSource::LocalWeb;
     request.planId = 0;
     request.stepCount = 1;
     request.steps[0] = {firstZone, firstDurationSec};
@@ -859,7 +859,7 @@ void test_single_output_stops_at_target_volume() {
     IrrigationConfig config = IrrigationConfigRules::createDefault();
     config.flowMeter.pulsesPerLiterX100 = 25000;
     WateringRequest request = requestFor(1, 60);
-    request.source = WateringSource::Manual;
+    request.source = WateringSource::LocalWeb;
     request.targetMode = WateringTargetMode::Volume;
     request.steps[0].targetWaterMl = 400;
 
@@ -889,7 +889,7 @@ void test_single_output_volume_fails_at_configured_time_limit() {
     config.runLimits.maximumZoneDurationMinutes = 1;
     config.flowProtection.noFlowTimeoutSec = 120;
     WateringRequest request = requestFor(1, 60);
-    request.source = WateringSource::Manual;
+    request.source = WateringSource::LocalWeb;
     request.targetMode = WateringTargetMode::Volume;
     request.steps[0].targetWaterMl = 1000;
 
@@ -915,7 +915,7 @@ void test_mixed_duration_and_volume_steps_run_in_order() {
     IrrigationConfig config = IrrigationConfigRules::createDefault();
     config.flowMeter.pulsesPerLiterX100 = 25000;
     WateringRequest request{};
-    request.source = WateringSource::Manual;
+    request.source = WateringSource::LocalWeb;
     request.purpose = WateringPurpose::Normal;
     request.targetMode = WateringTargetMode::Mixed;
     request.stepCount = 2;
@@ -952,7 +952,7 @@ void test_mixed_duration_and_volume_steps_run_in_order() {
 void test_mixed_request_validation_requires_both_step_kinds() {
     const IrrigationConfig config = IrrigationConfigRules::createDefault();
     WateringRequest durationOnly{};
-    durationOnly.source = WateringSource::Manual;
+    durationOnly.source = WateringSource::LocalWeb;
     durationOnly.purpose = WateringPurpose::Normal;
     durationOnly.targetMode = WateringTargetMode::Mixed;
     durationOnly.stepCount = 2;
