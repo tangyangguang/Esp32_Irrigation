@@ -6,9 +6,9 @@
 namespace {
 
 constexpr uint32_t kMagic = 0x31525457UL;  // WTR1
-constexpr uint8_t kVersion = 3;
+constexpr uint8_t kVersion = 4;
 constexpr std::size_t kHeaderSize = 18 + kCommandIdTextLength;
-constexpr std::size_t kZoneSize = 32;
+constexpr std::size_t kZoneSize = 36;
 constexpr uint8_t kKnownZoneFlags =
     WateringRecordCodec::kZoneFlagUnknown |
     WateringRecordCodec::kZoneFlagWaterEstimateCapped |
@@ -122,7 +122,8 @@ bool validPayload(const WateringRecordPayload& payload) {
                 zone.pulseCount != 0U || zone.estimatedWaterMl != 0U ||
                 zone.averageFlowMlPerMinute != 0U ||
                 zone.baselinePulseRateX10000 != 0U ||
-                zone.baselineFlowMlPerMinute != 0U) return false;
+                zone.baselineFlowMlPerMinute != 0U ||
+                zone.suggestedBaselinePulseRateX10000 != 0U) return false;
             continue;
         }
         ++included;
@@ -132,7 +133,8 @@ bool validPayload(const WateringRecordPayload& payload) {
             if (zone.flags != WateringRecordCodec::kZoneFlagUnknown || zone.actualWateringSec ||
                 zone.pulseCount || zone.estimatedWaterMl || zone.averageFlowMlPerMinute ||
                 zone.result != ZoneWateringResult::NotStarted || zone.startedOffsetSec ||
-                zone.baselinePulseRateX10000 || zone.baselineFlowMlPerMinute) return false;
+                zone.baselinePulseRateX10000 || zone.baselineFlowMlPerMinute ||
+                zone.suggestedBaselinePulseRateX10000) return false;
             continue;
         }
         if (zone.flags & WateringRecordCodec::kZoneFlagUnknown) return false;
@@ -143,7 +145,8 @@ bool validPayload(const WateringRecordPayload& payload) {
              zone.estimatedWaterMl != 0U ||
              zone.averageFlowMlPerMinute != 0U ||
              zone.baselinePulseRateX10000 != 0U ||
-             zone.baselineFlowMlPerMinute != 0U)) return false;
+             zone.baselineFlowMlPerMinute != 0U ||
+             zone.suggestedBaselinePulseRateX10000 != 0U)) return false;
         if ((zone.flags & WateringRecordCodec::kZoneFlagWaterEstimateCapped) != 0U &&
             zone.estimatedWaterMl != UINT32_MAX) return false;
         const bool baseline =
@@ -215,6 +218,8 @@ bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
             target.baselinePulseRateX10000 = source.baselinePulseRateX10000;
             target.baselineFlowMlPerMinute = source.baselineFlowMlPerMinute;
         }
+        target.suggestedBaselinePulseRateX10000 =
+            source.terminalFlowStable ? source.suggestedBaselinePulseRateX10000 : 0U;
     }
     return validPayload(payload);
 }
@@ -246,6 +251,7 @@ bool WateringRecordCodec::encode(const WateringRecordPayload& payload,
         put32(cursor, zone.averageFlowMlPerMinute);
         put32(cursor, zone.baselinePulseRateX10000);
         put32(cursor, zone.baselineFlowMlPerMinute);
+        put32(cursor, zone.suggestedBaselinePulseRateX10000);
     }
     return cursor == output + outputSize;
 }
@@ -278,6 +284,7 @@ bool WateringRecordCodec::decode(const uint8_t* data,
         zone.averageFlowMlPerMinute = get32(cursor);
         zone.baselinePulseRateX10000 = get32(cursor);
         zone.baselineFlowMlPerMinute = get32(cursor);
+        zone.suggestedBaselinePulseRateX10000 = get32(cursor);
     }
     if (cursor != data + dataSize || !validPayload(payload)) {
         payload = {};

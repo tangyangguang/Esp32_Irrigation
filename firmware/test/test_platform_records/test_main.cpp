@@ -92,6 +92,41 @@ void test_watering_completed_validates() {
                     sizeof(fact));
 }
 
+void test_suggested_baseline_is_projected_and_null_when_absent() {
+    uint8_t fact[kWateringData]{};
+    buildWateringFact(fact, WateringResult::Completed,
+                      WateringStopReason::Completed,
+                      WateringSource::AutomaticPlan, 20, nullptr, 2);
+    // No suggested baseline: decoder projects null.
+    {
+        const RecordCodec* codec =
+            findCodec(IrrigationPlatform::FactWateringCompleted);
+        DynamicJsonDocument doc(4096);
+        TEST_ASSERT_TRUE(codec->decode(fact, sizeof(fact), doc));
+        TEST_ASSERT_TRUE(doc["zones"][0]["suggestedBaselinePulseRateX10000"].isNull());
+    }
+    // Inject a stable-terminal suggestion and verify it reaches the record.
+    WateringRecordPayload payload{};
+    WateringRecordCodec::decode(fact + 4, WateringRecordCodec::kPayloadSize,
+                                payload);
+    payload.zones[0].suggestedBaselinePulseRateX10000 = 4166667U;
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(
+        payload, fact + 4, WateringRecordCodec::kPayloadSize));
+    {
+        const RecordCodec* codec =
+            findCodec(IrrigationPlatform::FactWateringCompleted);
+        DynamicJsonDocument doc(4096);
+        TEST_ASSERT_TRUE(codec->decode(fact, sizeof(fact), doc));
+        TEST_ASSERT_EQUAL_UINT32(
+            4166667U,
+            doc["zones"][0]["suggestedBaselinePulseRateX10000"].as<uint32_t>());
+        const RecordContract* rc =
+            model_irrigation_controller_6_zone::contract.record(
+                codec->recordKey);
+        TEST_ASSERT_TRUE(rc->validate(doc.as<JsonVariantConst>()));
+    }
+}
+
 void test_watering_stopped_and_failed_validate() {
     uint8_t fact[kWateringData]{};
     buildWateringFact(fact, WateringResult::Stopped,
@@ -135,11 +170,28 @@ void test_audit_records_validate() {
                    4 /*zoneId*/, 5000, 1200);
     assertValidates(IrrigationPlatform::FactZoneBaselineSaved, fact,
                     sizeof(fact));
+
+    // Zone changed: revision in value1, enabled carried by flag bit 0.
+    IrrigationAuditPayload zoneChanged{};
+    zoneChanged.kind = IrrigationAuditPayload::Kind::ZoneChanged;
+    zoneChanged.flags = 1U;  // enabled
+    zoneChanged.objectId = 3U;
+    zoneChanged.value1 = 7U;  // revision
+    TEST_ASSERT_TRUE(IrrigationAuditCodec::encode(
+        zoneChanged, fact, IrrigationAuditCodec::kPayloadSize));
+    assertValidates(IrrigationPlatform::FactZoneChanged, fact, sizeof(fact));
+
+    // System field changed: objectId is the 1-based 22-field index.
+    buildAuditFact(fact, IrrigationAuditPayload::Kind::SystemFieldChanged, 0,
+                   9 /*fieldIndex*/, 0, 0);
+    assertValidates(IrrigationPlatform::FactSystemFieldChanged, fact,
+                    sizeof(fact));
 }
 
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_watering_completed_validates);
+    RUN_TEST(test_suggested_baseline_is_projected_and_null_when_absent);
     RUN_TEST(test_watering_stopped_and_failed_validate);
     RUN_TEST(test_audit_records_validate);
     return UNITY_END();

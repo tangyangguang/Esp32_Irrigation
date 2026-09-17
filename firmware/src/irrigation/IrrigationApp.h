@@ -72,6 +72,39 @@ public:
     void discardLearnedZoneFlow();
     const IrrigationConfig* configuration() const;
     IrrigationConfigStore::LoadResult configurationLoadResult() const;
+    enum class ConfigSaveError : uint8_t {
+        Ok,
+        NotReady,
+        Busy,
+        RevisionMismatch,
+        InvalidValue,
+        ZoneUnavailable,
+        Persistence,
+        AuditUnavailable,
+    };
+    // Save a single plan slot: creating/updating, deleting or toggling
+    // automatic execution. Both local web and platform commands go here.
+    ConfigSaveError savePlanSlot(const WateringPlan& plan,
+                                 bool deleteSlot,
+                                 uint32_t expectedRevision);
+    // Save zone identity/enabled state. Disabling a zone clears its duration
+    // in every plan as part of the same atomic config save.
+    ConfigSaveError saveZoneInfo(uint8_t zoneId,
+                                 const char* name,
+                                 bool enabled,
+                                 uint32_t expectedRevision);
+    // Set (non-zero) or clear (zero) a zone baseline pulse rate.
+    ConfigSaveError setZoneBaseline(uint8_t zoneId,
+                                    uint32_t pulseRateX10000,
+                                    uint32_t expectedRevision);
+    // Apply one irrigation system parameter field. The single physical store
+    // stays Esp32Base NVS; this is another UI surface over the same fields.
+    bool applyRemoteSystemField(const char* field,
+                                bool valueIsInteger,
+                                int32_t integerValue,
+                                bool valueIsBoolean,
+                                bool booleanValue,
+                                const char* textValue);
     bool saveConfiguration(const IrrigationConfig& proposed,
                            uint32_t expectedRevision,
                            IrrigationEvents::ConfigurationChange change,
@@ -109,9 +142,6 @@ private:
     static void beforeLifecycleStop(void* user);
     static void afterFormatFs(const Esp32BaseWeb::FormatFsResult& result, void* user);
     void handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& result);
-    bool saveZoneBaselinePulseRate(uint8_t zoneId,
-                                   uint32_t pulseRateX10000,
-                                   uint32_t expectedConfigRevision);
     uint32_t trustedEpoch() const;
 
     bool started_ = false;

@@ -402,9 +402,10 @@ bool IrrigationApp::saveLearnedZoneFlow(uint32_t expectedConfigRevision) {
         pendingLearnedBaselinePulseRateX10000_ == 0) {
         return false;
     }
-    if (!saveZoneBaselinePulseRate(pendingLearnedZoneId_,
-                                   pendingLearnedBaselinePulseRateX10000_,
-                                   expectedConfigRevision)) {
+    const uint8_t zoneId = pendingLearnedZoneId_;
+    const uint32_t rate = pendingLearnedBaselinePulseRateX10000_;
+    if (setZoneBaseline(zoneId, rate, expectedConfigRevision) !=
+        ConfigSaveError::Ok) {
         return false;
     }
     discardLearnedZoneFlow();
@@ -435,44 +436,8 @@ bool IrrigationApp::saveManualZoneBaselineFlow(
         verifiedFlowMlPerMinute != flowMlPerMinute) {
         return false;
     }
-    return saveZoneBaselinePulseRate(
-        zoneId, pulseRateX10000, expectedConfigRevision);
-}
-
-bool IrrigationApp::saveZoneBaselinePulseRate(
-    uint8_t zoneId,
-    uint32_t pulseRateX10000,
-    uint32_t expectedConfigRevision) {
-    const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.active() || !current ||
-        !BoardPins::isValidZoneId(zoneId) || pulseRateX10000 == 0) {
-        return false;
-    }
-    if (!IrrigationRecords::instance().writable(IrrigationRecords::StoreKind::Audit)) return false;
-    IrrigationConfig next = *current;
-    const uint32_t previousPulseRateX10000 =
-        current->zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000;
-    next.zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000 =
-        pulseRateX10000;
-    if (!configStore_.save(next, expectedConfigRevision)) {
-        return false;
-    }
-    wateringScheduler_.rebaseTimeCheck();
-    uint32_t savedFlowMlPerMinute = 0;
-    uint32_t previousFlowMlPerMinute = 0;
-    FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
-        previousPulseRateX10000,
-        next.flowMeter.pulsesPerLiterX100,
-        previousFlowMlPerMinute);
-    FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
-        pulseRateX10000,
-        next.flowMeter.pulsesPerLiterX100,
-        savedFlowMlPerMinute);
-    events_.recordZoneFlowSaved(zoneId,
-                                previousFlowMlPerMinute,
-                                pulseRateX10000,
-                                savedFlowMlPerMinute);
-    return true;
+    return setZoneBaseline(zoneId, pulseRateX10000, expectedConfigRevision) ==
+           ConfigSaveError::Ok;
 }
 
 uint8_t IrrigationApp::pendingLearnedZoneId() const {
@@ -498,26 +463,15 @@ uint32_t IrrigationApp::pendingLearnedFlowMlPerMinute() const {
 bool IrrigationApp::clearLearnedZoneFlow(uint8_t zoneId,
                                          uint32_t expectedConfigRevision) {
     const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || wateringController_.active() || !current ||
-        pendingLearnedZoneId_ != 0 ||
+    // Clearing is a no-op request while a pending learning result waits for
+    // the local page, or when the zone has no baseline to remove.
+    if (!current || pendingLearnedZoneId_ != 0 ||
         !BoardPins::isValidZoneId(zoneId) ||
         current->zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000 == 0) {
         return false;
     }
-    if (!IrrigationRecords::instance().writable(IrrigationRecords::StoreKind::Audit)) return false;
-    IrrigationConfig next = *current;
-    uint32_t previousFlowMlPerMinute = 0;
-    FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
-        current->zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000,
-        current->flowMeter.pulsesPerLiterX100,
-        previousFlowMlPerMinute);
-    next.zones[BoardPins::zoneIndex(zoneId)].baselinePulseRateX10000 = 0;
-    if (!configStore_.save(next, expectedConfigRevision)) {
-        return false;
-    }
-    wateringScheduler_.rebaseTimeCheck();
-    events_.recordZoneFlowSaved(zoneId, previousFlowMlPerMinute, 0, 0);
-    return true;
+    return setZoneBaseline(zoneId, 0, expectedConfigRevision) ==
+           ConfigSaveError::Ok;
 }
 
 void IrrigationApp::discardLearnedZoneFlow() {
@@ -525,6 +479,199 @@ void IrrigationApp::discardLearnedZoneFlow() {
         pendingLearnedZoneId_ = 0;
         pendingLearnedBaselinePulseRateX10000_ = 0;
     }
+}
+
+namespace {
+
+// Disable-cascade shared by every zone-edit entry point: a disabled zone
+// keeps no hidden plan durations, re-enabling starts from a clean plan model.
+void clearDisabledZoneDurations(IrrigationConfig& next) {
+    for (std::size_t zoneIndex = 0; zoneIndex < next.zones.size(); ++zoneIndex) {
+        if (next.zones[zoneIndex].enabled) continue;
+        for (WateringPlan& plan : next.plans) {
+            plan.zoneDurationMinutes[zoneIndex] = 0;
+        }
+    }
+}
+
+IrrigationApp::ConfigSaveError mapConfigStoreError(const char* error) {
+    if (!error) return IrrigationApp::ConfigSaveError::Persistence;
+    if (std::strcmp(error, "config_revision_mismatch") == 0)
+        return IrrigationApp::ConfigSaveError::RevisionMismatch;
+    if (std::strcmp(error, "config_validation_failed") == 0)
+        return IrrigationApp::ConfigSaveError::InvalidValue;
+    return IrrigationApp::ConfigSaveError::Persistence;
+}
+
+}  // namespace
+
+IrrigationApp::ConfigSaveError IrrigationApp::savePlanSlot(
+    const WateringPlan& plan,
+    bool deleteSlot,
+    uint32_t expectedRevision) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || !current) return ConfigSaveError::NotReady;
+    if (!IrrigationRecords::instance().writable(IrrigationRecords::StoreKind::Audit))
+        return ConfigSaveError::AuditUnavailable;
+
+    IrrigationConfig next = *current;
+    if (plan.id < 1 || plan.id > next.plans.size()) return ConfigSaveError::InvalidValue;
+    WateringPlan& target = next.plans[plan.id - 1U];
+
+    IrrigationEvents::ConfigurationChange change;
+    if (deleteSlot) {
+        const bool existed = target.configured;
+        target = {};
+        target.id = plan.id;
+        target.startMinutes.fill(kUnusedStartMinute);
+        // Deleting an absent slot is an idempotent success with no change.
+        if (!existed) return ConfigSaveError::Ok;
+        change = IrrigationEvents::ConfigurationChange::PlanDeleted;
+    } else {
+        if (!IrrigationConfigRules::validateName(plan.name.data(), plan.name.size()))
+            return ConfigSaveError::InvalidValue;
+        const bool creating = !target.configured;
+        target = plan;
+        target.id = plan.id;
+        clearDisabledZoneDurations(next);
+        change = creating ? IrrigationEvents::ConfigurationChange::PlanCreated
+                          : IrrigationEvents::ConfigurationChange::PlanUpdated;
+    }
+
+    if (!configStore_.save(next, expectedRevision))
+        return mapConfigStoreError(configStore_.lastError());
+    wateringScheduler_.rebaseTimeCheck();
+    events_.recordConfigurationChanged(change, target.id, configStore_.current());
+    return ConfigSaveError::Ok;
+}
+
+IrrigationApp::ConfigSaveError IrrigationApp::saveZoneInfo(
+    uint8_t zoneId,
+    const char* name,
+    bool enabled,
+    uint32_t expectedRevision) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || !current) return ConfigSaveError::NotReady;
+    if (!IrrigationRecords::instance().writable(IrrigationRecords::StoreKind::Audit))
+        return ConfigSaveError::AuditUnavailable;
+    if (!BoardPins::isValidZoneId(zoneId) ||
+        !IrrigationConfigRules::validateName(name, kObjectNameCapacity))
+        return ConfigSaveError::InvalidValue;
+
+    IrrigationConfig next = *current;
+    ZoneConfig& zone = next.zones[BoardPins::zoneIndex(zoneId)];
+    zone.enabled = enabled;
+    std::snprintf(zone.name.data(), zone.name.size(), "%s", name);
+    if (!enabled) clearDisabledZoneDurations(next);
+
+    if (!configStore_.save(next, expectedRevision))
+        return mapConfigStoreError(configStore_.lastError());
+    wateringScheduler_.rebaseTimeCheck();
+    events_.recordZoneChanged(zoneId,
+                              enabled,
+                              configStore_.current()->revision);
+    return ConfigSaveError::Ok;
+}
+
+IrrigationApp::ConfigSaveError IrrigationApp::setZoneBaseline(
+    uint8_t zoneId,
+    uint32_t pulseRateX10000,
+    uint32_t expectedRevision) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || !current) return ConfigSaveError::NotReady;
+    if (wateringController_.active()) return ConfigSaveError::Busy;
+    if (!IrrigationRecords::instance().writable(IrrigationRecords::StoreKind::Audit))
+        return ConfigSaveError::AuditUnavailable;
+    if (!BoardPins::isValidZoneId(zoneId)) return ConfigSaveError::InvalidValue;
+
+    IrrigationConfig next = *current;
+    ZoneConfig& zone = next.zones[BoardPins::zoneIndex(zoneId)];
+    const uint32_t previousPulseRateX10000 = zone.baselinePulseRateX10000;
+    zone.baselinePulseRateX10000 = pulseRateX10000;
+    if (!IrrigationConfigRules::validate(next))
+        return ConfigSaveError::InvalidValue;
+    if (!configStore_.save(next, expectedRevision))
+        return mapConfigStoreError(configStore_.lastError());
+
+    wateringScheduler_.rebaseTimeCheck();
+    uint32_t previousFlowMlPerMinute = 0;
+    uint32_t savedFlowMlPerMinute = 0;
+    FlowMonitor::pulseRateX10000ToFlowMlPerMinute(previousPulseRateX10000,
+                                                 next.flowMeter.pulsesPerLiterX100,
+                                                 previousFlowMlPerMinute);
+    FlowMonitor::pulseRateX10000ToFlowMlPerMinute(pulseRateX10000,
+                                                 next.flowMeter.pulsesPerLiterX100,
+                                                 savedFlowMlPerMinute);
+    events_.recordZoneFlowSaved(zoneId,
+                                previousFlowMlPerMinute,
+                                pulseRateX10000,
+                                savedFlowMlPerMinute);
+    return ConfigSaveError::Ok;
+}
+
+bool IrrigationApp::applyRemoteSystemField(const char* field,
+                                           bool valueIsInteger,
+                                           int32_t integerValue,
+                                           bool valueIsBoolean,
+                                           bool booleanValue,
+                                           const char* textValue) {
+    const IrrigationConfig* current = configStore_.current();
+    if (!businessReady_ || !current || !Esp32BaseConfig::isReady() || !field)
+        return false;
+    if (!IrrigationRecords::instance().writable(IrrigationRecords::StoreKind::Audit))
+        return false;
+
+    // Build a range-checked candidate (no NVS write) and add the same plan
+    // cross-check the local parameter page runs before persisting.
+    IrrigationParameters candidate{};
+    char error[128]{};
+    if (!IrrigationParameterConfig::buildRemoteFieldCandidate(field,
+                                                              valueIsInteger,
+                                                              integerValue,
+                                                              valueIsBoolean,
+                                                              booleanValue,
+                                                              textValue,
+                                                              candidate) ||
+        !validateParameterConfig(candidate, error, sizeof(error), this)) {
+        return false;
+    }
+
+    // Candidate is valid: persist the single field, read everything back and
+    // apply it to the runtime. The field name is a firmware-side whitelist.
+    if (!IrrigationParameterConfig::applyRemoteField(field,
+                                                     valueIsInteger,
+                                                     integerValue,
+                                                     valueIsBoolean,
+                                                     booleanValue,
+                                                     textValue)) {
+        return false;
+    }
+    parameterConfigScratch_ = *current;
+    if (IrrigationParameterConfig::applyStored(parameterConfigScratch_) &&
+        validateParameterConfig(parameterConfigScratch_, error, sizeof(error), this)) {
+        if (!configStore_.applyRuntimeParameters(parameterConfigScratch_) ||
+            !wateringController_.configureValvePwmFrequency(
+                parameterConfigScratch_.valveDrive.pwmFrequencyHz)) {
+            businessReady_ = false;
+            wateringController_.safeShutdown();
+            return false;
+        }
+        wateringScheduler_.rebaseTimeCheck();
+        if (!wateringController_.active()) resetUnexpectedFlowMonitor(millis());
+        const uint8_t fieldIndex =
+            IrrigationParameterConfig::fieldIndex(field);
+        if (fieldIndex)
+            events_.recordSystemFieldChanged(fieldIndex);
+        return true;
+    }
+
+    // Rejected by combined validation: restore the previous single field and
+    // reload the last-known-good runtime parameters.
+    IrrigationParameterConfig::writeStoredField(field, *current);
+    parameterConfigScratch_ = *current;
+    IrrigationParameterConfig::applyStored(parameterConfigScratch_);
+    configStore_.applyRuntimeParameters(parameterConfigScratch_);
+    return false;
 }
 
 const IrrigationConfig* IrrigationApp::configuration() const {

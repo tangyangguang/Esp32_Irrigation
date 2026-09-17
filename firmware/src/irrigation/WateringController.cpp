@@ -590,6 +590,13 @@ void WateringController::finalizeTerminalFlow(ZoneWateringSummary& zone) {
         allWindowsHavePulses &&
         maximumRate - minimumRate <=
             learningAllowedPulseRateSpreadX100(averageRateX100);
+    // Stable terminal flow doubles as an adoptable baseline suggestion, so
+    // records can offer it without a dedicated learning run on site.
+    if (zone.terminalFlowStable) {
+        zone.suggestedBaselinePulseRateX10000 =
+            static_cast<uint32_t>(
+                static_cast<uint64_t>(terminalRateX100) * 100U);
+    }
     FlowMonitor::pulseRateToFlowMlPerMinute(
         terminalRateX100,
         flowMeter_.pulsesPerLiterX100,

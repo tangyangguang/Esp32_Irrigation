@@ -64,7 +64,6 @@ public:
         PlanCreated,
         PlanUpdated,
         PlanDeleted,
-        ZoneUpdated,
         SystemParametersUpdated,
     };
     enum class Category : uint8_t {
@@ -118,6 +117,8 @@ public:
                              uint32_t previousFlowMlPerMinute,
                              uint32_t pulseRateX10000,
                              uint32_t flowMlPerMinute);
+    void recordZoneChanged(uint8_t zoneId, bool enabled, uint32_t revision);
+    void recordSystemFieldChanged(uint8_t fieldIndex);
     void recordConfigurationChanged(ConfigurationChange change,
                                     uint8_t objectId = 0,
                                     const IrrigationConfig* config = nullptr);

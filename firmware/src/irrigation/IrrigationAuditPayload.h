@@ -13,6 +13,8 @@ struct IrrigationAuditPayload {
         PlansChanged = 3,
         ZoneBaselineSaved = 5,
         ClosedFlowChanged = 6,
+        ZoneChanged = 7,
+        SystemFieldChanged = 8,
     };
 
     Kind kind = Kind::PlanSkipped;

@@ -27,6 +27,8 @@ enum FactType : uint16_t {
     FactAutomaticResumed = 12,
     FactPlansChanged = 13,
     FactZoneBaselineSaved = 14,
+    FactZoneChanged = 15,
+    FactSystemFieldChanged = 16,
 };
 }
 

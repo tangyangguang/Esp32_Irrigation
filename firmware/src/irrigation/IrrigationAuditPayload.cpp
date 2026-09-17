@@ -23,7 +23,9 @@ bool validKind(IrrigationAuditPayload::Kind kind) {
            kind == IrrigationAuditPayload::Kind::AutomaticStateChanged ||
            kind == IrrigationAuditPayload::Kind::PlansChanged ||
            kind == IrrigationAuditPayload::Kind::ZoneBaselineSaved ||
-           kind == IrrigationAuditPayload::Kind::ClosedFlowChanged;
+           kind == IrrigationAuditPayload::Kind::ClosedFlowChanged ||
+           kind == IrrigationAuditPayload::Kind::ZoneChanged ||
+           kind == IrrigationAuditPayload::Kind::SystemFieldChanged;
 }
 }  // namespace
 

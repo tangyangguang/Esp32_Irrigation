@@ -37,7 +37,8 @@ constexpr size_t kOutputBytes = 4097;
 constexpr size_t kCommandSlots = 6;
 constexpr size_t kCommandFrameBytes = 1024;
 constexpr size_t kWateringScratchBytes =
-    RecordStream::HeaderBytes + 246;  // IR/v1 header + watering payload
+    RecordStream::HeaderBytes +
+    WateringRecordCodec::kPayloadSize;  // IR/v1 header + watering payload
 constexpr size_t kAuditScratchBytes =
     RecordStream::HeaderBytes + 20;  // IR/v1 header + audit payload
 
@@ -113,7 +114,10 @@ struct PendingCommand {
 };
 PendingCommand g_pending[kCommandSlots];
 
-const char* kKeyPlans = "parameter.plans";
+const char* kKeyPlan = "parameter.plan";
+const char* kKeyZone = "parameter.zone";
+const char* kKeyZoneBaseline = "parameter.zone-baseline";
+const char* kKeySystemField = "parameter.system-field";
 const char* kKeyAutomatic = "parameter.automatic-watering";
 const char* kKeyStartManual = "operation.start-manual";
 const char* kKeyStop = "operation.stop";
@@ -121,6 +125,69 @@ const char* kKeySingleOutput = "operation.single-output";
 
 bool keyIs(const char* key, const char* expected) {
     return key && std::strcmp(key, expected) == 0;
+}
+
+const char* configSaveReason(IrrigationApp::ConfigSaveError error) {
+    switch (error) {
+        case IrrigationApp::ConfigSaveError::Ok:
+            return nullptr;
+        case IrrigationApp::ConfigSaveError::RevisionMismatch:
+            return "revision_conflict";
+        case IrrigationApp::ConfigSaveError::ZoneUnavailable:
+            return "zone_unavailable";
+        case IrrigationApp::ConfigSaveError::Busy:
+            return "busy";
+        case IrrigationApp::ConfigSaveError::AuditUnavailable:
+            return "persistence_error";
+        case IrrigationApp::ConfigSaveError::Persistence:
+            return "persistence_error";
+        case IrrigationApp::ConfigSaveError::NotReady:
+            return "controller_unavailable";
+        case IrrigationApp::ConfigSaveError::InvalidValue:
+        default:
+            return "invalid_request";
+    }
+}
+
+// Read one plan object into a firmware WateringPlan. Only enabled zones carry
+// durations in the projection; disabled-zone durations no longer exist.
+bool parsePlanObject(JsonObjectConst object, const IrrigationConfig& current,
+                     WateringPlan& plan) {
+    plan = {};
+    const int id = object["id"].as<int>();
+    if (id < 1 || id > static_cast<int>(kWateringPlanCount)) return false;
+    plan.id = static_cast<uint8_t>(id);
+    plan.configured = true;
+    plan.startMinutes.fill(kUnusedStartMinute);
+
+    const char* name = object["name"].as<const char*>();
+    if (!name) return false;
+    std::snprintf(plan.name.data(), plan.name.size(), "%s", name);
+    plan.scheduleEnabled = object["automaticEnabled"].as<bool>();
+
+    JsonArrayConst starts = object["startMinutes"].as<JsonArrayConst>();
+    if (starts.isNull() || starts.size() > kPlanStartTimeCount) return false;
+    uint8_t m = 0;
+    for (JsonVariantConst minute : starts) {
+        if (!minute.is<int>()) return false;
+        const int value = minute.as<int>();
+        if (value < 0 || value >= 24 * 60) return false;
+        plan.startMinutes[m++] = static_cast<uint16_t>(value);
+    }
+
+    JsonArrayConst zones = object["zones"].as<JsonArrayConst>();
+    if (zones.isNull() || zones.size() > BoardPins::kZoneCount) return false;
+    for (JsonVariantConst z : zones) {
+        const int zoneId = z["zoneId"].as<int>();
+        const int minutes = z["durationMinutes"].as<int>();
+        if (!BoardPins::isValidZoneId(static_cast<uint8_t>(zoneId)) ||
+            !current.zones[BoardPins::zoneIndex(static_cast<uint8_t>(zoneId))].enabled) {
+            return false;
+        }
+        plan.zoneDurationMinutes[BoardPins::zoneIndex(static_cast<uint8_t>(zoneId))] =
+            static_cast<uint16_t>(minutes);
+    }
+    return true;
 }
 
 // Build a watering request from a start-manual / single-output command.
@@ -189,7 +256,9 @@ CommandDecision decideCommand(const CommandView& cmd, void*) {
     if (keyIs(key, kKeyStop)) {
         return {true, nullptr};  // idle stop is idempotent success
     }
-    if (keyIs(key, kKeyPlans) || keyIs(key, kKeyAutomatic)) {
+    if (keyIs(key, kKeyPlan) || keyIs(key, kKeyZone) ||
+        keyIs(key, kKeyZoneBaseline) || keyIs(key, kKeySystemField) ||
+        keyIs(key, kKeyAutomatic)) {
         if (!app.businessReady()) return {false, "controller_unavailable"};
         return {true, nullptr};
     }
@@ -221,9 +290,7 @@ void executeCommand(CommandHandle handle, const CommandView& cmd, void*) {
     pc.active = true;
     const char* key = cmd.capability->key;
 
-    if (keyIs(key, kKeyPlans)) {
-        // Full replacement of visible plans; disabled-zone durations are kept
-        // by the config layer and are simply not present in this projection.
+    if (keyIs(key, kKeyPlan)) {
         const IrrigationConfig* current = app.configuration();
         if (!current) {
             g_inbox.progress(handle, ProgressStatus::Failed,
@@ -231,93 +298,127 @@ void executeCommand(CommandHandle handle, const CommandView& cmd, void*) {
             pc.active = false;
             return;
         }
-        IrrigationConfig next = *current;
         const uint32_t expectedRevision =
             cmd.parameters["revision"].as<uint32_t>();
-        if (expectedRevision != next.revision) {
+        const char* action = cmd.parameters["action"].as<const char*>();
+        IrrigationApp::ConfigSaveError result = IrrigationApp::ConfigSaveError::InvalidValue;
+
+        if (action && std::strcmp(action, "delete") == 0) {
+            const int id = cmd.parameters["id"].as<int>();
+            if (id < 1 || id > static_cast<int>(kWateringPlanCount)) {
+                g_inbox.progress(handle, ProgressStatus::Failed,
+                                 "invalid_request");
+                pc.active = false;
+                return;
+            }
+            WateringPlan plan{};
+            plan.id = static_cast<uint8_t>(id);
+            result = app.savePlanSlot(plan, true, expectedRevision);
+        } else if (action && std::strcmp(action, "set-enabled") == 0) {
+            const int id = cmd.parameters["id"].as<int>();
+            if (id < 1 || id > static_cast<int>(kWateringPlanCount)) {
+                g_inbox.progress(handle, ProgressStatus::Failed,
+                                 "invalid_request");
+                pc.active = false;
+                return;
+            }
+            WateringPlan plan = current->plans[id - 1];
+            plan.id = static_cast<uint8_t>(id);
+            plan.scheduleEnabled = cmd.parameters["automaticEnabled"].as<bool>();
+            result = app.savePlanSlot(plan, false, expectedRevision);
+        } else if (action && std::strcmp(action, "upsert") == 0) {
+            WateringPlan plan{};
+            if (parsePlanObject(cmd.parameters["plan"].as<JsonObjectConst>(),
+                                *current, plan)) {
+                result = app.savePlanSlot(plan, false, expectedRevision);
+            }
+        }
+
+        if (result == IrrigationApp::ConfigSaveError::Ok) {
+            g_inbox.progress(handle, ProgressStatus::Succeeded);
+        } else {
             g_inbox.progress(handle, ProgressStatus::Failed,
-                             "revision_conflict");
-            pc.active = false;
-            return;
+                             configSaveReason(result));
         }
-        // Full replacement of the *visible* plan projection. Plans absent from
-        // the command are removed from the visible model, but per the contract
-        // disabled-zone durations are preserved internally and never wiped.
-        std::array<bool, kWateringPlanCount> supplied{};
-        bool bad = false;
-        const JsonArrayConst plansIn =
-            cmd.parameters["plans"].as<JsonArrayConst>();
-        for (JsonVariantConst p : plansIn) {
-            const uint8_t id = static_cast<uint8_t>(p["id"].as<int>());
-            if (id < 1 || id > kWateringPlanCount) { bad = true; break; }
-            supplied[id - 1] = true;
-            WateringPlan& plan = next.plans[id - 1];
-            plan.configured = true;
-            plan.id = id;
-            plan.scheduleEnabled = p["automaticEnabled"].as<bool>();
-            const char* name = p["name"].as<const char*>();
-            std::snprintf(plan.name.data(), plan.name.size(), "%s",
-                          name ? name : "");
-            plan.startMinutes.fill(kUnusedStartMinute);
-            uint8_t m = 0;
-            for (JsonVariantConst minute :
-                 p["startMinutes"].as<JsonArrayConst>()) {
-                if (m >= kPlanStartTimeCount) { bad = true; break; }
-                plan.startMinutes[m++] =
-                    static_cast<uint16_t>(minute.as<int>());
-            }
-            // Reset only enabled (visible) zones; disabled zones keep their
-            // hidden baseline duration and are absent from the projection.
-            for (uint8_t zi = 0;
-                 zi < BoardPins::kZoneCount && !bad; ++zi) {
-                if (next.zones[zi].enabled)
-                    plan.zoneDurationMinutes[zi] = 0;
-            }
-            for (JsonVariantConst z : p["zones"].as<JsonArrayConst>()) {
-                const uint8_t zoneId =
-                    static_cast<uint8_t>(z["zoneId"].as<int>());
-                if (!BoardPins::isValidZoneId(zoneId) ||
-                    !next.zones[BoardPins::zoneIndex(zoneId)].enabled) {
-                    // Referencing a disabled/unknown zone is rejected.
-                    bad = true;
-                    break;
-                }
-                plan.zoneDurationMinutes[BoardPins::zoneIndex(zoneId)] =
-                    static_cast<uint16_t>(z["durationMinutes"].as<int>());
-            }
-            if (bad) break;
-        }
-        if (!bad) {
-            for (uint8_t pi = 0; pi < kWateringPlanCount; ++pi) {
-                if (supplied[pi]) continue;
-                WateringPlan& plan = next.plans[pi];
-                plan.configured = false;
-                plan.scheduleEnabled = false;
-                plan.name[0] = '\0';
-                plan.startMinutes.fill(kUnusedStartMinute);
-                for (uint8_t zi = 0; zi < BoardPins::kZoneCount; ++zi) {
-                    if (next.zones[zi].enabled)
-                        plan.zoneDurationMinutes[zi] = 0;
-                    // disabled-zone hidden durations are retained
-                }
-            }
-        }
-        if (bad) {
+        pc.active = false;
+        return;
+    }
+
+    if (keyIs(key, kKeyZone)) {
+        const uint32_t revision = cmd.parameters["revision"].as<uint32_t>();
+        const int zoneId = cmd.parameters["zoneId"].as<int>();
+        const IrrigationConfig* current = app.configuration();
+        if (!current || zoneId < 1 || zoneId > BoardPins::kZoneCount) {
             g_inbox.progress(handle, ProgressStatus::Failed, "invalid_request");
             pc.active = false;
             return;
         }
-        const bool ok = app.saveConfiguration(
-            next, expectedRevision,
-            IrrigationEvents::ConfigurationChange::PlanUpdated);
-        if (!ok) {
-            g_inbox.progress(handle, ProgressStatus::Failed,
-                             app.configurationError() ? "persistence_error"
-                                                      : "invalid_request");
-            pc.active = false;
-            return;
+        const std::size_t zi = BoardPins::zoneIndex(static_cast<uint8_t>(zoneId));
+        char name[kObjectNameCapacity]{};
+        bool enabled = current->zones[zi].enabled;
+        if (cmd.parameters["name"].is<const char*>()) {
+            std::snprintf(name, sizeof(name), "%s",
+                          cmd.parameters["name"].as<const char*>());
+        } else {
+            std::snprintf(name, sizeof(name), "%s",
+                          current->zones[zi].name.data());
         }
-        g_inbox.progress(handle, ProgressStatus::Succeeded);
+        if (cmd.parameters["enabled"].is<bool>()) {
+            enabled = cmd.parameters["enabled"].as<bool>();
+        }
+        const IrrigationApp::ConfigSaveError result = app.saveZoneInfo(
+            static_cast<uint8_t>(zoneId), name, enabled, revision);
+        g_inbox.progress(handle,
+                         result == IrrigationApp::ConfigSaveError::Ok
+                             ? ProgressStatus::Succeeded
+                             : ProgressStatus::Failed,
+                         configSaveReason(result));
+        pc.active = false;
+        return;
+    }
+
+    if (keyIs(key, kKeyZoneBaseline)) {
+        const uint32_t revision = cmd.parameters["revision"].as<uint32_t>();
+        const int zoneId = cmd.parameters["zoneId"].as<int>();
+        uint32_t pulseRate = 0;
+        if (cmd.parameters["baselinePulseRateX10000"].is<int>()) {
+            const int value = cmd.parameters["baselinePulseRateX10000"].as<int>();
+            if (value < 0) {
+                g_inbox.progress(handle, ProgressStatus::Failed, "invalid_request");
+                pc.active = false;
+                return;
+            }
+            pulseRate = static_cast<uint32_t>(value);
+        }
+        const IrrigationApp::ConfigSaveError result = app.setZoneBaseline(
+            static_cast<uint8_t>(zoneId), pulseRate, revision);
+        g_inbox.progress(handle,
+                         result == IrrigationApp::ConfigSaveError::Ok
+                             ? ProgressStatus::Succeeded
+                             : ProgressStatus::Failed,
+                         configSaveReason(result));
+        pc.active = false;
+        return;
+    }
+
+    if (keyIs(key, kKeySystemField)) {
+        const char* field = cmd.parameters["field"].as<const char*>();
+        const JsonVariantConst value = cmd.parameters["value"];
+        bool ok = false;
+        if (value.is<int>() || value.is<uint32_t>() || value.is<long>()) {
+            ok = app.applyRemoteSystemField(field, true, value.as<int32_t>(),
+                                            false, false, nullptr);
+        } else if (value.is<bool>()) {
+            ok = app.applyRemoteSystemField(field, false, 0,
+                                            true, value.as<bool>(), nullptr);
+        } else if (value.is<const char*>()) {
+            ok = app.applyRemoteSystemField(field, false, 0,
+                                            false, false,
+                                            value.as<const char*>());
+        }
+        g_inbox.progress(handle,
+                         ok ? ProgressStatus::Succeeded : ProgressStatus::Failed,
+                         ok ? nullptr : "invalid_field_value");
         pc.active = false;
         return;
     }
@@ -511,6 +612,7 @@ void projectZones(const IrrigationConfig& config) {
 
 void projectZoneMaintenance(const IrrigationConfig& config) {
     g_stateDoc.clear();
+    g_stateDoc["revision"] = config.revision;
     JsonArray zones = g_stateDoc.createNestedArray("zones");
     for (const ZoneConfig& zone : config.zones) {
         if (!zone.enabled) continue;
@@ -604,7 +706,7 @@ void projectPlans(const IrrigationConfig& config) {
             z["durationMinutes"] = minutes;
         }
     }
-    publishState("parameter.plans");
+    publishState("parameter.plan");
 }
 
 void projectAutomatic(const IrrigationApp& app) {

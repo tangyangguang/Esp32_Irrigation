@@ -29,7 +29,7 @@ constexpr uint8_t kPlanHardwareFailure = 13;
 
 namespace {
 
-// Copy the fixed 246-byte watering payload; the first four business bytes are
+// Copy the fixed watering payload; the first four business bytes are
 // the run duration (little endian), matching IrrigationStoredFact.
 struct WateringFact {
     uint32_t durationSec = 0;
@@ -129,6 +129,11 @@ void addZone(JsonArray zones, const ZoneWateringRecord& source, uint8_t index) {
         zone["averageFlowMlPerMinute"] = source.averageFlowMlPerMinute;
     else
         zone["averageFlowMlPerMinute"] = nullptr;
+    if (source.suggestedBaselinePulseRateX10000)
+        zone["suggestedBaselinePulseRateX10000"] =
+            source.suggestedBaselinePulseRateX10000;
+    else
+        zone["suggestedBaselinePulseRateX10000"] = nullptr;
     zone["lowFlowDetected"] =
         (source.flags & WateringRecordCodec::kZoneFlagLowFlow) != 0;
     zone["highFlowDetected"] =
@@ -311,8 +316,33 @@ bool decodeZoneBaseline(const uint8_t* b, size_t n, JsonDocument& doc) {
     return !doc.overflowed();
 }
 
+bool decodeZoneChanged(const uint8_t* b, size_t n, JsonDocument& doc) {
+    WateringFact fact;
+    if (!decodeAuditFact(b, n, fact)) return false;
+    const IrrigationAuditPayload& a = fact.audit;
+    if (a.kind != IrrigationAuditPayload::Kind::ZoneChanged) return false;
+    JsonObject data = doc.to<JsonObject>();
+    data["revision"] = a.value1;
+    JsonArray zones = data.createNestedArray("zones");
+    JsonObject zone = zones.createNestedObject();
+    zone["zoneId"] = static_cast<uint8_t>(a.objectId);
+    zone["enabled"] = (a.flags & 1U) != 0U;
+    return !doc.overflowed();
+}
+
+bool decodeSystemFieldChanged(const uint8_t* b, size_t n, JsonDocument& doc) {
+    WateringFact fact;
+    if (!decodeAuditFact(b, n, fact)) return false;
+    const IrrigationAuditPayload& a = fact.audit;
+    if (a.kind != IrrigationAuditPayload::Kind::SystemFieldChanged) return false;
+    if (a.objectId < 1U || a.objectId > 22U) return false;
+    JsonObject data = doc.to<JsonObject>();
+    data["fieldIndex"] = static_cast<uint8_t>(a.objectId);
+    return !doc.overflowed();
+}
+
 // Business data length excludes the 4 leading duration bytes (which the SDK
-// surfaces through the envelope timing). Watering facts are 4 + 246 bytes.
+// surfaces through the envelope timing). Watering facts are 4 + payload bytes.
 constexpr size_t kWateringDataBytes =
     4 + WateringRecordCodec::kPayloadSize;
 constexpr size_t kAuditDataBytes = IrrigationAuditCodec::kPayloadSize;
@@ -335,6 +365,11 @@ const iot_device::RecordCodec kCodecs[] = {
      kAuditDataBytes, decodePlansChanged},
     {IrrigationPlatform::FactZoneBaselineSaved, "zone.baseline-saved",
      kAuditDataBytes, decodeZoneBaseline},
+    {IrrigationPlatform::FactZoneChanged, "configuration.zone-changed",
+     kAuditDataBytes, decodeZoneChanged},
+    {IrrigationPlatform::FactSystemFieldChanged,
+     "configuration.system-field-changed", kAuditDataBytes,
+     decodeSystemFieldChanged},
 };
 
 }  // namespace

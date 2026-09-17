@@ -82,17 +82,11 @@ bool savePlanFromRequest() {
         !uintParam("revision", 1, UINT32_MAX, revision)) {
         return false;
     }
-    IrrigationConfig next = *current;
-    WateringPlan& plan = next.plans[planId - 1U];
     if (actionIs("delete")) {
-        plan = {};
+        WateringPlan plan{};
         plan.id = static_cast<uint8_t>(planId);
-        plan.startMinutes.fill(kUnusedStartMinute);
-        return g_app->saveConfiguration(
-            next,
-            revision,
-            IrrigationEvents::ConfigurationChange::PlanDeleted,
-            static_cast<uint8_t>(planId));
+        return g_app->savePlanSlot(plan, true, revision) ==
+               IrrigationApp::ConfigSaveError::Ok;
     }
     if (!actionIs("save")) {
         return false;
@@ -101,7 +95,8 @@ bool savePlanFromRequest() {
     if (!getParam("name", name, sizeof(name))) {
         return false;
     }
-    const bool creating = !plan.configured;
+    WateringPlan plan = current->plans[planId - 1U];
+    plan.id = static_cast<uint8_t>(planId);
     plan.configured = true;
     plan.scheduleEnabled = Esp32BaseWeb::hasParam("schedule_enabled");
     std::snprintf(plan.name.data(), plan.name.size(), "%s", name);
@@ -127,31 +122,22 @@ bool savePlanFromRequest() {
         }
         plan.zoneDurationMinutes[index] = static_cast<uint16_t>(duration);
     }
-    return g_app->saveConfiguration(
-        next,
-        revision,
-        creating ? IrrigationEvents::ConfigurationChange::PlanCreated
-                 : IrrigationEvents::ConfigurationChange::PlanUpdated,
-        static_cast<uint8_t>(planId));
+    return g_app->savePlanSlot(plan, false, revision) ==
+           IrrigationApp::ConfigSaveError::Ok;
 }
 
 bool saveZoneFromRequest() {
-    const IrrigationConfig* current = g_app->configuration();
     uint32_t zoneId = 0, revision = 0;
     char name[kObjectNameCapacity]{};
-    if (!current || !uintParam("zone_id", 1, BoardPins::kZoneCount, zoneId) ||
+    if (!uintParam("zone_id", 1, BoardPins::kZoneCount, zoneId) ||
         !uintParam("revision", 1, UINT32_MAX, revision) ||
         !getParam("name", name, sizeof(name))) {
         return false;
     }
-    IrrigationConfig next = *current;
-    ZoneConfig& zone = next.zones[zoneId - 1U];
-    zone.enabled = Esp32BaseWeb::hasParam("enabled");
-    std::snprintf(zone.name.data(), zone.name.size(), "%s", name);
-    return g_app->saveConfiguration(next,
-                                    revision,
-                                    IrrigationEvents::ConfigurationChange::ZoneUpdated,
-                                    static_cast<uint8_t>(zoneId));
+    return g_app->saveZoneInfo(static_cast<uint8_t>(zoneId),
+                               name,
+                               Esp32BaseWeb::hasParam("enabled"),
+                               revision) == IrrigationApp::ConfigSaveError::Ok;
 }
 
 bool actionIs(const char* expected) {
@@ -2208,6 +2194,49 @@ void IrrigationWeb::plans() {
             Esp32BaseWeb::sendChunk("</dialog>");
         }
     }
+    // Overlap hint: the device only rejects the same start minute; plans whose
+    // estimated run windows overlap can still both be saved (the later start
+    // is skipped as busy). Warn before saving instead of silently allowing it.
+    html("<script>window.IRR_PLAN_WINDOWS=[");
+    bool firstWindow = true;
+    for (const WateringPlan& savedPlan : config->plans) {
+        if (!savedPlan.configured || !savedPlan.scheduleEnabled) continue;
+        uint32_t totalMinutes = 0;
+        for (uint16_t duration : savedPlan.zoneDurationMinutes) totalMinutes += duration;
+        if (totalMinutes == 0) continue;
+        for (uint16_t start : savedPlan.startMinutes) {
+            if (start == kUnusedStartMinute) continue;
+            if (!firstWindow) html(",");
+            firstWindow = false;
+            html("{id:"); sendUnsigned(savedPlan.id);
+            // Names are validated UTF-8 without control chars; still escape the
+            // three characters that could break out of a JS single-quoted string.
+            html(",name:'");
+            for (const char* p = savedPlan.name.data(); *p; ++p) {
+                if (*p == '\\' || *p == '\'' || *p == '"') html("\\");
+                char ch[2] = {*p, 0};
+                html(ch);
+            }
+            html("',start:"); sendUnsigned(start);
+            html(",minutes:"); sendUnsigned(totalMinutes); html("}");
+        }
+    }
+    html("];document.querySelectorAll('form[action=\"/irrigation/plans\"]').forEach(function(form){"
+         "if(form.elements['action'].value!=='save')return;"
+         "form.addEventListener('submit',function(e){"
+         "if(form.dataset.confirmed==='1')return;"
+         "var pid=Number(form.elements['plan_id'].value);"
+         "if(!form.elements['schedule_enabled'].checked)return;"
+         "var starts=[];for(var i=1;i<=4;i++){var v=form.elements['time'+i].value;if(v){var h=Number(v.slice(0,2)),m=Number(v.slice(3,5));if(!isNaN(h)&&!isNaN(m))starts.push(h*60+m);}}"
+         "var minutes=0;var z=form.querySelectorAll('input[name^=zone]');for(var j=0;j<z.length;j++){minutes+=Number(z[j].value)||0;}"
+         "if(!starts.length||!minutes)return;"
+         "var conflicts=[];window.IRR_PLAN_WINDOWS.forEach(function(w){"
+         "if(w.id===pid)return;"
+         "starts.forEach(function(s){"
+         "var aS=s,aE=s+minutes,bS=w.start,bE=w.start+w.minutes;"
+         "if(aS<bE&&bS<aE)conflicts.push(w.name);});});"
+         "if(conflicts.length&&!confirm('估算浇水时段可能与计划“'+conflicts.join('、')+'”重叠；重叠时后启动的计划会因设备忙碌被跳过。仍要保存？')){e.preventDefault();return;}"
+         "form.dataset.confirmed='1';});});</script>");
     if(failed && postedPlan) { html("<script>var d=document.getElementById('plan-");sendUnsigned(postedPlan);html("');if(d)d.showModal();</script>"); }
     endPage();
 }

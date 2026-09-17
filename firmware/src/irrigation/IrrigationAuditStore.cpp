@@ -46,6 +46,10 @@ uint16_t IrrigationAuditStore::factTypeCode(
             return IrrigationPlatform::FactPlansChanged;
         case Kind::ZoneBaselineSaved:
             return IrrigationPlatform::FactZoneBaselineSaved;
+        case Kind::ZoneChanged:
+            return IrrigationPlatform::FactZoneChanged;
+        case Kind::SystemFieldChanged:
+            return IrrigationPlatform::FactSystemFieldChanged;
         case Kind::ClosedFlowChanged:
         default:
             // Closed-flow changes drive only a local condition; they are not

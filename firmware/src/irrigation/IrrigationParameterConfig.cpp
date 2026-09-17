@@ -2,19 +2,16 @@
 
 #include <Esp32Base.h>
 
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
 #include <cstring>
 
 #include "IrrigationConfig.h"
 
 namespace {
 
-constexpr const char* kNamespace = "irr_params";
-constexpr std::size_t kRegisteredGroupCount = 6;
-constexpr std::size_t kRegisteredFieldCount = 22;
-static_assert(ESP32BASE_APP_CONFIG_MAX_GROUPS >= kRegisteredGroupCount,
-              "Increase ESP32BASE_APP_CONFIG_MAX_GROUPS when adding a group");
-static_assert(ESP32BASE_APP_CONFIG_MAX_FIELDS >= kRegisteredFieldCount,
-              "Increase ESP32BASE_APP_CONFIG_MAX_FIELDS when adding a parameter");
+constexpr const char* kNamespace = IrrigationParameterConfig::kNamespace;
 constexpr const char* kPullIn = "pull_ms";
 constexpr const char* kSwitchDelay = "switch_ms";
 constexpr const char* kPwm = "pwm_hz";
@@ -37,6 +34,202 @@ constexpr const char* kRtcRollback = "rtc_rollback";
 constexpr const char* kAliveHours = "alive_hours";
 constexpr const char* kMaximumZoneMinutes = "max_zone_min";
 constexpr const char* kMaximumOutputLiters = "max_output_l";
+
+enum class FieldType : uint8_t { Integer, Boolean, Enumeration };
+
+struct SystemFieldDescriptor {
+    const char* contractName;
+    const char* nvsKey;
+    FieldType type;
+    void (*read)(const IrrigationParameters&, int32_t& integer, bool& boolean, char* text, std::size_t textSize);
+    void (*write)(IrrigationParameters&, int32_t integer, bool boolean, const char* text);
+};
+
+constexpr std::size_t kActionTextSize = 16;
+
+void readFlowAction(FlowAlertAction action, char* text, std::size_t textSize) {
+    std::snprintf(text, textSize, "%s",
+                  action == FlowAlertAction::StopWatering ? "stop" : "alert");
+}
+
+FlowAlertAction parseFlowAction(const char* text) {
+    return text && std::strcmp(text, "stop") == 0 ? FlowAlertAction::StopWatering
+                                                  : FlowAlertAction::AlertOnly;
+}
+
+// Explicit accessors keyed by the same NVS keys as the local page; the table
+// maps contract names to them.
+int32_t getInteger(const IrrigationParameters& p, const char* key);
+void setInteger(IrrigationParameters& p, const char* key, int32_t value);
+bool getBoolean(const IrrigationParameters& p, const char* key);
+void setBoolean(IrrigationParameters& p, const char* key, bool value);
+const char* getEnumText(const IrrigationParameters& p, const char* key, char* text, std::size_t size);
+void setEnumText(IrrigationParameters& p, const char* key, const char* text);
+
+const SystemFieldDescriptor kSystemFields[] = {
+    {"valve.pullInTimeMs", kPullIn, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kPullIn); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kPullIn, i); }},
+    {"valve.switchDelayMs", kSwitchDelay, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kSwitchDelay); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kSwitchDelay, i); }},
+    {"valve.pwmFrequencyHz", kPwm, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kPwm); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kPwm, i); }},
+    {"valve.holdDutyPercent", kHold, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kHold); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kHold, i); }},
+    {"pump.enabled", kPumpEnabled, FieldType::Boolean,
+     [](const IrrigationParameters& p, int32_t&, bool& b, char*, std::size_t) { b = getBoolean(p, kPumpEnabled); },
+     [](IrrigationParameters& p, int32_t, bool b, const char*) { setBoolean(p, kPumpEnabled, b); }},
+    {"pump.startDelayMs", kPumpStart, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kPumpStart); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kPumpStart, i); }},
+    {"pump.stopToValveCloseDelayMs", kPumpStop, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kPumpStop); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kPumpStop, i); }},
+    {"meter.pulsesPerLiterX100", kCoefficient, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kCoefficient); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kCoefficient, i); }},
+    {"meter.flowStartTimeoutSeconds", kFlowStart, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kFlowStart); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kFlowStart, i); }},
+    {"meter.noFlowTimeoutSeconds", kNoFlow, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kNoFlow); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kNoFlow, i); }},
+    {"flow.unexpectedFlowDelaySeconds", kLeakDelay, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kLeakDelay); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kLeakDelay, i); }},
+    {"flow.unexpectedFlowWindowSeconds", kLeakWindow, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kLeakWindow); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kLeakWindow, i); }},
+    {"flow.unexpectedFlowPulseCount", kLeakPulses, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kLeakPulses); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kLeakPulses, i); }},
+    {"flow.deviationConfirmSeconds", kDeviation, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kDeviation); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kDeviation, i); }},
+    {"flow.lowFlowPercent", kLowPercent, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kLowPercent); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kLowPercent, i); }},
+    {"flow.highFlowPercent", kHighPercent, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kHighPercent); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kHighPercent, i); }},
+    {"flow.lowFlowAction", kLowAction, FieldType::Enumeration,
+     [](const IrrigationParameters& p, int32_t&, bool&, char* t, std::size_t n) { getEnumText(p, kLowAction, t, n); },
+     [](IrrigationParameters& p, int32_t, bool, const char* t) { setEnumText(p, kLowAction, t); }},
+    {"flow.highFlowAction", kHighAction, FieldType::Enumeration,
+     [](const IrrigationParameters& p, int32_t&, bool&, char* t, std::size_t n) { getEnumText(p, kHighAction, t, n); },
+     [](IrrigationParameters& p, int32_t, bool, const char* t) { setEnumText(p, kHighAction, t); }},
+    {"limits.maximumZoneDurationMinutes", kMaximumZoneMinutes, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kMaximumZoneMinutes); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kMaximumZoneMinutes, i); }},
+    {"limits.maximumSingleOutputLiters", kMaximumOutputLiters, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kMaximumOutputLiters); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kMaximumOutputLiters, i); }},
+    {"system.rtcRollbackThresholdMinutes", kRtcRollback, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kRtcRollback); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kRtcRollback, i); }},
+    {"system.aliveCheckpointHours", kAliveHours, FieldType::Integer,
+     [](const IrrigationParameters& p, int32_t& i, bool&, char*, std::size_t) { i = getInteger(p, kAliveHours); },
+     [](IrrigationParameters& p, int32_t i, bool, const char*) { setInteger(p, kAliveHours, i); }},
+};
+constexpr std::size_t kSystemFieldCount =
+    sizeof(kSystemFields) / sizeof(kSystemFields[0]);
+static_assert(kSystemFieldCount == 22,
+              "system field table must cover all 22 registered parameters");
+
+const SystemFieldDescriptor* findField(const char* contractName) {
+    for (const SystemFieldDescriptor& field : kSystemFields) {
+        if (std::strcmp(field.contractName, contractName) == 0) return &field;
+    }
+    return nullptr;
+}
+
+const SystemFieldDescriptor* findFieldByKey(const char* nvsKey) {
+    for (const SystemFieldDescriptor& field : kSystemFields) {
+        if (std::strcmp(field.nvsKey, nvsKey) == 0) return &field;
+    }
+    return nullptr;
+}
+
+int32_t getInteger(const IrrigationParameters& p, const char* key) {
+    if (std::strcmp(key, kPullIn) == 0) return p.valveDrive.pullInTimeMs;
+    if (std::strcmp(key, kSwitchDelay) == 0) return p.valveDrive.switchDelayMs;
+    if (std::strcmp(key, kPwm) == 0) return static_cast<int32_t>(p.valveDrive.pwmFrequencyHz);
+    if (std::strcmp(key, kHold) == 0) return p.valveDrive.holdDutyPercent;
+    if (std::strcmp(key, kPumpStart) == 0) return p.pump.startDelayMs;
+    if (std::strcmp(key, kPumpStop) == 0) return p.pump.stopToValveCloseDelayMs;
+    if (std::strcmp(key, kCoefficient) == 0) return static_cast<int32_t>(p.flowMeter.pulsesPerLiterX100);
+    if (std::strcmp(key, kFlowStart) == 0) return p.flowProtection.flowStartTimeoutSec;
+    if (std::strcmp(key, kNoFlow) == 0) return p.flowProtection.noFlowTimeoutSec;
+    if (std::strcmp(key, kLeakDelay) == 0) return p.flowProtection.unexpectedFlowDelaySec;
+    if (std::strcmp(key, kLeakWindow) == 0) return p.flowProtection.unexpectedFlowWindowSec;
+    if (std::strcmp(key, kLeakPulses) == 0) return p.flowProtection.unexpectedFlowPulseCount;
+    if (std::strcmp(key, kDeviation) == 0) return p.flowProtection.flowDeviationConfirmSec;
+    if (std::strcmp(key, kLowPercent) == 0) return p.flowProtection.lowFlowPercent;
+    if (std::strcmp(key, kHighPercent) == 0) return p.flowProtection.highFlowPercent;
+    if (std::strcmp(key, kMaximumZoneMinutes) == 0) return p.runLimits.maximumZoneDurationMinutes;
+    if (std::strcmp(key, kMaximumOutputLiters) == 0) return p.runLimits.maximumSingleOutputLiters;
+    if (std::strcmp(key, kRtcRollback) == 0) return p.timeSafety.rtcRollbackThresholdMinutes;
+    if (std::strcmp(key, kAliveHours) == 0) return p.timeSafety.aliveCheckpointHours;
+    return 0;
+}
+
+void setInteger(IrrigationParameters& p, const char* key, int32_t value) {
+    if (std::strcmp(key, kPullIn) == 0) p.valveDrive.pullInTimeMs = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kSwitchDelay) == 0) p.valveDrive.switchDelayMs = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kPwm) == 0) p.valveDrive.pwmFrequencyHz = static_cast<uint32_t>(value);
+    else if (std::strcmp(key, kHold) == 0) p.valveDrive.holdDutyPercent = static_cast<uint8_t>(value);
+    else if (std::strcmp(key, kPumpStart) == 0) p.pump.startDelayMs = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kPumpStop) == 0) p.pump.stopToValveCloseDelayMs = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kCoefficient) == 0) p.flowMeter.pulsesPerLiterX100 = static_cast<uint32_t>(value);
+    else if (std::strcmp(key, kFlowStart) == 0) p.flowProtection.flowStartTimeoutSec = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kNoFlow) == 0) p.flowProtection.noFlowTimeoutSec = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kLeakDelay) == 0) p.flowProtection.unexpectedFlowDelaySec = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kLeakWindow) == 0) p.flowProtection.unexpectedFlowWindowSec = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kLeakPulses) == 0) p.flowProtection.unexpectedFlowPulseCount = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kDeviation) == 0) p.flowProtection.flowDeviationConfirmSec = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kLowPercent) == 0) p.flowProtection.lowFlowPercent = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kHighPercent) == 0) p.flowProtection.highFlowPercent = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kMaximumZoneMinutes) == 0) p.runLimits.maximumZoneDurationMinutes = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kMaximumOutputLiters) == 0) p.runLimits.maximumSingleOutputLiters = static_cast<uint16_t>(value);
+    else if (std::strcmp(key, kRtcRollback) == 0) p.timeSafety.rtcRollbackThresholdMinutes = static_cast<uint8_t>(value);
+    else if (std::strcmp(key, kAliveHours) == 0) p.timeSafety.aliveCheckpointHours = static_cast<uint8_t>(value);
+}
+
+bool getBoolean(const IrrigationParameters& p, const char* key) {
+    if (std::strcmp(key, kPumpEnabled) == 0) return p.pump.enabled;
+    return false;
+}
+
+void setBoolean(IrrigationParameters& p, const char* key, bool value) {
+    if (std::strcmp(key, kPumpEnabled) == 0) p.pump.enabled = value;
+}
+
+const char* getEnumText(const IrrigationParameters& p,
+                        const char* key,
+                        char* text,
+                        std::size_t size) {
+    FlowAlertAction action = FlowAlertAction::AlertOnly;
+    if (std::strcmp(key, kLowAction) == 0) action = p.flowProtection.lowFlowAction;
+    else if (std::strcmp(key, kHighAction) == 0) action = p.flowProtection.highFlowAction;
+    else return nullptr;
+    readFlowAction(action, text, size);
+    return text;
+}
+
+void setEnumText(IrrigationParameters& p, const char* key, const char* text) {
+    const FlowAlertAction action = parseFlowAction(text);
+    if (std::strcmp(key, kLowAction) == 0) p.flowProtection.lowFlowAction = action;
+    else if (std::strcmp(key, kHighAction) == 0) p.flowProtection.highFlowAction = action;
+}
+constexpr std::size_t kRegisteredGroupCount = 6;
+constexpr std::size_t kRegisteredFieldCount = 22;
+static_assert(ESP32BASE_APP_CONFIG_MAX_GROUPS >= kRegisteredGroupCount,
+              "Increase ESP32BASE_APP_CONFIG_MAX_GROUPS when adding a group");
+static_assert(ESP32BASE_APP_CONFIG_MAX_FIELDS >= kRegisteredFieldCount,
+              "Increase ESP32BASE_APP_CONFIG_MAX_FIELDS when adding a parameter");
 constexpr char kCoefficientLabel[] = "每升脉冲数";
 constexpr char kCoefficientHelp[] =
     "填写校准得到的每升脉冲数；水量=累计脉冲÷每升脉冲数。";
@@ -192,4 +385,78 @@ bool IrrigationParameterConfig::validatePage(char* error, size_t errorLength) {
 
 void IrrigationParameterConfig::handleSaved(const Esp32BaseAppConfig::SaveSummary&) {
     if (g_callback) g_callback(g_callbackUser);
+}
+
+bool IrrigationParameterConfig::buildRemoteFieldCandidate(
+    const char* contractField,
+    bool valueIsInteger,
+    int32_t integerValue,
+    bool valueIsBoolean,
+    bool booleanValue,
+    const char* textValue,
+    IrrigationParameters& candidate) {
+    const SystemFieldDescriptor* field = findField(contractField);
+    if (!field) return false;
+    if (!applyStored(candidate)) return false;
+
+    // Range/shape check against the same descriptor the local page registers.
+    switch (field->type) {
+        case FieldType::Integer:
+            if (!valueIsInteger) return false;
+            setInteger(candidate, field->nvsKey, integerValue);
+            break;
+        case FieldType::Boolean:
+            if (!valueIsBoolean) return false;
+            setBoolean(candidate, field->nvsKey, booleanValue);
+            break;
+        case FieldType::Enumeration:
+            if (valueIsInteger || valueIsBoolean || !textValue) return false;
+            if (std::strcmp(textValue, "alert") != 0 &&
+                std::strcmp(textValue, "stop") != 0) {
+                return false;
+            }
+            setEnumText(candidate, field->nvsKey, textValue);
+            break;
+    }
+    return IrrigationConfigRules::validateParameters(candidate);
+}
+
+bool IrrigationParameterConfig::applyRemoteField(const char* contractField,
+                                                 bool valueIsInteger,
+                                                 int32_t integerValue,
+                                                 bool valueIsBoolean,
+                                                 bool booleanValue,
+                                                 const char* textValue) {
+    const SystemFieldDescriptor* field = findField(contractField);
+    if (!field) return false;
+    if (field->type == FieldType::Integer)
+        return valueIsInteger &&
+               Esp32BaseConfig::setInt(kNamespace, field->nvsKey, integerValue);
+    if (field->type == FieldType::Boolean)
+        return valueIsBoolean &&
+               Esp32BaseConfig::setBool(kNamespace, field->nvsKey, booleanValue);
+    return !valueIsInteger && !valueIsBoolean && textValue &&
+           Esp32BaseConfig::setStr(kNamespace, field->nvsKey, textValue);
+}
+
+uint8_t IrrigationParameterConfig::fieldIndex(const char* contractField) {
+    const SystemFieldDescriptor* field = findField(contractField);
+    if (!field) return 0;
+    return static_cast<uint8_t>(field - kSystemFields + 1);
+}
+
+bool IrrigationParameterConfig::writeStoredField(
+    const char* contractField,
+    const IrrigationParameters& parameters) {
+    const SystemFieldDescriptor* field = findField(contractField);
+    if (!field) return false;
+    int32_t integer = 0;
+    bool boolean = false;
+    char action[kActionTextSize]{};
+    field->read(parameters, integer, boolean, action, sizeof(action));
+    if (field->type == FieldType::Integer)
+        return Esp32BaseConfig::setInt(kNamespace, field->nvsKey, integer);
+    if (field->type == FieldType::Boolean)
+        return Esp32BaseConfig::setBool(kNamespace, field->nvsKey, boolean);
+    return Esp32BaseConfig::setStr(kNamespace, field->nvsKey, action);
 }

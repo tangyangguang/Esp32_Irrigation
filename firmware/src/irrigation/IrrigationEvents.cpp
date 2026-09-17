@@ -128,6 +128,26 @@ void IrrigationEvents::recordZoneFlowSaved(
     append(payload);
 }
 
+void IrrigationEvents::recordZoneChanged(uint8_t zoneId,
+                                         bool enabled,
+                                         uint32_t revision) {
+    IrrigationAuditPayload payload;
+    payload.kind = IrrigationAuditPayload::Kind::ZoneChanged;
+    payload.reason = static_cast<uint8_t>(ReasonCode::ZoneUpdated);
+    payload.objectId = zoneId;
+    payload.flags = enabled ? 1U : 0U;
+    payload.value1 = revision;
+    append(payload);
+}
+
+void IrrigationEvents::recordSystemFieldChanged(uint8_t fieldIndex) {
+    IrrigationAuditPayload payload;
+    payload.kind = IrrigationAuditPayload::Kind::SystemFieldChanged;
+    payload.reason = static_cast<uint8_t>(ReasonCode::SystemParametersUpdated);
+    payload.objectId = fieldIndex;
+    append(payload);
+}
+
 void IrrigationEvents::recordConfigurationChanged(
     ConfigurationChange change,
     uint8_t objectId,
@@ -136,7 +156,6 @@ void IrrigationEvents::recordConfigurationChanged(
     if (change == ConfigurationChange::PlanCreated) reason = ReasonCode::PlanCreated;
     else if (change == ConfigurationChange::PlanUpdated) reason = ReasonCode::PlanUpdated;
     else if (change == ConfigurationChange::PlanDeleted) reason = ReasonCode::PlanDeleted;
-    else if (change == ConfigurationChange::ZoneUpdated) reason = ReasonCode::ZoneUpdated;
     else if (change == ConfigurationChange::SystemParametersUpdated) reason = ReasonCode::SystemParametersUpdated;
     else return;
     IrrigationAuditPayload payload;

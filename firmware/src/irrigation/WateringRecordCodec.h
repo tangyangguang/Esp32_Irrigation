@@ -18,6 +18,9 @@ struct ZoneWateringRecord {
     uint32_t averageFlowMlPerMinute = 0;
     uint32_t baselinePulseRateX10000 = 0;
     uint32_t baselineFlowMlPerMinute = 0;
+    // Suggested baseline pulse rate derived from the stable terminal flow of
+    // this watering; 0 when the terminal flow was absent or unstable.
+    uint32_t suggestedBaselinePulseRateX10000 = 0;
 };
 
 struct WateringRecordPayload {
@@ -43,7 +46,7 @@ struct WateringRecordTotals {
 
 class WateringRecordCodec {
 public:
-    static constexpr std::size_t kPayloadSize = 246;
+    static constexpr std::size_t kPayloadSize = 270;  // 18+36 header + 6*36 zone
     static constexpr uint8_t kZoneFlagUnknown = 1U << 4U;
     static constexpr uint8_t kZoneFlagWaterEstimateCapped = 1U << 0U;
     static constexpr uint8_t kZoneFlagLowFlow = 1U << 1U;

@@ -35,8 +35,8 @@ WateringSessionSummary summary() {
     return value;
 }
 
-void test_layout_is_fixed_246_bytes() {
-    TEST_ASSERT_EQUAL_UINT32(246U, WateringRecordCodec::kPayloadSize);
+void test_layout_is_fixed_270_bytes() {
+    TEST_ASSERT_EQUAL_UINT32(270U, WateringRecordCodec::kPayloadSize);
 }
 
 void test_round_trip_keeps_only_core_evidence() {
@@ -54,6 +54,28 @@ void test_round_trip_keeps_only_core_evidence() {
     TEST_ASSERT_EQUAL_UINT32(150U, decoded.zones[2].pulseCount);
     TEST_ASSERT_EQUAL_UINT32(5000U,
                              decoded.zones[0].baselinePulseRateX10000);
+}
+
+void test_suggested_baseline_round_trips_only_when_terminal_stable() {
+    auto stable = summary();
+    stable.zones[0].terminalFlowStable = true;
+    stable.zones[0].suggestedBaselinePulseRateX10000 = 4166667U;
+    WateringRecordPayload payload{}, decoded{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(stable, payload));
+    TEST_ASSERT_EQUAL_UINT32(4166667U,
+                             payload.zones[0].suggestedBaselinePulseRateX10000);
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_EQUAL_UINT32(4166667U,
+                             decoded.zones[0].suggestedBaselinePulseRateX10000);
+
+    auto unstable = summary();
+    unstable.zones[0].suggestedBaselinePulseRateX10000 = 4166667U;
+    WateringRecordPayload unstablePayload{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(unstable, unstablePayload));
+    TEST_ASSERT_EQUAL_UINT32(0U,
+                             unstablePayload.zones[0].suggestedBaselinePulseRateX10000);
 }
 
 void test_task_identity_and_start_offsets_round_trip() {
@@ -147,7 +169,8 @@ void test_corrupted_header_and_invalid_result_pair_are_rejected() {
 
 int main(int, char**) {
     UNITY_BEGIN();
-    RUN_TEST(test_layout_is_fixed_246_bytes);
+    RUN_TEST(test_layout_is_fixed_270_bytes);
+    RUN_TEST(test_suggested_baseline_round_trips_only_when_terminal_stable);
     RUN_TEST(test_wechat_source_and_command_id_round_trip);
     RUN_TEST(test_round_trip_keeps_only_core_evidence);
     RUN_TEST(test_task_identity_and_start_offsets_round_trip);

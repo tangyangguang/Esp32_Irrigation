@@ -52,17 +52,17 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,536,703 B（86.8%，分区 1,769,472 B） |
-| 静态 RAM | 103,108 B（31.5%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,537,104 B |
-| 对侧 OTA 槽余量 | 232,368 B（约 227 KiB，13.13%） |
+| Flash（应用分区） | 1,542,843 B（87.2%，分区 1,769,472 B） |
+| 静态 RAM | 103,132 B（31.5%，327,680 B） |
+| OTA 镜像 firmware.bin | 1,543,248 B |
+| 对侧 OTA 槽余量 | 226,224 B（约 221 KiB，12.78%） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。烧录、真机 TLS/MQTT、小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
 
 ## 存储与平台契约
 
 - 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。
-- 浇水 codec v3：246 B 业务 payload（含 36 B commandId）；审计 20 B 业务 payload。
+- 浇水 codec v4：270 B 业务 payload（54 B 头含 36 B commandId + 6×36 B 水路，含建议基准脉冲率）；审计 20 B 业务 payload。v3 旧记录不读取。
 - 两个持久 Store（浇水 v9 / 审计 v5，均 `PreserveUnreleased`）物理槽为 24 B IR/v1 头 + 业务字节，预算 160/48 KiB；**单一持久 Store 同时服务本地历史与平台可靠补发**，内嵌 SDK `RecordStream`，不设第二份 outbox，断网补发与 record-ack 经同一存储水位管理。
 - 浇水任务标记为紧凑 NVS marker，重启据此重建 Incomplete/RebootInterrupted 事实。
 - 平台适配 `IrrigationPlatform*` 按 `platform/iot-device` 的 irrigation-controller 契约实现：设备 ID 由 STA MAC 生成 `esp32-irr-<12hex>`，8 类状态投影、5 类命令（plans/automatic-watering/start-manual/stop/single-output）全部复用 `IrrigationApp` 唯一执行入口；来源 `WateringSource` 区分 LocalWeb/AutomaticPlan/WechatMiniprogram。
