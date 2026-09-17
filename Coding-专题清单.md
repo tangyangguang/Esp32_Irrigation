@@ -58,4 +58,18 @@
 
 ### 四、结果
 
-（实施后补充：各仓提交号、检查证据、未覆盖边界。）
+**契约仓 platform/iot-device**
+- `322b923` 协议 1.4.0：新增 `parameter.plan`（use，upsert/delete/set-enabled 单条操作）、`parameter.zone`、`parameter.zone-baseline`、`parameter.system-field`（maintain，22 字段白名单）；浇水记录每水路带可空 `suggestedBaselinePulseRateX10000`；新增审计 `configuration.zone-changed`、`configuration.system-field-changed`。
+- `b938b04` 修正：`state.zone-maintenance` 带必填 revision；两条审计记录数据按固定 20B 收敛（zone：revision+zoneId+enabled；field：fieldIndex 1..22，不存名称/新旧值）。
+- 证据：`npm run typecheck`、`definitions:check` 通过，16 个测试文件 126 项全部通过（既有 3 个无关文件 prettier 告警为历史状态）。
+
+**固件仓 devices/Esp32_Irrigation**
+- `735ee66`：`IrrigationApp` 新增 savePlanSlot/saveZoneInfo/setZoneBaseline/applyRemoteSystemField，本地网页保存改走同一入口；参数 22 项字段描述表与远端候选/联合校验；记录 codec v3→v4（kZoneSize 32→36、payload 246→270），普通浇水末段稳定时计算建议基准脉冲率；审计新增 ZoneChanged/SystemFieldChanged。
+- `1de2b96`：README 构建基线与 codec v4 文档更新。
+- 证据：native 81 项测试通过；主目标编译通过 Flash 1,542,843 B（87.2%）/ RAM 103,132 B。未做实机烧录与 MQTT 命令验收（需另行授权）。
+
+**小程序仓 platform/iot-wx-apps**
+- `c5ee513`：计划页改单条 upsert/delete/set-enabled，保存前对启用计划做时段重叠提示确认；维护页接入水路改名/启停（停用时联动清空计划时长由设备执行并在确认文案说明）、基准脉冲率手工录入/清除、流量计系数独立入口、22 项系统参数逐字段弹层编辑（整数/布尔/枚举三类，按设备同范围校验）；config.json 类命令提交前现取 revision 乐观并发；浇水记录详情有建议值时显示次要“设为基准”按钮并二次确认。
+- 证据：`tsc --noEmit` 通过；改动 5 个文件定向 ESLint 无错误。未跑全量 vitest、未做开发者工具页面渲染与手机实测（按用户要求本轮控制测试范围，页面层后续还会调整）。
+
+**未覆盖边界**：服务端未部署新契约产物；小程序未做隔离页面走查与手机实测；固件未实机验证命令落盘、revision 冲突、参数待应用和记录建议值展示；禁用水路真实名称当前依赖 config 快照（state.zones 只投影启用路），禁用路改名回退显示“水路 N”，是否需要扩展投影待后续评估。
