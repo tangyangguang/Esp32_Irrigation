@@ -161,7 +161,9 @@ void test_pause_modes_skip_or_resume_without_immediate_manual_run() {
     CallbackState timedCallbacks;
     WateringScheduler timedScheduler;
     initialize(timedScheduler, timedStorage, timedCallbacks);
+    // Slot at the resume minute (03:00) must not start; a later slot (05:00) does.
     config.plans[0].startMinutes[0] = 3;
+    config.plans[0].startMinutes[1] = 5;
     TEST_ASSERT_FALSE(timedScheduler.pauseUntil(kLocalMidnight + 180U,
                                                false,
                                                kLocalMidnight + 60U));
@@ -172,10 +174,17 @@ void test_pause_modes_skip_or_resume_without_immediate_manual_run() {
                                               true,
                                               kLocalMidnight + 60U));
     timedScheduler.handle(config, true, false, kLocalMidnight + 120U);
+    // Resume minute: automatic resume happens but the matching slot never starts.
     timedScheduler.handle(config, true, false, kLocalMidnight + 180U);
-    TEST_ASSERT_EQUAL_UINT32(1, timedCallbacks.startCount);
+    TEST_ASSERT_EQUAL_UINT32(0, timedCallbacks.startCount);
     TEST_ASSERT_EQUAL(static_cast<int>(AutomaticWateringMode::Enabled),
                       static_cast<int>(timedScheduler.automaticState().mode));
+    // First minute after the resume rebuild only re-establishes the checkpoint.
+    timedScheduler.handle(config, true, false, kLocalMidnight + 240U);
+    TEST_ASSERT_EQUAL_UINT32(0, timedCallbacks.startCount);
+    // Following consecutive minute starts the later slot normally.
+    timedScheduler.handle(config, true, false, kLocalMidnight + 300U);
+    TEST_ASSERT_EQUAL_UINT32(1, timedCallbacks.startCount);
 }
 
 void test_time_jump_and_rtc_rollback_rebase_without_running() {
@@ -323,6 +332,45 @@ void test_next_automatic_watering_reports_unavailable_states() {
                       static_cast<int>(next.status));
 }
 
+void test_cross_midnight_rollback_never_clobbers_newer_day_mask() {
+    FakeStorage storage;
+    CallbackState callbacks;
+    IrrigationConfig config = scheduledConfig(1);                  // 00:01 daily
+    config.plans[0].startMinutes[1] = 23U * 60U + 59U;             // 23:59 daily
+
+    // Device first runs after midnight: 00:01 starts and is persisted for day D+1.
+    {
+        WateringScheduler scheduler;
+        initialize(scheduler, storage, callbacks);
+        scheduler.handle(config, true, false, kLocalMidnight + 86400U);       // D+1 00:00
+        scheduler.handle(config, true, false, kLocalMidnight + 86460U);       // D+1 00:01
+        TEST_ASSERT_EQUAL_UINT32(1, callbacks.startCount);
+        TEST_ASSERT_EQUAL_UINT32((kLocalMidnight + 28800U) / 86400U + 1U,
+                                 storage.state.currentLocalDay);
+        TEST_ASSERT_EQUAL_UINT32(1UL, storage.state.currentProcessedMask);
+    }
+
+    // Reboot with RTC rolled back to 23:5x of the previous day (within threshold).
+    CallbackState rebootCallbacks;
+    WateringScheduler rebooted;
+    rebooted.setCallbacks(startWatering, captureEvent, &rebootCallbacks);
+    TEST_ASSERT_TRUE(rebooted.begin(storage));
+    rebooted.setTrustedEpochBaseline(kLocalMidnight + 86460U);
+    rebooted.handle(config, true, false,
+                    kLocalMidnight + 23U * 3600U + 58U * 60U);      // D 23:58 seed
+    rebooted.handle(config, true, false,
+                    kLocalMidnight + 23U * 3600U + 59U * 60U);      // D 23:59
+    rebooted.handle(config, true, false, kLocalMidnight + 86400U); // D+1 00:00
+    rebooted.handle(config, true, false, kLocalMidnight + 86460U); // D+1 00:01
+
+    // The older day must never clobber the newer-day mask: no duplicate start,
+    // and the persisted D+1 processed mask survives intact.
+    TEST_ASSERT_EQUAL_UINT32(0, rebootCallbacks.startCount);
+    TEST_ASSERT_EQUAL_UINT32((kLocalMidnight + 28800U) / 86400U + 1U,
+                             storage.state.currentLocalDay);
+    TEST_ASSERT_EQUAL_UINT32(1UL, storage.state.currentProcessedMask);
+}
+
 void test_next_automatic_watering_skips_start_already_processed_after_small_rollback() {
     FakeStorage storage;
     CallbackState callbacks;
@@ -357,5 +405,6 @@ int main(int, char**) {
     RUN_TEST(test_next_automatic_watering_starts_after_timed_resume_minute);
     RUN_TEST(test_next_automatic_watering_reports_unavailable_states);
     RUN_TEST(test_next_automatic_watering_skips_start_already_processed_after_small_rollback);
+    RUN_TEST(test_cross_midnight_rollback_never_clobbers_newer_day_mask);
     return UNITY_END();
 }

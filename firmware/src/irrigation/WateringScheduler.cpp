@@ -87,6 +87,10 @@ void WateringScheduler::handle(const IrrigationConfig& config,
             return;
         }
         emit(Event::ResumedAutomatically);
+        // The resume minute never starts a plan, matching manual resume, the
+        // read-only next-watering query and startup: only rebuild the checkpoint.
+        rebaseTimeCheck();
+        return;
     }
     processMinute(config, localDay(epochSec), localMinute(epochSec));
 }
@@ -253,12 +257,25 @@ bool WateringScheduler::saveState(const WateringSchedulerPersistentState& next) 
 bool WateringScheduler::markProcessed(uint32_t day, uint32_t bit) {
     WateringSchedulerPersistentState next = state_;
     if (next.currentLocalDay != day) {
-        if (next.currentLocalDay != 0 && next.currentLocalDay < day) {
+        if (next.currentLocalDay == 0) {
+            // First observed day.
+            next.currentLocalDay = day;
+            next.currentProcessedMask = 0;
+        } else if (day > next.currentLocalDay) {
+            // Normal rollover: keep the most recent completed day as previous.
             next.previousLocalDay = next.currentLocalDay;
             next.previousProcessedMask = next.currentProcessedMask;
+            next.currentLocalDay = day;
+            next.currentProcessedMask = 0;
+        } else if (day == next.previousLocalDay) {
+            // In-threshold rollback across midnight: merge into the earlier day,
+            // preserving the newer current-day mask so its starts never repeat.
+            next.previousProcessedMask |= bit;
+            return saveState(next);
+        } else {
+            // Untracked earlier day: never start from a stale checkpoint.
+            return false;
         }
-        next.currentLocalDay = day;
-        next.currentProcessedMask = 0;
     }
     next.currentProcessedMask |= bit;
     return saveState(next);

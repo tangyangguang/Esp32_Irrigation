@@ -29,7 +29,7 @@ firmware/
 # 1. Web 资产：gzip 还原、注册、JS 语法
 python3 devices/Esp32_Irrigation/firmware/scripts/test_web_assets.py
 
-# 2. 纯业务逻辑 native 测试（Unity，79 项：配置/控制器/调度/记录/时间/异常流/平台记录投影）
+# 2. 纯业务逻辑 native 测试（Unity，82 项：配置/控制器/调度/记录/时间/异常流/平台记录投影）
 python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d devices/Esp32_Irrigation/firmware -e native
 
 # 3. 独立主机检查（直接用宿主 c++ 编译，不依赖硬件）
@@ -58,6 +58,12 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 | 对侧 OTA 槽余量 | 226,224 B（约 221 KiB，12.78%） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。2026-09-17 已对 192.168.2.155（esp32-irr-28562f795e60）Web OTA 烧录，启动日志确认 MQTT 经 TLS 连接 z84e9fd1.ala.cn-hangzhou.emqxsl.cn:8883 成功；连接后约 1 分钟进入 dev 平台发现候选（iot_home_dev.device_discovery_candidates，状态 online），待小程序确认绑定。小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
+
+## 调度边界修复（2026-09-17）
+
+- 定时暂停到期**自动恢复的那一分钟不触发计划**，与手动恢复、启动分钟、只读“下一次”查询及 `03` 设计第 183 行统一；恢复后分钟仅重建检查点，下一分钟正常调度。
+- 修复阈值内**跨午夜 RTC 回拨**时 `markProcessed` 可能用较早日期覆盖较新当天掩码的问题：回跨到已保存的前一天时合并进前一天掩码并保留较新当天掩码，避免重启后重复浇水；落入未跟踪的更早日期时安全跳过。
+- 覆盖：`test_pause_modes_skip_or_resume_without_immediate_manual_run` 更新，新增 `test_cross_midnight_rollback_never_clobbers_newer_day_mask`；两例在旧实现上均失败、修复后通过。native 82 项全过，主目标 `pio run -e esp32_irrigation_arduino3` 链接成功；纯逻辑改动，不改变配置 schema、NVS blob 结构与平台契约。
 
 ## 存储与平台契约
 
