@@ -1,280 +1,84 @@
 # ESP32 灌溉控制器固件
 
-## IoT 平台对接完成（2026-09-16，主机检查通过，待真机授权）
+PlatformIO 工程，Arduino Core 3 classic ESP32，固定使用 Esp32Base **IOT Profile**：本地 Web、灌溉业务核心与 MQTT 平台接入并存于同一固件，共用同一执行链路。
 
-主固件固定使用 **Esp32Base IOT Profile**：本地 Web、灌溉业务核心与 MQTT 平台接入并存于同一个固件，不再保留 LOCAL/IOT 两套固件。旧 `IrrigationIot*` 适配与 `IrrigationCommandJournal` 已删除，按 `platform/iot-device` 的 `irrigation-controller` v1.3.0 契约重新实现：
+- 产品、硬件与业务边界：[`../docs/01-产品与硬件边界.md`](../docs/01-产品与硬件边界.md)、[`02-业务规则与安全.md`](../docs/02-业务规则与安全.md)、[`03-软件设计原则.md`](../docs/03-软件设计原则.md)。
+- 烧录、Web OTA、串口监视的操作步骤：[`../docs/04-设备维护操作手册.md`](../docs/04-设备维护操作手册.md)。
+- 公共能力（WiFi、Web、认证、OTA、MQTT、文件系统、Conditions、AppConfig、RTC、看门狗）来自 [`../../../foundation/Esp32Base`](../../../foundation/Esp32Base/README.md)；平台契约来自 `platform/iot-device`。
 
-- 连接：`IrrigationPlatform` 使用 SDK `ConnectionSession` + `Esp32MqttPort` + `ModelPublisher`；设备 ID 由 STA MAC 生成 `esp32-irr-<12hex>`；LWT/availability/订阅屏障、TLS 凭据沿用 `IrrigationIotSecrets.h` 与 Git 忽略的本地私有头。MQTT host/CA 缺失时安全降级为纯本地运行，不阻塞 Web 与业务。
-- 状态：新连接全量、运行中周期发布 `state.overview/runtime/zones/zone-maintenance/calibration/system-parameters/diagnostics` 与 `parameter.plans/automatic-watering` 共 8 类投影；diagnostics 在 `Esp32Diagnostics::collect` 外补 `bootNo/mqttAtt/mqttErr/wdt/mac`（契约新增必填 `mac`）。
-- 命令：`CommandInbox` + 紧凑命令账本受理 `plans/automatic-watering/start-manual/stop/single-output`，全部复用 `IrrigationApp` 唯一执行入口（startWatering/stopWatering/saveConfiguration/暂停恢复），receipt/progress 原因键使用契约词表（busy/zone_unavailable/revision_conflict/time_untrusted/invalid_resume_time/persistence_error 等）。
-- 记录：浇水与审计两个本地 Store 改造为「内嵌 SDK `RecordStream` 的单一持久 Store」，物理槽为 24B IR/v1 头 + 业务字节，本地历史与平台补发共用一份数据，不设第二份 outbox。8 个 recordKey 的二进制→JSON 投影在 `IrrigationPlatformRecords.cpp`，record-ack 经 session 路由释放水位。浇水 codec 升级到 v3、payload 246B（新增 36B commandId）；Store v9；任务标记改为紧凑 NVS marker（重启重建 Incomplete/RebootInterrupted 事实）。
-- 模型头由 `scripts/generate_sdk_model.py` 构建时从 iot-device 契约生成，不签入。
-- 来源模型：`WateringSource` 拆为 LocalWeb/AutomaticPlan/WechatMiniprogram；微信命令带 UUID commandId 并随浇水记录持久化。
+## 目录
 
-本机检查（工作区根目录）：
-
-```sh
-python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d devices/Esp32_Irrigation/firmware -e native
-python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
-(cd platform/iot-device && python3 sdk/scripts/test_native.py && npm test)
+```text
+firmware/
+├── platformio.ini                 # env: esp32_irrigation_arduino3（主目标）、native、esp32_record_test
+├── partitions/esp32-4mb-ota.csv   # 4 MiB 布局：双 1728 KiB OTA + 512 KiB LittleFS
+├── irrigation_iot_private.example.h  # 复制为 local_private/irrigation_iot_private.h 填真实凭据
+├── src/main.cpp                   # setup/loop，仅转发给 IrrigationApp
+├── src/irrigation/                # 一层业务模块（执行、调度、计量、配置、记录、Web、平台）
+├── src/irrigation/generated/      # Web 资产生成物（由 web-src 生成，签入）
+├── web-src/                       # CSS/JS 权威源（10 个 gzip 静态资产）
+├── test/                          # native 行为测试 + 主机独立测试夹具（host_executor/host_hardware/host_storage）
+└── scripts/                       # 构建钩子与独立本机检查
 ```
 
-- native **79/79** 通过，其中新增 `test_platform_records` 用真实生成契约校验器验证全部 8 类记录投影（含合法 UUID、reason/zoneResult 枚举、时间可空）。
-- iot-device：`definitions:check`（irrigation checksum `1a7ab8a6…266a`）、typecheck、126 项 JS 测试、SDK native 全量通过。
-- 主 IOT 固件链接通过：Flash **1,534,923 B（86.7%）**，静态 RAM **103,092 B（31.5%）**；OTA 镜像 `firmware.bin` **1,535,328 B**，双 1728 KiB OTA 槽剩余 **234,144 B（约 228.7 KiB，13.2%）**，SHA256 `0ff867af5d3dd37daacb19908914a2fda32022cdb4bea0e263223f9b85d7bdc3`。运行堆/栈峰值未测量。固件尺寸优化本轮不做，由用户后续决定。
-- 未做：真机烧录、测试服务器真实 TLS/MQTT 联调、小程序联调、物理阀门动作、长稳/断电/满容量。这些需另行授权。
+## 本机检查
 
-## 页面统一为运行页风格（2026-09-16，待实机验收）
-
-- 以只读实验设备（`192.168.2.127`，对应 `b831ee3` 固件）实际下发的页面与 CSS 为黄金基准，用无头 Chrome 逐页（首页、计划、记录、事件、水路/设置、基准学习、实时任务页及计划编辑/记录详情弹层、手动浇水弹层）核对桌面与 390px 窄屏：各页已经与“正在浇水”实时任务页同一套语言（白卡、浅灰指标砖、青色高亮、柔和渐变标题条、圆角步骤条）。
-- 修复两处真实样式问题（均为样式源，逻辑/契约不变）：
-  - 上一轮把 `zone-meter` 移动端规则误放到顶层，导致设置页“流量计维护”在桌面把按钮拉成整行绿条；改为桌面横向右对齐、仅 ≤760px 竖排满宽。
-  - 首页“今日计划”下一次高亮行在窄屏把“下一次”标签挤成竖排；≤760px 下下一次行改为时间独占一行、标签不换行。
-- 用 Playwright 实测 390px 文档无横向溢出（设置页宽表由 `.tablewrap` 内部横滚，与黄金版一致）。资产一致性/JS 语法通过；目标构建 Flash **1,381,756 B（78.1%）**、静态 RAM **75,996 B（23.2%）**、OTA 镜像 **1,382,160 B**、槽余 **387,312 B（21.89%）**，镜像 SHA256 `4690b2712fa4b5aba3c70737946aaadd154baa3c88189afec73d93303cb09f80`。未烧录/未 OTA/未修改实验设备（仅 GET）；最终视觉待用户实机验收。
-
-## 样式 B 方案归一（2026-09-13，进行中）
-
-- 删除全部装饰 linear-gradient（6 个样式源中的 10 处）与业务样式中的硬编码色值，统一使用 `--eb-*` 变量；普通容器圆角统一 8px（胶囊标签保留全圆角）；字重收敛为 400/600/700；清理首页已删卡片的死样式（home-card/home-facts/home-monitor/完成高亮动画等）和 active-task 脚本中的无效 sessionStorage 写入。
-- plans 页和水路管理两段内嵌 `<style>` 迁出：新增静态资产 plans-style.html（静态资产 9→10，`ESP32BASE_WEB_MAX_STATIC_ASSETS` 提到 12），水路样式并入 home-style.html（设置页和 zones POST 失败响应均引用）；全部 10 个资产源码与生成物逐字节一致。
-- 本机检查：资产/JS 语法通过，native 75/75 通过，主固件构建与容量门禁通过。镜像 **1,374,944 B**，静态 RAM **75,860 B**，OTA 槽剩余 **394,528 B（22.30%）**，SHA256 `cb2d98a319a0572e9b8de6c1e11b33cba1ffcad5441988ac0c0ff13f8b724cca`。**浏览器与实机页面效果待用户 OTA 后验收，未烧录。**
-
-## 事件页筛选（2026-09-13，进行中）
-
-- 事件页新增“日期 + 类别”筛选（全部 / 浇水与流量 / 自动计划 / 设置与维护 / 时间与存储），复用记录页筛选条样式，分页链接保留筛选条件；空日期为全部时间。
-- 本机检查：资产/JS 语法通过，native 75/75 通过（本步仅 Web 层），主固件构建与容量门禁通过。镜像 **1,380,560 B**，静态 RAM **75,860 B**，OTA 槽剩余 **388,912 B（21.98%）**，SHA256 `a51d1fcf9ed37e3ecbe8e66631517cb52b49032b7a620c298250cfcf4aaf92ab`。
-
-## 设备设置页重做（2026-09-13，进行中）
-
-- 导航名改为“设置”；水路列表、修改弹窗、基准学习入口、流量计系数只读直接放入设置页；“系统配置”一个入口直达 AppConfig；删除状态/日志/历史等重复入口（Base 页脚已提供）。`GET /irrigation/zones` 302 到 `/irrigation/settings`，POST 保存成功返回设置页（?result=ok），失败渲染设置页并重新打开弹窗回填；学习页返回链接改指设置页。
-- 本机检查：资产/JS 语法通过，native 75/75 通过，主固件构建与容量门禁通过。镜像 **1,379,904 B**，静态 RAM **75,860 B**，OTA 槽剩余 **389,568 B（22.02%）**，SHA256 `3fb59087138daabbe318901b7ff2a79ccd3712ebeffa6a9b7d06aa0678e07ce6`。
-
-## 异常标签与设备状态弹层（2026-09-13，进行中）
-
-- 删除 hero 异常大标题、关阀后水流监测横条和重复 notice；所有当前异常（关阀后水流、功能未就绪细分、记录/调度/审计存储、时间倒退/未就绪、RTC、可能断电范围）改为红/黄胶囊小标签，点击打开统一“设备状态”弹层，每条按“是什么/影响/建议处理”三段展示，严重在前；无异常不占版面。首页、运行态、设备设置页共用。时钟旁 RTC 警告改为打开同一弹层。
-- 本机检查：资产/JS 语法通过，native 75/75 通过，主固件构建与容量门禁通过。镜像 **1,380,672 B**，静态 RAM **75,860 B**，OTA 槽剩余 **388,800 B（21.97%）**，SHA256 `49ce642d2ec6c09772b860992bf061176994cedb15ddc39985b18aaabeac4bf0`。文案与视觉待用户实机审阅。
-
-## 首页日期面板合并（2026-09-13，进行中）
-
-- 删除首页“下一次自动浇水”“最近一次浇水”两张独立卡片；“每日浇水”面板以日期导航为核心：当日分水路统计之下接计划区——今天只列剩余排期（下一次高亮、自动总控暂停就地说明并链接计划页），未来日期列当日全部排期，过去日期只显示实际统计；运行态页面保留当日统计、不显示计划区。
-- 本机检查：资产一致性/JS 语法通过，native 75/75 通过，主固件构建与容量门禁通过。镜像 **1,378,384 B**，静态 RAM **75,860 B**，OTA 槽剩余 **391,088 B（22.10%）**，SHA256 `deeb010eafc18208adb59999277ec7ff91634e99c6ace0cd95c564dc1c9e3127`。浏览器页面检查与实机 OTA 由用户进行。
-
-## 手动浇水弹层化与按水量混排（2026-09-13，进行中）
-
-- 撤销独立手动浇水页 `/irrigation/manual`（含“精确到秒”），手动浇水恢复为首页弹层：每条启用水路一行，可单独选择“按时长”（整分钟）或“按水量”（L，步进 0.1），允许同次任务时长/水量混排，数值 0 即本次不执行；计划模板只填时长。提交失败时弹层保持打开并回填内容。
-- 删除旧“单次出水”独立 Web 入口及其静态资产；`WateringTargetMode` 新增 `Mixed`，记录编解码、控制器安全时限和完成判定支持混排；平台侧 IrrigationIot 的单次出水命令不在本次范围（文件未参与本机构建）。
-- 本机检查（工作区根目录）：
+命令均在 IoT 工作区根目录（`/Users/tyg/workspace/iot`）执行。
 
 ```sh
+# 1. Web 资产：gzip 还原、注册、JS 语法
 python3 devices/Esp32_Irrigation/firmware/scripts/test_web_assets.py
+
+# 2. 纯业务逻辑 native 测试（Unity，79 项：配置/控制器/调度/记录/时间/异常流/平台记录投影）
 python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d devices/Esp32_Irrigation/firmware -e native
-python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
+
+# 3. 独立主机检查（直接用宿主 c++ 编译，不依赖硬件）
+python3 devices/Esp32_Irrigation/firmware/scripts/test_executor.py       # 执行任务并发/时序
+python3 devices/Esp32_Irrigation/firmware/scripts/test_storage_views.py  # 真实 Base 存储引擎 + 内存 FS
+python3 devices/Esp32_Irrigation/firmware/scripts/test_hardware.py       # BoardHardware + 伪 GPIO/LEDC
+
+# 4. 主目标链接（Core 3 + 受控 TLS 工具链，含 Web 资产漂移与 OTA 容量门禁）
+python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
+  -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
 ```
 
-- 结果：资产一致性与 JS 语法通过（静态资产由 10 项减为 9 项）；native 72 项全部通过，含新增混排控制器/校验与记录往返用例；主固件构建通过。镜像 **1,380,368 B**，静态 RAM **75,860 B**，OTA 槽剩余 **389,104 B（21.99%）**，SHA256 `65c7dc4b2e6a79c32745f7511866c869b2b283ea1b8a8964d2e23d33ace1a259`。浏览器页面检查与实机烧录未进行，待用户授权；运行堆/栈峰值未测量。
+- `--tls-toolchain` 会把产物放到 `firmware/.pio/build/arduino3-tls/esp32_irrigation_arduino3/`；直接用 `pio run` 时产物在 `firmware/.pio/build/esp32_irrigation_arduino3/`。两者产物内容一致。
+- `esp32_record_test` env 的设备测试会格式化设备文件系统，不随本机批次运行，仅在明确授权的设备维护场景使用。
+- 平台契约改动时，另需在 `platform/iot-device` 运行其定义检查、类型检查与 SDK native 测试。
 
-## 页面还原与验证结果（2026-09-13）
+## 当前构建基线
 
-本轮本地 Web、设备核心及原有页面恢复任务已收尾。核心与基础库定向检查通过；最终 LOCAL 固件已串口烧录实验核心板，完成启动、静态资源一致性、浏览器交互和手动启动/停止记录验证。真实水路计量、完整自动运行周期、长期稳定性、真实断电恢复及运行堆/栈峰值未验证，不将实验核心板结果等同完整灌溉硬件验收。
+主目标最近一次链接（Core 3 + TLS 工具链）：
 
-## 当前交付边界
+| 项 | 值 |
+| --- | --- |
+| Flash（应用分区） | 1,536,703 B（86.8%，分区 1,769,472 B） |
+| 静态 RAM | 103,108 B（31.5%，327,680 B） |
+| OTA 镜像 firmware.bin | 1,537,104 B |
+| 对侧 OTA 槽余量 | 232,368 B（约 227 KiB，13.13%） |
 
-- 设备核心提交 `d14a0a8`、页面恢复提交 `46deee3`，配套 Esp32Base 提交 `419cd53` 均已提交推送。页面以 `b831ee3` 为视觉基准，保留新信息结构和业务契约，不回退安全控制与滚动记录逻辑。
-- 本次收尾仅同步文档，人工核对实现、链接和差异；不改变固件产物，复用未受影响的已有验证证据，不追加构建、烧录或测试。
-- 当前范围内无剩余代码工作。真实水路及长期现场试运行由用户按需安排；MQTT、IoT 平台、小程序适配和专业计量校准属于后续独立任务。
-- 下文“历史验证证据”仅用于追溯旧版本，旧导航、ACK 策略、平台连接及镜像尺寸均不适用于当前 LOCAL 固件。
+运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。烧录、真机 TLS/MQTT、小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
 
-## 页面还原与验证结果（2026-09-13）
+## 存储与平台契约
 
-- [x] 以 b831ee3 为视觉基准恢复首页、计划、手动浇水、水路、运行、基准学习和记录的原有组件/布局，撤掉全局主题覆盖；保留最新页面入口归属。
-- [x] 对接当前统一浇水请求、秒级时长、按水量子模式、每日统计、滚动历史和中断未知结果；保留原表单弹窗及失败输入，人工审阅必要联动。
-- [x] 资源还原、JavaScript 语法、主固件构建、容量门禁通过；修正实机页面中设备设置入口和额外秒数字段的栅格跨度。
-- [x] 经用户追加授权，串口烧录实验核心板并核对启动、设备返回的全部资源和实际页面；保持空闲，保留一次启动/停止实验记录。
+- 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。
+- 浇水 codec v3：246 B 业务 payload（含 36 B commandId）；审计 20 B 业务 payload。
+- 两个持久 Store（浇水 v9 / 审计 v5，均 `PreserveUnreleased`）物理槽为 24 B IR/v1 头 + 业务字节，预算 160/48 KiB；**单一持久 Store 同时服务本地历史与平台可靠补发**，内嵌 SDK `RecordStream`，不设第二份 outbox，断网补发与 record-ack 经同一存储水位管理。
+- 浇水任务标记为紧凑 NVS marker，重启据此重建 Incomplete/RebootInterrupted 事实。
+- 平台适配 `IrrigationPlatform*` 按 `platform/iot-device` 的 irrigation-controller 契约实现：设备 ID 由 STA MAC 生成 `esp32-irr-<12hex>`，8 类状态投影、5 类命令（plans/automatic-watering/start-manual/stop/single-output）全部复用 `IrrigationApp` 唯一执行入口；来源 `WateringSource` 区分 LocalWeb/AutomaticPlan/WechatMiniprogram。
+- MQTT host/CA 缺失时安全降级为纯本地运行，不阻塞 Web 与业务。
+- 模型头 `IrrigationSdkModel.generated.h` 由 `scripts/generate_sdk_model.py` 在构建目录从契约生成，**不签入**；Web 资产由 `scripts/generate_web_assets.py` 从 `web-src/` 生成到 `src/irrigation/generated/`，签入并在构建前做漂移检查。
 
-必要验证命令（工作区根目录）：
+## MQTT 凭据
+
+真实凭据只放在 Git 忽略的 `firmware/local_private/irrigation_iot_private.h`（编译参数 `-I local_private`）。模板：
 
 ```sh
-python3 devices/Esp32_Irrigation/firmware/scripts/test_web_assets.py
-python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
+cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_iot_private.h
 ```
 
-以上本机检查通过。首次构建 51.98 秒，发现页面入口栅格跨度遗漏后只改展示标记，最终增量构建 32.49 秒通过；未重复未受影响的核心测试。后续实验板验证为用户明确追加授权，与平台和真实水路实验分开。
-
-资源预算：恢复旧页面以 Flash 中的文字、CSS/JS 为主，预留增量上限 64 KiB（原 OTA 槽余量 424,720 B）；静态资源登记共 10 项，沿用现有容量，不扩展路由、持久结构或任务栈。页面仍分块发送，记录每页最多 20 条。最终 Flash/RAM 以获批构建的链接产物为准，运行峰值未测量。
-
-最终镜像 **1,384,992 B**，静态 RAM **75,860 B**，OTA 槽剩余 **384,480 B（21.73%）**；镜像较核心重构版增加 40,240 B，低于 64 KiB 预算。SHA256：`6f20f18809ec9440a9214fba01a46796555c0f205caf41c7f5a1bb87289a44a9`。产物为 `.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin`，不是其他构建目录中已有的旧镜像。
-
-实验目标：`/dev/cu.usbserial-57460296581`，ESP32-D0WD-V3，MAC `08:d1:f9:3b:2c:f4`，物理 Flash 4 MiB，运行地址 `192.168.2.141`。首次按 0x1000/0x8000/0xe000/0x10000 分段写入 bootloader、分区表、boot_app0 和应用，没有整片擦除；最终只更新 app0：
-
-```sh
-foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/esptool --chip esp32 --port /dev/cu.usbserial-57460296581 --baud 460800 write-flash 0x10000 devices/Esp32_Irrigation/firmware/.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin
-```
-
-写入哈希校验通过。115200 波特率监测重启，最终日志确认 LOCAL、app0、`business_ready records_fault=no events_fault=no scheduler_fault=no`、Wi-Fi 连接及 Web ready。未清除 Wi-Fi、凭据、配置或历史。设备有硬件时钟不可用提示，未把核心板当作完整 RTC/水路硬件验收。
-
-从实验板实际获取 10 项 gzip 资源，解压后逐字节匹配当前源码。通过仅监听本机的临时只读转发查看原始设备响应（凭据不进入浏览器）；核对首页、计划编辑弹窗、水路列表/编辑弹窗、手动时长、按水量、基准维护、记录详情和事件页。另以 390 px 宽度确认旧水路表格能横向滚动并打开编辑弹窗；桌面设备设置入口修正后文字完整。临时转发和串口监测在收尾时关闭。
-
-一次实验请求把 1 分钟 + 3 秒提交给核心，状态返回 `plannedDurationSec=63`；随后立即停止，设备回到空闲并生成一条“已停止”记录。详情显示目标 1 分 3 秒、实际 0 秒、水量 0，符合未建立水流的实验事实。没有执行真实出水量、长时间运行、自动计划或 RTC 精度实验；这些不属于本次页面还原验证结论。
-
-## 本地运行契约
-
-业务规则及状态边界以 [业务规则](../docs/当前方案/02-业务规则与安全.md) 和 [软件设计](../docs/当前方案/03-软件设计原则与边界.md) 为准。硬件依据仍为 pcb_irrigation 下 2026-07-11 的 BOM/网表；不改变阀泵顺序、独立控制任务、TWDT、无流量保护、学习时限和维护门禁。
-
-主目标固定 IOT Profile，在本地 Web 能力之上启用 MQTT：RTC、RecordStore、Conditions、AppConfig、SDK 均在 lib_deps，平台适配源 `IrrigationPlatform*.cpp` 参与主目标编译。MQTT 凭据缺失时安全降级为纯本地。文件日志不改。
-
-配置 schema 5 保持不变。浇水 codec v3：246B 业务 payload（含 36B commandId）；审计 20B 业务 payload。两类 Store（v9 / v5）均为 PreserveUnreleased，物理槽为 24B IR/v1 头 + 业务字节，单一持久 Store 同时服务本地历史与平台可靠补发；容量预算 160/48 KiB。浇水任务标记为紧凑 NVS marker（重启据此重建 Incomplete/RebootInterrupted 事实）。试验阶段零历史兼容、零数据迁移，旧测试数据直接丢弃，不用格式化掩盖容量问题。
-
-当前最终镜像、静态 RAM 与 OTA 余量见上方“页面还原与验证结果”，不使用页面恢复前的核心阶段镜像作为最终产物。运行堆/栈峰值未测量。分区不变：4 MiB 布局、双 1728 KiB OTA、512 KiB LittleFS、64 KiB coredump；历史预算 208 KiB、文件日志 128 KiB、FS 安全空间及配置余量保留。控制任务 4096 B 栈来自运行堆，不能用静态 RAM 值冒充运行峰值。新增的记录 payload、任务 marker、统计上下文均有固定上限，无持久日汇总、无新消息队列。
-
-## 核心阶段验证入口与结果（复用证据）
-
-在工作区根目录：
-
-```sh
-python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d foundation/Esp32Base -e native_record_store_harness -e native_config_harness
-python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d devices/Esp32_Irrigation/firmware -e native
-python3 devices/Esp32_Irrigation/firmware/scripts/test_storage_views.py
-python3 devices/Esp32_Irrigation/firmware/scripts/test_executor.py
-python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -d devices/Esp32_Irrigation/firmware -e esp32_irrigation_arduino3
-```
-
-核心重构阶段上述入口均通过：基础库 59/59、灌溉核心 72/72，独立执行任务及存储集成检查通过。验证中修复了旧事件上下文接口的遗留引用、宿主时间接口，以及审计待存事实在 OTA 写入暂停期间应保留原时间并延后写入的判断；只重测相关存储集成和主目标，未重复未受影响的已通过批次。
-
-覆盖 codec/调度/控制器、本地滚动/重启记账/未知统计、Base Conditions 和 blob 读取错误、原执行任务隔离。构建同时通过静态资源漂移与 OTA 容量门禁。这些核心阶段命令仅生成本机产物，不含烧录或浏览器验证；后续最终固件的实验板烧录和浏览器结果见上文，两阶段证据不混用。编译器仅提示 LTO 串行执行，不影响构建通过。
-
-`test_storage_views.py` 使用真实 Base 存储引擎与内存文件系统，NVS 标记用受控夹具；不代表物理掉电验证。`esp32_record_test` 会格式化设备文件系统，不能随本机批次运行。再次执行或重测按当前工作区规则和对应操作授权范围处理。
-
-## Web 源与生成物
-
-`web-src/` 为 CSS/JS 权威源，`python3 scripts/generate_web_assets.py` 只生成 gzip 固件静态源。构建执行 `--check` 漂移检查；当前页面还原的生成物一致性、脚本语法及实验板页面验证通过，范围见上文。样式不使用卡片左侧彩色竖条。后续视觉调整应只影响此展示层。
+`src/irrigation/IrrigationIotSecrets.h` 提供空安全默认值并优先采用私有头的覆盖；不得提交真实 host、账号、密码或 CA。
 
 ## HTTP Web OTA
 
-网络升级只使用 Esp32Base HTTP Web OTA；实验板串口烧录是独立操作。以下配置与 OTA 命令从本目录（`devices/Esp32_Irrigation/firmware`）执行，仅为操作入口，不代表本次收尾重新执行。复制本地模板：
-
-```sh
-cp platformio.example.ini platformio.local.ini
-```
-
-在 Git 忽略的 `platformio.local.ini` 中填写设备地址和当前 Web Auth：
-
-```ini
-[env:esp32_irrigation_arduino3]
-custom_esp32base_webota_host = irrigation-controller.local
-custom_esp32base_webota_user = <current-web-auth-user>
-custom_esp32base_webota_password = <current-web-auth-password>
-```
-
-操作者确认设备空闲和维护窗口后显式执行：
-
-```sh
-python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run -e esp32_irrigation_arduino3 -t webota
-```
-
-普通构建和测试不会触发 OTA。不得提交真实设备地址、账号或密码。不得配置 espota、ArduinoOTA 或 3232 端口。
-
-
-## 历史验证证据（以下均非本轮验收）
-
-以下保留先前版本的实机与平台证据，其中旧 API、尺寸、通过状态及“本轮”均指原日期的任务，不能用于当前 LOCAL 重构验收或扩大本次测试授权。
-
-### 旧版本实机验证边界
-
-514e149 版本已串口烧录、校验并启动，双 Store 就绪、业务无存储故障；NTP 同步、MQTTS 连接（含证书日期校验），平台收到完整业务状态和诊断。实机发现 Core 3 初始 GPIO 电平预置失效及 OTA 退出预算不足，两项修复已进入 f76f37b / Base cdd1923，两项已通过实机与 Web OTA。
-
-本机服务通过 `./server restart` 更新至当前源码，入口 `http://127.0.0.1:17832`；未更新 NUC 或公开发布小程序。目标编译、主机测试、真实 MQTT、OTA 与真实水路分别记录。核心板缺少 DS3231 和水路部件，不能把其 RTC/流量故障当作平台接入失败，也不能以核心板通过代替现场验收。
-
-### 2026-09-10 当前固件实机闭环
-
-- 修复 MQTT 参数执行时 loopTask 栈溢出：完整学习状态快照不再叠加在无关的暂停/恢复分支；计划配置、命令判断和活动快照保持独立栈帧（LTO 下也不内联）。22 处仅查询 active 的调用改为直接读取控制器标志，保留完整状态 API，不新增常驻缓冲、不调大栈。
-- 控制器/调度定向测试 50/50，当前 Core 3 TLS 目标编译及 8% OTA 余量门禁通过，静态 RAM 不变。最终 Web OTA 耗时 26.76 秒，当前运行 app0 / valid，镜像校验 SHA256 `cb96281227d520d2275e52a04a77194308f6950aa6f0f82c07dd5d49ce9d484d`；原 NVS、配置和记录保留。
-- 自动总控 `9ed17407-d72b-4fc6-a42a-7faf151b6a04`、最终计划保存 `30be985e-2f0e-4e6a-97e7-7c17a3fa7746` 均 accepted → succeeded。计划测试保留空计划，仅按正常保存递增 revision。
-- 单次出水 `e16e6d3f-f406-4b4b-b700-8c90de754d2f` accepted → running → failed / flow_start_timeout；核心板没有流量计，20 秒启动保护安全结束，非实际水路成功验收。平台已收到 watering.failed，流 `e20eebc1-e2da-40f5-83ac-43eb85c58296` 序号 1 的累计业务 ACK，原生小程序显示失败结果与浇水事实。设备仍 ready、空闲、无存储故障。
-- Base API 文档宽限上限漏改已在 `10505fe` 修正推送；本次设备源码构建依赖与 `cdd1923` 相同。旧 panic 证据不能冒充新版复位原因；新版 OTA 后为 software，已验证命令期间无重启。
-
-- 最终本机 server 21b9eb9 已构建重启、ready=true；原生微信暂停 `09347a1a-06d9-408d-99cb-0917a05eb67c` 和恢复 `8e415aa1-40b2-4eab-98f3-64ceecb0102f` 均约 2 秒 succeeded，相应审计事实显示正常。结束时同一 bootCount 90、reset=software、在线/空闲、自动总控 enabled、空计划 revision 3，无存储故障。旧无回执命令已过期并退出活动区。
-- 已核对存储重构遗留：SDK 序号/世代/ACK 接管、首次启动与当前格式恢复、未确认保护、维护安全及资源容量均已实现并完成相关快速检查；旧方案中 NVS 命令账本、临时 RecordSync 和“不拦截维护”描述已删除并同步当前设计。剩余仅上表现场试运行及正式发布边界。
-
-本地顶层导航为首页、计划、水路、记录；记录页提供事件与当前异常入口，水路页直达系统参数，移除仅转跳的设置路由。手动/单次出水只要求浇水流可写，自动计划仍要求浇水与审计流均可写，修改计划/自动总控要求审计流可写。MQTT 命令证据优先；状态组轮转并让出记录发送机会，保留原有重发周期与业务 ACK 语义。
-
-### 本轮审查结论
-
-| 范围 | 当前决定及依据 |
-|---|---|
-| 计量 | 只消费 P/L，删除本地样本、拟合、启动补偿和校准专用页面；不预建未来接口。 |
-| 配置 | 分区/计划 JSON 与标量 NVS 各有唯一责任；保存时继续验证运行约束与写入完整性。 |
-| 记录 | 本地与平台同一事实、两个独立流与业务 ACK；保留断网补传、未确认保护和历史完整字段。 |
-| 故障准入 | 按操作所需记录流检查；通用 ready 表示业务核心可接收请求，操作仍独立检查存储与安全条件。 |
-| 本地交互 | 四个日常导航；事件与维护入口仍可达，保留计划编辑、手动控制、实时趋势及分区学习。 |
-| 时间与安全 | 保留可信时间检查点、RTC 防倒退、泵阀时序、无流量及异常保护，不把安全机制当作冗余。 |
-| MQTT | 命令证据优先，状态组轮转，状态与历史发送交替取得机会；不改重发周期和确认契约。 |
-| 基础库 | App Config/OTA/文件上传脚本无损预压缩，功能宏裁剪，无运行时解压或平台业务依赖。 |
-| 体积归因 | ELF/map 中合并字符串池约 259 KiB 曾归到 GPIO archive，不能据此认定 GPIO 驱动膨胀；WiFi、lwIP、TLS 和运行时占有必要成本。本轮没有关闭 TLS、OTA、日志或缩减历史预算来换体积。 |
-
-配置 v5 和审计 v3 只支持当前格式。后续更新旧样机时需核对并初始化指定旧业务配置/审计，不写迁移程序、不清凭据、不默认格式化整个文件系统。本轮首次代码交付未刷机；用户追加授权后的 OTA 与定向配置初始化见下节。
-
-最终镜像 SHA256：`68feb33a42d93b7f9ba42a50a418088c8f970128288ed41cb3fc47e4830ba8c1`。相对本轮起点减少 47,328 B Flash（2.93%）和 2,088 B 静态 RAM；水量、控制、安全和记录预算保持。基础库新增页面脚本的 gzip 无损还原、原内联脚本逐字比对、JavaScript 语法与协商检查通过。当前目标使用 Base 本地责任仓库的真实源码，未改缓存副本。
-
-### 完整硬件短时验证（2026-09-10）
-
-用户授权使用完整硬件、尚未接水路的实验设备；物理 Flash 为 8 MiB，仍按 4 MiB 布局使用。串口仅监视，未使用串口烧录。通过 Base 正式 Web OTA 上传当前 1,567,776 B 镜像，设备校验 SHA256 与文中最终镜像一致，33.39 秒完成；重启运行 app1，状态 valid，槽容量 1,769,472 B。
-
-旧配置 schema 4 且无已配置计划；新版按设计安全保持未就绪。仅删除指定 `/app/irrigation/config.json` 并正常重启，初始化当前 schema 5。未格式化、未清 NVS/凭据或 watering 历史；旧 audit v2 控制文件受 Base 保护未删除，新版创建独立 audit v3，不读取旧格式。两条当前记录流就绪，容量 666/675，RTC 可用，WiFi/MQTTS 连接正常。
-
-合并检查首页、水路、记录、事件和系统参数响应；三项 Base 页面脚本均与源码 gzip 解压结果一致。每升脉冲数增加 0.01 后保存并读回，再恢复原值，其他参数未改变。一次水路 1 单次出水因没有水流，在 20 秒启动超时后进入空闲，页面生成“启动后未检测到水流，整次任务已安全停止”的失败记录；未出现存储故障。最终 ready=true、active=false，串口监视已结束。
-
-以上是 HTTP、串口及无水流闭环证据，不代替用户视觉确认、实际水量精度、带水泵阀性能或长期实验。不追加全量、多芯片、长期及重复测试。
-
-本机 `iot-home-server` 已使用当前 `dc9e694` 源码/manifest 构建重启，health/ready 中 database、lease、MQTT 全部正常。未部署 NUC，未上传/发布小程序，未将连接成功冒充本轮平台记录 ACK 或原生微信验收。
-
-### 2026-09-10 架构重构第一阶段
-
-- `WateringExecutor` 复用原控制器，完成结果保持到服务任务显式确认清除；维护先取得输出关闭确认。未增加公共任务框架。
-- `IrrigationParameters` 只含六组标量参数；参数默认值、校验及临时副本不再携带水路/计划。计划保存只更新计划和水路，硬件频率按目标值与已应用值协调；当前操作保留启动快照。
-- Base App Config 新增只读 `ApplyStatusCallback`，参数页独立显示持久化和应用结果；无变更保存也重新检查应用状态。硬件故障保持安全未就绪，必要时重启恢复，不伪装为保存成功即硬件成功。
-- 检查：`test_executor.py` 通过服务线程停顿 1150 ms 时吸合转维持/无流量停止、连续改频率、结果保留、停止、维护与硬件失败；生产控制器/配置 native 46 项通过；既有 host GPIO 和存储检查通过。目标受控 Core 3 构建通过；随后停止/自动结束竞态修正通过同一 executor 检查，最终镜像将在双 Store 阶段合并构建。阶段构建 bin 1567680 B，静态 RAM 95172 B，OTA 余量 201792 B（11.40%）。新增任务栈 4096 B 及任务控制块来自运行堆，不能把静态 RAM 下降当作总运行内存下降。
-- 这是主机逻辑与目标编译证据；当前阶段尚未 OTA，不代表实机时序测量。
-
-### 2026-09-10 双 Store 故障隔离
-
-watering 与 audit 分别登记、检查底层及 SDK 就绪；加载失败的 Store 定义仍交给 Base 维护受管路径和容量，显式格式化可恢复原对象。手动/单次出水仅要求 watering，自动计划额外要求 audit；两流全局 ready 只作为汇总，不再作为健康单流的全局阻塞。运行中完成结果未提交仍阻止新出水。
-
-`python3 scripts/test_storage_views.py` 使用真实 Base/SDK 和内存 FS，通过逐一损坏两流 control.bin 的初始化失败、健康流继续追加、两 Store 仍登记，以及显式 format/reload 后双流恢复。既有记录时间、CRC/损坏、ACK 隔离、Conditions 检查同时通过。未运行物理格式化或清空设备数据。
-
-最后增加启动早期未登记 Store 的格式化恢复检查，并让控制任务在首次启动/明确恢复时自行配置 PWM。重新执行 executor 与存储宿主检查通过；最终目标构建 bin 1567936 B / 静态 RAM 95196 B，SHA256 `21558897109187c134c86e8cb03751a0f0a216e330d38ccc06eac331c18ce382`。配置 JSON/NVS 与记录格式未变，无迁移或数据清除。
-
-
-### 2026-09-10 架构重构最终 OTA 与合并检查
-
-最终镜像及 SHA256 见上一节。首次上传前设备失联，客户端发送 0 B，串口仅有不完整启动信息，原因未确认；用户手动重启后恢复。重试未打开串口，通过 Base 正式 Web OTA 在 29.21 秒内完成上传和响应；重启后 HTTP 核对运行镜像 1,567,936 B、app0 / valid、槽容量 1,769,472 B，业务就绪且空闲。全程未使用串口烧录、未格式化或清除历史。
-
-一次合并的实机检查覆盖：运行时修改 PWM 频率，随后保存无关计量参数仍显示 pending；主动停止后 pending 消失且无应用失败提示；还原全部测试参数并逐字段核对；再次启动无水任务，23 秒后已停止、业务仍就绪、两流无存储故障且记录页面可见水流故障结果。PWM 实际波形未用仪器测量，不以页面状态代替波形证据。检查结束可用堆 76,320 B、启动以来最低 52,004 B，仅作为该次短时运行观测。
-
-相对本次架构调整前镜像 1,567,776 B / 静态 RAM 98,308 B，最终镜像增加 160 B、静态 RAM 减少 3,112 B；新增独立控制任务还占运行堆中的 4096 B 栈及任务控制块，因此不声称总运行内存降低。此次取舍用于隔离控制与阻塞服务，未削弱 TLS、OTA、存储完整性或执行器保护。本轮编码及必要验证已完成；不追加重复测试或长期实验，专业校准小程序不在本轮范围。
-
-
-### 2026-09-10 平台与小程序配套收尾
-
-该次配套误把本地水路基准学习当作专业流量计校准，删除了仍被固件使用的 `learning` 声明与维护保护；此结论已撤回并在后续联调恢复。维护页移除过期参数数量的修改保留，`state.calibration` 仍只表示每升脉冲数，没有新增专业校准接口。
-
-配套提交均已推送：lab `3fcda07`、server `3d7cf2a`、wx `3d099ba`。当前定义 checksum 为 `2c1392bacb0310f25d168af041759a2614bca28dd38898fc71fe65bb377cb6e6`；服务端 manifest 与固件 `IrrigationModel.h` 通过各自正式脚本同步。lab 类型/定义检查与协议/模拟器 32 项、小程序类型检查与灌溉/首页呈现 39 项、服务端定义/统计 4 项定向测试通过。小程序构建及产物检查通过，产物 API 为 `https://iot-dev.tttabc.top`；本机服务构建重启后 config/database/lease/MQTT 均 ready。未上传或发布小程序、未部署 NUC、未重复手机扫码验收。
-
-固件只更新生成模型，原控制/存储检查复用；按上文受控 Core 3 命令增量构建通过，bin 1,567,920 B、静态 RAM 95,196 B、OTA 槽余 201,552 B（11.39%）。bin SHA256 为 `5d61b576fc88f05f8c7e703bd393beaeabd3b39dff1a578e26020254e1249abb`。授权实验板空闲状态下经 Web OTA 在 28.74 秒完成；重启后核对运行新镜像、app1 / valid、业务就绪空闲、两流无存储故障。未打开串口、未改参数或清除记录、未重复水路实验。设备、基础库与配套开发任务至此关闭。
-
-
-### 2026-09-10 测试小程序实际状态与命令闭环
-
-用户反馈的“在线，等待灌溉状态同步”对应旧核心板 F9D108（192.168.2.141），并非完整硬件板 AA8C（192.168.2.127）。旧板仍上报启动补偿和校准窗口旧字段，当前严格定义拒绝计量/系统参数，状态集不完整；未放宽校验或迁移旧状态。完整硬件板此前只是发现候选，现已通过正式 API 添加为“灌溉完整硬件测试板 AA8C”（平台 ID `fcfac6fc-dbd4-4eed-8b5b-2ce2eefe6b8a`），七项状态与两项参数完整，fresh/known。
-
-纠正前次配套判断：水路基准学习是仍在使用的本地业务，与已抽出的专业流量计校准不同。恢复 learning 状态及 maintenance_activity 远程停止保护，当前定义 checksum 为 `c844cae4e5e2e18c4cb186e1b0b17b9ac48302450774b8d8bd96f0c95dbf13af`；lab `ca039aa`、server `8779256`、wx `84209be` 已提交推送。类型/定义检查、lab 32 项和 wx 39 项定向检查通过（lab 一项并行编译期间超时，单独重验通过）；服务端定义加载 3 项检查通过并完成本机构建重启，小程序构建/产物检查通过。
-
-实链路同时发现远程浇水完成记录误标 local_web：控制任务在服务轮次中间结束时，IoT 可先清除活动命令，应用下一轮落盘再读取活动命令就丢失来源。现从 IoT 启动入口显式传入 commandId，启动成功时与开始时间一并快照；直到完成记录提交后才清除，不依赖 MQTT 会话/活动生命周期。记录格式与正常本地调用保持不变，不回填已写入的旧测试记录。
-
-修复镜像经受控 Core 3 构建通过，bin 1,568,160 B、静态 RAM 95,228 B、OTA 余量 11.38%，SHA256 `a5235324f3ac8ec71d6fa5ba7390916c1b056fc95755451fc0769b5203396f7b`。授权实验板 Web OTA 27.00 秒完成，重启核对新镜像、app0 / valid。没有串口烧录、配置清除或数据迁移。
-
-微信开发者工具运行本项目 dist/iot-home，通过 https://iot-dev.tttabc.top 实际显示“当前空闲／设备已就绪”；暂停/恢复均 succeeded，单次出水显示运行进度并得到无水保护 flow_start_timeout，停止有 succeeded 终态，维护页可见 250 脉冲/升与全部当前参数。最终镜像经同一测试服务 API 再验证启动/及时停止：启动命令 canceled、停止 succeeded、watering.stopped 记录 sourceKey=wechat_miniprogram 且 relatedCommandId 精确对应启动命令；随后当前状态 fresh/known/idle、无在途命令。另用当前 revision 原样保存空计划成功，计划内容不变，自动总控保持 enabled。终态/记录可以先于状态刷新到达，验证等待当前状态更新后再确认空闲。
-
-这是测试服务、真实 MQTT、授权完整硬件与开发者工具的闭环证据；未冒称手机扫码、真实水路精度或长期稳定性验证。旧核心板保留原设备和历史，未将其标为正常或已升级。
-
-### 2026-09-10 接入仓库整合验证
-
-SDK 和契约统一消费 `platform/iot-device`（结构提交 `824d68a`），定义内容与 SDK 运行代码未变。本轮从新路径运行 `python3 scripts/test_storage_views.py`、`IOT_DEVICE_CONTRACTS_ROOT=/Users/tyg/workspace/iot/platform/iot-device/contracts python3 ../../../foundation/Esp32Base/scripts/pio_arduino.py 2 test -e native_iot_vectors` 和本页受控 Core 3 TLS 构建命令，均通过。共享向量覆盖 33 个输入案例；目标 RAM 95,228 B，Flash 1,567,751 B，OTA 镜像 1,568,160 B，1728 KiB 槽剩余 201,312 B（11.38%）。本轮未烧录、OTA或操作真实负载，既有实机证据仍只对应原验证版本。
+网络升级只使用 Esp32Base HTTP Web OTA（入口 `/esp32base/ota`），具体操作步骤、串口整片烧录和串口监视见 [设备维护操作手册](../docs/04-设备维护操作手册.md)。在 Git 忽略的 `platformio.local.ini` 中配置设备地址与 Web Auth 后执行 `-t webota`；普通构建和测试不会触发 OTA。不得配置 espota、ArduinoOTA 或 3232 端口。
