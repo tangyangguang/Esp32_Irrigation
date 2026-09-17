@@ -4,11 +4,13 @@
 
 #include <runtime/Esp32BaseTime.h>
 
+#include "IrrigationRecordStoreRecovery.h"
 #include "IrrigationStoredFact.h"
 #include "IrrigationPlatform.h"
 
 namespace {
 constexpr uint32_t kCrcPolynomial = 0xedb88320U;
+
 
 uint32_t markerCrc(const uint8_t* data, size_t length) {
     uint32_t crc = UINT32_MAX;
@@ -44,7 +46,13 @@ bool WateringRecordStore::begin() {
     pending_ = false;
     taskReady_ = false;
     startedEpoch_ = 0;
-    if (!store_.begin(definition) || !stream_.begin(millis())) return false;
+    if (!store_.begin(definition)) {
+        if (!IrrigationRecordStoreRecovery::resetStructuralStore(
+                store_, kRecordTypeName, kStoreVersion, definition)) {
+            return false;
+        }
+    }
+    if (!stream_.begin(millis())) return false;
     stream_.poll(millis(), nullptr, nullptr);  // bounded step toward Ready
     return recoverTask();
 }

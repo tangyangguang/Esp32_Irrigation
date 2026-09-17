@@ -6,6 +6,7 @@
 
 #include "IrrigationEvents.h"
 #include "IrrigationPlatform.h"
+#include "IrrigationRecordStoreRecovery.h"
 #include "IrrigationStoredFact.h"
 
 // ---- store -----------------------------------------------------------------
@@ -20,7 +21,12 @@ bool IrrigationAuditStore::begin() {
     definition.maximumStoreBytes = kMaximumStoreBytes;
     definition.minimumFileSystemFreeBytes = kMinimumFileSystemFreeBytes;
     pending_ = false;
-    if (!store_.begin(definition) || !stream_.begin(millis())) return false;
+    if (!store_.begin(definition) &&
+        !IrrigationRecordStoreRecovery::resetStructuralStore(
+            store_, kRecordTypeName, kStoreVersion, definition)) {
+        return false;
+    }
+    if (!stream_.begin(millis())) return false;
     stream_.poll(millis(), nullptr, nullptr);
     return true;
 }
