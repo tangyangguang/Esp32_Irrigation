@@ -52,12 +52,12 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,543,271 B（87.2%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,571,593 B（88.8%，分区 1,769,472 B） |
 | 静态 RAM | 103,132 B（31.5%，327,680 B） |
 | OTA 镜像 firmware.bin | 1,543,248 B |
 | 对侧 OTA 槽余量 | 226,224 B（约 221 KiB，12.78%） |
 
-运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。烧录、真机 TLS/MQTT、小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
+运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。2026-09-17 已对 192.168.2.155（esp32-irr-28562f795e60）Web OTA 烧录，启动日志确认 MQTT 经 TLS 连接 z84e9fd1.ala.cn-hangzhou.emqxsl.cn:8883 成功；平台侧 dev 数据库 schema 落后（缺 device_discovery_candidates 等表），设备发现收录待平台侧处理。小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
 
 ## 存储与平台契约
 

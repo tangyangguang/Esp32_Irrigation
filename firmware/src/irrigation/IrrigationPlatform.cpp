@@ -54,6 +54,7 @@ char g_output[kOutputBytes];
 
 bool g_configured = false;
 bool g_stopping = false;
+const char* g_configureResult = "not_run";
 
 bool randomBytes(uint8_t output[16], void*) {
     esp_fill_random(output, 16);
@@ -494,12 +495,17 @@ void progressPoll() {
 // ---- identity -------------------------------------------------------------
 
 bool buildDeviceId() {
+    // Runs before Esp32Base::begin() (MQTT must be claimed pre-begin), so the
+    // WiFi driver is not initialised yet and esp_read_mac(ESP_MAC_WIFI_STA)
+    // fails. Read the eFuse base MAC directly; on single-MAC ESP32 it is the
+    // STA MAC and the stable device identity.
     uint8_t mac[6] = {};
-    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) return false;
+    if (esp_efuse_mac_get_default(mac) != ESP_OK) return false;
+    // "esp32-irr-" (10 chars) + 12 hex chars = 22, NUL excluded.
     const int written = snprintf(
         g_deviceId, sizeof(g_deviceId), "esp32-irr-%02x%02x%02x%02x%02x%02x",
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-    return written == 31 && static_cast<size_t>(written) < sizeof(g_deviceId);
+    return written == 22 && static_cast<size_t>(written) < sizeof(g_deviceId);
 }
 
 void buildBootId() {
@@ -913,11 +919,13 @@ bool configured() { return g_configured; }
 bool configure() {
     if (g_configured) return true;
     if (!buildDeviceId()) {
+        g_configureResult = "device_id_unavailable";
         ESP32BASE_LOG_E("irrigation", "platform_device_id_unavailable");
         return false;
     }
     if (IRRIGATION_IOT_MQTT_HOST[0] == '\0' ||
         IRRIGATION_IOT_MQTT_CA_PEM[0] == '\0') {
+        g_configureResult = "secrets_empty";
         ESP32BASE_LOG_W("irrigation",
                         "platform_mqtt_unconfigured_local_only");
         return false;
@@ -934,16 +942,21 @@ bool configure() {
         std::strlen(IRRIGATION_IOT_MQTT_CA_PEM) + 1;
 
     if (!g_port.configure(mqttConfig)) {
+        g_configureResult = "port_configure_rejected";
         ESP32BASE_LOG_E("irrigation", "platform_mqtt_configure_rejected");
         return false;
     }
+    g_configureResult = "ok";
     g_configured = true;
     ESP32BASE_LOG_I("irrigation", "platform_configured device=%s", g_deviceId);
     return true;
 }
 
 void begin() {
-    if (!g_configured) return;
+    if (!g_configured) {
+        ESP32BASE_LOG_E("irrigation", "platform_configure_failed reason=%s", g_configureResult);
+        return;
+    }
     buildBootId();
     if (!g_publisher.begin(ESP32BASE_MQTT_MAX_TOPIC_BYTES,
                            ESP32BASE_MQTT_MAX_PAYLOAD_BYTES)) {
