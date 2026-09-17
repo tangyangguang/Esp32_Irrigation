@@ -57,7 +57,7 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 | OTA 镜像 firmware.bin | 1,543,248 B |
 | 对侧 OTA 槽余量 | 226,224 B（约 221 KiB，12.78%） |
 
-运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。2026-09-17 已对 192.168.2.155（esp32-irr-28562f795e60）Web OTA 烧录，启动日志确认 MQTT 经 TLS 连接 z84e9fd1.ala.cn-hangzhou.emqxsl.cn:8883 成功；平台侧 dev 数据库 schema 落后（缺 device_discovery_candidates 等表），设备发现收录待平台侧处理。小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
+运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。2026-09-17 已对 192.168.2.155（esp32-irr-28562f795e60）Web OTA 烧录，启动日志确认 MQTT 经 TLS 连接 z84e9fd1.ala.cn-hangzhou.emqxsl.cn:8883 成功；连接后约 1 分钟进入 dev 平台发现候选（iot_home_dev.device_discovery_candidates，状态 online），待小程序确认绑定。小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
 
 ## 存储与平台契约
 

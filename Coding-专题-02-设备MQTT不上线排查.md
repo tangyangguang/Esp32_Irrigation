@@ -25,9 +25,9 @@
 - 干净全量构建：Flash 1,571,593 B（88.8%，headroom 11.2%，较修复前 +28,322 B，为恢复被误消除的 MQTT 配置代码与 CA）；RAM 103,132 B（31.5%）不变；native 81 项测试通过。
 - 设备侧根因闭环。
 
-## 未覆盖边界（平台侧，待处理）
+## 平台侧结论（更正）
 
-- 本机 dev 服务（iot-dev.tttabc.top → 127.0.0.1:17832）数据库 `iot_home` 仅 10 张表、schema_migrations 止于 6，缺 `device_discovery_candidates`、`product_models`、`device_types` 等整套产品目录/发现表；设备 availability 无法入发现候选库。库重建/迁移属真实数据库变更，需用户审批后执行。
-- 服务端长期对未注册设备 state 报 `state_rejected`（属预期拒绝）；availability 的端到端收录待 dev 库补齐后复测。
-- 小程序发现/绑定页面走查、设备命令落盘联调仍按原计划后续进行。
+- 一度误判平台 dev 库 schema 落后缺表，实际是查错了库：服务端 `.env.lan` 连接的是 Docker 容器 `iot-home-postgres-dev` 中的 **`iot_home_dev`**（29 张表，含发现候选、产品型号、设备类型），同容器内遗留的旧库 `iot_home` 与运行服务无关。平台侧无需初始化或迁移。
+- 设备 TLS 连接后约 1 分钟内（2026-09-17 10:56:55 UTC）进入 `device_discovery_candidates`：esp32-irr-28562f795e60，connection_state=online，last_seen 持续刷新；上线后 0 条 `availability_rejected`。未绑定前 state 报文被 `state_rejected` 属预期。
+- 剩余动作：用户在小程序「发现新设备」确认绑定该设备（手机实测）；绑定后再做命令落盘与 revision 冲突的实机 MQTT 验收。小程序代码本轮未改。
 - 设备文件日志级别已恢复 WARN；admin/admin 仅实验使用，未入库。
