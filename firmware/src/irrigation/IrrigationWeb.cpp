@@ -854,10 +854,10 @@ uint32_t selectedDay() {
 }
 void dayText(uint32_t day) { epochText(day * 86400U - 8U * 3600U, "%Y-%m-%d"); }
 void dateNav(uint32_t day) {
-    html("<nav class='actions' aria-label='选择日期'><a class='btnlink secondary' href='?date="); dayText(day - 1);
-    html("' aria-label='前一天'>‹</a><form method='get' style='margin:0'><input aria-label='日期' type='date' name='date' value='"); dayText(day);
+    html("<nav class='actions day-nav' aria-label='选择日期'><a class='btnlink secondary' href='?date="); dayText(day - 1);
+    html("' aria-label='前一天'>‹</a><form method='get' class='day-nav-form'><input class='day-nav-date' aria-label='日期' type='date' name='date' value='"); dayText(day);
     html("' onchange='this.form.submit()'><noscript><button>查看</button></noscript></form><a class='btnlink secondary' href='?date="); dayText(day + 1);
-    html("' aria-label='后一天'>›</a><a href='?'>今天</a></nav>");
+    html("' aria-label='后一天'>›</a><a class='day-nav-today' href='?'>今天</a></nav>");
 }
 enum class ConditionLevel : uint8_t { Danger, Warn };
 
@@ -1099,7 +1099,7 @@ void renderDay(uint32_t day, bool includePlans) {
         const auto& z = daily.zones[i];
         if ((!config || !config->zones[i].enabled) && !z.count && !z.failures && !z.unknown && !z.active) continue;
         shown = true;
-        html("<a class='home-plan' style='text-decoration:none;color:inherit' href='/irrigation/records?date="); dayText(day); html("&zone="); sendUnsigned(i + 1); html("'><span class='zone-title'>");
+        html("<a class='home-plan' style='text-decoration:none;color:inherit' href='/irrigation/records?date="); dayText(day); html("'><span class='zone-title'>");
         sendZoneName(config, i); html("</span><b class='home-main'>");
         if (z.unknown && !z.count) html("时长未知"); else sendDuration(z.seconds);
         html("</b><span>"); sendUnsigned(z.count); html(" 次出水");
@@ -1431,16 +1431,19 @@ void sendRecordRow(const StoredWateringRecord& record, void* user) {
     Esp32BaseWeb::sendChunk("</td></tr>");
 }
 
-struct HistoryRows { uint32_t day=0, zone=0, offset=0, matched=0, shown=0; const char* result=nullptr; };
+struct HistoryRows { uint32_t day=0, offset=0, matched=0, shown=0; const char* result=nullptr; };
 void historyRow(const StoredWateringRecord& record, void* user) {
     auto& q = *static_cast<HistoryRows*>(user); const auto& p = record.payload;
-    bool matches = !q.day && !q.zone;
-    for(size_t i=0;i<p.zones.size();++i) {
-        const auto& z=p.zones[i]; if(!z.plannedDurationSec || (q.zone && q.zone != i+1)) continue;
-        if(!q.day || (p.startedEpoch && WateringHistory::localDay(WateringHistory::zoneEpoch(p,i))==q.day)) matches=true;
+    if (q.day) {
+        bool inDay = false;
+        for(size_t i=0;i<p.zones.size();++i) {
+            const auto& z=p.zones[i];
+            if(z.plannedDurationSec && p.startedEpoch && WateringHistory::localDay(WateringHistory::zoneEpoch(p,i))==q.day){inDay=true;break;}
+        }
+        if(!inDay) return;
     }
-    if(!matches) return;
     if(q.result && !strcmp(q.result,"issues") && p.result==WateringResult::Completed && !recordFlowAlertZoneCount(p)) return;
+    if(q.result && !strcmp(q.result,"ok") && (p.result!=WateringResult::Completed || recordFlowAlertZoneCount(p))) return;
     if(q.matched++ < q.offset || q.shown>=20) return; ++q.shown;
     RecordRowsContext row{g_app->configuration(), 0};
     sendRecordRow(record, &row);
@@ -2245,21 +2248,18 @@ void IrrigationWeb::records() {
     if(!beginPage("浇水记录","实际时长为主，估算水量为辅"))return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
-    HistoryRows q{};char date[12]{},result[16]{};if(getParam("date",date,sizeof(date)) && date[0])q.day=selectedDay();uintParam("zone",1,6,q.zone);uintParam("offset",0,UINT32_MAX-20,q.offset);getParam("result",result,sizeof(result));q.result=result;
-    html("<form method='get' class='event-filter'><label>日期<input type='date' name='date' value='");escaped(date);html("'></label><label>水路<select name='zone'><option value=''>全部水路</option>");
-    for(size_t i=0;i<BoardPins::kZoneCount;++i){html("<option value='");sendUnsigned(i+1);html("'");if(q.zone==i+1)html(" selected");html(">");sendZoneName(g_app->configuration(),i);html("</option>");}
-    html("</select></label><label>结果<select name='result'><option value=''>全部结果</option><option value='issues'");if(!strcmp(result,"issues"))html(" selected");html(">停止、异常或不完整</option></select></label><button>筛选</button><a href='/irrigation/records'>清除</a></form><section class='panel'><h2>历史记录</h2><div class='tablewrap'><table class='record-table'><thead><tr><th>开始时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
+    HistoryRows q{};
+    char date[12]{}, result[16]{};
+    if(getParam("date",date,sizeof(date)) && date[0]) q.day=selectedDay();
+    uintParam("offset",0,UINT32_MAX-20,q.offset);
+    getParam("result",result,sizeof(result)); q.result=result;
+    html("<form method='get' class='event-filter'><label>日期<input type='date' name='date' value='");escaped(date);html("'></label><label>结果<select name='result'><option value=''>全部结果</option><option value='ok'");if(!strcmp(result,"ok"))html(" selected");html(">仅正常完成</option><option value='issues'");if(!strcmp(result,"issues"))html(" selected");html(">停止、异常或不完整</option></select></label><button>筛选</button><a href='/irrigation/records'>清除</a></form><section class='panel'><h2>历史记录</h2><div class='tablewrap'><table class='record-table'><thead><tr><th>开始时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
     Esp32BaseRecordStore::StoreStatus state{};const bool ok=g_app->readWateringRecordStoreStatus(state)&&state.ready&&(state.recordCount==0||g_app->readLatestWateringRecords(0,state.recordCount,historyRow,&q));
     html("</tbody></table></div>");
     if(!ok)html("<p class='notice warn'>记录读取失败，不能据此判断没有浇水。</p>");else if(!q.shown)html("<p>当前条件下暂无浇水记录。</p>");html("</section>");
-    if(q.offset || q.matched>q.offset+q.shown){html("<nav class='actions'>");for(int d=-1;d<=1;d+=2){if(d<0&&!q.offset)continue;if(d>0&&q.matched<=q.offset+q.shown)continue;html("<a class='btnlink secondary' href='?date=");escaped(date);html("&zone=");sendUnsigned(q.zone);html("&result=");escaped(result);html("&offset=");sendUnsigned(d<0?(q.offset>20?q.offset-20:0):q.offset+20);html("'>");html(d<0?"上一页":"下一页");html("</a>");}html("</nav>");}
+    if(q.offset || q.matched>q.offset+q.shown){html("<nav class='actions'>");for(int d=-1;d<=1;d+=2){if(d<0&&!q.offset)continue;if(d>0&&q.matched<=q.offset+q.shown)continue;html("<a class='btnlink secondary' href='?date=");escaped(date);html("&result=");escaped(result);html("&offset=");sendUnsigned(d<0?(q.offset>20?q.offset-20:0):q.offset+20);html("'>");html(d<0?"上一页":"下一页");html("</a>");}html("</nav>");}
     if(state.oldestRecordId>1)html("<p class='muted'>本地历史按预算滚动保留，较早记录可能已淘汰。</p>");
-    html("<section class='panel'><h2>设备计划未执行</h2><p class='muted'>按日期查看，涵盖全部水路。</p><div class='tablewrap'><table class='event-table'><thead><tr><th>时间</th><th>等级</th><th>事件</th><th>说明</th></tr></thead><tbody>");IrrigationEvents::EventStatus status{};AuditRows a{};a.day=q.day;a.skippedOnly=true;
-    const bool auditReadable=g_app->readEventStatus(status) && status.eventStore.ready &&
-        (status.eventStore.recordCount==0 || g_app->readLatestEvents(0,status.eventStore.recordCount,auditRow,&a));
-    html("</tbody></table></div>");
-    if(!auditReadable) html("<p class='notice warn'>计划未执行记录暂时无法读取。</p>");
-    else if(!a.shown)html("<p class='muted'>当前日期条件下没有已记录的跳过事项；这不证明离线或停机时段均已执行。</p>");html("</section><p><a href='/irrigation/events'>操作与设备异常历史 ›</a></p>");
+    html("<p><a href='/irrigation/events'>操作与设备异常历史 ›</a></p>");
     uint32_t detailId=0;
     if (uintParam("id",1,UINT32_MAX,detailId)) {
         StoredWateringRecord detail{};
