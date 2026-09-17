@@ -16,15 +16,6 @@ constexpr uint8_t kPausedIndefinitely = 1;
 constexpr uint8_t kPausedUntil = 2;
 constexpr uint8_t kResumedManually = 3;
 constexpr uint8_t kResumedAutomatically = 4;
-constexpr uint8_t kPlanBusy = 5;
-constexpr uint8_t kPlanStartRejected = 6;
-constexpr uint8_t kPlanBusyManualWatering = 7;
-constexpr uint8_t kPlanBusyAutomaticWatering = 8;
-constexpr uint8_t kPlanBusyZoneFlowLearning = 9;
-constexpr uint8_t kPlanPreviousResultPending = 10;
-constexpr uint8_t kPlanControllerNotReady = 11;
-constexpr uint8_t kPlanInvalidRequest = 12;
-constexpr uint8_t kPlanHardwareFailure = 13;
 }  // namespace AuditReason
 
 namespace {
@@ -78,6 +69,18 @@ const char* stopReasonName(WateringStopReason reason) {
             return "target_volume_timeout";
         case WateringStopReason::RebootInterrupted:
             return "reboot_interrupted";
+        case WateringStopReason::BusyManualWatering:
+            return "busy_manual_watering";
+        case WateringStopReason::BusyAutomaticWatering:
+            return "busy_automatic_watering";
+        case WateringStopReason::BusyZoneFlowLearning:
+            return "busy_zone_flow_learning";
+        case WateringStopReason::PreviousResultPending:
+            return "previous_result_pending";
+        case WateringStopReason::ControllerNotReady:
+            return "controller_not_ready";
+        case WateringStopReason::InvalidRequest:
+            return "invalid_request";
         case WateringStopReason::None:
         default:
             return "none";
@@ -208,49 +211,6 @@ bool decodeFailed(const uint8_t* b, size_t n, JsonDocument& doc) {
            decodeWateringCommon(fact, doc);
 }
 
-const char* automaticSkipReason(uint8_t reason) {
-    switch (reason) {
-        case AuditReason::kPlanBusyManualWatering:
-            return "busy_manual_watering";
-        case AuditReason::kPlanBusyAutomaticWatering:
-            return "busy_automatic_watering";
-        case AuditReason::kPlanBusyZoneFlowLearning:
-            return "busy_zone_flow_learning";
-        case AuditReason::kPlanPreviousResultPending:
-            return "previous_result_pending";
-        case AuditReason::kPlanControllerNotReady:
-            return "controller_not_ready";
-        case AuditReason::kPlanInvalidRequest:
-            return "invalid_request";
-        case AuditReason::kPlanHardwareFailure:
-            return "hardware_failure";
-        case AuditReason::kPlanBusy:
-            return "busy";
-        default:
-            return "start_rejected";
-    }
-}
-
-bool decodeAutomaticRun(const uint8_t* b, size_t n, JsonDocument& doc) {
-    WateringFact fact;
-    if (!decodeAuditFact(b, n, fact)) return false;
-    const IrrigationAuditPayload& a = fact.audit;
-    if (a.kind != IrrigationAuditPayload::Kind::PlanSkipped) return false;
-    JsonObject data = doc.to<JsonObject>();
-    data["actionKey"] = "automatic.plan-run";
-    data["sourceKey"] = "device_schedule";
-    // This firmware records only skipped plan start points as automatic-run
-    // completion evidence; the reason carries the skip cause.
-    data["status"] = "skipped";
-    data["reason"] = automaticSkipReason(a.reason);
-    data["startedAt"] = nullptr;
-    data["durationSeconds"] = nullptr;
-    data["endedAt"] = nullptr;
-    JsonObject parameters = data["parameters"].to<JsonObject>();
-    parameters["planId"] = static_cast<int>(a.objectId);
-    return !doc.overflowed();
-}
-
 bool decodeAutomaticPaused(const uint8_t* b, size_t n, JsonDocument& doc) {
     WateringFact fact;
     if (!decodeAuditFact(b, n, fact)) return false;
@@ -354,9 +314,6 @@ const iot_device::RecordCodec kCodecs[] = {
      kWateringDataBytes, decodeStopped},
     {IrrigationPlatform::FactWateringFailed, "watering.failed",
      kWateringDataBytes, decodeFailed},
-    {IrrigationPlatform::FactAutomaticRunCompleted,
-     "operation.automatic-run.completed", kAuditDataBytes,
-     decodeAutomaticRun},
     {IrrigationPlatform::FactAutomaticPaused, "automatic.paused",
      kAuditDataBytes, decodeAutomaticPaused},
     {IrrigationPlatform::FactAutomaticResumed, "automatic.resumed",

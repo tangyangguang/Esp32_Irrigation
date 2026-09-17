@@ -6,7 +6,7 @@ struct WateringDayZone {
     bool active = false;
 };
 struct WateringDaySummary {
-    uint32_t day = 0, unknownTimeCount = 0;
+    uint32_t day = 0, unknownTimeCount = 0, startFailed = 0;
     bool readable = false, truncated = false;
     std::array<WateringDayZone, BoardPins::kZoneCount> zones{};
 };

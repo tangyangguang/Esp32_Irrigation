@@ -22,7 +22,8 @@ enum FactType : uint16_t {
     FactWateringStopped = 2,
     FactWateringFailed = 3,
     // audit stream records (business payload: 20B audit codec payload)
-    FactAutomaticRunCompleted = 10,
+    // Type code 10 is permanently reserved: the removed automatic plan-run
+    // operation record is now expressed as a watering.failed start rejection.
     FactAutomaticPaused = 11,
     FactAutomaticResumed = 12,
     FactPlansChanged = 13,

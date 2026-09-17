@@ -8,7 +8,6 @@
 // without the hardware store.
 struct IrrigationAuditPayload {
     enum class Kind : uint8_t {
-        PlanSkipped = 1,
         AutomaticStateChanged = 2,
         PlansChanged = 3,
         ZoneBaselineSaved = 5,
@@ -17,7 +16,7 @@ struct IrrigationAuditPayload {
         SystemFieldChanged = 8,
     };
 
-    Kind kind = Kind::PlanSkipped;
+    Kind kind = Kind::AutomaticStateChanged;
     uint8_t reason = 0;
     uint8_t flags = 0;
     uint8_t objectId = 0;

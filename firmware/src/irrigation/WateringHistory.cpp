@@ -31,6 +31,8 @@ WateringDaySummary summarize(WateringRecordStore& store, uint32_t day,
             if (z.result == ZoneWateringResult::Failed || z.result == ZoneWateringResult::Stopped ||
                 (z.flags & (WateringRecordCodec::kZoneFlagLowFlow | WateringRecordCodec::kZoneFlagHighFlow))) ++out.failures;
         }
+        if (record.payload.result == WateringResult::StartFailed && startDay == r.day)
+            ++r.startFailed;
     };
     result.readable = state.recordCount == 0 || store.readLatest(0, state.recordCount, visit, &ctx);
     result.truncated = state.oldestRecordId > 1 && (ctx.oldestDay == UINT32_MAX || day <= ctx.oldestDay);

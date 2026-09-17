@@ -52,10 +52,10 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,549,243 B（87.6%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,548,975 B（87.5%，分区 1,769,472 B） |
 | 静态 RAM | 103,148 B（31.5%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,549,648 B |
-| 对侧 OTA 槽余量 | 219,824 B（约 215 KiB，12.42%） |
+| OTA 镜像 firmware.bin | 1,549,376 B |
+| 对侧 OTA 槽余量 | 220,096 B（约 215 KiB，12.44%） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。2026-09-17 已对 192.168.2.155（esp32-irr-28562f795e60）Web OTA 烧录，启动日志确认 MQTT 经 TLS 连接 z84e9fd1.ala.cn-hangzhou.emqxsl.cn:8883 成功；连接后约 1 分钟进入 dev 平台发现候选（iot_home_dev.device_discovery_candidates，状态 online），待小程序确认绑定。小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
 
@@ -69,7 +69,8 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 - 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。
 - 浇水 codec v4：270 B 业务 payload（54 B 头含 36 B commandId + 6×36 B 水路，含建议基准脉冲率）；审计 20 B 业务 payload。v3 旧记录不读取。
-- 两个持久 Store（浇水 v9 / 审计 v5，均 `PreserveUnreleased`）物理槽为 24 B IR/v1 头 + 业务字节，预算 160/48 KiB；**单一持久 Store 同时服务本地历史与平台可靠补发**，内嵌 SDK `RecordStream`，不设第二份 outbox，断网补发与 record-ack 经同一存储水位管理。
+- 两个持久 Store（浇水 v9 / 审计 v6，均 `PreserveUnreleased`）物理槽为 24 B IR/v1 头 + 业务字节，预算 160/48 KiB；**单一持久 Store 同时服务本地历史与平台可靠补发**，内嵌 SDK `RecordStream`，不设第二份 outbox，断网补发与 record-ack 经同一存储水位管理。
+- 每次浇水启动尝试只有一条浇水记录：完成/停止/失败为实际出水过程；调度点到了但启动被拒（手动或另一计划占用、基准学习中、上一任务未落盘、设备/存储未就绪、计划配置无效）记录为 `failed` + 启动失败原因，zones 为空或全部未启动、时长水量为 0，不补浇；暂停期间到点和断电停机不形成记录。审计流不再保存计划运行事实（原 `operation.automatic-run.completed` 删除，平台 recordKey 10 永久保留不重用）。
 - 浇水任务标记为紧凑 NVS marker，重启据此重建 Incomplete/RebootInterrupted 事实。
 - 平台适配 `IrrigationPlatform*` 按 `platform/iot-device` 的 irrigation-controller 契约实现：设备 ID 由 STA MAC 生成 `esp32-irr-<12hex>`，8 类状态投影、5 类命令（plans/automatic-watering/start-manual/stop/single-output）全部复用 `IrrigationApp` 唯一执行入口；来源 `WateringSource` 区分 LocalWeb/AutomaticPlan/WechatMiniprogram。
 - MQTT host/CA 缺失时安全降级为纯本地运行，不阻塞 Web 与业务。

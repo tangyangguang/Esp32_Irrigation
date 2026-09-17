@@ -38,8 +38,6 @@ uint16_t IrrigationAuditStore::factTypeCode(
     using Kind = IrrigationAuditPayload::Kind;
     using Reason = IrrigationEvents::ReasonCode;
     switch (payload.kind) {
-        case Kind::PlanSkipped:
-            return IrrigationPlatform::FactAutomaticRunCompleted;
         case Kind::AutomaticStateChanged: {
             const auto reason =
                 static_cast<Reason>(payload.reason);

@@ -143,13 +143,46 @@ void test_watering_stopped_and_failed_validate() {
                     sizeof(fact));
 }
 
+void test_start_rejected_watering_validates() {
+    uint8_t fact[kWateringData]{};
+    WateringRecordPayload payload{};
+    payload.taskId = 1;
+    payload.startedEpoch = 1700000000U;
+    payload.source = WateringSource::AutomaticPlan;
+    payload.targetMode = WateringTargetMode::Duration;
+    payload.planId = 2;
+    payload.result = WateringResult::StartFailed;
+    payload.stopReason = WateringStopReason::BusyManualWatering;
+    // No zone ever started: all zones remain zero/not-started.
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(
+        payload, fact + 4, WateringRecordCodec::kPayloadSize));
+
+    const RecordCodec* codec = findCodec(IrrigationPlatform::FactWateringFailed);
+    TEST_ASSERT_NOT_NULL(codec);
+    DynamicJsonDocument doc(4096);
+    TEST_ASSERT_TRUE(codec->decode(fact, sizeof(fact), doc));
+    TEST_ASSERT_EQUAL_STRING("failed", doc["result"]);
+    TEST_ASSERT_EQUAL_STRING("busy_manual_watering", doc["reason"]);
+    TEST_ASSERT_EQUAL_STRING("device_schedule", doc["sourceKey"]);
+    TEST_ASSERT_EQUAL_INT(2, doc["planId"].as<int>());
+    TEST_ASSERT_EQUAL_INT(0, doc["durationSeconds"].as<int>());
+    TEST_ASSERT_EQUAL_INT(0, doc["zones"].size());
+    const RecordContract* rc =
+        model_irrigation_controller_6_zone::contract.record(codec->recordKey);
+    TEST_ASSERT_NOT_NULL(rc);
+    TEST_ASSERT_TRUE(rc->validate(doc.as<JsonVariantConst>()));
+
+    // A plan whose configuration resolves to no executable zones also stores
+    // a zero-zone start rejection (invalid_request).
+    payload.stopReason = WateringStopReason::InvalidRequest;
+    std::memset(fact, 0, sizeof(fact));
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(
+        payload, fact + 4, WateringRecordCodec::kPayloadSize));
+    assertValidates(IrrigationPlatform::FactWateringFailed, fact, sizeof(fact));
+}
+
 void test_audit_records_validate() {
     uint8_t fact[IrrigationAuditCodec::kPayloadSize]{};
-
-    buildAuditFact(fact, IrrigationAuditPayload::Kind::PlanSkipped,
-                   7 /*busy_manual_watering*/, 2, 0, 0);
-    assertValidates(IrrigationPlatform::FactAutomaticRunCompleted, fact,
-                    sizeof(fact));
 
     buildAuditFact(fact, IrrigationAuditPayload::Kind::AutomaticStateChanged,
                    2 /*paused-until*/, 0, 1700003600U, 0);
@@ -193,6 +226,7 @@ int main(int, char**) {
     RUN_TEST(test_watering_completed_validates);
     RUN_TEST(test_suggested_baseline_is_projected_and_null_when_absent);
     RUN_TEST(test_watering_stopped_and_failed_validate);
+    RUN_TEST(test_start_rejected_watering_validates);
     RUN_TEST(test_audit_records_validate);
     return UNITY_END();
 }

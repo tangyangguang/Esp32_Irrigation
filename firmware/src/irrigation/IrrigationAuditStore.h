@@ -15,7 +15,7 @@ struct StoredIrrigationAuditRecord {
 class IrrigationAuditStore {
 public:
     static constexpr const char* kRecordTypeName = "irrigation-audit";
-    static constexpr uint16_t kStoreVersion = 5;
+    static constexpr uint16_t kStoreVersion = 6;
     static constexpr uint32_t kMaximumStoreBytes = 48UL * 1024UL;
     static constexpr uint32_t kMinimumFileSystemFreeBytes = 32UL * 1024UL;
     using ReadCallback = void (*)(const StoredIrrigationAuditRecord&, void*);

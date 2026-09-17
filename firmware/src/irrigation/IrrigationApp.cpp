@@ -983,7 +983,7 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
             break;
         case WateringScheduler::Event::PlanSkippedBusy:
         case WateringScheduler::Event::PlanStartRejected: {
-            reportSkippedPlan(planId, static_cast<WateringStartResult>(value));
+            recordStartRejected(planId, static_cast<WateringStartResult>(value));
             break;
         }
         case WateringScheduler::Event::StorageFault:
@@ -992,16 +992,54 @@ void IrrigationApp::reportSchedulerEvent(WateringScheduler::Event event,
     }
 }
 
-// The full learning/status snapshot belongs only to this branch. Keep its
-// stack frame out of pause/resume -> audit -> LittleFS writes, including LTO.
-void IrrigationApp::reportSkippedPlan(uint8_t planId, WateringStartResult result) {
+// Builds a zero-duration failed watering record for a plan start point the
+// device reached but could not accept. Kept out of the scheduler callback
+// frame, including LTO, because it writes through the record store.
+void __attribute__((noinline)) IrrigationApp::recordStartRejected(
+    uint8_t planId, WateringStartResult result) {
     const IrrigationConfig* config = configStore_.current();
-    const char* planName = nullptr;
-    if (config && planId >= 1U && planId <= config->plans.size() &&
-        config->plans[planId - 1U].configured) {
-        planName = config->plans[planId - 1U].name.data();
+    if (!config || planId < 1U || planId > config->plans.size()) return;
+    const WateringPlan& plan = config->plans[planId - 1U];
+    if (!plan.configured) return;
+
+    WateringStopReason reason = WateringStopReason::ControllerNotReady;
+    if (result == WateringStartResult::Busy) {
+        const WateringStatus status = wateringController_.status();
+        if (status.active && status.purpose == WateringPurpose::ZoneFlowLearning)
+            reason = WateringStopReason::BusyZoneFlowLearning;
+        else if (status.active && status.source == WateringSource::AutomaticPlan)
+            reason = WateringStopReason::BusyAutomaticWatering;
+        else if (status.active)
+            reason = WateringStopReason::BusyManualWatering;
+    } else if (result == WateringStartResult::PreviousResultPending) {
+        reason = WateringStopReason::PreviousResultPending;
+    } else if (result == WateringStartResult::InvalidRequest) {
+        reason = WateringStopReason::InvalidRequest;
     }
-    events_.recordAutomaticPlanSkipped(planId, planName, result, wateringController_.status());
+
+    WateringSessionSummary summary{};
+    summary.source = WateringSource::AutomaticPlan;
+    summary.targetMode = WateringTargetMode::Duration;
+    summary.purpose = WateringPurpose::Normal;
+    summary.planId = planId;
+    summary.planName = plan.name;
+    summary.result = WateringResult::StartFailed;
+    summary.stopReason = reason;
+    for (uint8_t zoneIndex = 0;
+         zoneIndex < BoardPins::kZoneCount &&
+         summary.zoneCount < summary.zones.size();
+         ++zoneIndex) {
+        const uint16_t durationMinutes = plan.zoneDurationMinutes[zoneIndex];
+        if (!config->zones[zoneIndex].enabled || durationMinutes == 0U) continue;
+        auto& zone = summary.zones[summary.zoneCount++];
+        zone.zoneId = config->zones[zoneIndex].id;
+        zone.result = ZoneWateringResult::NotStarted;
+        zone.plannedDurationSec = static_cast<uint32_t>(durationMinutes) * 60U;
+    }
+
+    if (!wateringRecordStore_.appendStartRejected(summary, trustedEpoch())) {
+        recordStorageFault_ = true;
+    }
 }
 
 bool IrrigationApp::allowMaintenance(void* user) {

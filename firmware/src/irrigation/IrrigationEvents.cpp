@@ -76,42 +76,7 @@ void IrrigationEvents::recordAutomaticWateringResumed(bool automatically) {
                                               ? ReasonCode::ResumedAutomatically
                                               : ReasonCode::ResumedManually);
     append(payload);
-}
 
-IrrigationEvents::ReasonCode IrrigationEvents::automaticSkipReason(
-    WateringStartResult result,
-    const WateringStatus& status) {
-    if (result == WateringStartResult::Busy) {
-        if (status.active && status.purpose == WateringPurpose::ZoneFlowLearning)
-            return ReasonCode::PlanBusyZoneFlowLearning;
-        if (status.active && status.source == WateringSource::AutomaticPlan)
-            return ReasonCode::PlanBusyAutomaticWatering;
-        if (status.active) return ReasonCode::PlanBusyManualWatering;
-        return ReasonCode::PlanBusy;
-    }
-    if (result == WateringStartResult::PreviousResultPending)
-        return ReasonCode::PlanPreviousResultPending;
-    if (result == WateringStartResult::NotReady)
-        return ReasonCode::PlanControllerNotReady;
-    if (result == WateringStartResult::InvalidRequest)
-        return ReasonCode::PlanInvalidRequest;
-    if (result == WateringStartResult::HardwareFailure)
-        return ReasonCode::PlanHardwareFailure;
-    return ReasonCode::PlanStartRejected;
-}
-
-void IrrigationEvents::recordAutomaticPlanSkipped(
-    uint8_t planId,
-    const char*,
-    WateringStartResult result,
-    const WateringStatus& status) {
-    if (result == WateringStartResult::Started) return;
-    IrrigationAuditPayload payload;
-    payload.kind = IrrigationAuditPayload::Kind::PlanSkipped;
-    payload.reason = static_cast<uint8_t>(automaticSkipReason(result, status));
-    payload.flags = 3U;  // skipped
-    payload.objectId = planId;
-    append(payload);
 }
 
 void IrrigationEvents::recordZoneFlowSaved(
@@ -278,10 +243,6 @@ IrrigationEvents::EventRecord IrrigationEvents::present(
             event.eventCode = static_cast<uint32_t>(EventCode::ClosedValveFlow);
             event.level = stored.payload.flags ? Level::Warning : Level::Info;
             break;
-        case IrrigationAuditPayload::Kind::PlanSkipped:
-            event.eventCode = static_cast<uint32_t>(EventCode::AutomaticPlanSkipped);
-            event.level = stored.payload.flags == 0U ? Level::Info : Level::Warning;
-            break;
         case IrrigationAuditPayload::Kind::AutomaticStateChanged:
             event.eventCode = static_cast<uint32_t>(EventCode::AutomaticWateringStateChanged);
             break;
@@ -297,8 +258,7 @@ IrrigationEvents::EventRecord IrrigationEvents::present(
 
 IrrigationEvents::Category IrrigationEvents::category(const EventRecord& event) {
     const EventCode code = static_cast<EventCode>(event.eventCode);
-    return code == EventCode::AutomaticWateringStateChanged ||
-                   code == EventCode::AutomaticPlanSkipped
+    return code == EventCode::AutomaticWateringStateChanged
                ? Category::AutomaticWatering
                : Category::Settings;
 }
@@ -314,13 +274,6 @@ const char* IrrigationEvents::categoryName(Category categoryValue) {
 const char* IrrigationEvents::levelName(Level level) {
     return level == Level::Error ? "错误" : level == Level::Warning ? "警告" : "信息";
 }
-uint8_t IrrigationEvents::wateringPlanId(const EventRecord& event) {
-    return static_cast<EventCode>(event.eventCode) == EventCode::AutomaticPlanSkipped &&
-                   event.objectId <= kWateringPlanCount
-               ? static_cast<uint8_t>(event.objectId)
-               : 0U;
-}
-
 void IrrigationEvents::formatTitle(const EventRecord& event,
                                    char* out,
                                    std::size_t length,
@@ -334,12 +287,6 @@ void IrrigationEvents::formatTitle(const EventRecord& event,
                                   event.reasonCode == static_cast<uint32_t>(ReasonCode::ResumedAutomatically)
                               ? "自动浇水已恢复"
                               : "自动浇水已暂停");
-            return;
-        case EventCode::AutomaticPlanSkipped:
-            std::snprintf(out, length, "%s %lu %s",
-                          event.flags == 3U ? "自动计划" : "自动计划运行",
-                          static_cast<unsigned long>(event.objectId),
-                          event.flags == 3U ? "未执行" : "已结束");
             return;
         case EventCode::ZoneFlowSaved:
             std::snprintf(out, length, "水路 %lu 的基准流量已保存",
@@ -371,14 +318,6 @@ void IrrigationEvents::formatSummary(const EventRecord& event, char* out, std::s
         }
         case ReasonCode::ResumedManually: message = "用户恢复自动浇水，将按之后的启动时间执行。"; break;
         case ReasonCode::ResumedAutomatically: message = "暂停时间已到，自动浇水恢复；错过的计划不补执行。"; break;
-        case ReasonCode::PlanBusyManualWatering: message = "当时正在手动浇水，本次计划未执行，不会补浇。"; break;
-        case ReasonCode::PlanBusyAutomaticWatering: message = "当时另一计划正在运行，本次计划未执行，不会补浇。"; break;
-        case ReasonCode::PlanBusyZoneFlowLearning: message = "当时正在学习水路基准，本次计划未执行。"; break;
-        case ReasonCode::PlanPreviousResultPending: message = "上一任务的结果尚未完成保存，本次计划未执行。"; break;
-        case ReasonCode::PlanControllerNotReady: message = "当时设备或记录存储未就绪，本次计划未执行。"; break;
-        case ReasonCode::PlanInvalidRequest: message = "计划参数或水路配置无效，本次计划未执行。"; break;
-        case ReasonCode::PlanHardwareFailure: message = "控制输出启动失败，本次计划未执行，请检查设备。"; break;
-        case ReasonCode::PlanStartRejected: case ReasonCode::PlanBusy: message = "设备拒绝本次计划启动，不会自动补执行。"; break;
         case ReasonCode::ZoneFlowSaved: std::snprintf(out, length, "基准设置为 %.3f L/min，用于高低流量判断；不是计量系数校准。", event.value2 / 1000.0); return;
         case ReasonCode::PlanCreated: message = "新建计划；保存不会立即出水。"; break;
         case ReasonCode::PlanUpdated: message = "更新计划；正在执行的任务仍使用启动时的配置。"; break;

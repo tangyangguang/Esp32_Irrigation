@@ -255,6 +255,12 @@ const char* stopReasonName(WateringStopReason reason) {
         case WateringStopReason::HardwareFailure: return "硬件故障";
         case WateringStopReason::MaintenanceInterrupted: return "维护操作中断";
         case WateringStopReason::TargetVolumeTimeout: return "达到最长运行时间，未达到目标水量";
+        case WateringStopReason::BusyManualWatering: return "当时正在手动浇水，计划未执行";
+        case WateringStopReason::BusyAutomaticWatering: return "当时另一计划正在运行，计划未执行";
+        case WateringStopReason::BusyZoneFlowLearning: return "当时正在学习水路基准，计划未执行";
+        case WateringStopReason::PreviousResultPending: return "上一任务结果尚未完成保存，计划未执行";
+        case WateringStopReason::ControllerNotReady: return "设备或记录存储未就绪，计划未执行";
+        case WateringStopReason::InvalidRequest: return "计划参数或水路配置无效，计划未执行";
         default: return "未知原因";
     }
 }
@@ -634,6 +640,7 @@ void sendRecordFlowAlertSummary(const WateringRecordPayload& payload,
 
 const char* recordOutcomeTone(const WateringRecordPayload& payload) {
     if (payload.result == WateringResult::Failed) return "danger";
+    if (payload.result == WateringResult::StartFailed) return "danger";
     if (payload.result == WateringResult::Incomplete) return "warn";
     if (payload.result == WateringResult::Stopped || recordHasFlowAlert(payload)) {
         return "warn";
@@ -642,6 +649,7 @@ const char* recordOutcomeTone(const WateringRecordPayload& payload) {
 }
 
 const char* recordOutcomeName(const WateringRecordPayload& payload) {
+    if (payload.result == WateringResult::StartFailed) return "启动失败";
     if (payload.result == WateringResult::Failed) return "失败";
     if (payload.result == WateringResult::Stopped) return "已停止";
     if (payload.result == WateringResult::Completed &&
@@ -651,8 +659,26 @@ const char* recordOutcomeName(const WateringRecordPayload& payload) {
     return payload.result == WateringResult::Completed ? "已完成" : "未知";
 }
 
+const char* startRejectionReasonText(WateringStopReason reason) {
+    switch (reason) {
+        case WateringStopReason::BusyManualWatering: return "当时正在手动浇水";
+        case WateringStopReason::BusyAutomaticWatering: return "当时另一个计划正在运行";
+        case WateringStopReason::BusyZoneFlowLearning: return "当时正在学习水路基准";
+        case WateringStopReason::PreviousResultPending: return "上一任务的结果尚未完成保存";
+        case WateringStopReason::ControllerNotReady: return "当时设备或记录存储未就绪";
+        case WateringStopReason::InvalidRequest: return "计划参数或水路配置无效";
+        case WateringStopReason::HardwareFailure: return "控制输出启动失败";
+        default: return "设备拒绝本次计划启动";
+    }
+}
+
 void sendRecordOutcomeSummary(const WateringRecordPayload& payload,
                               const IrrigationConfig* config) {
+    if (payload.result == WateringResult::StartFailed) {
+        Esp32BaseWeb::sendChunk(startRejectionReasonText(payload.stopReason));
+        Esp32BaseWeb::sendChunk("，本次计划未执行，不补浇");
+        return;
+    }
     if (payload.result == WateringResult::Incomplete) {
         Esp32BaseWeb::sendChunk("设备重启时发现未收尾任务，未保存的执行进度、停止时间和水量无法恢复；不会自动续浇。");
         return;
@@ -1080,7 +1106,7 @@ void renderDayPlans(uint32_t day,
         html("</b><span class='home-day-plan-name'>");
         Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
         html("</span><small>");
-        if (zoneCount == 0) html("计划内没有可执行水路，到点会记为跳过");
+        if (zoneCount == 0) html("计划内没有可执行水路，到点会记录一条启动失败");
         else { sendUnsigned(zoneCount); html(" 路 · 共 "); sendUnsigned(totalMinutes); html(" 分钟"); }
         html("</small></div>");
         listed = true;
@@ -1115,6 +1141,7 @@ void renderDay(uint32_t day, bool includePlans) {
     if (!shown) html("<p class='muted'>暂无启用水路或该日记录。请到设备设置配置水路。</p>");
     if (daily.truncated) html("<p class='notice warn'>较早历史已滚动淘汰，本日统计可能不完整。</p>");
     if (daily.unknownTimeCount) { html("<p class='muted'>另有 "); sendUnsigned(daily.unknownTimeCount); html(" 条时间未知的记录未计入日期统计。</p>"); }
+    if (daily.startFailed) { html("<p class='notice warn'>当天有 "); sendUnsigned(daily.startFailed); html(" 次自动计划<a href='/irrigation/records?date="); dayText(day); html("&result=issues'>启动失败</a>，均未出水。</p>"); }
     html("<p class='muted'>按各水路开始日期归属；跨日任务不拆分。时长为实际浇水时间，水量为估算值。</p>");
     if (includePlans) {
         const Esp32BaseTime::Snapshot snapshot = Esp32BaseTime::snapshot();
@@ -1255,12 +1282,14 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
     sendRecordOutcomeSummary(record.payload, config);
     Esp32BaseWeb::sendChunk("</span></div><div class='record-detail-metrics'><div><span>实际浇水</span><b>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
+    else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendDuration(totals.actualWateringSec);
     Esp32BaseWeb::sendChunk("</b></div><div><span>估算用水量</span><b>");
     if (recordHasCappedEstimate(record.payload)) {
         Esp32BaseWeb::sendChunk("至少 ");
     }
     if (record.payload.result == WateringResult::Incomplete) html("未知");
+    else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendWaterVolume(totals.estimatedWaterMl);
     Esp32BaseWeb::sendChunk("</b></div><div><span>执行水路</span><b>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
@@ -1269,6 +1298,7 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
     sendUnsigned(plannedZoneCount);
     Esp32BaseWeb::sendChunk(" 路</b></div><div><span>高低流量报警</span><b>");
     if (record.payload.result == WateringResult::Incomplete) { html("未能确认"); }
+    else if (record.payload.result == WateringResult::StartFailed) { html("—"); }
     else if (alertZoneCount == 0) {
         Esp32BaseWeb::sendChunk("无");
     } else {
@@ -1415,6 +1445,7 @@ void sendRecordRow(const StoredWateringRecord& record, void* user) {
     }
     Esp32BaseWeb::sendChunk("</td><td data-label='实际 / 目标' class='record-number record-list-duration'><span>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
+    else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendDuration(totals.actualWateringSec);
     Esp32BaseWeb::sendChunk("</span><small>/ ");
     const uint32_t targetWaterMl = recordTargetWaterMl(record.payload);
@@ -1423,6 +1454,7 @@ void sendRecordRow(const StoredWateringRecord& record, void* user) {
     Esp32BaseWeb::sendChunk("</small></td><td data-label='估算用水量' class='record-number'>");
     if (recordHasCappedEstimate(record.payload)) Esp32BaseWeb::sendChunk("至少 ");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
+    else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendCompactWaterVolume(totals.estimatedWaterMl);
     Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('record-detail-");
     sendUnsigned(record.recordId);
@@ -1440,6 +1472,7 @@ void historyRow(const StoredWateringRecord& record, void* user) {
             const auto& z=p.zones[i];
             if(z.plannedDurationSec && p.startedEpoch && WateringHistory::localDay(WateringHistory::zoneEpoch(p,i))==q.day){inDay=true;break;}
         }
+        if(!inDay && p.startedEpoch && WateringHistory::localDay(p.startedEpoch)==q.day){inDay=true;}
         if(!inDay) return;
     }
     if(q.result && !strcmp(q.result,"issues") && p.result==WateringResult::Completed && !recordFlowAlertZoneCount(p)) return;
@@ -1448,19 +1481,17 @@ void historyRow(const StoredWateringRecord& record, void* user) {
     RecordRowsContext row{g_app->configuration(), 0};
     sendRecordRow(record, &row);
 }
-struct AuditRows { uint32_t day=0, offset=0, matched=0, shown=0; uint8_t category=0; bool skippedOnly=false; };
+struct AuditRows { uint32_t day=0, offset=0, matched=0, shown=0; uint8_t category=0; };
 void auditRow(const IrrigationEvents::EventRecord& event, void* user) {
     auto& q=*static_cast<AuditRows*>(user); uint32_t epoch=0;
     Esp32BaseRecordStore::resolveCompletedEpoch(event.timing,epoch);
     if(q.day && (!epoch || WateringHistory::localDay(epoch)!=q.day)) return;
-    if(q.skippedOnly && event.eventCode!=uint32_t(IrrigationEvents::EventCode::AutomaticPlanSkipped)) return;
     if(q.category && static_cast<uint8_t>(IrrigationEvents::category(event)) + 1U != q.category) return;
     if(q.matched++ < q.offset || q.shown>=20) return; ++q.shown;
     char title[192]{}, summary[256]{};
     const auto* config=g_app->configuration();
-    const auto planId=IrrigationEvents::wateringPlanId(event);
     const char* zoneName=config && event.objectId>=1 && event.objectId<=BoardPins::kZoneCount ? config->zones[event.objectId-1].name.data() : nullptr;
-    IrrigationEvents::formatTitle(event,title,sizeof(title),planNameById(config,planId),zoneName);
+    IrrigationEvents::formatTitle(event,title,sizeof(title),nullptr,zoneName);
     IrrigationEvents::formatSummary(event,summary,sizeof(summary));
     html("<tr><td data-label='时间' class='event-time'>"); epochText(epoch);
     html("</td><td data-label='等级' class='event-level'><span class='tag ");

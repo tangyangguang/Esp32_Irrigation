@@ -153,6 +153,50 @@ void test_mixed_mode_round_trips_duration_and_volume_steps() {
     TEST_ASSERT_FALSE(WateringRecordCodec::encode(volumeOnly, bytes, sizeof(bytes)));
 }
 
+void test_start_failed_round_trips_with_not_started_zones() {
+    WateringSessionSummary s{};
+    s.source = WateringSource::AutomaticPlan;
+    s.purpose = WateringPurpose::Normal;
+    s.planId = 2U;
+    s.zoneCount = 2U;
+    s.result = WateringResult::StartFailed;
+    s.stopReason = WateringStopReason::BusyManualWatering;
+    s.zones[0].zoneId = 1U;
+    s.zones[0].result = ZoneWateringResult::NotStarted;
+    s.zones[0].plannedDurationSec = 20U;
+    s.zones[1].zoneId = 3U;
+    s.zones[1].result = ZoneWateringResult::NotStarted;
+    s.zones[1].plannedDurationSec = 25U;
+    WateringRecordPayload payload{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(s, payload));
+    uint8_t bytes[WateringRecordCodec::kPayloadSize]{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
+    WateringRecordPayload decoded{};
+    TEST_ASSERT_TRUE(WateringRecordCodec::decode(bytes, sizeof(bytes), decoded));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(WateringResult::StartFailed),
+                            static_cast<uint8_t>(decoded.result));
+    TEST_ASSERT_EQUAL_UINT32(0U, decoded.zones[0].actualWateringSec);
+    TEST_ASSERT_EQUAL_UINT32(0U, decoded.zones[0].pulseCount);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(ZoneWateringResult::NotStarted),
+                            static_cast<uint8_t>(decoded.zones[0].result));
+
+    // A plan with no executable zones: zero zones allowed for start failures.
+    s.zoneCount = 0;
+    s.stopReason = WateringStopReason::InvalidRequest;
+    TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(s, payload));
+
+    // Start failures are only valid for automatic plans.
+    s.zoneCount = 1;
+    s.source = WateringSource::LocalWeb;
+    s.planId = 0;
+    TEST_ASSERT_FALSE(WateringRecordCodec::fromSession(s, payload));
+
+    // A start-rejection reason must not pair with a regular failed run.
+    payload.result = WateringResult::Failed;
+    payload.stopReason = WateringStopReason::BusyManualWatering;
+    TEST_ASSERT_FALSE(WateringRecordCodec::encode(payload, bytes, sizeof(bytes)));
+}
+
 void test_corrupted_header_and_invalid_result_pair_are_rejected() {
     WateringRecordPayload payload{};
     TEST_ASSERT_TRUE(WateringRecordCodec::fromSession(summary(), payload));
@@ -177,6 +221,7 @@ int main(int, char**) {
     RUN_TEST(test_unknown_recovery_does_not_claim_zero_or_measured_progress);
     RUN_TEST(test_volume_is_manual_single_zone_and_zone_order_is_validated);
     RUN_TEST(test_mixed_mode_round_trips_duration_and_volume_steps);
+    RUN_TEST(test_start_failed_round_trips_with_not_started_zones);
     RUN_TEST(test_corrupted_header_and_invalid_result_pair_are_rejected);
     return UNITY_END();
 }

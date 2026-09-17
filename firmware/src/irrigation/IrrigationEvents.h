@@ -14,7 +14,6 @@ public:
     enum class EventCode : uint32_t {
         WateringStoppedAbnormally = 1001,
         AutomaticWateringStateChanged = 1002,
-        AutomaticPlanSkipped = 1003,
         RtcRollback = 1004,
         FlowDeviation = 1201,
         ClosedValveFlow = 1006,
@@ -30,15 +29,6 @@ public:
         PausedUntil,
         ResumedManually,
         ResumedAutomatically,
-        PlanBusy,
-        PlanStartRejected,
-        PlanBusyManualWatering,
-        PlanBusyAutomaticWatering,
-        PlanBusyZoneFlowLearning,
-        PlanPreviousResultPending,
-        PlanControllerNotReady,
-        PlanInvalidRequest,
-        PlanHardwareFailure,
         FlowStartTimeout,
         NoFlowTimeout,
         HardwareFailure,
@@ -110,9 +100,6 @@ public:
 
     void recordAutomaticWateringPaused(bool indefinitely, uint32_t resumeAtEpoch);
     void recordAutomaticWateringResumed(bool automatically);
-    void recordAutomaticPlanSkipped(uint8_t planId, const char* planName,
-                                    WateringStartResult result,
-                                    const WateringStatus& status);
     void recordZoneFlowSaved(uint8_t zoneId,
                              uint32_t previousFlowMlPerMinute,
                              uint32_t pulseRateX10000,
@@ -135,7 +122,6 @@ public:
     static Category category(const EventRecord& event);
     static const char* categoryName(Category category);
     static const char* levelName(Level level);
-    static uint8_t wateringPlanId(const EventRecord& event);
     static void formatTitle(const EventRecord& event, char* out,
                             std::size_t length,
                             const char* planName = nullptr,
@@ -154,9 +140,6 @@ private:
                  Esp32BaseConditions::ObservedState state,
                  ConditionDisplayState& displayState);
     static EventRecord present(const StoredIrrigationAuditRecord& stored);
-    static ReasonCode automaticSkipReason(WateringStartResult result,
-                                          const WateringStatus& status);
-
     IrrigationAuditStore auditStore_;
     Esp32BaseConditions::ConditionTracker rtcUnavailableCondition_;
     Esp32BaseConditions::ConditionTracker trustedTimeUnavailableCondition_;

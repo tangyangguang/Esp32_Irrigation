@@ -124,7 +124,8 @@ private:
     void reportSchedulerEvent(WateringScheduler::Event event,
                               uint8_t planId,
                               int32_t value);
-    void reportSkippedPlan(uint8_t planId, WateringStartResult result) __attribute__((noinline));
+    void recordStartRejected(uint8_t planId, WateringStartResult result)
+        __attribute__((noinline));
     void resetUnexpectedFlowMonitor(uint32_t nowMs);
     void observeEventConditions(uint32_t nowMs, const Esp32BaseTime::Snapshot& now);
     void refreshRtcCondition(uint32_t nowMs, bool force);

@@ -67,16 +67,28 @@ bool validSource(WateringSource value) {
 bool validResult(WateringResult value) {
     return value == WateringResult::Completed ||
            value == WateringResult::Stopped ||
-           value == WateringResult::Failed || value == WateringResult::Incomplete;
+           value == WateringResult::Failed || value == WateringResult::Incomplete ||
+           value == WateringResult::StartFailed;
+}
+
+bool isStartRejectionReason(WateringStopReason value) {
+    return value == WateringStopReason::BusyManualWatering ||
+           value == WateringStopReason::BusyAutomaticWatering ||
+           value == WateringStopReason::BusyZoneFlowLearning ||
+           value == WateringStopReason::PreviousResultPending ||
+           value == WateringStopReason::ControllerNotReady ||
+           value == WateringStopReason::InvalidRequest ||
+           value == WateringStopReason::HardwareFailure;
 }
 
 bool validReason(WateringStopReason value) {
     return value >= WateringStopReason::Completed &&
-           value <= WateringStopReason::RebootInterrupted;
+           value <= WateringStopReason::InvalidRequest;
 }
 
 bool validResultPair(WateringResult result, WateringStopReason reason) {
     if (result == WateringResult::Incomplete) return reason == WateringStopReason::RebootInterrupted;
+    if (result == WateringResult::StartFailed) return isStartRejectionReason(reason);
     if (result == WateringResult::Completed)
         return reason == WateringStopReason::Completed;
     if (result == WateringResult::Stopped)
@@ -85,7 +97,8 @@ bool validResultPair(WateringResult result, WateringStopReason reason) {
            reason != WateringStopReason::None &&
            reason != WateringStopReason::Completed &&
            reason != WateringStopReason::UserStopped &&
-           reason != WateringStopReason::RebootInterrupted;
+           reason != WateringStopReason::RebootInterrupted &&
+           !isStartRejectionReason(reason);
 }
 
 bool validPayload(const WateringRecordPayload& payload) {
@@ -96,6 +109,10 @@ bool validPayload(const WateringRecordPayload& payload) {
          payload.planId != 0U) ||
         (payload.source == WateringSource::AutomaticPlan &&
          (payload.planId == 0U || payload.planId > kWateringPlanCount))) {
+        return false;
+    }
+    if (payload.result == WateringResult::StartFailed &&
+        payload.source != WateringSource::AutomaticPlan) {
         return false;
     }
     if (payload.targetMode != WateringTargetMode::Duration &&
@@ -163,6 +180,10 @@ bool validPayload(const WateringRecordPayload& payload) {
     for (const ZoneWateringRecord& zone : payload.zones)
         if (zone.targetWaterMl != 0U) ++volumeSteps;
     if (payload.targetMode == WateringTargetMode::Duration && volumeSteps != 0U) return false;
+    if (payload.result == WateringResult::StartFailed) {
+        if (payload.targetMode != WateringTargetMode::Duration || volumeSteps != 0U) return false;
+        return true;
+    }
     if (payload.targetMode == WateringTargetMode::Volume && volumeSteps != 1U) return false;
     if (payload.targetMode == WateringTargetMode::Mixed &&
         (volumeSteps == 0U || volumeSteps >= included)) return false;
@@ -181,8 +202,8 @@ bool WateringRecordCodec::fromSession(const WateringSessionSummary& summary,
     payload = {};
     for (ZoneWateringRecord& zone : payload.zones)
         zone.result = ZoneWateringResult::NotStarted;
-    if (summary.purpose != WateringPurpose::Normal || summary.zoneCount == 0U ||
-        summary.zoneCount > summary.zones.size()) return false;
+    if (summary.purpose != WateringPurpose::Normal || summary.zoneCount > summary.zones.size()) return false;
+    if (summary.zoneCount == 0U && summary.result != WateringResult::StartFailed) return false;
     payload.source = summary.source;
     payload.targetMode = summary.targetMode;
     payload.planId = summary.planId;

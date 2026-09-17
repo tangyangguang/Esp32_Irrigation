@@ -72,6 +72,7 @@ bool WateringRecordStore::appendCompleted(
             return false;
         WateringRecordPayload payload{};
         if (!WateringRecordCodec::fromSession(summary, payload)) return false;
+        payload.startedEpoch = startedEpoch_;
         const uint32_t durationSec = now.uptimeSec - startTime.uptimeSec;
         irrigation_fact::putDuration(pendingFact_, durationSec);
         if (!WateringRecordCodec::encode(
@@ -91,6 +92,28 @@ bool WateringRecordStore::appendCompleted(
     // Caller keeps the finished task until the marker is cleared. A failed
     // cleanup never causes a second append, including after a reboot.
     return cancelPreparedTask();
+}
+
+bool WateringRecordStore::appendStartRejected(
+    const WateringSessionSummary& summary,
+    uint32_t startedEpoch) {
+    if (summary.result != WateringResult::StartFailed ||
+        stream_.state() != iot_device::StreamState::Ready) {
+        return false;
+    }
+    WateringRecordPayload payload{};
+    if (!WateringRecordCodec::fromSession(summary, payload)) return false;
+    payload.startedEpoch = startedEpoch;
+    uint8_t fact[kFactBytes]{};
+    irrigation_fact::putDuration(fact, 0U);
+    if (!WateringRecordCodec::encode(payload, fact + 4, WateringRecordCodec::kPayloadSize))
+        return false;
+    const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+    const uint64_t observedAtMs =
+        now.synced ? uint64_t(now.epochSec) * 1000ULL
+                   : iot_device::RecordStream::UnknownTime;
+    return stream_.append(IrrigationPlatform::FactWateringFailed, observedAtMs,
+                          fact, sizeof(fact));
 }
 
 bool WateringRecordStore::readLatest(uint32_t offset,

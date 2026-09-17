@@ -136,6 +136,10 @@ enum class WateringResult : uint8_t {
     Stopped,
     Failed,
     Incomplete,
+    // The scheduler reached a plan start point but the task was never
+    // accepted (busy, not ready or invalid). No physical watering happened;
+    // all zones stay not-started and duration/water are zero.
+    StartFailed,
 };
 
 enum class WateringStopReason : uint8_t {
@@ -151,6 +155,13 @@ enum class WateringStopReason : uint8_t {
     MaintenanceInterrupted,
     TargetVolumeTimeout,
     RebootInterrupted,
+    // Schedule start was rejected before any watering began (StartFailed).
+    BusyManualWatering,
+    BusyAutomaticWatering,
+    BusyZoneFlowLearning,
+    PreviousResultPending,
+    ControllerNotReady,
+    InvalidRequest,
 };
 
 enum class WateringStartResult : uint8_t {

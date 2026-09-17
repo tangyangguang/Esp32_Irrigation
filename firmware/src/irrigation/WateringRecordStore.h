@@ -72,6 +72,10 @@ public:
     bool captureStartTime(Esp32BaseRecordStore::RecordStartTime& startTime) const;
     bool appendCompleted(const Esp32BaseRecordStore::RecordStartTime& startTime,
                          const WateringSessionSummary& summary);
+    // A scheduled plan that was rejected before any watering started. No
+    // task marker is involved; records as a zero-duration failed fact.
+    bool appendStartRejected(const WateringSessionSummary& summary,
+                             uint32_t startedEpoch);
     bool readLatest(uint32_t offset,
                     uint32_t limit,
                     ReadCallback callback,
