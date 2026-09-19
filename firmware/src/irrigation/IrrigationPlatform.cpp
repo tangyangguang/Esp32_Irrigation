@@ -47,6 +47,7 @@ constexpr uint32_t kStatePeriodMs = 24000;  // 30s freshness * 0.8
 
 char g_deviceId[40] = {};
 char g_bootId[64] = {};
+Esp32Diagnostics g_diagnostics;
 
 char g_topic[kTopicBytes];
 char g_will[kWillBytes];
@@ -843,17 +844,26 @@ void projectRuntime(const IrrigationApp& app, const WateringStatus& s) {
 }
 
 void projectDiagnostics() {
-    if (!Esp32Diagnostics::collect(g_stateDoc, g_bootId, g_session.ready()))
+    // 采样在 poll() 每轮主循环完成，这里只读取、发布，并在已入队后提交。
+    DiagnosticsFrameToken token;
+    const bool full = g_diagnostics.shouldSendFull(g_bootId);
+    if (full ? !g_diagnostics.readFull(g_stateDoc, g_bootId, token)
+             : !g_diagnostics.readDynamic(g_stateDoc, g_bootId, token)) {
         return;
-    g_stateDoc["bootNo"] = Esp32BaseSystem::bootCount();
-    const auto mqtt = Esp32BaseMqtt::diagnostics();
-    g_stateDoc["mqttAtt"] = mqtt.connectAttempts;
-    const auto status = Esp32BaseMqtt::status();
-    g_stateDoc["mqttErr"] = status.lastError == Esp32BaseMqtt::ERROR_NONE
-                               ? nullptr
-                               : Esp32BaseMqtt::errorName(status.lastError);
-    g_stateDoc["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
-    publishState("state.diagnostics");
+    }
+    if (full) {
+        g_stateDoc["bootNo"] = Esp32BaseSystem::bootCount();
+        const auto mqtt = Esp32BaseMqtt::diagnostics();
+        g_stateDoc["mqttAtt"] = mqtt.connectAttempts;
+        const auto status = Esp32BaseMqtt::status();
+        g_stateDoc["mqttErr"] = status.lastError == Esp32BaseMqtt::ERROR_NONE
+                                   ? nullptr
+                                   : Esp32BaseMqtt::errorName(status.lastError);
+        g_stateDoc["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
+    }
+    if (!publishState("state.diagnostics")) return;
+    if (full) g_diagnostics.commitFull(token);
+    else g_diagnostics.commitDynamic(token);
 }
 
 // Round-robin state publishing cadence.
@@ -966,6 +976,13 @@ void begin() {
 
 void poll() {
     if (!g_configured) return;
+    // 诊断窗口的现有采样点：每轮主循环推进一次，不新增定时器。
+    // 必须在 read->state->commit 之前，保证三者同轮连续、中间无 observe。
+    {
+        const bool connected = Esp32BaseWiFi::isConnected();
+        g_diagnostics.observe(g_bootId, static_cast<uint32_t>(ESP.getFreeHeap()),
+                              connected, connected ? Esp32BaseWiFi::rssi() : 0);
+    }
     g_inbox.begin();
     g_port.poll();
     g_inbox.poll(millis());
