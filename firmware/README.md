@@ -52,10 +52,10 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,548,975 B（87.5%，分区 1,769,472 B） |
-| 静态 RAM | 103,148 B（31.5%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,549,376 B |
-| 对侧 OTA 槽余量 | 220,096 B（约 215 KiB，12.44%） |
+| Flash（应用分区） | 1,548,583 B（87.5%，分区 1,769,472 B） |
+| 静态 RAM | 103,444 B（31.6%，327,680 B） |
+| OTA 镜像 firmware.bin | 1,548,992 B |
+| 对侧 OTA 槽余量 | 220,889 B（约 216 KiB，12.48%） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。2026-09-17 已对 192.168.2.155（esp32-irr-28562f795e60）Web OTA 烧录，启动日志确认 MQTT 经 TLS 连接 z84e9fd1.ala.cn-hangzhou.emqxsl.cn:8883 成功；连接后约 1 分钟进入 dev 平台发现候选（iot_home_dev.device_discovery_candidates，状态 online），待小程序确认绑定。小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
 
@@ -64,6 +64,15 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 - 定时暂停到期**自动恢复的那一分钟不触发计划**，与手动恢复、启动分钟、只读“下一次”查询及 `03` 设计第 183 行统一；恢复后分钟仅重建检查点，下一分钟正常调度。
 - 修复阈值内**跨午夜 RTC 回拨**时 `markProcessed` 可能用较早日期覆盖较新当天掩码的问题：回跨到已保存的前一天时合并进前一天掩码并保留较新当天掩码，避免重启后重复浇水；落入未跟踪的更早日期时安全跳过。
 - 覆盖：`test_pause_modes_skip_or_resume_without_immediate_manual_run` 更新，新增 `test_cross_midnight_rollback_never_clobbers_newer_day_mask`；两例在旧实现上均失败、修复后通过。native 82 项全过，主目标 `pio run -e esp32_irrigation_arduino3` 链接成功；纯逻辑改动，不改变配置 schema、NVS blob 结构与平台契约。
+
+## 平台适配对齐当前 SDK（2026-09-21）
+
+9/19 晚 iot-device `1641a92` 重构设备端 MQTT 契约后，本项目未同步，主目标编译中断：
+
+- `PlatformIdentity` 字段改为 environment/typeKey/protocolId/protocolMajor/modelKey/deviceId，按新顺序初始化（环境 test）；
+- 诊断上报从 full/dynamic 双帧（`shouldSendFull/readFull/readDynamic/commitFull/commitDynamic`，已删除）改为 SDK 单帧 `observe -> read -> 发布 -> commit`，型号计数器 bootNo/mqttAtt/mqttErr/wdt 并入同一帧；采样仍在 `poll()` 现有采样点，不新增定时器。
+
+`pio run -e esp32_irrigation_arduino3` 通过（Flash/IRAM 见上表）。本次只保证编译，未烧录；真机 TLS/MQTT、物理水路仍需另行授权验证。
 
 ## 存储与平台契约
 

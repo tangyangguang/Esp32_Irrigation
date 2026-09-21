@@ -82,7 +82,9 @@ SessionIo g_io = {randomBytes, utcNow, Esp32MqttPort::publish,
                   Esp32MqttPort::reconnect, nullptr};
 
 ConnectionSession g_session(
-    PlatformIdentity{"irrigation-controller", "irrigation-controller", 1,
+    PlatformIdentity{"test", "irrigation-controller",
+                     "irrigation-controller",
+                     static_cast<uint32_t>(1),
                      "irrigation-controller-6-zone", g_deviceId},
     SessionBuffers{g_topic, g_topic, g_topic, sizeof(g_topic), g_will,
                    sizeof(g_will), g_output, sizeof(g_output)},
@@ -844,26 +846,23 @@ void projectRuntime(const IrrigationApp& app, const WateringStatus& s) {
 }
 
 void projectDiagnostics() {
-    // 采样在 poll() 每轮主循环完成，这里只读取、发布，并在已入队后提交。
+    // 采样在 poll() 每轮主循环完成（observe），这里同轮连续 read -> 发布 -> commit。
+    // 单帧接口：每次 read 都产出完整公共快照，应用追加型号专属字段。
     DiagnosticsFrameToken token;
-    const bool full = g_diagnostics.shouldSendFull(g_bootId);
-    if (full ? !g_diagnostics.readFull(g_stateDoc, g_bootId, token)
-             : !g_diagnostics.readDynamic(g_stateDoc, g_bootId, token)) {
-        return;
-    }
-    if (full) {
-        g_stateDoc["bootNo"] = Esp32BaseSystem::bootCount();
-        const auto mqtt = Esp32BaseMqtt::diagnostics();
-        g_stateDoc["mqttAtt"] = mqtt.connectAttempts;
-        const auto status = Esp32BaseMqtt::status();
-        g_stateDoc["mqttErr"] = status.lastError == Esp32BaseMqtt::ERROR_NONE
-                                   ? nullptr
-                                   : Esp32BaseMqtt::errorName(status.lastError);
-        g_stateDoc["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
-    }
+    if (!g_diagnostics.read(g_stateDoc, g_bootId, token)) return;
+
+    g_stateDoc["bootNo"] = Esp32BaseSystem::bootCount();
+    const auto mqtt = Esp32BaseMqtt::diagnostics();
+    g_stateDoc["mqttAtt"] = mqtt.connectAttempts;
+    const auto status = Esp32BaseMqtt::status();
+    g_stateDoc["mqttErr"] = status.lastError == Esp32BaseMqtt::ERROR_NONE
+                               ? nullptr
+                               : Esp32BaseMqtt::errorName(status.lastError);
+    g_stateDoc["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
+
+    // 只有成功进入发送路径后才 commit，发布失败不丢窗口基线。
     if (!publishState("state.diagnostics")) return;
-    if (full) g_diagnostics.commitFull(token);
-    else g_diagnostics.commitDynamic(token);
+    g_diagnostics.commit(token);
 }
 
 // Round-robin state publishing cadence.
