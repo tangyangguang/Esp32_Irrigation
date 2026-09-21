@@ -52,8 +52,8 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,548,583 B（87.5%，分区 1,769,472 B） |
-| 静态 RAM | 103,444 B（31.6%，327,680 B） |
+| Flash（应用分区） | 1,550,639 B（87.6%，分区 1,769,472 B） |
+| 静态 RAM | 103,420 B（31.6%，327,680 B） |
 | OTA 镜像 firmware.bin | 1,548,992 B |
 | 对侧 OTA 槽余量 | 220,889 B（约 216 KiB，12.48%） |
 

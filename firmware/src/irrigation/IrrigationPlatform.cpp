@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include <PlatformPublishPolicy.h>
 #include <ports/Esp32MqttPort.h>
 #include <ports/Esp32RecordStorage.h>
 #include <ports/Esp32Diagnostics.h>
@@ -42,8 +43,6 @@ constexpr size_t kWateringScratchBytes =
 constexpr size_t kAuditScratchBytes =
     RecordStream::HeaderBytes + 20;  // IR/v1 header + audit payload
 
-constexpr uint32_t kDiagnosticsPeriodMs = 60000;
-constexpr uint32_t kStatePeriodMs = 24000;  // 30s freshness * 0.8
 
 char g_deviceId[40] = {};
 char g_bootId[64] = {};
@@ -102,6 +101,13 @@ ModelPublisher g_publisher(
     g_topic, sizeof(g_topic), g_output, sizeof(g_output),
     IrrigationPlatformRecords::codecs(),
     IrrigationPlatformRecords::codecCount());
+
+// 统一发布策略：连接后逐帧门控发布，失败自动重试，避免一轮内联发挤爆 outbox。
+// 定义在此供下方匿名命名空间内的发布函数与公共 begin()/poll() 共用。
+PlatformPublishPolicy g_publishPolicy(
+    model_irrigation_controller_6_zone::contract);
+bool g_policyConnected = false;
+
 
 // ---- commands -------------------------------------------------------------
 
@@ -586,13 +592,6 @@ const char* activityPhase(WateringState state) {
     }
 }
 
-uint64_t g_stateSeq = 0;
-char g_stateConnection[37] = {};
-
-bool publishState(const char* key) {
-    return g_publisher.state(key, g_stateSeq++, g_stateDoc);
-}
-
 void projectOverview(const IrrigationApp& app, const WateringStatus& status) {
     g_stateDoc.clear();
     g_stateDoc["activity"] = status.active ? "active" : "idle";
@@ -604,7 +603,6 @@ void projectOverview(const IrrigationApp& app, const WateringStatus& status) {
         app.checkpointStorageFault() || app.schedulerTimeState() ==
                                             WateringScheduler::TimeState::RtcRollback;
     g_stateDoc["health"] = critical ? "critical" : warning ? "warning" : "normal";
-    publishState("state.overview");
 }
 
 void projectZones(const IrrigationConfig& config) {
@@ -616,7 +614,6 @@ void projectZones(const IrrigationConfig& config) {
         item["zoneId"] = zone.id;
         item["name"] = zone.name.data();
     }
-    publishState("state.zones");
 }
 
 void projectZoneMaintenance(const IrrigationConfig& config) {
@@ -634,14 +631,12 @@ void projectZoneMaintenance(const IrrigationConfig& config) {
         }
         item["baselineFlowMlPerMinute"] = nullptr;
     }
-    publishState("state.zone-maintenance");
 }
 
 void projectCalibration(const IrrigationConfig& config) {
     g_stateDoc.clear();
     g_stateDoc["coefficientPulsesPerLiterX100"] =
         config.flowMeter.pulsesPerLiterX100;
-    publishState("state.calibration");
 }
 
 void projectSystemParameters(const IrrigationConfig& config) {
@@ -687,7 +682,6 @@ void projectSystemParameters(const IrrigationConfig& config) {
     system["rtcRollbackThresholdMinutes"] =
         config.timeSafety.rtcRollbackThresholdMinutes;
     system["aliveCheckpointHours"] = config.timeSafety.aliveCheckpointHours;
-    publishState("state.system-parameters");
 }
 
 void projectPlans(const IrrigationConfig& config) {
@@ -715,7 +709,6 @@ void projectPlans(const IrrigationConfig& config) {
             z["durationMinutes"] = minutes;
         }
     }
-    publishState("parameter.plan");
 }
 
 void projectAutomatic(const IrrigationApp& app) {
@@ -735,7 +728,6 @@ void projectAutomatic(const IrrigationApp& app) {
             g_stateDoc["resumeAtEpoch"] = nullptr;
             break;
     }
-    publishState("parameter.automatic-watering");
 }
 
 void projectRuntime(const IrrigationApp& app, const WateringStatus& s) {
@@ -841,15 +833,12 @@ void projectRuntime(const IrrigationApp& app, const WateringStatus& s) {
     if (app.schedulerStorageFault()) faults.add("scheduler_storage");
     if (app.recordStorageFault()) faults.add("record_storage");
     if (app.eventStorageFault()) faults.add("event_storage");
-
-    publishState("state.runtime");
 }
 
-void projectDiagnostics() {
-    // 采样在 poll() 每轮主循环完成（observe），这里同轮连续 read -> 发布 -> commit。
-    // 单帧接口：每次 read 都产出完整公共快照，应用追加型号专属字段。
-    DiagnosticsFrameToken token;
-    if (!g_diagnostics.read(g_stateDoc, g_bootId, token)) return;
+// Build the diagnostics value into g_stateDoc. Returns false if the read
+// cannot produce a frame; the token is returned for commit-after-queue.
+bool buildDiagnostics(DiagnosticsFrameToken& token) {
+    if (!g_diagnostics.read(g_stateDoc, g_bootId, token)) return false;
 
     g_stateDoc["bootNo"] = Esp32BaseSystem::bootCount();
     const auto mqtt = Esp32BaseMqtt::diagnostics();
@@ -859,54 +848,100 @@ void projectDiagnostics() {
                                ? nullptr
                                : Esp32BaseMqtt::errorName(status.lastError);
     g_stateDoc["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
-
-    // 只有成功进入发送路径后才 commit，发布失败不丢窗口基线。
-    if (!publishState("state.diagnostics")) return;
-    g_diagnostics.commit(token);
+    return true;
 }
 
-// Round-robin state publishing cadence.
-uint8_t g_stateRound = 0;
-uint32_t g_stateAt[12] = {};
-uint32_t g_diagnosticsAt = 0;
-
-void publishStates(uint32_t nowMs, bool newConnection) {
+bool buildSnapshot(const char* key) {
     IrrigationApp& app = IrrigationApp::instance();
     const IrrigationConfig* config = app.configuration();
     const WateringStatus status = app.wateringStatus();
 
-    if (newConnection) {
-        // Full snapshot immediately on a new connection cycle.
+    if (!std::strcmp(key, "state.overview")) {
         projectOverview(app, status);
+        return true;
+    }
+    if (!std::strcmp(key, "state.runtime")) {
         projectRuntime(app, status);
-        if (config) {
-            projectZones(*config);
-            projectZoneMaintenance(*config);
-            projectCalibration(*config);
-            projectSystemParameters(*config);
-            projectPlans(*config);
-            projectAutomatic(app);
-        }
-        projectDiagnostics();
-        g_diagnosticsAt = nowMs;
-        return;
+        return true;
     }
-
-    projectOverview(app, status);
-    projectRuntime(app, status);
-    if (config && (status.active || (nowMs - g_stateAt[0]) >= kStatePeriodMs)) {
-        static const uint8_t kParameterKeys[] = {0, 1, 2, 3, 4, 5};
-        (void)kParameterKeys;
-        projectPlans(*config);
-        projectAutomatic(app);
-    }
-    if (config && (nowMs - g_stateAt[1]) >= kStatePeriodMs) {
+    if (!std::strcmp(key, "state.diagnostics")) return true;  // token handled by caller
+    if (!config) return false;  // config-backed frames need evidence
+    if (!std::strcmp(key, "state.zones")) {
         projectZones(*config);
-        g_stateAt[1] = nowMs;
+        return true;
     }
-    if (nowMs - g_diagnosticsAt >= kDiagnosticsPeriodMs) {
-        projectDiagnostics();
-        g_diagnosticsAt = nowMs;
+    if (!std::strcmp(key, "state.zone-maintenance")) {
+        projectZoneMaintenance(*config);
+        return true;
+    }
+    if (!std::strcmp(key, "state.calibration")) {
+        projectCalibration(*config);
+        return true;
+    }
+    if (!std::strcmp(key, "state.system-parameters")) {
+        projectSystemParameters(*config);
+        return true;
+    }
+    if (!std::strcmp(key, "parameter.plan")) {
+        projectPlans(*config);
+        return true;
+    }
+    if (!std::strcmp(key, "parameter.automatic-watering")) {
+        projectAutomatic(app);
+        return true;
+    }
+    return false;
+}
+
+// Publish one due snapshot frame. Uses the policy's per-connection sequence
+// and is retried automatically on failure.
+bool publishDueSnapshot(uint32_t nowMs) {
+    const auto& contract = model_irrigation_controller_6_zone::contract;
+    for (size_t index = 0; index < contract.capabilityCount; ++index) {
+        if (!g_publishPolicy.stateDue(index, nowMs)) continue;
+        const char* key = contract.capabilities[index].key;
+
+        DiagnosticsFrameToken diagToken;
+        const bool isDiagnostics = !std::strcmp(key, "state.diagnostics");
+        if (isDiagnostics) {
+            if (!buildDiagnostics(diagToken)) {
+                g_publishPolicy.stateQueueFailed(nowMs);
+                return false;
+            }
+        } else if (!buildSnapshot(key)) {
+            g_publishPolicy.stateQueueFailed(nowMs);
+            return false;
+        }
+
+        if (!g_publisher.state(key, g_publishPolicy.stateSequence(), g_stateDoc)) {
+            g_publishPolicy.stateQueueFailed(nowMs);
+            return false;
+        }
+        if (!g_publishPolicy.stateQueued(index, nowMs)) return false;
+        if (isDiagnostics) g_diagnostics.commit(diagToken);  // only after queued
+        return true;
+    }
+    return false;
+}
+
+// Round-robin state publishing cadence.
+void publishStates(uint32_t nowMs) {
+    // Re-mark frequently-changing snapshots dirty; the policy merges/throttles.
+    g_publishPolicy.markStateDirty("state.runtime");
+    g_publishPolicy.markOverviewDirty();
+    g_publishPolicy.markStateDirty("parameter.plan");
+    g_publishPolicy.markStateDirty("parameter.automatic-watering");
+    if (g_diagnostics.networkChanged(g_bootId))
+        g_publishPolicy.markDiagnosticsDirty();
+
+    g_publishPolicy.poll(nowMs);
+
+    // Drain due frames with a small burst cap so a single loop never floods the
+    // transport. When the outbox/inflight window is full, publishDueSnapshot
+    // reports failure and the policy blocks retries briefly; remaining frames
+    // go on later loops instead of being dropped.
+    for (uint8_t sent = 0; sent < 4; ++sent) {
+        if (!publishDueSnapshot(nowMs)) break;
     }
 }
 
@@ -971,6 +1006,9 @@ void begin() {
                            ESP32BASE_MQTT_MAX_PAYLOAD_BYTES)) {
         ESP32BASE_LOG_E("irrigation", "platform_publisher_begin_failed");
     }
+    if (!g_publishPolicy.begin()) {
+        ESP32BASE_LOG_E("irrigation", "platform_publish_policy_begin_failed");
+    }
 }
 
 void poll() {
@@ -997,17 +1035,21 @@ void poll() {
     if (g_wateringStore) g_wateringStore->poll(publish, publishCtx);
     if (g_auditStore) g_auditStore->poll(publish, publishCtx);
 
-    if (!g_session.ready() || g_stopping) return;
-
     const uint32_t now = millis();
-    const bool newConnection =
-        std::strncmp(g_stateConnection, g_session.connectionId(), 37) != 0;
-    if (newConnection) {
-        std::strncpy(g_stateConnection, g_session.connectionId(), 36);
-        g_stateConnection[36] = '\0';
-        g_stateSeq = 0;
+    if (!g_session.ready() || g_stopping) {
+        // Drop the policy when offline so a reconnect re-marks all snapshots dirty.
+        if (g_policyConnected) {
+            g_publishPolicy.disconnected();
+            g_policyConnected = false;
+        }
+        return;
     }
-    publishStates(now, newConnection);
+
+    if (!g_policyConnected) {
+        g_publishPolicy.connected(now);  // marks every state/parameter snapshot dirty
+        g_policyConnected = true;
+    }
+    publishStates(now);
 }
 
 }  // namespace IrrigationPlatform
