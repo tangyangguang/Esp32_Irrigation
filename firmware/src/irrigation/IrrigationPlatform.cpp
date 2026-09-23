@@ -975,6 +975,22 @@ void markIfChanged(const char* key, uint32_t& last, bool& have) {
     }
 }
 
+// Runtime carries time.epoch (the wall clock), which changes every second by
+// nature; that is clock flow, not a business change. Exclude it from the
+// change signature so a parked device does not republish runtime every loop.
+void markRuntimeIfChanged(uint32_t& last, bool& have) {
+    JsonVariant timeValue = g_stateDoc["time"];
+    long long epoch = 0;
+    bool hadEpoch = false;
+    if (!timeValue.isNull() && timeValue.containsKey("epoch")) {
+        if (!timeValue["epoch"].isNull()) { epoch = timeValue["epoch"].as<long long>(); hadEpoch = true; }
+        timeValue.remove("epoch");
+    }
+    markIfChanged("state.runtime", last, have);
+    // Doc is only for change detection; publishing re-projects, no restore needed.
+    (void)epoch; (void)hadEpoch;
+}
+
 // Detect real changes and mark only changed snapshots dirty. Periodic anchors
 // (overview every 600s, diagnostics every 3600s) are handled by policy.poll.
 void publishStates(uint32_t nowMs) {
@@ -987,7 +1003,7 @@ void publishStates(uint32_t nowMs) {
 
     g_stateDoc.clear();
     projectRuntime(app, status);
-    markIfChanged("state.runtime", g_signatures.runtime, g_signatures.haveRuntime);
+    markRuntimeIfChanged(g_signatures.runtime, g_signatures.haveRuntime);
 
     if (const IrrigationConfig* config = app.configuration()) {
         g_stateDoc.clear();
