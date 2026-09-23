@@ -102,6 +102,12 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 **未覆盖（需另行安排）**：手动浇水 start-manual/stop/single-output 最短 1 分钟且驱动物理水路，本轮未下发；物理水路、长稳、正式环境、上传发布均未验证。本次烧录后 UART 串口无文本输出（USB 串口复用/日志初始化问题），但不影响平台链路，作为后续设备侧待查项。
 
+## 修复浇水启动 prepareTask 鸡生蛋死锁（2026-09-23）
+
+换实验板（未接水路、可任意实验）后多次 start-manual 仍在 accepted 后立即 failed `controller_unavailable`，证明与旧板损坏/供电无关。根因：`WateringRecordStore::prepareTask()` 用 `isWritable()` 做前置判断，而 `isWritable()` 要求 `taskReady_==true`；`taskReady_` 只有 prepareTask 成功后才置位 → 全新启动时 prepareTask 第一行永久返回 false → `startWatering` 返回 NotReady → 设备回 controller_unavailable。纯逻辑死锁，两板均中招。
+
+修复：prepareTask 改为直接判断底层 `store_.isWritable()` 与 stream Ready，不再依赖 taskReady_。编译通过，native 84 项全过。烧录重验由用户执行。
+
 ## 存储与平台契约
 
 - 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。

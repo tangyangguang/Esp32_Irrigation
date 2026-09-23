@@ -204,7 +204,11 @@ bool WateringRecordStore::writeTaskMarker(const WateringTaskMarker& marker) {
 }
 
 bool WateringRecordStore::prepareTask(const WateringRequest& request) {
-    if (!isWritable() || taskReady_) return false;
+    // Do NOT gate on isWritable(): it requires taskReady_, which is only set
+    // by a successful prepareTask — that deadlocks every first start. Check
+    // the underlying store and stream readiness directly.
+    if (!store_.isWritable() || stream_.state() != iot_device::StreamState::Ready || taskReady_)
+        return false;
     Esp32BaseRecordStore::StoreStatus status{};
     if (!store_.readStatus(status) || !status.nextRecordId) return false;
     WateringTaskMarker marker{};
