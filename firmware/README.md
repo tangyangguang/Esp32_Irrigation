@@ -115,7 +115,16 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 2. 复位在 task marker / audit 写入瞬间发生，留下写一半的损坏 marker；
 3. `recoverTask()` 读到魔数/CRC 不符的 marker 直接返回 false 且无自愈 → businessReady 永久 false → 浇水 controller_unavailable。
 
-修复两处：`Wire.setTimeOut(50)` 从源头不再卡总线；`recoverTask()` 对损坏 marker 调用新增 `resetCorruptTask()` 写回空 inactive marker 并恢复 Ready（已损坏状态也能自愈），不再永久锁死。烧录验证：boot621 后连续 7 分钟 availability 零翻转（WDT 复位已消除），命令通道正常。编译通过，native 84 项全过。最后一次烧录重验浇水闭环由用户执行。
+修复两处：`Wire.setTimeOut(50)` 从源头不再卡总线；`recoverTask()` 对损坏 marker 调用新增 `resetCorruptTask()` 写回空 inactive marker 并恢复 Ready（已损坏状态也能自愈），不再永久锁死。编译通过，native 84 项全过。
+
+## 会话交接：MQTT 启动浇水仍未解决（2026-09-23）
+
+**已验证通过**：TLS 上线、发现候选、小程序绑定；首帧完整（overview 为第0帧，7个 state 全收齐、投影 complete）；空闲 90~120 秒零非retained帧（符合专题01）；参数命令 `parameter.automatic-watering` 经 MQTT accepted→succeeded（命令通道正常）；capability 集合与 definition 一致（符合专题02）。
+
+**未解决缺陷（下一会话起点）**：`operation.start-manual`（MQTT）设备 accepted 后立即 failed `controller_unavailable`，多次复现；但同时本地 `GET http://<设备IP>/irrigation/api/status`（basic auth admin/admin）显示 `ready:true`、全部 storageFault=false、且 **`zones:[]` 为空**。矛盾点说明 execute 路径独有检查失败。**首要排查假设**：配置中 zone 未启用/未配置（status.zones 为空），命令引用 zoneId=1 被判无效；下一会话先读 `parameter.plan`/zone 配置确认，勿再进入烧录循环。
+
+**实验环境事实**：当前实验板 device_id=`esp32-irr-8caab58ed1cc`（IP 漂移 .127/.155）；固定串口 `/dev/cu.usbserial-110`；该板必须手动 BOOT+EN 进下载模式，**烧录始终由用户执行**；MQTT 可用 `/tmp/mqttvenv`（已装 paho+pyserial，临时目录可能失效需重建），命令下发凭据用 `.env.local` 的 MQTT_DEVICE 账号，start-manual TTL 上限严格 30000ms。
+
 
 ## 存储与平台契约
 
