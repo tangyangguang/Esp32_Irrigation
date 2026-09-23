@@ -192,7 +192,8 @@ bool buildManualWateringRequest(const IrrigationConfig& config, WateringRequest&
                              ? (hasDuration ? WateringTargetMode::Mixed
                                             : WateringTargetMode::Volume)
                              : WateringTargetMode::Duration;
-    return WateringController::isValidRequest(request, config);
+    return WateringController::validateRequest(request, config) ==
+           WateringStartResult::Started;
 }
 
 bool manualRowParam(char* output, std::size_t outputSize, const char* prefix, uint8_t zoneId) {

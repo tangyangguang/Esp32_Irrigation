@@ -44,7 +44,8 @@ bool WateringRecordStore::begin() {
     definition.maximumStoreBytes = kMaximumStoreBytes;
     definition.minimumFileSystemFreeBytes = kMinimumFileSystemFreeBytes;
     pending_ = false;
-    taskReady_ = false;
+    ready_ = false;
+    taskPrepared_ = false;
     startedEpoch_ = 0;
     if (!store_.begin(definition)) {
         if (!IrrigationRecordStoreRecovery::resetStructuralStore(
@@ -53,7 +54,13 @@ bool WateringRecordStore::begin() {
         }
     }
     if (!stream_.begin(millis())) return false;
-    stream_.poll(millis(), nullptr, nullptr);  // bounded step toward Ready
+    // Drain local recovery before recoverTask(): one poll scans one record,
+    // and an active-marker restart must append the Incomplete fact, which is
+    // only allowed once the stream is Ready. Recovery never publishes; the
+    // stored record bound (kMaximumStoreBytes) makes this loop finite.
+    while (stream_.state() == iot_device::StreamState::Recovering)
+        stream_.poll(millis(), nullptr, nullptr);
+    if (stream_.state() != iot_device::StreamState::Ready) return false;
     return recoverTask();
 }
 
@@ -141,7 +148,10 @@ Esp32BaseRecordStore::RecordReadResult WateringRecordStore::readById(
     if (!decodeFact(scratch_, sizeof(scratch_), record))
         return Esp32BaseRecordStore::RecordReadResult::Corrupt;
     record.recordId = metadata.recordId;
-    record.timing = metadata.timing;
+    // Fact bytes are authoritative for epoch/duration; slot metadata only
+    // contributes boot/uptime provenance (its duration is always 0).
+    record.timing.completedBootId = metadata.timing.completedBootId;
+    record.timing.completedUptimeSec = metadata.timing.completedUptimeSec;
     return Esp32BaseRecordStore::RecordReadResult::Found;
 }
 
@@ -152,7 +162,7 @@ bool WateringRecordStore::readStatus(
 
 bool WateringRecordStore::isReady() const { return store_.isReady(); }
 bool WateringRecordStore::isWritable() const {
-    return taskReady_ && store_.isWritable() &&
+    return ready_ && store_.isWritable() &&
            stream_.state() == iot_device::StreamState::Ready;
 }
 Esp32BaseRecordStore::StoreState WateringRecordStore::state() const {
@@ -175,7 +185,10 @@ void WateringRecordStore::readAdapter(
         return;
     }
     record.recordId = view.recordId;
-    record.timing = view.timing;
+    // Merge provenance from slot metadata; epoch/duration stay from fact
+    // bytes, otherwise the metadata's zero duration masks the real value.
+    record.timing.completedBootId = view.timing.completedBootId;
+    record.timing.completedUptimeSec = view.timing.completedUptimeSec;
     context->callback(record, context->user);
 }
 
@@ -204,10 +217,11 @@ bool WateringRecordStore::writeTaskMarker(const WateringTaskMarker& marker) {
 }
 
 bool WateringRecordStore::prepareTask(const WateringRequest& request) {
-    // Do NOT gate on isWritable(): it requires taskReady_, which is only set
-    // by a successful prepareTask — that deadlocks every first start. Check
-    // the underlying store and stream readiness directly.
-    if (!store_.isWritable() || stream_.state() != iot_device::StreamState::Ready || taskReady_)
+    // Gate on subsystem readiness (ready_) and re-entry (taskPrepared_), not
+    // on isWritable(): mixing the two meanings into one flag previously
+    // deadlocked every start.
+    if (!ready_ || taskPrepared_ ||
+        !store_.isWritable() || stream_.state() != iot_device::StreamState::Ready)
         return false;
     Esp32BaseRecordStore::StoreStatus status{};
     if (!store_.readStatus(status) || !status.nextRecordId) return false;
@@ -229,21 +243,19 @@ bool WateringRecordStore::prepareTask(const WateringRequest& request) {
         target.targetDurationSec = request.steps[i].targetDurationSec;
         target.targetWaterMl = request.steps[i].targetWaterMl;
     }
-    if (!writeTaskMarker(marker)) {
-        taskReady_ = false;
-        return false;
-    }
-    taskReady_ = true;
+    // Marker write failure leaves subsystem readiness untouched; no task is
+    // prepared, so the caller may retry after recovery.
+    if (!writeTaskMarker(marker)) return false;
+    taskPrepared_ = true;
     startedEpoch_ = marker.startedEpoch;
     return true;
 }
 
 bool WateringRecordStore::cancelPreparedTask() {
-    if (!writeTaskMarker(WateringTaskMarker{})) {
-        taskReady_ = false;
-        return false;
-    }
-    taskReady_ = true;
+    // On write failure keep taskPrepared_: the old start marker is still
+    // sealed; the next begin()/recoverTask() adjudicates it again.
+    if (!writeTaskMarker(WateringTaskMarker{})) return false;
+    taskPrepared_ = false;
     startedEpoch_ = 0;
     return true;
 }
@@ -255,7 +267,8 @@ bool WateringRecordStore::resetCorruptTask() {
     const uint32_t crc = markerCrc(out, sizeof(empty));
     for (unsigned n = 0; n < 4; ++n) out[sizeof(empty) + n] = (crc >> (8 * n)) & 0xFF;
     if (!Esp32BaseConfig::setBlob("irrigation", "task", out, sizeof(out))) return false;
-    taskReady_ = true;
+    ready_ = true;
+    taskPrepared_ = false;
     return true;
 }
 
@@ -264,19 +277,21 @@ bool WateringRecordStore::recoverTask() {
     const auto read =
         Esp32BaseConfig::readBlob("irrigation", "task", bytes, sizeof(bytes));
     if (read == Esp32BaseConfig::BlobReadResult::NotFound) {
-        taskReady_ = true;
+        ready_ = true;
         return true;
     }
     WateringTaskMarker marker{};
     uint32_t storedCrc = 0;
     for (unsigned n = 0; n < 4; ++n)
         storedCrc |= uint32_t(bytes[sizeof(WateringTaskMarker) + n]) << (8 * n);
+    // A read error is a storage fault, never evidence of a corrupt marker:
+    // seal nothing and let the next startup retry.
+    if (read != Esp32BaseConfig::BlobReadResult::Found) return false;
     // A corrupted marker is almost always a write interrupted by a reset
     // (e.g. the former I2C-stall watchdog reset). Treat it like a stale
     // inactive task: seal an empty inactive marker and become ready instead
     // of refusing forever, which locked the device out of every watering.
-    if (read != Esp32BaseConfig::BlobReadResult::Found ||
-        bytes[0] != 'I' || bytes[1] != 'T' || bytes[2] != 2 || bytes[3] > 1 ||
+    if (bytes[0] != 'I' || bytes[1] != 'T' || bytes[2] != 2 || bytes[3] > 1 ||
         storedCrc != markerCrc(bytes, sizeof(WateringTaskMarker))) {
         return resetCorruptTask();
     }
@@ -285,9 +300,14 @@ bool WateringRecordStore::recoverTask() {
     Esp32BaseRecordStore::StoreStatus status{};
     if (!store_.readStatus(status)) return false;
     if (!marker.active) {
-        taskReady_ = true;
+        ready_ = true;
         return true;
     }
+    // An active marker objectively represents a prepared task: mark both
+    // states before adjudicating; cancel/fact paths clear taskPrepared_ only
+    // on success.
+    ready_ = true;
+    taskPrepared_ = true;
     if (memcmp(marker.generation, status.storageGeneration, 16))
         return cancelPreparedTask();
 

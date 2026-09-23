@@ -59,7 +59,6 @@ public:
     bool prepareTask(const WateringRequest& request);
     bool cancelPreparedTask();
     uint32_t taskStartedEpoch() const { return startedEpoch_; }
-    bool taskReady() const { return taskReady_; }
     bool resetTaskAfterFormat() { pending_ = false; return cancelPreparedTask(); }
     bool resetCorruptTask();
 
@@ -115,7 +114,10 @@ private:
     uint64_t pendingObservedAt_ = iot_device::RecordStream::UnknownTime;
     uint16_t pendingType_ = IrrigationPlatform::FactWateringCompleted;
     bool pending_ = false;
-    bool taskReady_ = false;
+    // ready_: subsystem recovery finished (feasibility gate). taskPrepared_:
+    // a start marker is currently sealed (re-entry guard for prepareTask).
+    bool ready_ = false;
+    bool taskPrepared_ = false;
     uint32_t startedEpoch_ = 0;
 
     bool recoverTask();

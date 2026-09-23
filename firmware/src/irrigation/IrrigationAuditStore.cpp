@@ -78,13 +78,22 @@ bool IrrigationAuditStore::appendFact(
 }
 
 bool IrrigationAuditStore::appendInstant(const IrrigationAuditPayload& payload) {
+    // One retry slot: a fact already waiting is frozen; a new fact cannot
+    // clobber it before flushPending() succeeds.
+    if (pending_) return false;
     if (stream_.state() != iot_device::StreamState::Ready) return false;
     const auto now = Esp32BaseTime::snapshot();
     Esp32BaseRecordStore::RecordTiming timing{};
     timing.completedEpochSec = now.synced ? now.epochSec : 0;
     timing.completedBootId = now.bootId;
     timing.completedUptimeSec = now.uptimeSec;
-    return appendFact(timing, payload);
+    if (appendFact(timing, payload)) return true;
+    // Store-side rejection (e.g. OTA write suspension) is retryable: keep
+    // the fact with its frozen timing and retry via flushPending().
+    pending_ = true;
+    pendingTiming_ = timing;
+    pendingPayload_ = payload;
+    return false;
 }
 
 bool IrrigationAuditStore::flushPending() {
@@ -118,7 +127,8 @@ Esp32BaseRecordStore::RecordReadResult IrrigationAuditStore::readById(
     if (!decodeFact(scratch_, sizeof(scratch_), record))
         return Esp32BaseRecordStore::RecordReadResult::Corrupt;
     record.recordId = metadata.recordId;
-    record.timing = metadata.timing;
+    record.timing.completedBootId = metadata.timing.completedBootId;
+    record.timing.completedUptimeSec = metadata.timing.completedUptimeSec;
     return Esp32BaseRecordStore::RecordReadResult::Found;
 }
 
@@ -143,7 +153,9 @@ void IrrigationAuditStore::readAdapter(
         return;
     }
     record.recordId = view.recordId;
-    record.timing = view.timing;
+    // Epoch stays from fact bytes; slot metadata only adds provenance.
+    record.timing.completedBootId = view.timing.completedBootId;
+    record.timing.completedUptimeSec = view.timing.completedUptimeSec;
     context->callback(record, context->user);
 }
 

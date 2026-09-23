@@ -30,9 +30,8 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     if (finishedSessionReady_) {
         return WateringStartResult::PreviousResultPending;
     }
-    if (!isValidRequest(request, config)) {
-        return WateringStartResult::InvalidRequest;
-    }
+    const WateringStartResult validation = validateRequest(request, config);
+    if (validation != WateringStartResult::Started) return validation;
 
     request_ = request;
     valveDrive_ = config.valveDrive;
@@ -362,42 +361,45 @@ FlowHistorySnapshot WateringController::flowHistory() const {
     return snapshot;
 }
 
-bool WateringController::isValidRequest(const WateringRequest& request, const IrrigationConfig& config) {
+WateringStartResult WateringController::validateRequest(
+    const WateringRequest& request, const IrrigationConfig& config) {
     if (request.stepCount == 0 || request.stepCount > request.steps.size()) {
-        return false;
+        return WateringStartResult::InvalidRequest;
     }
     if ((!isManualWateringSource(request.source) &&
          request.source != WateringSource::AutomaticPlan) ||
         (request.purpose != WateringPurpose::Normal &&
          request.purpose != WateringPurpose::ZoneFlowLearning)) {
-        return false;
+        return WateringStartResult::InvalidRequest;
     }
     const bool manualSource = isManualWateringSource(request.source);
     if ((manualSource && request.planId != 0) ||
         (!manualSource &&
          (request.planId == 0 || request.planId > kWateringPlanCount))) {
-        return false;
+        return WateringStartResult::InvalidRequest;
     }
     if (request.targetMode != WateringTargetMode::Duration &&
         request.targetMode != WateringTargetMode::Volume &&
-        request.targetMode != WateringTargetMode::Mixed) return false;
+        request.targetMode != WateringTargetMode::Mixed)
+        return WateringStartResult::InvalidRequest;
     if (request.targetMode == WateringTargetMode::Volume &&
         (!manualSource || request.steps[0].targetWaterMl == 0 || request.purpose != WateringPurpose::Normal || request.stepCount != 1)) {
-        return false;
+        return WateringStartResult::InvalidRequest;
     }
     if (request.targetMode == WateringTargetMode::Mixed &&
         (!manualSource ||
          request.purpose != WateringPurpose::Normal)) {
-        return false;
+        return WateringStartResult::InvalidRequest;
     }
 
     uint8_t volumeSteps = 0;
     uint8_t previousZoneId = 0;
     for (uint8_t index = 0; index < request.stepCount; ++index) {
         const WateringStep& step = request.steps[index];
+        // Structural validity first, so a malformed step is never reported
+        // as a disabled zone.
         if (!BoardPins::isValidZoneId(step.zoneId) ||
             step.zoneId <= previousZoneId ||
-            !config.zones[BoardPins::zoneIndex(step.zoneId)].enabled ||
             step.targetDurationSec == 0 ||
             (request.purpose == WateringPurpose::Normal &&
              step.targetDurationSec >
@@ -406,15 +408,19 @@ bool WateringController::isValidRequest(const WateringRequest& request, const Ir
              (step.targetWaterMl < 100U ||
               step.targetWaterMl >
                   static_cast<uint32_t>(config.runLimits.maximumSingleOutputLiters) * 1000U))) {
-            return false;
+            return WateringStartResult::InvalidRequest;
         }
+        if (!config.zones[BoardPins::zoneIndex(step.zoneId)].enabled)
+            return WateringStartResult::ZoneUnavailable;
         if (step.targetWaterMl != 0) ++volumeSteps;
         previousZoneId = step.zoneId;
     }
-    if (request.targetMode == WateringTargetMode::Duration && volumeSteps != 0) return false;
+    if (request.targetMode == WateringTargetMode::Duration && volumeSteps != 0)
+        return WateringStartResult::InvalidRequest;
     if (request.targetMode == WateringTargetMode::Mixed &&
-        (volumeSteps == 0 || volumeSteps >= request.stepCount)) return false;
-    return true;
+        (volumeSteps == 0 || volumeSteps >= request.stepCount))
+        return WateringStartResult::InvalidRequest;
+    return WateringStartResult::Started;
 }
 
 bool WateringController::beginCurrentZone(uint32_t nowMs) {

@@ -252,6 +252,8 @@ const char* startResultReason(WateringStartResult result) {
             return "controller_unavailable";
         case WateringStartResult::PreviousResultPending:
             return "busy";
+        case WateringStartResult::ZoneUnavailable:
+            return "zone_unavailable";
         case WateringStartResult::HardwareFailure:
             return "hardware_failure";
         default:

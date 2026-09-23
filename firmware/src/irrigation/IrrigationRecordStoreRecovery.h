@@ -2,6 +2,7 @@
 
 #include <Esp32Base.h>
 #include <stdio.h>
+#include <runtime/Esp32BaseFs.h>
 #include <runtime/Esp32BaseRecordStore.h>
 
 // Helpers used by business record stores to recover from on-flash layouts that

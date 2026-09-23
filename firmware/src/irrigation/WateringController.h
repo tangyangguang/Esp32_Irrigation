@@ -22,7 +22,10 @@ public:
     const WateringSessionSummary* finishedSession() const;
     void clearFinishedSession();
 
-    static bool isValidRequest(const WateringRequest& request, const IrrigationConfig& config);
+    // Returns Started when valid; otherwise InvalidRequest or
+    // ZoneUnavailable (a referenced zone exists but is disabled).
+    static WateringStartResult validateRequest(const WateringRequest& request,
+                                              const IrrigationConfig& config);
 private:
     bool beginCurrentZone(uint32_t nowMs);
     bool applyValveHoldIfDue(uint32_t nowMs);

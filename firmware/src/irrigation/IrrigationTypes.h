@@ -170,6 +170,7 @@ enum class WateringStartResult : uint8_t {
     Busy,
     PreviousResultPending,
     InvalidRequest,
+    ZoneUnavailable,
     HardwareFailure,
 };
 

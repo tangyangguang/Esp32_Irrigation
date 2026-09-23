@@ -225,7 +225,9 @@ WateringStartResult IrrigationApp::startWatering(const WateringRequest& request)
         if (!records.writable(IrrigationRecords::StoreKind::Watering))
             return WateringStartResult::NotReady;
     }
-    if (!WateringController::isValidRequest(request, *config)) return WateringStartResult::InvalidRequest;
+    const WateringStartResult validation =
+        WateringController::validateRequest(request, *config);
+    if (validation != WateringStartResult::Started) return validation;
     const bool normal = request.purpose == WateringPurpose::Normal;
     Esp32BaseRecordStore::RecordStartTime startTime{};
     const bool captured = wateringRecordStore_.captureStartTime(startTime);
