@@ -50,6 +50,8 @@ int main() {
     assert(watering.begin() && events.begin());
     assert(records.begin(watering, audit));
     assert(count(watering) == 0);
+    // Stable recovery: subsystem is writable while no task is prepared.
+    assert(watering.isWritable());
     WateringRequest request{}; request.stepCount = 1; request.steps[0] = {1, 60, 0};
     WateringSessionSummary summary{}; summary.source = WateringSource::LocalWeb;
     summary.purpose = WateringPurpose::Normal; summary.result = WateringResult::Completed;
@@ -59,6 +61,8 @@ int main() {
     summary.zones[0].pulseCount = 100;
     Esp32BaseRecordStore::RecordStartTime start{};
     assert(watering.prepareTask(request) && watering.captureStartTime(start));
+    // A sealed start marker blocks a second prepare until cancelled.
+    assert(!watering.prepareTask(request));
     g_time.uptimeSec += 60;
     assert(watering.appendCompleted(start, summary));
     const auto first = latest(watering);
@@ -103,8 +107,20 @@ int main() {
     Esp32BaseRecordStore::StoreStatus state{}; assert(watering.readStatus(state));
     WateringRecordPayload payload{}; assert(WateringRecordCodec::fromSession(summary, payload));
     payload.startedEpoch = 1800000000;
+    // Fill via the public RecordStream API with properly encoded fact bytes.
+    uint8_t fillFact[WateringRecordStore::kFactBytes]{};
+    // Model acknowledged delivery: after each append, release through the
+    // newest slot so PreserveUnreleased permits rotation of oldest history.
+    Esp32BaseRecordStore::StoreStatus after{};
     for (uint32_t i = 0; i < state.capacity + 2; ++i) {
-        payload.taskId = 1000 + i; assert(watering.appendPayload(payload));
+        payload.taskId = 1000 + i;
+        assert(WateringRecordCodec::encode(
+            payload, fillFact + 4, WateringRecordCodec::kPayloadSize));
+        assert(watering.recordStream().append(
+            IrrigationPlatform::FactWateringCompleted,
+            iot_device::RecordStream::UnknownTime, fillFact, sizeof(fillFact)));
+        assert(watering.readStatus(after));
+        assert(watering.baseStore().releaseThrough(after.newestRecordId));
     }
     assert(watering.readStatus(state) && state.writable && state.oldestRecordId > 1);
     daily = WateringHistory::summarize(watering, day, WateringStatus{}, 0);

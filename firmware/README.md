@@ -52,12 +52,12 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,550,639 B（87.6%，分区 1,769,472 B） |
-| 静态 RAM | 103,420 B（31.6%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,548,992 B |
-| 对侧 OTA 槽余量 | 220,889 B（约 216 KiB，12.48%） |
+| Flash（应用分区） | 1,553,536 B（87.8%，分区 1,769,472 B） |
+| 静态 RAM（DRAM data+bss） | 109,620 B（33.5%，327,680 B）；IRAM 91,491 B |
+| OTA 镜像 firmware.bin | 1,553,536 B |
+| 对侧 OTA 槽余量 | 215,936 B（约 211 KiB，12.20%） |
 
-运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。2026-09-17 已对 192.168.2.155（esp32-irr-28562f795e60）Web OTA 烧录，启动日志确认 MQTT 经 TLS 连接 z84e9fd1.ala.cn-hangzhou.emqxsl.cn:8883 成功；连接后约 1 分钟进入 dev 平台发现候选（iot_home_dev.device_discovery_candidates，状态 online），待小程序确认绑定。小程序联调、物理水路动作、长稳与断电验证尚未在本机检查范围内，需另行授权。
+运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
 
 ## 调度边界修复（2026-09-17）
 
@@ -117,7 +117,27 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 
 修复两处：`Wire.setTimeOut(50)` 从源头不再卡总线；`recoverTask()` 对损坏 marker 调用新增 `resetCorruptTask()` 写回空 inactive marker 并恢复 Ready（已损坏状态也能自愈），不再永久锁死。编译通过，native 84 项全过。
 
+## 记录存储准入与 OTA 挂起语义修复（2026-09-23）
+
+独立子代理评审确认根因后修复四类缺陷，均为状态/语义补全，非补丁：
+
+1. **准入死锁（主阻塞）**：`WateringRecordStore` 单一布尔 `taskReady_` 被赋予两个冲突语义——恢复成功后恒为 true（`isWritable()` 要求 true），而 `prepareTask()` 又要求 false，`IrrigationApp::startWatering()` 同一调用内数学上不可能同时满足，故任何浇水都返回 `controller_unavailable`。拆分为 `ready_`（子系统就绪）+ `taskPrepared_`（在途任务防重入）；写 NVS 失败不清 prepared；删除零调用旧 `taskReady()`。
+2. **历史时长读成 0**：readAdapter/readById 曾用槽元数据整体覆盖 fact 解码 timing，而槽元数据 duration 恒为 0。改为合并语义：fact 字节权威（epoch/duration），元数据仅贡献 boot/uptime。浇水/审计两个 Store 同修。
+3. **有积压时重启永久初始化失败**：RecordStream 恢复时每轮 poll 只扫描一条记录，`begin()` 单次 poll 后立即 `recoverTask()`，active marker 需要 append 补 Incomplete fact，而 append 要求 Ready。改为 begin 中有界 drain 到 Ready 再恢复（本地扫描不发布，受 160KiB 存储上界约束）。
+4. **OTA 写挂起毒化记录流**：临时写挂起原先映射为存储故障、RecordStream 永久进 Fault。分层对齐语义：Esp32Base 新增 `StoreError::WriteSuspended`（临时忙、不改 Ready）；SDK port `Esp32RecordStorage` 映射为可重试 `Busy`；灌溉审计 Store 失败进 pending 冻结缓存（已缓存不被覆盖），挂起解除后 `flushPending` 重试。
+5. **契约错误码**：`validateRequest` 替代 `isValidRequest`，引用禁用 zone 精确返回 `zone_unavailable`（结构非法仍为 `invalid_request`）。
+
+验证：native **84 项**全过；三个主机脚本（executor/storage/hardware）、Web 资产检查全过；主目标 TLS 工具链链接成功（基线见上表）。主机测试脚本补齐了自仓库整合后缺失的 SDK/ArduinoJson include 与链接源。
+
+## 真机验证（2026-09-23）
+
+烧录新固件后经 MQTT 实测：TLS 上线、首帧完整（从 `state.zone-maintenance` 快照正确取得 revision=3）；`parameter.zone` 启用一路 accepted→succeeded；**`operation.start-manual` 首次真正进入 running（此前永久卡 controller_unavailable），核心阻塞确认解除**。板子未接水路，约 19 秒后按 `flowStartTimeoutSec=20` 的硬安全保护正确终态 failed（`flowEstablished=false`，泵无流量证据不得空转）——这是预期保护行为，非缺陷。
+
+**未覆盖**：浇水完整成功路径需要真实或模拟水路（流量计脉冲输入 GPIO17，RISING 中断），后续现场或信号发生器喂脉冲再验；物理水路、长稳、正式环境未验证。
+
 ## 会话交接：MQTT 启动浇水仍未解决（2026-09-23）
+
+> **已于同日解决**：该 `controller_unavailable` 根因即上文「记录存储准入与 OTA 挂起语义修复」中的准入死锁，修复后 start-manual 已能进入 running。本章保留原始排查过程作为历史证据。
 
 **已验证通过**：TLS 上线、发现候选、小程序绑定；首帧完整（overview 为第0帧，7个 state 全收齐、投影 complete）；空闲 90~120 秒零非retained帧（符合专题01）；参数命令 `parameter.automatic-watering` 经 MQTT accepted→succeeded（命令通道正常）；capability 集合与 definition 一致（符合专题02）。
 

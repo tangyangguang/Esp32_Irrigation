@@ -794,7 +794,9 @@ void test_invalid_request_and_hardware_failure_are_rejected_safely() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
     IrrigationConfig config = IrrigationConfigRules::createDefault();
-    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::InvalidRequest),
+    // Zone 3 is a valid slot but disabled in the default config: a precise
+    // ZoneUnavailable rather than a generic InvalidRequest.
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::ZoneUnavailable),
                       static_cast<int>(controller.start(requestFor(3, 60), config, 0)));
 
     WateringRequest invalidPurpose = requestFor(1, 60);
@@ -921,7 +923,8 @@ void test_mixed_duration_and_volume_steps_run_in_order() {
     request.stepCount = 2;
     request.steps[0] = {1, 1, 0};       // zone 1: one minute-free 1 s duration step
     request.steps[1] = {2, 60, 400};    // zone 2: target 400 ml, 60 s safety window
-    TEST_ASSERT_TRUE(WateringController::isValidRequest(request, config));
+    TEST_ASSERT_EQUAL(WateringStartResult::Started,
+                      WateringController::validateRequest(request, config));
 
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
                       static_cast<int>(controller.start(request, config, 0)));
@@ -958,16 +961,19 @@ void test_mixed_request_validation_requires_both_step_kinds() {
     durationOnly.stepCount = 2;
     durationOnly.steps[0] = {1, 60, 0};
     durationOnly.steps[1] = {2, 60, 0};
-    TEST_ASSERT_FALSE(WateringController::isValidRequest(durationOnly, config));
+    TEST_ASSERT_EQUAL(WateringStartResult::InvalidRequest,
+                      WateringController::validateRequest(durationOnly, config));
 
     WateringRequest volumeOnly = durationOnly;
     volumeOnly.steps[0] = {1, 60, 400};
     volumeOnly.steps[1] = {2, 60, 400};
-    TEST_ASSERT_FALSE(WateringController::isValidRequest(volumeOnly, config));
+    TEST_ASSERT_EQUAL(WateringStartResult::InvalidRequest,
+                      WateringController::validateRequest(volumeOnly, config));
 
     WateringRequest mixed = durationOnly;
     mixed.steps[1] = {2, 60, 400};
-    TEST_ASSERT_TRUE(WateringController::isValidRequest(mixed, config));
+    TEST_ASSERT_EQUAL(WateringStartResult::Started,
+                      WateringController::validateRequest(mixed, config));
 }
 
 }  // namespace

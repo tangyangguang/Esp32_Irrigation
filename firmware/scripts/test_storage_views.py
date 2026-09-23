@@ -6,7 +6,10 @@ import subprocess
 import tempfile
 
 firmware = Path(__file__).resolve().parents[1]
-base = firmware.parents[2] / 'foundation/Esp32Base'
+root = firmware.parents[2]
+base = root / 'foundation/Esp32Base'
+sdk = root / 'platform/iot-device/sdk/src'
+arduino_json = firmware / '.pio/libdeps/native/ArduinoJson/src'
 unity = base / '.pio/libdeps/arduino2/native_record_store_harness/Unity/src'
 harness = base / 'test/test_native_record_store_harness'
 with tempfile.TemporaryDirectory(prefix='irrigation-store-') as directory:
@@ -17,10 +20,11 @@ with tempfile.TemporaryDirectory(prefix='irrigation-store-') as directory:
         '-DESP32BASE_EB_FILELOG_DEFAULT_MODE=0', '-DESP32BASE_ENABLE_FS=1', '-DESP32BASE_ENABLE_FILELOG=0', '-DESP32BASE_ENABLE_RECORD_STORE=1',
         '-DESP32BASE_ENABLE_CONDITIONS=1', '-DESP32BASE_ENABLE_TIME=1',
         '-DIRRIGATION_BASE_HARNESS="' + str(harness / 'test_main.cpp') + '"']
-    for include in [firmware / 'test/host_storage/stubs', firmware / 'src/irrigation', base / 'src', harness / 'stubs', unity]:
+    for include in [firmware / 'test/host_storage/stubs', firmware / 'src/irrigation', sdk, arduino_json, base / 'src', harness / 'stubs', unity]:
         command += ['-I', str(include)]
     command += [str(firmware / 'test/host_storage/main.cpp')]
-    command += [str(firmware / 'src/irrigation' / source) for source in ['WateringRecordStore.cpp', 'WateringRecordCodec.cpp', 'IrrigationAuditStore.cpp', 'IrrigationRecords.cpp', 'IrrigationEvents.cpp', 'WateringHistory.cpp']]
+    command += [str(firmware / 'src/irrigation' / source) for source in ['WateringRecordStore.cpp', 'WateringRecordCodec.cpp', 'IrrigationAuditStore.cpp', 'IrrigationAuditPayload.cpp', 'IrrigationRecords.cpp', 'IrrigationEvents.cpp', 'WateringHistory.cpp']]
+    command += [str(sdk / 'RecordStream.cpp')]
     command += [str(work / 'unity.o'), '-o', str(work / 'test')]
     subprocess.run(command, check=True)
     subprocess.run([str(work / 'test')], check=True)
