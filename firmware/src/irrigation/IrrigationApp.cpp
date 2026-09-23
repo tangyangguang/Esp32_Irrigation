@@ -79,6 +79,10 @@ bool IrrigationApp::begin() {
     }
 
     Wire.begin(BoardPins::kI2cSdaPin, BoardPins::kI2cSclPin);
+    // Bound I2C waits so a stuck SDA/SCL (noise or a held slave) cannot block
+    // the main loop until the 5s task watchdog resets the device. The reset
+    // was interrupting audit writes and permanently faulting the record stream.
+    Wire.setTimeOut(50);
     IrrigationRecords::instance().bind(wateringRecordStore_, events_.auditStore());
     Esp32Base::setFirmwareInfo(kFirmwareName, kFirmwareVersion);
     Esp32BaseRtc::configure(Wire);
