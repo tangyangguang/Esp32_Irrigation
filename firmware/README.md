@@ -78,7 +78,7 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 用户烧录新固件后，小程序长期显示“等待灌溉状态同步”。定位根因：`PlatformPublishPolicy.connected()` 会把契约内全部 state/parameter 快照标脏，而 `parameter.zone`、`parameter.zone-baseline`、`parameter.system-field` 是只写维护命令（契约明确“单条修改”，设备从不主动上报），`buildSnapshot` 没有它们的构建器、返回 false；发送循环把这误判为队列失败并触发 5 秒退避阻塞，排在它们之后的 `state.zones`、`state.zone-maintenance`、`state.calibration`、`state.system-parameters` 首帧永远发不出去，服务端首帧集合不完整、`device_runtime_states` 一直 unconfirmed，小程序即显示等待同步。此前 09-20～09-21 的流量异常同源。
 
-修复：发送循环识别这三个只写参数后直接清除 dirty 位跳过，不发帧、不占用队列、不触发退避；其余首帧随后正常发出。烧录重验后发现 `state.zones` 等四个维护 state 仍收不到：`publishStates` 每轮无条件把 overview/runtime/plan/automatic 重新标脏，而发送扫描每轮从 index 0 开始、每轮只发 4 帧，前四个位置永远被这四个高频帧占满，排在 index 11+ 的 `state.zones` 等被永久饿死。再修：发送扫描改为从轮转游标开始的公平轮询，任何 dirty 帧在有限轮次内必被发送。`pio run -e esp32_irrigation_arduino3` 通过（native 84 项全过）。烧录重验由用户执行。
+修复：发送循环识别这三个只写参数后直接清除 dirty 位跳过，不发帧、不占用队列、不触发退避；其余首帧随后正常发出。烧录重验后发现 `state.zones` 等四个维护 state 仍收不到：`publishStates` 每轮无条件把 overview/runtime/plan/automatic 重新标脏，而发送扫描每轮从 index 0 开始、每轮只发 4 帧，前四个位置永远被这四个高频帧占满，排在 index 11+ 的 `state.zones` 等被永久饿死。再修：发送扫描改为从轮转游标开始的公平轮询，任何 dirty 帧在有限轮次内必被发送。随后空闲流量核对暴露**真正的流量违例**：设备空闲时仍约每 5 秒重发 overview/runtime/automatic 三帧（实测 75 秒内 45 帧），原因是 `publishStates` 每轮无条件把这四个快照重新标脏，与“只在真实变化时发送”直接冲突——这就是 09-20～09-21 灌溉流量高峰的根因。三修：发布前对四类快照重新投影并计算 FNV 签名，只有值真正变化才标脏；overview 600s 锚点、diagnostics 3600s 仍由 `policy.poll` 周期处理。`pio run -e esp32_irrigation_arduino3` 通过，native 84 项全过。烧录重验由用户执行。
 
 ## 存储与平台契约
 

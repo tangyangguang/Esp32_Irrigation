@@ -943,13 +943,63 @@ bool publishDueSnapshot(uint32_t nowMs) {
     return false;
 }
 
-// Round-robin state publishing cadence.
+// Mark a snapshot dirty only when its projected value actually changed.
+// Unconditional re-marking made the device republish overview/runtime/...
+// every loop (~5s) with no change, which is the traffic-governance violation.
+struct ValueSignatures {
+    uint32_t overview = 0;
+    uint32_t runtime = 0;
+    uint32_t plan = 0;
+    uint32_t automatic = 0;
+    bool haveOverview = false, haveRuntime = false, havePlan = false, haveAutomatic = false;
+};
+ValueSignatures g_signatures;
+
+uint32_t fnvSignature() {
+    static char buffer[6144];
+    const size_t length = serializeJson(g_stateDoc, buffer, sizeof(buffer) - 1);
+    uint32_t hash = 2166136261u;
+    for (size_t i = 0; i < length; ++i) {
+        hash ^= static_cast<uint8_t>(buffer[i]);
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+void markIfChanged(const char* key, uint32_t& last, bool& have) {
+    uint32_t current = fnvSignature();
+    if (!have || current != last) {
+        last = current;
+        have = true;
+        g_publishPolicy.markStateDirty(key);
+    }
+}
+
+// Detect real changes and mark only changed snapshots dirty. Periodic anchors
+// (overview every 600s, diagnostics every 3600s) are handled by policy.poll.
 void publishStates(uint32_t nowMs) {
-    // Re-mark frequently-changing snapshots dirty; the policy merges/throttles.
-    g_publishPolicy.markStateDirty("state.runtime");
-    g_publishPolicy.markOverviewDirty();
-    g_publishPolicy.markStateDirty("parameter.plan");
-    g_publishPolicy.markStateDirty("parameter.automatic-watering");
+    IrrigationApp& app = IrrigationApp::instance();
+    const WateringStatus status = app.wateringStatus();
+
+    g_stateDoc.clear();
+    projectOverview(app, status);
+    markIfChanged("state.overview", g_signatures.overview, g_signatures.haveOverview);
+
+    g_stateDoc.clear();
+    projectRuntime(app, status);
+    markIfChanged("state.runtime", g_signatures.runtime, g_signatures.haveRuntime);
+
+    if (const IrrigationConfig* config = app.configuration()) {
+        g_stateDoc.clear();
+        projectPlans(*config);
+        markIfChanged("parameter.plan", g_signatures.plan, g_signatures.havePlan);
+    }
+
+    g_stateDoc.clear();
+    projectAutomatic(app);
+    markIfChanged("parameter.automatic-watering", g_signatures.automatic,
+                   g_signatures.haveAutomatic);
+
     if (g_diagnostics.networkChanged(g_bootId))
         g_publishPolicy.markDiagnosticsDirty();
 
