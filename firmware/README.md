@@ -92,6 +92,16 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 编译通过，native 84 项全过。烧录验证待用户执行。
 
+## 真机端到端验证通过（2026-09-23）
+
+用户授权后由代理烧录（板子此前停在下载模式未进程序）。实测：
+
+- boot 121 经 TLS 上线，**首帧顺序**：overview 为第 0 帧，7 个 state（overview/diagnostics/runtime/zones/zone-maintenance/calibration/system-parameters）+ automatic-watering 参数全部收齐，全部归属当前连接，投影 `complete`；只写参数走 `stateSkipped` 不再空耗 seq；
+- **空闲 90 秒零非 retained 帧**（仅订阅时 retained availability 189B），流量违例确认消除；
+- 命令链路：下发 `parameter.automatic-watering`（enabled，幂等无物理动作），收到 accepted 后即时 succeeded，command→receipt→progress 闭环正常。
+
+**未覆盖（需另行安排）**：手动浇水 start-manual/stop/single-output 最短 1 分钟且驱动物理水路，本轮未下发；物理水路、长稳、正式环境、上传发布均未验证。本次烧录后 UART 串口无文本输出（USB 串口复用/日志初始化问题），但不影响平台链路，作为后续设备侧待查项。
+
 ## 存储与平台契约
 
 - 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。
