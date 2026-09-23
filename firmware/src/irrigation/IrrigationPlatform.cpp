@@ -901,6 +901,18 @@ bool publishDueSnapshot(uint32_t nowMs) {
         if (!g_publishPolicy.stateDue(index, nowMs)) continue;
         const char* key = contract.capabilities[index].key;
 
+        // Write-only maintenance commands: they are command channels, never
+        // published as observations. The policy marks every snapshot dirty on
+        // connect, so skip them explicitly; leaving them due would look like a
+        // build failure and trigger the 5s queue-retry block that stalls all
+        // later first frames.
+        if (!std::strcmp(key, "parameter.zone") ||
+            !std::strcmp(key, "parameter.zone-baseline") ||
+            !std::strcmp(key, "parameter.system-field")) {
+            g_publishPolicy.stateQueued(index, nowMs);  // clears dirty, no frame
+            continue;
+        }
+
         DiagnosticsFrameToken diagToken;
         const bool isDiagnostics = !std::strcmp(key, "state.diagnostics");
         if (isDiagnostics) {

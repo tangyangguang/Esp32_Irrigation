@@ -74,6 +74,12 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 `pio run -e esp32_irrigation_arduino3` 通过（Flash/IRAM 见上表）。本次只保证编译，未烧录；真机 TLS/MQTT、物理水路仍需另行授权验证。
 
+## 修复首帧被只写参数卡死（2026-09-23）
+
+用户烧录新固件后，小程序长期显示“等待灌溉状态同步”。定位根因：`PlatformPublishPolicy.connected()` 会把契约内全部 state/parameter 快照标脏，而 `parameter.zone`、`parameter.zone-baseline`、`parameter.system-field` 是只写维护命令（契约明确“单条修改”，设备从不主动上报），`buildSnapshot` 没有它们的构建器、返回 false；发送循环把这误判为队列失败并触发 5 秒退避阻塞，排在它们之后的 `state.zones`、`state.zone-maintenance`、`state.calibration`、`state.system-parameters` 首帧永远发不出去，服务端首帧集合不完整、`device_runtime_states` 一直 unconfirmed，小程序即显示等待同步。此前 09-20～09-21 的流量异常同源。
+
+修复：发送循环识别这三个只写参数后直接清除 dirty 位跳过，不发帧、不占用队列、不触发退避；其余首帧随后正常发出。`pio run -e esp32_irrigation_arduino3` 通过（Flash 1,551,136 B，分区余量 12.34%），native 84 项全过。烧录重验由用户执行。
+
 ## 存储与平台契约
 
 - 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。
