@@ -895,11 +895,18 @@ bool buildSnapshot(const char* key) {
 
 // Publish one due snapshot frame. Uses the policy's per-connection sequence
 // and is retried automatically on failure.
+// Publish one due snapshot frame, scanning fairly from a rotating cursor so
+// snapshots re-marked dirty every loop (overview/runtime/...) cannot starve
+// frames later in the capability table.
+static size_t g_scanCursor = 0;
+
 bool publishDueSnapshot(uint32_t nowMs) {
     const auto& contract = model_irrigation_controller_6_zone::contract;
-    for (size_t index = 0; index < contract.capabilityCount; ++index) {
+    for (size_t step = 0; step < contract.capabilityCount; ++step) {
+        const size_t index = (g_scanCursor + step) % contract.capabilityCount;
         if (!g_publishPolicy.stateDue(index, nowMs)) continue;
         const char* key = contract.capabilities[index].key;
+        g_scanCursor = (index + 1) % contract.capabilityCount;
 
         // Write-only maintenance commands: they are command channels, never
         // published as observations. The policy marks every snapshot dirty on
