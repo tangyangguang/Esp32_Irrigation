@@ -61,6 +61,7 @@ public:
     uint32_t taskStartedEpoch() const { return startedEpoch_; }
     bool taskReady() const { return taskReady_; }
     bool resetTaskAfterFormat() { pending_ = false; return cancelPreparedTask(); }
+    bool resetCorruptTask();
 
     // 4 duration bytes + fixed business payload.
     static constexpr std::size_t kFactBytes =

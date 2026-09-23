@@ -103,10 +103,19 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 **未覆盖（需另行安排）**：手动浇水 start-manual/stop/single-output 最短 1 分钟且驱动物理水路，本轮未下发；物理水路、长稳、正式环境、上传发布均未验证。本次烧录后 UART 串口无文本输出（USB 串口复用/日志初始化问题），但不影响平台链路，作为后续设备侧待查项。
 
 ## 修复浇水启动 prepareTask 鸡生蛋死锁（2026-09-23）
-
 换实验板（未接水路、可任意实验）后多次 start-manual 仍在 accepted 后立即 failed `controller_unavailable`，证明与旧板损坏/供电无关。根因：`WateringRecordStore::prepareTask()` 用 `isWritable()` 做前置判断，而 `isWritable()` 要求 `taskReady_==true`；`taskReady_` 只有 prepareTask 成功后才置位 → 全新启动时 prepareTask 第一行永久返回 false → `startWatering` 返回 NotReady → 设备回 controller_unavailable。纯逻辑死锁，两板均中招。
 
 修复：prepareTask 改为直接判断底层 `store_.isWritable()` 与 stream Ready，不再依赖 taskReady_。编译通过，native 84 项全过。烧录重验由用户执行。
+
+## 修复 WDT 连锁根因与损坏 task marker 不自愈（2026-09-23）
+
+prepareTask 修复后继续真机定位，确认最后一层连锁：
+
+1. RTC 的 I²C 未设总线超时，总线被干扰拉死时 `Esp32BaseRtc::refresh()` 在主循环无限等待，5 秒后 task_wdt 复位（实测已累计 53 次、约 4~6 分钟一轮）；
+2. 复位在 task marker / audit 写入瞬间发生，留下写一半的损坏 marker；
+3. `recoverTask()` 读到魔数/CRC 不符的 marker 直接返回 false 且无自愈 → businessReady 永久 false → 浇水 controller_unavailable。
+
+修复两处：`Wire.setTimeOut(50)` 从源头不再卡总线；`recoverTask()` 对损坏 marker 调用新增 `resetCorruptTask()` 写回空 inactive marker 并恢复 Ready（已损坏状态也能自愈），不再永久锁死。烧录验证：boot621 后连续 7 分钟 availability 零翻转（WDT 复位已消除），命令通道正常。编译通过，native 84 项全过。最后一次烧录重验浇水闭环由用户执行。
 
 ## 存储与平台契约
 

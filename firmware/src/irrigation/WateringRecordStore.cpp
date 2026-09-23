@@ -248,6 +248,17 @@ bool WateringRecordStore::cancelPreparedTask() {
     return true;
 }
 
+bool WateringRecordStore::resetCorruptTask() {
+    WateringTaskMarker empty{};
+    uint8_t out[sizeof(WateringTaskMarker) + 4]{};
+    memcpy(out, &empty, sizeof(empty));
+    const uint32_t crc = markerCrc(out, sizeof(empty));
+    for (unsigned n = 0; n < 4; ++n) out[sizeof(empty) + n] = (crc >> (8 * n)) & 0xFF;
+    if (!Esp32BaseConfig::setBlob("irrigation", "task", out, sizeof(out))) return false;
+    taskReady_ = true;
+    return true;
+}
+
 bool WateringRecordStore::recoverTask() {
     uint8_t bytes[sizeof(WateringTaskMarker) + 4]{};
     const auto read =
@@ -257,14 +268,18 @@ bool WateringRecordStore::recoverTask() {
         return true;
     }
     WateringTaskMarker marker{};
-    if (read != Esp32BaseConfig::BlobReadResult::Found ||
-        bytes[0] != 'I' || bytes[1] != 'T' || bytes[2] != 2 || bytes[3] > 1)
-        return false;
     uint32_t storedCrc = 0;
     for (unsigned n = 0; n < 4; ++n)
-        storedCrc |= uint32_t(bytes[sizeof(WateringTaskMarker) + n])
-                     << (8 * n);
-    if (storedCrc != markerCrc(bytes, sizeof(WateringTaskMarker))) return false;
+        storedCrc |= uint32_t(bytes[sizeof(WateringTaskMarker) + n]) << (8 * n);
+    // A corrupted marker is almost always a write interrupted by a reset
+    // (e.g. the former I2C-stall watchdog reset). Treat it like a stale
+    // inactive task: seal an empty inactive marker and become ready instead
+    // of refusing forever, which locked the device out of every watering.
+    if (read != Esp32BaseConfig::BlobReadResult::Found ||
+        bytes[0] != 'I' || bytes[1] != 'T' || bytes[2] != 2 || bytes[3] > 1 ||
+        storedCrc != markerCrc(bytes, sizeof(WateringTaskMarker))) {
+        return resetCorruptTask();
+    }
     memcpy(&marker, bytes, sizeof(WateringTaskMarker));
 
     Esp32BaseRecordStore::StoreStatus status{};
