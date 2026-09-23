@@ -916,7 +916,7 @@ bool publishDueSnapshot(uint32_t nowMs) {
         if (!std::strcmp(key, "parameter.zone") ||
             !std::strcmp(key, "parameter.zone-baseline") ||
             !std::strcmp(key, "parameter.system-field")) {
-            g_publishPolicy.stateQueued(index, nowMs);  // clears dirty, no frame
+            g_publishPolicy.stateSkipped(index);  // clears dirty, no frame, no seq
             continue;
         }
 
@@ -991,11 +991,28 @@ void markRuntimeIfChanged(uint32_t& last, bool& have) {
     (void)epoch; (void)hadEpoch;
 }
 
+// While a process runs, runtime's continuous fields (elapsed/pulse/water)
+// change every loop. Republish at most every 5000ms like process progress;
+// discrete edges (start/stop/phase/final) go immediately.
+static uint32_t g_lastRuntimeMarkMs = 0;
+static bool g_lastRuntimeActive = false;
+static const char* g_lastRuntimePhase = "";
+
 // Detect real changes and mark only changed snapshots dirty. Periodic anchors
 // (overview every 600s, diagnostics every 3600s) are handled by policy.poll.
 void publishStates(uint32_t nowMs) {
     IrrigationApp& app = IrrigationApp::instance();
     const WateringStatus status = app.wateringStatus();
+
+    const bool criticalNow =
+        !app.businessReady() || app.unexpectedFlowAlarm() || app.schedulerStorageFault();
+    const bool warningNow =
+        app.recordStorageFault() || app.eventStorageFault() || app.checkpointStorageFault() ||
+        app.schedulerTimeState() == WateringScheduler::TimeState::RtcRollback;
+    const char* healthText = criticalNow ? "critical" : warningNow ? "warning" : "normal";
+    static bool s_haveHealth = false;
+    static const char* s_lastHealth = "";
+    const bool healthChanged = !s_haveHealth || s_lastHealth != healthText;
 
     g_stateDoc.clear();
     projectOverview(app, status);
@@ -1003,7 +1020,16 @@ void publishStates(uint32_t nowMs) {
 
     g_stateDoc.clear();
     projectRuntime(app, status);
-    markRuntimeIfChanged(g_signatures.runtime, g_signatures.haveRuntime);
+    const char* phase = status.active ? activityPhase(status.state) : "idle";
+    const bool activeEdge = status.active != g_lastRuntimeActive;
+    const bool phaseEdge = status.active && std::strcmp(phase, g_lastRuntimePhase) != 0;
+    if (activeEdge || phaseEdge || !status.active ||
+        uint32_t(nowMs - g_lastRuntimeMarkMs) >= 5000) {
+        markRuntimeIfChanged(g_signatures.runtime, g_signatures.haveRuntime);
+        g_lastRuntimeMarkMs = nowMs;
+    }
+    g_lastRuntimeActive = status.active;
+    g_lastRuntimePhase = phase;
 
     if (const IrrigationConfig* config = app.configuration()) {
         g_stateDoc.clear();
@@ -1016,8 +1042,11 @@ void publishStates(uint32_t nowMs) {
     markIfChanged("parameter.automatic-watering", g_signatures.automatic,
                    g_signatures.haveAutomatic);
 
-    if (g_diagnostics.networkChanged(g_bootId))
+    if (g_diagnostics.networkChanged(g_bootId) || healthChanged)
         g_publishPolicy.markDiagnosticsDirty();
+
+    s_haveHealth = true;
+    s_lastHealth = healthText;
 
     g_publishPolicy.poll(nowMs);
 
@@ -1132,6 +1161,7 @@ void poll() {
 
     if (!g_policyConnected) {
         g_publishPolicy.connected(now);  // marks every state/parameter snapshot dirty
+        g_scanCursor = 0;  // first frame of every connection starts at capability 0
         g_policyConnected = true;
     }
     publishStates(now);
