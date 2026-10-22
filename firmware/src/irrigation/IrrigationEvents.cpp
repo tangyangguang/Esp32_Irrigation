@@ -6,7 +6,11 @@
 #include "IrrigationRecords.h"
 
 IrrigationEvents::IrrigationEvents()
-    : rtcUnavailableCondition_(kRtcUnavailableConditionId, 60000U, 60000U),
+    // Activation keeps a 60 s debounce so a transient I2C glitch does not raise
+    // a false RTC fault. Recovery confirmation is immediate (0 ms): a DS3231 read
+    // is deterministic, so a healthy read at boot (the condition starts unknown)
+    // is trusted right away instead of showing "unavailable" for the first 60 s.
+    : rtcUnavailableCondition_(kRtcUnavailableConditionId, 60000U, 0U),
       trustedTimeUnavailableCondition_(kTrustedTimeUnavailableConditionId,
                                        300000U, 30000U),
       rtcRollbackCondition_(kRtcRollbackConditionId, 0U, 0U),

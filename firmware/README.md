@@ -192,8 +192,9 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 
 ### 本轮已完成
 
-- **首页 loopTask 栈溢出已修复并真机验证**（提交 `2b78237`，已推送）：现象、根因、验证见上文「修复首页 loopTask 栈溢出（2026-10-22）」。当前固件 version 0.9.0、elf_sha256 前缀 `ba2deae24`、`ARDUINO_LOOP_STACK_SIZE=16384`。
-- **RTC DS3231 核实正常，无需改动**：`Esp32BaseRtc::isAvailable()` 即最近一次 I2C 读 DS3231 为 `STATUS_OK`，设备每 60 s `refresh()` 一次；实测 `/irrigation/api/status` 的 `rtcUnavailable=false`，今日多次启动无 `rtc_writeback_failed` / I2C 错误，NTP 同步正常。NTP 回写仅在 RTC 与 NTP 时差超阈值时发生，时间准时则既不回写也不报错（看不到 `rtc_writeback_ok` 属正常）。9/23 的 `rtc_writeback_failed i2c_error` 是当时 I2C 总线被干扰拉死（尚无超时）连锁触发 WDT 的历史问题，当天已用 `Wire.setTimeOut(50)` 从源头修复。断网纯 RTC 授时留待后续断网实验实测。
+- **首页 loopTask 栈溢出已修复并真机验证**（提交 `2b78237`，已推送）：现象、根因、验证见上文「修复首页 loopTask 栈溢出（2026-10-22）」。
+- **RTC DS3231 硬件正常；开机误报 1 分钟「不可用」已修复并真机验证**：DS3231 接线、电池、I2C 均正常，系统页 `RTC ok, Last sync uptime 0` 证明首次读取在开机 0 秒即成功、NTP 同步前就已授时。旧固件每次开机 `rtcUnavailable=true` 约 60 s 的真正根因**不是读 DS3231 失败**，而是 Base 条件状态机的去抖语义：条件从「未知」首次观测为健康也要走完一次完整的**恢复确认窗口**，而 `IrrigationEvents` 的 RTC 条件激活/恢复确认都配成 60000 ms、又恰好每 60 s 才 observe 一次，于是开机必误报约 1 分钟。修复（`IrrigationEvents.cpp`）：恢复确认 `60000→0`（DS3231 读取确定性，健康立即采信），故障激活确认仍保留 60 s（偶发 I2C 毛刺不误报）。实测新固件开机约 20 s 内 `rtcUnavailable` 即连续 `false`。期间曾按「首读 NACK」误判加过 `Wire.begin()` 后地址探测重试，验证无效（`Last sync uptime 0` 否定该假设），已回滚，未提交。9/23 的 `rtc_writeback_failed i2c_error` 是更早的 I2C 总线被拉死（尚无超时）连锁 WDT 的历史问题，当天已用 `Wire.setTimeOut(50)` 修复；NTP 回写仅在 RTC 与 NTP 时差超阈值时发生，时间既准则不回写也不报错（没有 `rtc_writeback_ok` 属正常）。断网纯 RTC 授时仍留待后续断网实验做端到端确认。
+- 当前固件 version 0.9.0、`ARDUINO_LOOP_STACK_SIZE=16384`，含上述栈修复与 RTC 条件修复，真机 elf_sha256 前缀 `5e8539db5`。
 - **启动日志 `events_fault=yes` 不是缺陷**：时间未可信（NTP 同步前）SDK RecordStream 未到 `Ready`，审计流按设计暂不可写；NTP 同步后实时恢复 `eventStorageFault=false`，不锁存。
 
 ### 设备与环境事实
