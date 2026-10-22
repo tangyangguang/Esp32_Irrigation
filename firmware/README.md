@@ -163,6 +163,18 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 
 验证：native 84 项、executor/storage/hardware 三个主机脚本、Web 资产检查全过；主目标链接成功。真机（`esp32-irr-8caab58ed1cc`，TLS+MQTT 在线、6 条浇水记录）烧录后：首页完整 9475 B、0.3–0.85 s 返回，串行 15 次、4 并发、6 并发全部 200 且 uptime 连续增长不再复位；状态页 Loop stack low-water 从 ~0.9 KB 回升到约 8.95 KB。已知限制：人为 12 并发极端冲击会因单线程同步 Web 请求排队触发一次 task_wdt，正常浏览器（单域名约 6 连接以内）达不到，本轮不重构 Web。
 
+## 修复维护类 state 快照远程写入后不重推（2026-10-22）
+
+现象（真机证据）：`parameter.system-field` 命令 accepted→succeeded、审计事件 `configuration.system-field-changed` 正常落盘上报，但 `state.system-parameters` 不重推；错过 MQTT 连接首帧后，订阅方只能看到旧值。`parameter.zone` / `parameter.zone-baseline` 对 `state.zones` / `state.zone-maintenance` 同理。违反 irrigation-controller `protocol.md`：「parameter 当前值只在成功应用后发布」「客户端以 succeeded 之后的 state/parameter 快照为当前值证据」。
+
+根因：`publishStates()` 只对 overview/runtime/`parameter.plan`/`parameter.automatic-watering` 做每轮 FNV 签名变化检测；四个维护快照（zones/zone-maintenance/calibration/system-parameters）只在 `PlatformPublishPolicy::connected()` 时标脏发布一次，命令成功路径与本地参数页保存（`handleParameterConfigSaved`）都没有变化通知。
+
+修复：把四个纯静态配置投影纳入与 `parameter.plan` 相同的每轮 `markIfChanged` 签名检测，任何写入者（三条远程维护命令、本地水路页、本地参数页）落配置后下一循环自动重推；`meter.pulsesPerLiterX100` 同时进 calibration 与 system-parameters，两帧签名都会变；zone 禁用联动清零计划时长由既有的 plan 检测覆盖。每轮新增 4 次 ≤约 500 B 序列化（静态 6144 B doc 复用，新增 RAM 约 16 B），开销与既有 plan 投影同量级。
+
+验证：native 84 项全过；主目标 `--tls-toolchain` 链接成功，OTA 余量 215104 B（12.16%）与基线一致；独立 reviewer 审核通过。真机回证（三命令 + 本地页保存后四帧按新值重推）待烧录，新 elf_sha256 前缀 `77e60ca2`。
+
+附：本次构建前 tls penv（`foundation/Esp32Base/.piohome/arduino3-tls/penv`）pip 丢失（疑似 Homebrew Python 3.14 小版本升级使 venv 失效），PIO 报 `Failed to install Python dependencies into penv`；`penv/bin/python -m ensurepip` 恢复后正常；中途 scons-4.8.1.zip 因 GitHub 瞬时超时失败，网络恢复后重试即过（包本已缓存，repair 才触发重装）。
+
 ## 存储与平台契约
 
 - 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。
@@ -189,6 +201,13 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 网络升级只使用 Esp32Base HTTP Web OTA（入口 `/esp32base/ota`），具体操作步骤、串口整片烧录和串口监视见 [设备维护操作手册](../docs/04-设备维护操作手册.md)。在 Git 忽略的 `platformio.local.ini` 中配置设备地址与 Web Auth 后执行 `-t webota`；普通构建和测试不会触发 OTA。不得配置 espota、ArduinoOTA 或 3232 端口。
 
 ## 真机实验交接（2026-10-22）
+
+### 晚间进展（浇水实验开始前，待烧录继续）
+
+- **新固件待烧录**：维护类 state 快照远程写入后不重推缺陷已修复（见上文「修复维护类 state 快照…」），elf_sha256 前缀 `77e60ca2`，native 84 项与主目标构建全过，**尚未烧录**；烧 app 保留 NVS/配置/记录，下列已启用配置不丢。
+- **实验前置已完成（旧固件 5e8539db5 上操作）**：Mac 测试服务原本未运行，设备因无 record-ack 每 5 s 重传挂起记录；已启动 Postgres（docker `iot-home-postgres-dev`）+ `./server start`（127.0.0.1:17832，MQTT healthy），重传立即平息。`pump.enabled` 经 MQTT 命令 accepted→succeeded（审计 `configuration.system-field-changed` seq 4、fieldIndex 5，NVS 回读 true），startDelayMs 本就为 0。zone1「试验一路」、zone2「区域 2」实际早已启用（revision=4，计划「花园」07:00 各浇 1 分钟，自动总控开启）；与早前交接「zones 为空」不同，以当前为准。
+- **异常观察（待步骤 H 复现定性）**：服务端缺席、记录重传风暴期间，一条 system-field 命令的审计落盘撞上 `esp_littlefs: Unable to allocate FD`（FD 耗尽），审计流进 StorageFault 永久态 + 1 条审计 pending，之后维护命令全被 `writable(Audit)` 拒为 `invalid_field_value`；EN 复位后恢复，数据无损。疑似重传发布占用 littlefs FD 与 loop 任务落盘并发，断网补发实验重点观察。
+- MQTT 实验工具事实：state/progress/event 全部**非 retained**（仅 availability retained），观察命令结果必须实时订阅；`/tmp/mqttvenv` 本次重建（paho 2.1.0），临时脚本在 `/tmp/irr_exp/`（`irr_mqtt.py listen|cmd|snap`，traffic.jsonl 全量留痕），重启系统会丢。
 
 ### 本轮已完成
 

@@ -953,7 +953,13 @@ struct ValueSignatures {
     uint32_t runtime = 0;
     uint32_t plan = 0;
     uint32_t automatic = 0;
-    bool haveOverview = false, haveRuntime = false, havePlan = false, haveAutomatic = false;
+    uint32_t zones = 0;
+    uint32_t zoneMaintenance = 0;
+    uint32_t calibration = 0;
+    uint32_t systemParameters = 0;
+    bool haveOverview = false, haveRuntime = false, havePlan = false,
+         haveAutomatic = false, haveZones = false, haveZoneMaintenance = false,
+         haveCalibration = false, haveSystemParameters = false;
 };
 ValueSignatures g_signatures;
 
@@ -1037,6 +1043,28 @@ void publishStates(uint32_t nowMs) {
         g_stateDoc.clear();
         projectPlans(*config);
         markIfChanged("parameter.plan", g_signatures.plan, g_signatures.havePlan);
+
+        // Maintenance snapshots have no per-change producer hook; both remote
+        // commands and the local parameter page land in the same config, so
+        // detect their change here like plans and republish on any writer.
+        g_stateDoc.clear();
+        projectZones(*config);
+        markIfChanged("state.zones", g_signatures.zones, g_signatures.haveZones);
+
+        g_stateDoc.clear();
+        projectZoneMaintenance(*config);
+        markIfChanged("state.zone-maintenance", g_signatures.zoneMaintenance,
+                      g_signatures.haveZoneMaintenance);
+
+        g_stateDoc.clear();
+        projectCalibration(*config);
+        markIfChanged("state.calibration", g_signatures.calibration,
+                      g_signatures.haveCalibration);
+
+        g_stateDoc.clear();
+        projectSystemParameters(*config);
+        markIfChanged("state.system-parameters", g_signatures.systemParameters,
+                      g_signatures.haveSystemParameters);
     }
 
     g_stateDoc.clear();
