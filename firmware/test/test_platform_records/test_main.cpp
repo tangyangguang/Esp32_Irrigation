@@ -221,6 +221,53 @@ void test_audit_records_validate() {
                     sizeof(fact));
 }
 
+// Regression: a 6-zone fact must decode into the production-sized document
+// without overflow; an overflowed decode made ModelPublisher drop the record
+// forever and RecordStream's strict ordering blocked every later fact.
+void test_six_zone_fact_fits_record_document() {
+    uint8_t fact[kWateringData]{};
+    WateringRecordPayload payload{};
+    payload.taskId = 1;
+    payload.startedEpoch = 1700000000U;
+    payload.source = WateringSource::WechatMiniprogram;
+    payload.targetMode = WateringTargetMode::Duration;
+    payload.result = WateringResult::Completed;
+    payload.stopReason = WateringStopReason::Completed;
+    std::memcpy(payload.commandId.data(),
+                "01234567-89ab-4def-8123-456789abcdef", 36);
+    for (uint8_t i = 0; i < BoardPins::kZoneCount; ++i) {
+        auto& zone = payload.zones[i];
+        zone.plannedDurationSec = 720;
+        zone.actualWateringSec = 720;
+        zone.result = ZoneWateringResult::Completed;
+        zone.pulseCount = 999999;
+        zone.estimatedWaterMl = 9999999;
+        zone.averageFlowMlPerMinute = 999999;
+        zone.flags = WateringRecordCodec::kZoneFlagFlowBaselineAvailable |
+                     WateringRecordCodec::kZoneFlagLowFlow |
+                     WateringRecordCodec::kZoneFlagHighFlow;
+        zone.baselinePulseRateX10000 = UINT32_MAX;
+        zone.baselineFlowMlPerMinute = UINT32_MAX;
+        zone.suggestedBaselinePulseRateX10000 = UINT32_MAX;
+    }
+    TEST_ASSERT_TRUE(WateringRecordCodec::encode(
+        payload, fact + 4, WateringRecordCodec::kPayloadSize));
+    fact[0] = 60;
+
+    StaticJsonDocument<IrrigationPlatformRecords::kRecordDocBytes> doc;
+    const RecordCodec* codec =
+        findCodec(IrrigationPlatform::FactWateringCompleted);
+    TEST_ASSERT_NOT_NULL(codec);
+    TEST_ASSERT_TRUE(codec->decode(fact, sizeof(fact), doc));
+    TEST_ASSERT_FALSE(doc.overflowed());
+    const size_t body = measureJson(doc.as<JsonVariantConst>());
+    // Leave room for the event envelope inside ESP32BASE_MQTT_MAX_PAYLOAD_BYTES.
+    TEST_ASSERT_TRUE(body < 4096 - 300);
+    const RecordContract* rc =
+        model_irrigation_controller_6_zone::contract.record(codec->recordKey);
+    TEST_ASSERT_TRUE(rc->validate(doc.as<JsonVariantConst>()));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_watering_completed_validates);
@@ -228,5 +275,6 @@ int main(int, char**) {
     RUN_TEST(test_watering_stopped_and_failed_validate);
     RUN_TEST(test_start_rejected_watering_validates);
     RUN_TEST(test_audit_records_validate);
+    RUN_TEST(test_six_zone_fact_fits_record_document);
     return UNITY_END();
 }

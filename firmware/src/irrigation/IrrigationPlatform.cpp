@@ -92,7 +92,7 @@ ConnectionSession g_session(
 Esp32MqttPort g_port(g_session);
 
 DynamicJsonDocument g_stateDoc(6144);
-StaticJsonDocument<512> g_recordDoc;
+StaticJsonDocument<IrrigationPlatformRecords::kRecordDocBytes> g_recordDoc;
 StaticJsonDocument<1024> g_inputDoc;
 StaticJsonDocument<1024> g_compareDoc;
 

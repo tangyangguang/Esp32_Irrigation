@@ -175,6 +175,18 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 
 附：本次构建前 tls penv（`foundation/Esp32Base/.piohome/arduino3-tls/penv`）pip 丢失（疑似 Homebrew Python 3.14 小版本升级使 venv 失效），PIO 报 `Failed to install Python dependencies into penv`；`penv/bin/python -m ensurepip` 恢复后正常；中途 scons-4.8.1.zip 因 GitHub 瞬时超时失败，网络恢复后重试即过（包本已缓存，repair 才触发重装）。
 
+## 修复多水路记录 JSON 解码容量不足导致记录流永久堵死（2026-10-22）
+
+真机证据（浇水实验步骤 C 期间）：60 s 手动浇水本地记录完整（603 脉冲/2.412 L、succeeded），但 broker 上完全没有完成事件；服务端浇水流水位自 9/23 起停在 seq5。重启重放显示：设备发布 seq1 后服务端跳位 ACK 到 5，之后设备不再发布 seq6/7。
+
+根因：`ModelPublisher::publishRecord` 把存储事实解码进共享文档 `g_recordDoc`，原为 `StaticJsonDocument<512>`。用真实解码器 native 实测（ArduinoJson 6.21.6，与设备同版本）：单水路投影约 590–608 B、双水路约 871–927 B、6 水路最坏情况（completed + 基准/报警字段 + 最大合法数值 + commandId）约 2353 B，64 位主机 JSON 池需 4096（3072 溢出），32 位 ESP32 slot 更小（单水路能进 512 与此吻合）。9/24 的 seq6 是**双水路**自动计划失败记录，解码确定性溢出 → 发布每 5 s 静默重试永不成功；RecordStream 严格按序发布，seq6 成为队头毒记录，把其后的 seq7（本次单水路成功记录）一并永久堵死（审计流因记录小未受影响）。
+
+修复：记录解码文档容量提为共享常量 `IrrigationPlatformRecords::kRecordDocBytes = 4096`（host 实测最坏情况有余量；整包约 ≤2.75 KB < MQTT payload 4096 与 g_output 4097）；新增 native 回归 `test_six_zone_fact_fits_record_document`（6 水路最坏 payload 必须解码进生产容量、不溢出、过 schema、body 留信封余量）。RAM BSS +3584 B（109644→113228/327680），Flash 与 OTA 余量不变（215104 B/12.16%）。烧录后 seq6/seq7 应在重放中自动排空，无需数据迁移。
+
+遗留（单独立项，本轮不动 SDK）：RecordStream 对永久性发布错误（容量/schema/超大包）仍是无告警无限重试并堵死整条保序流；本次从容量根因消除已知触发路径，但未来投影/契约演进仍可能静默复发，需要错误可观测性与毒记录策略。另：本地操作记录页把 `configuration.system-field-changed` 审计显示为「未识别的历史事项」，为本地展示映射缺口，待后续修。
+
+验证：native **85 项**全过；主目标 `--tls-toolchain` 构建+OTA 门禁通过；独立 reviewer 审核通过。真机回证（seq6/7 broker 可见、水位推进、free heap/无 JsonCapacity 错误）待烧录，新 elf_sha256 前缀见构建产物。
+
 ## 存储与平台契约
 
 - 配置 schema 5 不变；试验阶段零历史兼容、零数据迁移，旧测试数据不读取、不转换、不自动清理。
@@ -204,7 +216,7 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 
 ### 晚间进展（浇水实验开始前，待烧录继续）
 
-- **新固件待烧录**：维护类 state 快照远程写入后不重推缺陷已修复（见上文「修复维护类 state 快照…」），elf_sha256 前缀 `77e60ca2`，native 84 项与主目标构建全过，**尚未烧录**；烧 app 保留 NVS/配置/记录，下列已启用配置不丢。
+- **新固件待烧录**：本轮共两个修复（均已提交推送、native 85 项与主目标构建全过、**尚未烧录**）：①维护类 state 快照远程写入后不重推（提交 `8faf754`，elf 前缀 `77e60ca2`）；②多水路记录 JSON 解码容量不足（512 B）使双水路记录永久发布失败并按保序堵死整条浇水记录流（见上文「修复多水路记录 JSON 解码容量不足…」，含 seq6/7 积压，烧录后自动排空）。烧 app 保留 NVS/配置/记录，下列已启用配置不丢；烧录后 elf 前缀以最新构建为准。
 - **实验前置已完成（旧固件 5e8539db5 上操作）**：Mac 测试服务原本未运行，设备因无 record-ack 每 5 s 重传挂起记录；已启动 Postgres（docker `iot-home-postgres-dev`）+ `./server start`（127.0.0.1:17832，MQTT healthy），重传立即平息。`pump.enabled` 经 MQTT 命令 accepted→succeeded（审计 `configuration.system-field-changed` seq 4、fieldIndex 5，NVS 回读 true），startDelayMs 本就为 0。zone1「试验一路」、zone2「区域 2」实际早已启用（revision=4，计划「花园」07:00 各浇 1 分钟，自动总控开启）；与早前交接「zones 为空」不同，以当前为准。
 - **异常观察（待步骤 H 复现定性）**：服务端缺席、记录重传风暴期间，一条 system-field 命令的审计落盘撞上 `esp_littlefs: Unable to allocate FD`（FD 耗尽），审计流进 StorageFault 永久态 + 1 条审计 pending，之后维护命令全被 `writable(Audit)` 拒为 `invalid_field_value`；EN 复位后恢复，数据无损。疑似重传发布占用 littlefs FD 与 loop 任务落盘并发，断网补发实验重点观察。
 - MQTT 实验工具事实：state/progress/event 全部**非 retained**（仅 availability retained），观察命令结果必须实时订阅；`/tmp/mqttvenv` 本次重建（paho 2.1.0），临时脚本在 `/tmp/irr_exp/`（`irr_mqtt.py listen|cmd|snap`，traffic.jsonl 全量留痕），重启系统会丢。
