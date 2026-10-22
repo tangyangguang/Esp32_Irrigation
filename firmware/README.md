@@ -187,3 +187,55 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 ## HTTP Web OTA
 
 网络升级只使用 Esp32Base HTTP Web OTA（入口 `/esp32base/ota`），具体操作步骤、串口整片烧录和串口监视见 [设备维护操作手册](../docs/04-设备维护操作手册.md)。在 Git 忽略的 `platformio.local.ini` 中配置设备地址与 Web Auth 后执行 `-t webota`；普通构建和测试不会触发 OTA。不得配置 espota、ArduinoOTA 或 3232 端口。
+
+## 真机实验交接（2026-10-22）
+
+### 本轮已完成
+
+- **首页 loopTask 栈溢出已修复并真机验证**（提交 `2b78237`，已推送）：现象、根因、验证见上文「修复首页 loopTask 栈溢出（2026-10-22）」。当前固件 version 0.9.0、elf_sha256 前缀 `ba2deae24`、`ARDUINO_LOOP_STACK_SIZE=16384`。
+- **RTC DS3231 核实正常，无需改动**：`Esp32BaseRtc::isAvailable()` 即最近一次 I2C 读 DS3231 为 `STATUS_OK`，设备每 60 s `refresh()` 一次；实测 `/irrigation/api/status` 的 `rtcUnavailable=false`，今日多次启动无 `rtc_writeback_failed` / I2C 错误，NTP 同步正常。NTP 回写仅在 RTC 与 NTP 时差超阈值时发生，时间准时则既不回写也不报错（看不到 `rtc_writeback_ok` 属正常）。9/23 的 `rtc_writeback_failed i2c_error` 是当时 I2C 总线被干扰拉死（尚无超时）连锁触发 WDT 的历史问题，当天已用 `Wire.setTimeOut(50)` 从源头修复。断网纯 RTC 授时留待后续断网实验实测。
+- **启动日志 `events_fault=yes` 不是缺陷**：时间未可信（NTP 同步前）SDK RecordStream 未到 `Ready`，审计流按设计暂不可写；NTP 同步后实时恢复 `eventStorageFault=false`，不锁存。
+
+### 设备与环境事实
+
+- 实验板 device_id `esp32-irr-8caab58ed1cc`（MAC `8c:aa:b5:8e:d1:cc`）；IP 由 DHCP 分配，本次为 `192.168.2.127`（会漂移，失联先按 MAC 或路由器查）；Web auth `admin/admin`。
+- 固定实验串口 `/dev/cu.usbserial-110`（CH340），115200。**板子自动复位/下载电路不工作**：进下载模式必须用户手动「按住 BOOT → 按一下 EN → 松 EN → 保持约 1 s 再松 BOOT」；烧录一律由代理在用户确认已进下载模式后执行，烧完 RTS 硬复位无效，需用户手动按 EN 启动。
+- 代理读串口必须用 pyserial 且打开时 `dtr=False; rts=False`（裸 `Serial()` 默认置位会导致零字节；`pio device monitor` 需真实 TTY，代理后台无 TTY 会报 `termios` 错；用户本人在终端跑 `pio device monitor -b 115200` 正常，PlatformIO 入口 shebang 失效时用 venv python：`foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m platformio device monitor -p /dev/cu.usbserial-110 -b 115200`）。
+- 代理烧录 app（保留 WiFi/配置/记录）在 `/Users/tyg/workspace/iot` 下执行（产物随 `-t` 变化，README 检查用 `--tls-toolchain`，故用 `.pio/build/arduino3-tls/...`）：
+
+```sh
+foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
+  --chip esp32 --port /dev/cu.usbserial-110 --baud 460800 \
+  write-flash 0x10000 \
+  devices/Esp32_Irrigation/firmware/.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin
+```
+
+- 当前设备数据：6 条浇水记录（watering.v9，可正常读）、3 条审计（irrigation-audit.v6）；**自吸泵当前禁用、zones 为空，实验前必须先启用泵和 zone1**；MQTT 已连 EMQX Cloud 测试环境。
+
+### 信号发生器门控实验（下一步，未开始）
+
+用户已确认：不接真实水管和 12V 阀，无物理安全顾虑；全部用 **10 Hz**（每秒 10 脉冲，方波 3.3 V、共地）模拟廉价流量计，默认 K=250 P/L → 约 **2.4 L/min**，60 s ≈ 600 脉冲 ≈ 2.4 L，便于核对计量。
+
+接线：
+
+- 脉冲输出 → **CN2（PUL_SIG / GPIO17）**，与板子共地，幅值不得超过 3.3 V；
+- 泵干节点 **CN5 的 RELAY1A/RELAY1B（AQY210 PhotoMOS，GPIO18 低电平导通，47k 上拉默认关）** 串入信号发生器门控/供电，做到「泵信号输出→干节点闭合→出脉冲，停泵→停脉冲」；
+- 12V 阀、真实水路不接。
+
+建议顺序（命令尽量从微信小程序发起，覆盖「小程序按钮→真机」此前未点过的链路）：
+
+1. 维护命令 `parameter.system-field` 启用自吸泵（启动延时 0）、`parameter.zone` 启用 zone1，先核对 state 回证；
+2. C 手动浇水成功路径：小程序开始 60 s → 干节点闭合出 10 Hz → 20 s 内 flowEstablished → running → 到时 **succeeded**，核对水量≈2.4 L、状态/倒计时同步；
+3. D 约 20 s 后停止 → **stopped**，水量按实际脉冲；
+4. E 无流量保护：运行中断开门控停脉冲 → 10 s 内 `NoFlowTimeout` failed；（启动前就无脉冲 20 s failed 已在 9/23 验过）；
+5. F zone1 基准学习（连续 5×5 s 稳定窗口，10 Hz 天然满足，每窗约 50 脉冲）保存；随后频率降到 <3 Hz（<基准 30%）和升到 >20 Hz（>200%）各持续 20 s+ 验低/高流量报警；
+6. G 记录回路：小程序记录详情、`watering-usage` 统计核对浇水三类 + 暂停/恢复、计划变更、水路变更、系统字段、基准保存等审计 recordKey；
+7. H 断网补发：浇水中途断网、结束后恢复，核对双 Store 按原序号补发、record-ack 水位推进、不重不丢（真机零证据，建议单独 10–15 min 窗口）；
+8. 自动总控三态（启用/无限暂停/定时暂停）、计划编辑、设最近一分钟验自动计划真实触发及「定时恢复那一分钟不触发」边界。
+
+### 其他待办
+
+- `iot-device` 本地有 1 个未推送提交 `edcc4ce`（平台准入 `model_mismatch` 收紧，SDK 代码未动，灌溉固件不受影响），下次跨仓工作先跑门禁再推送。
+- OTA 对侧槽余量约 215 KB（12.16%），发布前评估固件尺寸优化，不靠削 TLS/OTA/日志/记录预算换体积。
+- 已知限制不修：人为 12 路以上并发猛刷单线程同步 Web 会触发一次 task_wdt；正常浏览器单域名 ≤6 连接，实测 6 并发稳定。
+- 真机 TLS/MQTT 命令此前只验到参数命令和 start-manual 进入 running（9/23，无水超时 failed 为预期保护）；成功浇水、记录/审计上报与断网补发在本轮实验补证。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。
