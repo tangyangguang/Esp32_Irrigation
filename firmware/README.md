@@ -52,10 +52,11 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,553,536 B（87.8%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,554,352 B（87.8%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 109,620 B（33.5%，327,680 B）；IRAM 91,491 B |
-| OTA 镜像 firmware.bin | 1,553,536 B |
-| 对侧 OTA 槽余量 | 215,936 B（约 211 KiB，12.20%） |
+| OTA 镜像 firmware.bin | 1,554,352 B |
+| 对侧 OTA 槽余量 | 215,120 B（约 210 KiB，12.16%） |
+| loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
 
@@ -145,6 +146,22 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 
 **实验环境事实**：当前实验板 device_id=`esp32-irr-8caab58ed1cc`（IP 漂移 .127/.155）；固定串口 `/dev/cu.usbserial-110`；该板必须手动 BOOT+EN 进下载模式，**烧录始终由用户执行**；MQTT 可用 `/tmp/mqttvenv`（已装 paho+pyserial，临时目录可能失效需重建），命令下发凭据用 `.env.local` 的 MQTT_DEVICE 账号，start-manual TTL 上限严格 30000ms。
 
+
+## 修复首页 loopTask 栈溢出（2026-10-22）
+
+现象：局域网打开本地 Web 首页 `/irrigation` 极慢，每次请求设备都 `Stack canary watchpoint triggered (loopTask)` panic 复位，页面在输出约 3 KB（“每日浇水”区块入口）后挂死；记录/计划/系统页和全部 API 正常。
+
+根因：8 KB loopTask 栈在首页渲染路径上被两类深栈叠加击穿——
+
+1. `WateringStatus` 单对象实测 1136 B（含 10 个流量学习窗口和 6 路明细）。`IrrigationWeb::overview/activeTask` 已持有一份，`renderDay → IrrigationApp::wateringDay() → wateringStatus()` 又按值返回第二份；
+2. 同一 loopTask 上文件日志 2 秒 flush 时 littlefs `fsync/rename/dir_traverse` 与 newlib `fopen/vsnprintf` 调用极深（panic backtrace 同时包含这两组帧）。首页渲染慢拉长了与 flush 相撞的窗口。
+
+修复：
+
+- `wateringDay()` 改为接收调用方已有的 `const WateringStatus&`，不再在页面渲染时复制第二份 1.1 KB 状态；
+- 主目标 `build_flags` 增加 `-D ARDUINO_LOOP_STACK_SIZE=16384`（8 KB→16 KB）。注意必须定义 `ARDUINO_LOOP_STACK_SIZE`（`#ifndef` 保护）；定义 `CONFIG_ARDUINO_LOOP_STACK_SIZE` 会被框架 `sdkconfig.h` 强制重定义回 8192，不生效。
+
+验证：native 84 项、executor/storage/hardware 三个主机脚本、Web 资产检查全过；主目标链接成功。真机（`esp32-irr-8caab58ed1cc`，TLS+MQTT 在线、6 条浇水记录）烧录后：首页完整 9475 B、0.3–0.85 s 返回，串行 15 次、4 并发、6 并发全部 200 且 uptime 连续增长不再复位；状态页 Loop stack low-water 从 ~0.9 KB 回升到约 8.95 KB。已知限制：人为 12 并发极端冲击会因单线程同步 Web 请求排队触发一次 task_wdt，正常浏览器（单域名约 6 连接以内）达不到，本轮不重构 Web。
 
 ## 存储与平台契约
 

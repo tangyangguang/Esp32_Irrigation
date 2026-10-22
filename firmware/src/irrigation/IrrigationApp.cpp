@@ -1142,6 +1142,6 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
                     conditionHistoryReset ? "yes" : "no");
 }
 
-WateringDaySummary IrrigationApp::wateringDay(uint32_t day) {
-    return WateringHistory::summarize(wateringRecordStore_, day, wateringStatus(), wateringRecordStore_.taskStartedEpoch());
+WateringDaySummary IrrigationApp::wateringDay(uint32_t day, const WateringStatus& activeStatus) {
+    return WateringHistory::summarize(wateringRecordStore_, day, activeStatus, wateringRecordStore_.taskStartedEpoch());
 }

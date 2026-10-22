@@ -26,7 +26,10 @@ public:
     WateringStatus wateringStatus() const;
     bool wateringActive() const { return wateringController_.active(); }
     FlowHistorySnapshot wateringFlowHistory() const;
-    WateringDaySummary wateringDay(uint32_t day);
+    // activeStatus is the caller's existing status snapshot, passed by const
+    // reference so the large WateringStatus (about 1.1 KB) is never copied a
+    // second time onto the 8/12 KB loopTask stack while rendering a page.
+    WateringDaySummary wateringDay(uint32_t day, const WateringStatus& activeStatus);
     bool readLatestWateringRecords(uint32_t offset,
                                    uint32_t limit,
                                    WateringRecordStore::ReadCallback callback,

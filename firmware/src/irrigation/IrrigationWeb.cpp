@@ -1116,9 +1116,9 @@ void renderDayPlans(uint32_t day,
     html("<p class='home-day-plans-link'><a href='/irrigation/plans'>管理计划</a></p></div>");
 }
 
-void renderDay(uint32_t day, bool includePlans) {
+void renderDay(uint32_t day, bool includePlans, const WateringStatus& activeStatus) {
     if (!day) { html("<p class='muted'>设备时间未知，日期统计暂不可用。仍可查看全部浇水记录。</p>"); return; }
-    const auto daily = g_app->wateringDay(day); const auto* config = g_app->configuration();
+    const auto daily = g_app->wateringDay(day, activeStatus); const auto* config = g_app->configuration();
     if (!daily.readable) { html("<p class='notice warn'>记录暂时无法读取，不能据此判断没有浇水。</p>"); return; }
     html("<div class='home-grid'>");
     bool shown = false;
@@ -1765,7 +1765,7 @@ void IrrigationWeb::overview() {
     Esp32BaseWeb::beginPanel("每日浇水");
     const uint32_t day = selectedDay();
     if (day) dateNav(day);
-    renderDay(day, true);
+    renderDay(day, true, watering);
     Esp32BaseWeb::endPanel();
 
     Esp32BaseWeb::sendChunk("<div class='home-grid'>");
@@ -2569,7 +2569,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::endPanel();
     }
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::ActiveTaskScript);
-    html("<section class='panel'><h2>每日浇水</h2>"); const uint32_t day=selectedDay(); if(day) dateNav(day); renderDay(day, false); html("</section>");
+    html("<section class='panel'><h2>每日浇水</h2>"); const uint32_t day=selectedDay(); if(day) dateNav(day); renderDay(day, false, status); html("</section>");
     endPage();
 }
 
