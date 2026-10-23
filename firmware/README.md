@@ -230,6 +230,16 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 - **F 基准与报警**：完整 60 s 10 Hz 记录自动给出稳定建议基线 `suggestedBaselinePulseRateX10000=100800`（连续 5×5 s 窗口波动达标），经 `parameter.zone-baseline`（revision=5）确认落盘并产出审计 seq8 `zone.baseline-saved`；2 Hz（480 mL/min≈基准 20%）持续 20 s → `lowFlowDetected/lowFlowActive=true`；22 Hz（5304 mL/min≈218%）持续 20 s → `highFlowDetected/highFlowActive=true`；action=alert 不停机，任务正常 completed，记录含 average/baseline 流量与检测位。
 - **G 记录与审计**：浇水流 16 条、审计流 9 条，服务端 ACK 水位一致（16 / 8→9），无积压；三类浇水（completed/stopped/failed）与 `wechat_miniprogram`/`device_schedule` 来源齐全；今日（北京 10-23）用量 9 次 / 593 s / 19328 mL，逐记录求和核对一致；多水路记录（seq8 双水路 4824 mL）聚合正常；审计 recordKey 覆盖 automatic.resumed/paused、configuration.zone-changed/system-field-changed、zone.baseline-saved。实验后自动总控已恢复 enabled。
 
+### 步骤 H 断网补发真机通过（2026-10-23 下午）
+
+单次成功路径，未做 soak。断网手段：EMQX Serverless 控制台 **Access Control → Blacklist 按 Client ID `esp32-irr-8caab58ed1cc` 临时拉黑**（设备 TLS 可建连但 MQTT 被快速明确拒绝），WiFi/局域网全程正常；物理拔 WAN 与 H3C 路由器黑名单均验证为错误手段（见下）。
+
+- **断网离线**：拉黑后 observer 约 100 s 零帧，设备 boot 820 连续运行 9 min+ **无复位、无 errno=11**，两个 Store 无 fault；本地 `POST /irrigation`（action=start_manual，zone1 60 s，来源 local_web）正常执行。
+- **断网浇水**：61 s 完成，zone1 60 s、**603 脉冲 / 2412 mL**，11 个 5 s 采样恒定约 2400 mL/min（flow-history 2398–2448），`watering.completed` 落本地 watering.v9（historyNextId 17→18），断网期间无任何串口异常。
+- **恢复补发**：删除黑名单后设备重连（新 connectionId `72c81b6f…`），**仅补发 seq17 一条** `watering.completed`，保持原 `observedAt=07:52:00Z`、只替换 connectionId；服务端即时回 **record-ack through=17**。DB 权威核对：浇水流 **ack=17 / rows=17 / max_seq=17**（唯一约束保证不重不丢），审计流仍 **9/9/max_seq=9**（隔离正确，不被浇水流影响）。
+- **堆水位**：在线空闲 free heap ≈ 40–46 KB；**离线（无 TLS/MQTT 缓冲）free heap ≈ 90 KB**（比在线宽裕约一倍），max alloc 恒 35.99 KB，loop stack low-water 10.8 KB，diag 帧 boot820 `heapLow=40600` B；离线浇水窗口无堆/FD 压力。之前 `Unable to allocate FD` 的堆压力来自 TLS/网络路径而非记录补发本身——离线补发窗口反证。
+- **意外但重要的定性证据（半挂网络 → WDT）**：实验前半段物理拔 WAN 与 H3C 黑名单制造的是「WiFi 关联在、WAN 半挂」，设备出现 `NetworkClient write(): fail on fd 50 errno:11`（TLS 写 EAGAIN）**阻塞 loopTask 满 5 s 连续触发 task_wdt 复位**（14:32 起 boot 807–815、15:26 起 811–822 多轮，累计 watchdog reset count=110），复位后重放历史 seq 被服务端幂等去重（ack 不后退）。而 EMQX 拉黑的「干净不可达」零复位。结论：已知「长运行 TLS 写卡死」缺陷的触发条件是**路由半挂/连接半死导致的写阻塞**，不是快速连接失败；责任在框架 NetworkClient/Base MQTT 传输，本项目不改，建议 Esp32Base 立项（写超时/非阻塞发送）。
+
 排障澄清（非缺陷，避免重复排查）：
 
 - 中途怀疑「config.json 一个月写不进 / FD 耗尽锁死配置」，加临时分步日志后**证伪**：全新启动 7 步写链（encode→ensureDir→writeTmp→readback→removeBak→renameCur→renameTmp）全部成功，当时 free heap≈49 KB、max alloc≈36.8 KB。先前手工录入失败是测试值 2.419 L/min 经「流量→脉冲率→流量」整数往返不严格相等、在存储层前被校验挡回；一次 MQTT `persistence_error` 是长运行 TLS 反复重连堆压力瞬间 audit stream 暂不可写的连带门控，重启不复现。诊断日志与临时 native 测试均已还原，未提交。
@@ -237,16 +247,16 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 
 仍需关注（后续立项，非本轮阻塞）：
 
-- **长运行 TLS 写方向偶发卡死**：真机多次出现 MQTT connected 后约 1 分钟起 `NetworkClient write(): fail on fd 50 errno=11`（TLS 写 EAGAIN），命令入站也不可达，靠 broker RST 后 Base 自动重连恢复，间隔不稳定（亦有连接稳定数分钟）；电脑同账号同 broker 长连 3 个 keepalive 正常，故网络/broker 健康，问题在设备 TLS 传输或重连资源。串口还在高负载时抓到 `esp_littlefs: Unable to allocate FD` / `dir struct could not be malloced`（内部 RAM 堆压力），与交接步骤 H 的 FD 观察同源，需在断网补发/长稳专项里结合堆水位定位；责任在 Esp32Base/iot-device，本轮只读未改。
+- **半挂网络下 TLS 写阻塞触发 loopTask WDT 复位（步骤 H 已定性，待 Esp32Base 修复）**：触发条件是**路由半挂/连接半死**（物理断 WAN、路由器反复踢关联）：`NetworkClient write(): fail on fd 50 errno=11`（TLS 写 EAGAIN）在 loopTask 上阻塞满 5 s 即 task_wdt 复位，半挂期间反复发生（实验中 boot 807→822，watchdog 累计 count=110）；而 EMQX 拉黑的「快速明确不可达」零复位、离线浇水 free heap≈90 KB。电脑同 broker 长连正常，问题在设备端框架 NetworkClient/Base MQTT 写路径（缺写超时/非阻塞发送）。9/23 高负载抓到的 `esp_littlefs: Unable to allocate FD` 同属网络路径堆压力（在线 free heap 仅约 40 KB vs 离线约 90 KB），记录补发本身不造成 FD 压力。责任在 Esp32Base/iot-device，本项目只读未改，建议立项。
 - 命令 schema 校验失败静默无回执，建议平台/SDK 侧补拒绝回执（可观测性）。
 - 本地事件页把 `configuration.system-field-changed` 显示为「未识别的历史事项」的映射缺口待补。
-- 实验临时工具与 MQTT venv 在 `/tmp`（`irr_mqtt.py`、traffic.jsonl），重启即失；实验记录未清，设备现存 16 浇水 / 9 审计记录。
+- 实验临时工具与 MQTT venv 在 `/tmp`（`irr_exp/`、`irr_h/`：mqtt_h 固定 client+持久会话监听、堆轮询、串口抓 log、DB 核对脚本），重启即失；**设备现存 17 浇水 / 9 审计记录**（seq17 为步骤 H 断网补发的 61 s/603 脉冲 completed）。
 
 ### 晚间进展（浇水实验开始前，待烧录继续）
 
 - **新固件待烧录**：本轮共两个修复（均已提交推送、native 85 项与主目标构建全过、**尚未烧录**）：①维护类 state 快照远程写入后不重推（提交 `8faf754`，elf 前缀 `77e60ca2`）；②多水路记录 JSON 解码容量不足（512 B）使双水路记录永久发布失败并按保序堵死整条浇水记录流（见上文「修复多水路记录 JSON 解码容量不足…」，含 seq6/7 积压，烧录后自动排空）。烧 app 保留 NVS/配置/记录，下列已启用配置不丢；烧录后 elf 前缀以最新构建为准。
 - **实验前置已完成（旧固件 5e8539db5 上操作）**：Mac 测试服务原本未运行，设备因无 record-ack 每 5 s 重传挂起记录；已启动 Postgres（docker `iot-home-postgres-dev`）+ `./server start`（127.0.0.1:17832，MQTT healthy），重传立即平息。`pump.enabled` 经 MQTT 命令 accepted→succeeded（审计 `configuration.system-field-changed` seq 4、fieldIndex 5，NVS 回读 true），startDelayMs 本就为 0。zone1「试验一路」、zone2「区域 2」实际早已启用（revision=4，计划「花园」07:00 各浇 1 分钟，自动总控开启）；与早前交接「zones 为空」不同，以当前为准。
-- **异常观察（待步骤 H 复现定性）**：服务端缺席、记录重传风暴期间，一条 system-field 命令的审计落盘撞上 `esp_littlefs: Unable to allocate FD`（FD 耗尽），审计流进 StorageFault 永久态 + 1 条审计 pending，之后维护命令全被 `writable(Audit)` 拒为 `invalid_field_value`；EN 复位后恢复，数据无损。疑似重传发布占用 littlefs FD 与 loop 任务落盘并发，断网补发实验重点观察。
+- **历史异常观察（步骤 H 已部分定性）**：9/23 服务端缺席、记录重传风暴期间，一条 system-field 命令的审计落盘撞上 `esp_littlefs: Unable to allocate FD`（FD 耗尽），审计流进 StorageFault 永久态 + 1 条审计 pending，EN 复位后恢复、数据无损。步骤 H 测得在线 free heap 仅约 40 KB、离线约 90 KB，支持「FD 压力来自 TLS/网络路径」的方向；但「服务端缺席重传风暴」与本次「干净离线无重发」场景不完全等价（干净离线时 TLS 不建连、无持续重发），重传风暴与落盘并发的精确复现留待长稳专项。
 - MQTT 实验工具事实：state/progress/event 全部**非 retained**（仅 availability retained），观察命令结果必须实时订阅；`/tmp/mqttvenv` 本次重建（paho 2.1.0），临时脚本在 `/tmp/irr_exp/`（`irr_mqtt.py listen|cmd|snap`，traffic.jsonl 全量留痕），重启系统会丢。
 
 ### 本轮已完成
@@ -270,9 +280,9 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
   devices/Esp32_Irrigation/firmware/.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin
 ```
 
-- 当前设备数据（2026-10-23 收尾）：**16 条浇水记录（watering.v9）、9 条审计（irrigation-audit.v6）**；自吸泵已启用（startDelayMs=0）、zone1「试验一路」/zone2「区域 2」已启用，zone1 基准已保存（100800 / 2419 mL/min）；配置 revision=6；计划「花园」07:00 各浇 1 分钟，**自动总控已恢复 enabled**；MQTT 连 EMQX 测试环境。实验遗留：自动浇水会出 10 Hz 等脉冲依赖信号发生器门控，后续若不接发生器，07:00 自动任务会走无流超时，必要时提前暂停。
+- 当前设备数据（2026-10-23 下午 H 后）：**17 条浇水记录（watering.v9）、9 条审计（irrigation-audit.v6）**；自吸泵启用（startDelayMs=0）、zone1「试验一路」/zone2「区域 2」启用，zone1 基准已保存（100800 / 2419 mL/min）；配置 revision=6；计划「花园」07:00 各浇 1 分钟，**自动总控 enabled**；MQTT 连 EMQX 测试环境。实验遗留：07:00 自动计划依赖信号发生器 10 Hz 门控，不接发生器会走无流超时，必要时提前暂停。
 
-### 信号发生器门控实验（C–G 已完成，仅剩 H 与自动总控边界）
+### 信号发生器门控实验（C–H 已完成，仅剩自动总控边界）
 
 用户已确认：不接真实水管和 12V 阀，无物理安全顾虑；全部用 **10 Hz**（每秒 10 脉冲，方波 3.3 V、共地）模拟廉价流量计，默认 K=250 P/L → 约 **2.4 L/min**，60 s ≈ 600 脉冲 ≈ 2.4 L，便于核对计量。
 
@@ -282,7 +292,7 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
 - 泵干节点 **CN5 的 RELAY1A/RELAY1B（AQY210 PhotoMOS，GPIO18 低电平导通，47k 上拉默认关）** 串入信号发生器门控/供电，做到「泵信号输出→干节点闭合→出脉冲，停泵→停脉冲」；
 - 12V 阀、真实水路不接。
 
-进度（C–G 已于 2026-10-23 完成，数据见上文「浇水主流程真机实验完成」）：
+进度（C–G 已于 2026-10-23 完成，数据见上文「浇水主流程真机实验完成」；H 断网补发当日下午完成，见上文「步骤 H 断网补发真机通过」）：
 
 1. ✅ 启用泵 / zone1、state 回证；
 2. ✅ C 手动 60 s 成功（succeeded，604 脉冲 / 2.416 L）；
@@ -290,7 +300,7 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
 4. ✅ E 运行中断脉冲 → 10 s no_flow_timeout；
 5. ✅ F 基准学习/确认 + 低/高流量报警；
 6. ✅ G 记录回路、watering-usage、三类浇水与审计 recordKey；
-7. ⬜ **H 断网补发（下一窗口做，真机零证据）**：浇水中途断网、结束后恢复，核对双 Store 按原序号补发、record-ack 水位推进、不重不丢。建议单独 10–15 min 窗口。**只做一次成功路径即可**：断网→完成 1 次浇水→恢复→核对 seq 连续与 ack 水位；不必反复断网/多 zone 矩阵。重点顺带抓一次 TLS/FD 异常时的堆水位（free heap / max alloc），为上文「长运行 TLS 卡死 + Unable to allocate FD」定性，但不做长时间 soak。
+7. ✅ **H 断网补发（2026-10-23 完成）**：EMQX Client ID 黑名单制造干净离线 → 断网完成 1 次 60 s 浇水（603 脉冲/2412 mL）→ 删黑名单恢复，设备仅补发 seq17、保持原 observedAt、只换 connectionId，DB 核对浇水流 17/17/17、审计流仍 9/9，不重不丢；离线 free heap≈90 KB（在线≈41 KB），无 FD 耗尽。数据与「半挂网络触发 TLS 写卡死 WDT」的定性见上文「步骤 H 断网补发真机通过」。
 8. ⬜ **自动总控边界（必要最小集）**：验三态（启用/无限暂停/定时暂停）可下发回证；计划编辑 1 次；**只设 1 个最近分钟**验自动计划真实触发 1 次，以及「定时恢复那一分钟不触发」边界 1 次即可，不做多计划/多 zone 组合。
 
 > 验证边界（用户明确要求）：以上剩余项以**关键成功路径 + 明显故障 + 必要安全边界**为准，必要的做完即止，不做 soak/长稳/反复断电/全量矩阵；长稳由用户在半生产环境自行验证。
@@ -300,4 +310,4 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
 - `iot-device` 本地有 1 个未推送提交 `edcc4ce`（平台准入 `model_mismatch` 收紧，SDK 代码未动，灌溉固件不受影响），下次跨仓工作先跑门禁再推送。
 - OTA 对侧槽余量约 215 KB（12.16%），发布前评估固件尺寸优化，不靠削 TLS/OTA/日志/记录预算换体积。
 - 已知限制不修：人为 12 路以上并发猛刷单线程同步 Web 会触发一次 task_wdt；正常浏览器单域名 ≤6 连接，实测 6 并发稳定。
-- 真机 TLS/MQTT：参数命令、start-manual 成功路径、中途停止、无流失败、基准/高低报警、记录与审计上报均已真机验证；**仅剩断网补发（步骤 H）零证据**。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。
+- 真机 TLS/MQTT：参数命令、start-manual 成功路径、中途停止、无流失败、基准/高低报警、记录与审计上报、**断网补发（步骤 H，seq 连续/ack 水位/不重不丢）均已真机验证**。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。
