@@ -1,6 +1,8 @@
 #pragma once
 
+#include <ArduinoJson.h>
 #include <ModelPublisher.h>
+#include <stdint.h>
 
 // Application-owned immutable binary-fact -> platform-record codec table for
 // the irrigation model. Type codes match IrrigationPlatform::FactType and are
@@ -19,5 +21,14 @@ constexpr size_t kRecordDocBytes = 4096;
 
 const iot_device::RecordCodec* codecs();
 size_t codecCount();
+
+// Project the two RecordStream publication blocks into state.diagnostics.
+// Each value is the blocked recordSequence (0 = not blocked), keyed by the
+// fixed recordStreamId directory: watering / irrigation-audit. Both fields
+// are required by the closed diagnostics schema, so every diagnostics frame
+// carries them even when healthy. Pure: no hardware or stream access.
+void projectRecordBlocks(JsonDocument& doc,
+                         uint64_t wateringBlockedSeq,
+                         uint64_t auditBlockedSeq);
 
 }  // namespace IrrigationPlatformRecords

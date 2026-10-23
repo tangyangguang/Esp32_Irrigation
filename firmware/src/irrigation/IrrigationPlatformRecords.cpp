@@ -341,4 +341,11 @@ namespace IrrigationPlatformRecords {
 const iot_device::RecordCodec* codecs() { return kCodecs; }
 size_t codecCount() { return sizeof(kCodecs) / sizeof(kCodecs[0]); }
 
+void projectRecordBlocks(JsonDocument& doc,
+                         uint64_t wateringBlockedSeq,
+                         uint64_t auditBlockedSeq) {
+    doc["wateringBlockedSeq"] = wateringBlockedSeq;
+    doc["auditBlockedSeq"] = auditBlockedSeq;
+}
+
 }  // namespace IrrigationPlatformRecords

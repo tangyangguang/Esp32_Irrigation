@@ -29,7 +29,7 @@ firmware/
 # 1. Web 资产：gzip 还原、注册、JS 语法
 python3 devices/Esp32_Irrigation/firmware/scripts/test_web_assets.py
 
-# 2. 纯业务逻辑 native 测试（Unity，82 项：配置/控制器/调度/记录/时间/异常流/平台记录投影）
+# 2. 纯业务逻辑 native 测试（Unity，87 项：配置/控制器/调度/记录/时间/异常流/平台记录投影）
 python3 foundation/Esp32Base/scripts/pio_arduino.py 2 test -d devices/Esp32_Irrigation/firmware -e native
 
 # 3. 独立主机检查（直接用宿主 c++ 编译，不依赖硬件）
@@ -52,10 +52,10 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,554,352 B（87.8%，分区 1,769,472 B） |
-| 静态 RAM（DRAM data+bss） | 109,620 B（33.5%，327,680 B）；IRAM 91,491 B |
-| OTA 镜像 firmware.bin | 1,554,352 B |
-| 对侧 OTA 槽余量 | 215,120 B（约 210 KiB，12.16%） |
+| Flash（应用分区） | 1,552,743 B（87.8%，分区 1,769,472 B） |
+| 静态 RAM（DRAM data+bss） | 113,260 B（34.6%，327,680 B） |
+| OTA 镜像 firmware.bin | 1,553,152 B |
+| 对侧 OTA 槽余量 | 216,320 B（约 211 KiB，12.23%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
@@ -198,6 +198,15 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 - MQTT host/CA 缺失时安全降级为纯本地运行，不阻塞 Web 与业务。
 - 模型头 `IrrigationSdkModel.generated.h` 由 `scripts/generate_sdk_model.py` 在构建目录从契约生成，**不签入**；Web 资产由 `scripts/generate_web_assets.py` 从 `web-src/` 生成到 `src/irrigation/generated/`，签入并在构建前做漂移检查。
 
+## 诊断快照上报记录流发布阻塞（2026-10-24）
+
+闭环 SDK `f92b3ee` 留下的设备侧可观测性缺口：确定性发布拒绝只在 RecordStream 内闩 RAM 态阻塞，云端无专门信号。固件 0.9.1 在 `state.diagnostics` 恒携带两个新字段（公共契约 `iot-device` 提交 `18632b4`，配对交付）：
+
+- `wateringBlockedSeq` / `auditBlockedSeq`：对应 recordStreamId `watering` / `irrigation-audit`，0=发布正常，非 0=该 seq 的事实被确定性拒绝、保序发布停滞。纯观测，不进 `state.overview.health`，不改变存储 Ready、本地记账、ACK 与另一条流。
+- 投影在 `IrrigationPlatformRecords::projectRecordBlocks`（native 可测纯函数），`buildDiagnostics` 出帧时读两流 `publishBlockedSequence()`；`poll()` 在两流驱动之后做边沿检测，闩住（0→N）、换 seq（N→M）或解除（N→0，合法 ACK 越过）立即 `markDiagnosticsDirty()`，不等 3600 s 周期；静态闩定不重复发。断连不检测，重连首帧全量标脏兜底；重启清零并由首帧上报。
+- 验证：iot-device `definitions:check`/typecheck/vitest 131 项全过；固件 native 87 项全过（新增 2 项用生成模型 `contract.capability("state.diagnostics")->validate(...)` 校验 0/非 0 两组帧过封闭 schema，且诊断体 measureJson < 1024）；主目标构建 Flash 1,552,743 B / RAM 113,260 B / firmware.bin 1,553,152 B / OTA 余量 216,320 B（12.23%）。经独立方案审核与最终 diff 审核，零 Critical/Warning。
+- **未做**：未烧录、未真机验证（待用户按 `/dev/cu.usbserial-110` 烧录 0.9.1 后做确定性坏记录实验）；服务端受控 definition 副本（`iot-home-server/config/device-types/...`）与 manifest checksum 未同步——服务端入站只校验消息外壳、暂不阻塞，但下次服务端发版/同步定义前需在 iot-home-server 仓更新副本与 manifest（第三仓，本次未授权）；iot-base 台账 §4 “设备映射待首个增量”状态未回写（本次未授权该仓）。
+
 ## MQTT 凭据
 
 真实凭据只放在 Git 忽略的 `firmware/local_private/irrigation_iot_private.h`（编译参数 `-I local_private`）。模板：
@@ -328,7 +337,8 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
   - **没有做、也不能在核心静默做的**：跳过毒记录/推进 ACK/换世代。服务端对同 `recordStreamId` 缺口永久 `gap` 拒绝，iot-base 规范禁止同世代静默换流，Base 在未确认记录未清时拒绝 `clear()`；真正死信跳过需要先定义跨端“缺口协议”（服务端水位模型 + Base 释放语义 + 公共契约 + 设备），已登记为后续项（`iot-base/docs/03-跨项目规划与验收台账.md` §4）。
   - 本仓状态：本仓只透传 `ModelPublisher::publishRecord`，**业务源码零改动**；用新 SDK 本机构建 `esp32_irrigation_arduino3` 通过（Flash 1,552,592 B / OTA 余量 216,880 B / 12.26%），但**未升固件版本、未烧录、未真机验证**。
   - 本仓两次历史诱因此前已分别消除（多水路解码文档 512 B→4096 B；`automatic.resumed` expired 投影 `20473c0`）。
-  - **新会话在本仓的待办**：① 把两个 RecordStream 的 `publishBlocked()`/`publishBlockedSequence()` 映射进 `state.diagnostics` 显式告警（接入点 `src/irrigation/IrrigationPlatform.cpp` 的 `poll()` 两流段，约 1183–1191 行），当前云端对“流已永久停滞”无专门信号，这是已知可观测性缺口；② 出固件/烧录前按本仓规则把 `IrrigationApp.cpp` 的 `kFirmwareVersion` 由 `0.9.0` 升 patch（依赖行为修正）；③ 真机验证：确定性坏记录一轮冻结不重试、不堵另一条流、本地仍记账、OTA 修复重启后自愈。esp12f-relay 已做同样适配（提交 `bec891a`，其自定义发布 lambda 把解码坏记录归 Rejected），可作参考。
+  - ~~① 把两个 RecordStream 的 `publishBlocked()`/`publishBlockedSequence()` 映射进 `state.diagnostics` 显式告警~~、~~② 固件升 patch~~：**已于 2026-10-24 完成**，见下方“诊断快照上报记录流发布阻塞（2026-10-24）”。
+  - **剩余真机验证**：确定性坏记录一轮冻结不重试、不堵另一条流、本地仍记账、云端诊断帧出现对应 blockedSeq、OTA 修复重启后自愈回 0；esp12f-relay 已做同样适配（提交 `bec891a`，其自定义发布 lambda 把解码坏记录归 Rejected），可作参考。
 - OTA 对侧槽余量约 215 KB（12.16%），发布前评估固件尺寸优化，不靠削 TLS/OTA/日志/记录预算换体积。
 - 已知限制不修：人为 12 路以上并发猛刷单线程同步 Web 会触发一次 task_wdt；正常浏览器单域名 ≤6 连接，实测 6 并发稳定。
 - 真机 TLS/MQTT：参数命令、start-manual 成功路径、中途停止、无流失败、基准/高低报警、记录与审计上报、**断网补发（步骤 H，seq 连续/ack 水位/不重不丢）均已真机验证**。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。

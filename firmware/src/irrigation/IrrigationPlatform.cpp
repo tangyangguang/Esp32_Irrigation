@@ -29,6 +29,12 @@
 #include "IrrigationSdkModel.generated.h"
 
 namespace IrrigationPlatform {
+
+// Defined before the anonymous namespace so diagnostics projection can read
+// the two SDK record streams. Bound by bindStores(); null until then.
+WateringRecordStore* g_wateringStore = nullptr;
+IrrigationAuditStore* g_auditStore = nullptr;
+
 namespace {
 
 using namespace iot_device;
@@ -861,6 +867,15 @@ bool buildDiagnostics(DiagnosticsFrameToken& token) {
                                ? nullptr
                                : Esp32BaseMqtt::errorName(status.lastError);
     g_stateDoc["wdt"] = Esp32BaseWatchdog::lifetimeResetCount();
+    // RecordStream publication blocks are orthogonal to store health: 0 means
+    // the stream publishes normally, non-zero is the recordSequence whose fact
+    // was deterministically rejected and now stalls ordered publication.
+    IrrigationPlatformRecords::projectRecordBlocks(
+        g_stateDoc,
+        g_wateringStore ? g_wateringStore->recordStream().publishBlockedSequence()
+                       : 0,
+        g_auditStore ? g_auditStore->recordStream().publishBlockedSequence()
+                     : 0);
     return true;
 }
 
@@ -1102,8 +1117,6 @@ void publishStates(uint32_t nowMs) {
 
 }  // namespace
 
-WateringRecordStore* g_wateringStore = nullptr;
-IrrigationAuditStore* g_auditStore = nullptr;
 iot_device::RecordStream* g_recordStreams[2] = {};
 void bindStores(WateringRecordStore& watering, IrrigationAuditStore& audit) {
     g_wateringStore = &watering;
@@ -1204,6 +1217,28 @@ void poll() {
         g_publishPolicy.connected(now);  // marks every state/parameter snapshot dirty
         g_scanCursor = 0;  // first frame of every connection starts at capability 0
         g_policyConnected = true;
+    }
+    // Publish a fresh diagnostics frame when either RecordStream latches or
+    // releases a publication block. Only transitions mark dirty; the block is
+    // a static RAM latch otherwise, so a blocked stream does not republish.
+    // Reboot clears the latch to 0 and the connection first frame covers it.
+    {
+        const uint64_t wateringBlocked =
+            g_wateringStore ? g_wateringStore->recordStream()
+                                  .publishBlockedSequence()
+                            : 0;
+        const uint64_t auditBlocked =
+            g_auditStore ? g_auditStore->recordStream()
+                               .publishBlockedSequence()
+                         : 0;
+        static uint64_t s_lastWateringBlocked = 0;
+        static uint64_t s_lastAuditBlocked = 0;
+        if (wateringBlocked != s_lastWateringBlocked ||
+            auditBlocked != s_lastAuditBlocked) {
+            g_publishPolicy.markDiagnosticsDirty();
+            s_lastWateringBlocked = wateringBlocked;
+            s_lastAuditBlocked = auditBlocked;
+        }
     }
     publishStates(now);
 }

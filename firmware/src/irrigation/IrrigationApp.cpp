@@ -17,7 +17,7 @@
 namespace {
 
 constexpr const char* kFirmwareName = "esp32-irrigation";
-constexpr const char* kFirmwareVersion = "0.9.0";
+constexpr const char* kFirmwareVersion = "0.9.1";
 constexpr const char* kDefaultWebUser = "admin";
 constexpr const char* kDefaultWebPassword = "admin";
 

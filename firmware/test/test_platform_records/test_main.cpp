@@ -290,6 +290,72 @@ void test_six_zone_fact_fits_record_document() {
     TEST_ASSERT_TRUE(rc->validate(doc.as<JsonVariantConst>()));
 }
 
+// Fill the 20 diagnostics fields produced by the shared Esp32Diagnostics core
+// plus the device-appended fields, so only the two block fields under test
+// remain to be projected.
+void buildDiagnosticsBase(DynamicJsonDocument& doc) {
+    doc["fwName"] = "esp32-irrigation";
+    doc["fwVer"] = "0.9.1";
+    doc["host"] = "irrigation-a1b2c3";
+    doc["bootId"] = "20261024T000000Z-123";
+    doc["bootNo"] = 123U;
+    doc["reset"] = "1";
+    doc["ssid"] = "home";
+    doc["rssi"] = -55;
+    doc["ip"] = "192.168.1.20";
+    doc["uptime"] = 3600U;
+    doc["heap"] = 200000U;
+    doc["heapLow"] = 150000U;
+    doc["ntp"] = true;
+    doc["wifiAtt"] = 1U;
+    doc["mqttAtt"] = 2U;
+    doc["mqttErr"] = nullptr;
+    doc["wdt"] = 0U;
+    doc["mac"] = "AA:BB:CC:DD:EE:FF";
+    doc["rssiWindowMin"] = -70;
+    doc["heapWindowMin"] = 180000U;
+}
+
+const CapabilityContract* diagnosticsCapability() {
+    const CapabilityContract* capability =
+        model_irrigation_controller_6_zone::contract.capability(
+            "state.diagnostics");
+    TEST_ASSERT_NOT_NULL(capability);
+    return capability;
+}
+
+// Healthy frame: both block fields are required and validate as 0.
+void test_diagnostics_healthy_record_blocks_validate() {
+    DynamicJsonDocument doc(2048);
+    buildDiagnosticsBase(doc);
+    IrrigationPlatformRecords::projectRecordBlocks(doc, 0, 0);
+    TEST_ASSERT_FALSE(doc.overflowed());
+    TEST_ASSERT_EQUAL_UINT64(0, doc["wateringBlockedSeq"].as<uint64_t>());
+    TEST_ASSERT_EQUAL_UINT64(0, doc["auditBlockedSeq"].as<uint64_t>());
+    TEST_ASSERT_TRUE(
+        diagnosticsCapability()->validate(doc.as<JsonVariantConst>()));
+}
+
+// Blocked frame: latched sequences for both fixed streams validate, and the
+// complete diagnostics body still fits ModelPublisher's 1024 byte frame cap.
+void test_diagnostics_blocked_record_blocks_validate() {
+    DynamicJsonDocument doc(2048);
+    buildDiagnosticsBase(doc);
+    constexpr uint64_t kWateringSeq = 17;
+    constexpr uint64_t kAuditSeq = 13;
+    IrrigationPlatformRecords::projectRecordBlocks(doc, kWateringSeq,
+                                                   kAuditSeq);
+    TEST_ASSERT_FALSE(doc.overflowed());
+    TEST_ASSERT_EQUAL_UINT64(
+        kWateringSeq, doc["wateringBlockedSeq"].as<uint64_t>());
+    TEST_ASSERT_EQUAL_UINT64(kAuditSeq,
+                             doc["auditBlockedSeq"].as<uint64_t>());
+    TEST_ASSERT_TRUE(
+        diagnosticsCapability()->validate(doc.as<JsonVariantConst>()));
+    const size_t body = measureJson(doc.as<JsonVariantConst>());
+    TEST_ASSERT_TRUE(body < 1024);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_watering_completed_validates);
@@ -298,5 +364,7 @@ int main(int, char**) {
     RUN_TEST(test_start_rejected_watering_validates);
     RUN_TEST(test_audit_records_validate);
     RUN_TEST(test_six_zone_fact_fits_record_document);
+    RUN_TEST(test_diagnostics_healthy_record_blocks_validate);
+    RUN_TEST(test_diagnostics_blocked_record_blocks_validate);
     return UNITY_END();
 }
