@@ -270,9 +270,9 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
   devices/Esp32_Irrigation/firmware/.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin
 ```
 
-- 当前设备数据：6 条浇水记录（watering.v9，可正常读）、3 条审计（irrigation-audit.v6）；**自吸泵当前禁用、zones 为空，实验前必须先启用泵和 zone1**；MQTT 已连 EMQX Cloud 测试环境。
+- 当前设备数据（2026-10-23 收尾）：**16 条浇水记录（watering.v9）、9 条审计（irrigation-audit.v6）**；自吸泵已启用（startDelayMs=0）、zone1「试验一路」/zone2「区域 2」已启用，zone1 基准已保存（100800 / 2419 mL/min）；配置 revision=6；计划「花园」07:00 各浇 1 分钟，**自动总控已恢复 enabled**；MQTT 连 EMQX 测试环境。实验遗留：自动浇水会出 10 Hz 等脉冲依赖信号发生器门控，后续若不接发生器，07:00 自动任务会走无流超时，必要时提前暂停。
 
-### 信号发生器门控实验（下一步，未开始）
+### 信号发生器门控实验（C–G 已完成，仅剩 H 与自动总控边界）
 
 用户已确认：不接真实水管和 12V 阀，无物理安全顾虑；全部用 **10 Hz**（每秒 10 脉冲，方波 3.3 V、共地）模拟廉价流量计，默认 K=250 P/L → 约 **2.4 L/min**，60 s ≈ 600 脉冲 ≈ 2.4 L，便于核对计量。
 
@@ -282,20 +282,22 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
 - 泵干节点 **CN5 的 RELAY1A/RELAY1B（AQY210 PhotoMOS，GPIO18 低电平导通，47k 上拉默认关）** 串入信号发生器门控/供电，做到「泵信号输出→干节点闭合→出脉冲，停泵→停脉冲」；
 - 12V 阀、真实水路不接。
 
-建议顺序（命令尽量从微信小程序发起，覆盖「小程序按钮→真机」此前未点过的链路）：
+进度（C–G 已于 2026-10-23 完成，数据见上文「浇水主流程真机实验完成」）：
 
-1. 维护命令 `parameter.system-field` 启用自吸泵（启动延时 0）、`parameter.zone` 启用 zone1，先核对 state 回证；
-2. C 手动浇水成功路径：小程序开始 60 s → 干节点闭合出 10 Hz → 20 s 内 flowEstablished → running → 到时 **succeeded**，核对水量≈2.4 L、状态/倒计时同步；
-3. D 约 20 s 后停止 → **stopped**，水量按实际脉冲；
-4. E 无流量保护：运行中断开门控停脉冲 → 10 s 内 `NoFlowTimeout` failed；（启动前就无脉冲 20 s failed 已在 9/23 验过）；
-5. F zone1 基准学习（连续 5×5 s 稳定窗口，10 Hz 天然满足，每窗约 50 脉冲）保存；随后频率降到 <3 Hz（<基准 30%）和升到 >20 Hz（>200%）各持续 20 s+ 验低/高流量报警；
-6. G 记录回路：小程序记录详情、`watering-usage` 统计核对浇水三类 + 暂停/恢复、计划变更、水路变更、系统字段、基准保存等审计 recordKey；
-7. H 断网补发：浇水中途断网、结束后恢复，核对双 Store 按原序号补发、record-ack 水位推进、不重不丢（真机零证据，建议单独 10–15 min 窗口）；
-8. 自动总控三态（启用/无限暂停/定时暂停）、计划编辑、设最近一分钟验自动计划真实触发及「定时恢复那一分钟不触发」边界。
+1. ✅ 启用泵 / zone1、state 回证；
+2. ✅ C 手动 60 s 成功（succeeded，604 脉冲 / 2.416 L）；
+3. ✅ D 约 20 s 停止（user_stopped，按实际脉冲）；
+4. ✅ E 运行中断脉冲 → 10 s no_flow_timeout；
+5. ✅ F 基准学习/确认 + 低/高流量报警；
+6. ✅ G 记录回路、watering-usage、三类浇水与审计 recordKey；
+7. ⬜ **H 断网补发（下一窗口做，真机零证据）**：浇水中途断网、结束后恢复，核对双 Store 按原序号补发、record-ack 水位推进、不重不丢。建议单独 10–15 min 窗口。**只做一次成功路径即可**：断网→完成 1 次浇水→恢复→核对 seq 连续与 ack 水位；不必反复断网/多 zone 矩阵。重点顺带抓一次 TLS/FD 异常时的堆水位（free heap / max alloc），为上文「长运行 TLS 卡死 + Unable to allocate FD」定性，但不做长时间 soak。
+8. ⬜ **自动总控边界（必要最小集）**：验三态（启用/无限暂停/定时暂停）可下发回证；计划编辑 1 次；**只设 1 个最近分钟**验自动计划真实触发 1 次，以及「定时恢复那一分钟不触发」边界 1 次即可，不做多计划/多 zone 组合。
+
+> 验证边界（用户明确要求）：以上剩余项以**关键成功路径 + 明显故障 + 必要安全边界**为准，必要的做完即止，不做 soak/长稳/反复断电/全量矩阵；长稳由用户在半生产环境自行验证。
 
 ### 其他待办
 
 - `iot-device` 本地有 1 个未推送提交 `edcc4ce`（平台准入 `model_mismatch` 收紧，SDK 代码未动，灌溉固件不受影响），下次跨仓工作先跑门禁再推送。
 - OTA 对侧槽余量约 215 KB（12.16%），发布前评估固件尺寸优化，不靠削 TLS/OTA/日志/记录预算换体积。
 - 已知限制不修：人为 12 路以上并发猛刷单线程同步 Web 会触发一次 task_wdt；正常浏览器单域名 ≤6 连接，实测 6 并发稳定。
-- 真机 TLS/MQTT 命令此前只验到参数命令和 start-manual 进入 running（9/23，无水超时 failed 为预期保护）；成功浇水、记录/审计上报与断网补发在本轮实验补证。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。
+- 真机 TLS/MQTT：参数命令、start-manual 成功路径、中途停止、无流失败、基准/高低报警、记录与审计上报均已真机验证；**仅剩断网补发（步骤 H）零证据**。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。
