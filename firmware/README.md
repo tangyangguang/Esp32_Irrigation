@@ -214,6 +214,34 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 
 ## 真机实验交接（2026-10-22）
 
+### 浇水主流程真机实验完成（2026-10-23 追加）
+
+步骤 C–G 全部在真机完成并通过，期间修复 3 个固件缺陷（均已提交推送）：
+
+1. `8faf754`（10-22）维护类 state 快照远程写入后不重推；
+2. `f9ac996`（10-22）多水路记录解码文档 512 B 溢出堵死记录流（详见上文）；
+3. `358058e`（10-23）**`state.zone-maintenance` 的 `baselineFlowMlPerMinute` 恒为 null**：`projectZoneMaintenance` 从未按 `baselinePulseRateX10000` 与当前流量计系数换算，小程序拿不到基准流量。修复后真机 zone1 基线 100800（10.08 P/s，K=250 P/L）→ `2419 mL/min`，快照立即重推、落盘 revision 6，服务端 `device_runtime_states.evidence_state=complete`。这是修复①扩展维护快照覆盖时暴露的遗漏。
+
+真机实验数据（设备 `esp32-irr-8caab58ed1cc`，EMQX 测试环境 + Mac `./server start`）：
+
+- **C 手动成功**：60 s 10 Hz → succeeded，604 脉冲 / 2.416 L / 恒定 2400 mL/min（250 P/L 吻合），干节点门控正确。
+- **D 中途停止**：运行 23 s（出水 21 s）后 stop → seq10 `watering.stopped/user_stopped`，222 脉冲 / 0.888 L，即时生效。
+- **E 无流保护**：出水建立后断开门控停脉冲 → 10 s（`noFlowTimeoutSeconds`）精确 `watering.failed/no_flow_timeout`（seq13，19 s / 98 脉冲 / 0.392 L 如实入账）。
+- **F 基准与报警**：完整 60 s 10 Hz 记录自动给出稳定建议基线 `suggestedBaselinePulseRateX10000=100800`（连续 5×5 s 窗口波动达标），经 `parameter.zone-baseline`（revision=5）确认落盘并产出审计 seq8 `zone.baseline-saved`；2 Hz（480 mL/min≈基准 20%）持续 20 s → `lowFlowDetected/lowFlowActive=true`；22 Hz（5304 mL/min≈218%）持续 20 s → `highFlowDetected/highFlowActive=true`；action=alert 不停机，任务正常 completed，记录含 average/baseline 流量与检测位。
+- **G 记录与审计**：浇水流 16 条、审计流 9 条，服务端 ACK 水位一致（16 / 8→9），无积压；三类浇水（completed/stopped/failed）与 `wechat_miniprogram`/`device_schedule` 来源齐全；今日（北京 10-23）用量 9 次 / 593 s / 19328 mL，逐记录求和核对一致；多水路记录（seq8 双水路 4824 mL）聚合正常；审计 recordKey 覆盖 automatic.resumed/paused、configuration.zone-changed/system-field-changed、zone.baseline-saved。实验后自动总控已恢复 enabled。
+
+排障澄清（非缺陷，避免重复排查）：
+
+- 中途怀疑「config.json 一个月写不进 / FD 耗尽锁死配置」，加临时分步日志后**证伪**：全新启动 7 步写链（encode→ensureDir→writeTmp→readback→removeBak→renameCur→renameTmp）全部成功，当时 free heap≈49 KB、max alloc≈36.8 KB。先前手工录入失败是测试值 2.419 L/min 经「流量→脉冲率→流量」整数往返不严格相等、在存储层前被校验挡回；一次 MQTT `persistence_error` 是长运行 TLS 反复重连堆压力瞬间 audit stream 暂不可写的连带门控，重启不复现。诊断日志与临时 native 测试均已还原，未提交。
+- `parameter.automatic-watering`/`parameter.zone-baseline` 等维护命令参数必须带**契约全部 required 字段**（如 paused 也要带 `resumeAtEpoch:null`、基线要带 `revision`）；缺字段被 schema 静默拒绝、无回执（易误判为链路故障）。revision 每次配置落盘自增，过期 revision 返回 `revision_conflict`。
+
+仍需关注（后续立项，非本轮阻塞）：
+
+- **长运行 TLS 写方向偶发卡死**：真机多次出现 MQTT connected 后约 1 分钟起 `NetworkClient write(): fail on fd 50 errno=11`（TLS 写 EAGAIN），命令入站也不可达，靠 broker RST 后 Base 自动重连恢复，间隔不稳定（亦有连接稳定数分钟）；电脑同账号同 broker 长连 3 个 keepalive 正常，故网络/broker 健康，问题在设备 TLS 传输或重连资源。串口还在高负载时抓到 `esp_littlefs: Unable to allocate FD` / `dir struct could not be malloced`（内部 RAM 堆压力），与交接步骤 H 的 FD 观察同源，需在断网补发/长稳专项里结合堆水位定位；责任在 Esp32Base/iot-device，本轮只读未改。
+- 命令 schema 校验失败静默无回执，建议平台/SDK 侧补拒绝回执（可观测性）。
+- 本地事件页把 `configuration.system-field-changed` 显示为「未识别的历史事项」的映射缺口待补。
+- 实验临时工具与 MQTT venv 在 `/tmp`（`irr_mqtt.py`、traffic.jsonl），重启即失；实验记录未清，设备现存 16 浇水 / 9 审计记录。
+
 ### 晚间进展（浇水实验开始前，待烧录继续）
 
 - **新固件待烧录**：本轮共两个修复（均已提交推送、native 85 项与主目标构建全过、**尚未烧录**）：①维护类 state 快照远程写入后不重推（提交 `8faf754`，elf 前缀 `77e60ca2`）；②多水路记录 JSON 解码容量不足（512 B）使双水路记录永久发布失败并按保序堵死整条浇水记录流（见上文「修复多水路记录 JSON 解码容量不足…」，含 seq6/7 积压，烧录后自动排空）。烧 app 保留 NVS/配置/记录，下列已启用配置不丢；烧录后 elf 前缀以最新构建为准。
