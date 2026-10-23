@@ -323,6 +323,12 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
 ### 其他待办
 
 - `iot-device` 本地有 1 个未推送提交 `edcc4ce`（平台准入 `model_mismatch` 收紧，SDK 代码未动，灌溉固件不受影响），下次跨仓工作先跑门禁再推送。
+- **【跨仓 bug，待在 `platform/iot-device` 立项修复】SDK `RecordStream` 对永久性发布错误无限静默重试，毒死整条保序流**（本仓两次真机踩中，均已从设备侧消除诱因，但 SDK 缺陷仍在）：
+  - 位置：`platform/iot-device/sdk/src/RecordStream.cpp` 的 `poll()`（pending fact 发布段，约 190–219 行）与 `ModelPublisher::publishRecord`（`sdk/src/ModelPublisher.cpp`）。
+  - 机制：`publishRecord` 返回 false 的原因里既有瞬时错误（`QueueFull`、底层 Busy），也有永久性错误（`DecodeFailed`、`SchemaRejected`、`PayloadTooLarge`/`JsonCapacityExceeded`、`UnknownRecord`）。`RecordStream::poll` 不区分二者，只要 pending fact 发布返回 false 就只置 `attempted_` 并每 5 s 重试；保序流严格按序发布，**队头一条永远发不出去的坏记录会无限期阻塞其后全部 fact**，且无错误码/状态/日志上抛，外部完全无感知（设备本地存储正常、state/命令通道正常，极易误判成 MQTT 或服务端故障）。
+  - 实证：① 2026-10-22 多水路记录解码文档 512 B 容量不足，浇水流 seq6 双水路记录成为队头毒记录、seq7 一并堵死（诱因已由本仓把解码文档提到 4096 B 消除）；② 2026-10-23 步骤 I，`automatic.resumed` 到期投影 `{mode:"expired",resumeAtEpoch:null}` 被契约 schema 拒绝（`expired` 分支只允许 mode），审计流 seq13 毒死，其后 seq14/15 与 record-ack 全部不可见（诱因已由本仓提交 `20473c0` 修复投影）。
+  - 建议方向（具体设计在 iot-device 仓内决定）：区分瞬时错误（继续 5 s 重试）与永久错误（解码/schema/容量/未知类型）；永久错误必须可观测（流状态/错误计数/日志），并定义毒记录策略（死信或带告警跳过并推进 ACK 水位），不能静默无限重试堵死整条流；实现需保持保序、服务端 ACK/幂等去重语义以及「两个 RecordStream 互不阻塞」的既有契约。复现可构造一个 `codec->decode` 或 `validate` 恒 false 的 fact，观察流是否永久停在该 seq。
+  - 边界：按本仓规则跨仓修改需用户在当次任务明确授权，本条仅交接、未改 iot-device；新会话在该仓开工前先读其 AGENTS/门禁，并处理上面未推送的 `edcc4ce`。
 - OTA 对侧槽余量约 215 KB（12.16%），发布前评估固件尺寸优化，不靠削 TLS/OTA/日志/记录预算换体积。
 - 已知限制不修：人为 12 路以上并发猛刷单线程同步 Web 会触发一次 task_wdt；正常浏览器单域名 ≤6 连接，实测 6 并发稳定。
 - 真机 TLS/MQTT：参数命令、start-manual 成功路径、中途停止、无流失败、基准/高低报警、记录与审计上报、**断网补发（步骤 H，seq 连续/ack 水位/不重不丢）均已真机验证**。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。
