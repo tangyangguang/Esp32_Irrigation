@@ -194,6 +194,28 @@ void test_audit_records_validate() {
     assertValidates(IrrigationPlatform::FactAutomaticResumed, fact,
                     sizeof(fact));
 
+    // Expired (timed-pause auto-resume): the oneOf "expired" branch forbids
+    // resumeAtEpoch. The extra null used to fail schema validation and, via
+    // RecordStream strict ordering, permanently poisoned the audit stream.
+    buildAuditFact(fact, IrrigationAuditPayload::Kind::AutomaticStateChanged,
+                   4 /*resumed automatically (expired)*/, 0, 0, 0);
+    {
+        const RecordCodec* rc = findCodec(
+            IrrigationPlatform::FactAutomaticResumed);
+        TEST_ASSERT_NOT_NULL(rc);
+        DynamicJsonDocument d(1024);
+        TEST_ASSERT_TRUE(rc->decode(fact, sizeof(fact), d));
+        TEST_ASSERT_EQUAL_STRING("expired", d["mode"] | "");
+        TEST_ASSERT_TRUE(d["resumeAtEpoch"].isNull());
+        TEST_ASSERT_FALSE(d.as<JsonVariantConst>().containsKey(
+            "resumeAtEpoch"));
+        const RecordContract* contract =
+            model_irrigation_controller_6_zone::contract.record(
+                rc->recordKey);
+        TEST_ASSERT_NOT_NULL(contract);
+        TEST_ASSERT_TRUE(contract->validate(d.as<JsonVariantConst>()));
+    }
+
     buildAuditFact(fact, IrrigationAuditPayload::Kind::PlansChanged, 0, 0,
                    42 /*revision*/, 0b101 /*plan ids 1,3*/);
     assertValidates(IrrigationPlatform::FactPlansChanged, fact,

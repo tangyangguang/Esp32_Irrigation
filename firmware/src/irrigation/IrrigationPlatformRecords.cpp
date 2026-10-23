@@ -239,13 +239,18 @@ bool decodeAutomaticResumed(const uint8_t* b, size_t n, JsonDocument& doc) {
         IrrigationAuditPayload::Kind::AutomaticStateChanged)
         return false;
     JsonObject data = doc.to<JsonObject>();
-    if (a.reason == AuditReason::kResumedAutomatically)
+    // The contract oneOf for automatic.resumed forbids resumeAtEpoch on the
+    // "expired" branch (additionalProperties:false, mode only); the manual
+    // "enabled" branch requires resumeAtEpoch:null. An extra null on expired
+    // failed schema validation forever, poisoning the ordered audit stream.
+    if (a.reason == AuditReason::kResumedAutomatically) {
         data["mode"] = "expired";
-    else if (a.reason == AuditReason::kResumedManually)
+    } else if (a.reason == AuditReason::kResumedManually) {
         data["mode"] = "enabled";
-    else
+        data["resumeAtEpoch"] = nullptr;
+    } else {
         return false;
-    data["resumeAtEpoch"] = nullptr;
+    }
     return !doc.overflowed();
 }
 
