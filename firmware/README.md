@@ -250,7 +250,7 @@ cp firmware/irrigation_iot_private.example.h firmware/local_private/irrigation_i
 - **半挂网络下 TLS 写阻塞触发 loopTask WDT 复位（步骤 H 已定性，待 Esp32Base 修复）**：触发条件是**路由半挂/连接半死**（物理断 WAN、路由器反复踢关联）：`NetworkClient write(): fail on fd 50 errno=11`（TLS 写 EAGAIN）在 loopTask 上阻塞满 5 s 即 task_wdt 复位，半挂期间反复发生（实验中 boot 807→822，watchdog 累计 count=110）；而 EMQX 拉黑的「快速明确不可达」零复位、离线浇水 free heap≈90 KB。电脑同 broker 长连正常，问题在设备端框架 NetworkClient/Base MQTT 写路径（缺写超时/非阻塞发送）。9/23 高负载抓到的 `esp_littlefs: Unable to allocate FD` 同属网络路径堆压力（在线 free heap 仅约 40 KB vs 离线约 90 KB），记录补发本身不造成 FD 压力。责任在 Esp32Base/iot-device，本项目只读未改，建议立项。
 - 命令 schema 校验失败静默无回执，建议平台/SDK 侧补拒绝回执（可观测性）。
 - 本地事件页把 `configuration.system-field-changed` 显示为「未识别的历史事项」的映射缺口待补。
-- 实验临时工具与 MQTT venv 在 `/tmp`（`irr_exp/`、`irr_h/`：mqtt_h 固定 client+持久会话监听、堆轮询、串口抓 log、DB 核对脚本），重启即失；**设备现存 17 浇水 / 9 审计记录**（seq17 为步骤 H 断网补发的 61 s/603 脉冲 completed）。
+- 实验临时工具与 MQTT venv 在 `/tmp`（`irr_exp/`、`irr_h/`：mqtt_h 固定 client+持久会话监听、堆轮询、串口抓 log、DB 核对脚本），重启即失；**设备现存 19 浇水记录、平台审计水位 18**（步骤 I 后；seq19 浇水为 17:18 自动计划 61 s completed）。
 
 ### 晚间进展（浇水实验开始前，待烧录继续）
 
@@ -280,9 +280,9 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
   devices/Esp32_Irrigation/firmware/.pio/build/arduino3-tls/esp32_irrigation_arduino3/firmware.bin
 ```
 
-- 当前设备数据（2026-10-23 下午 H 后）：**17 条浇水记录（watering.v9）、9 条审计（irrigation-audit.v6）**；自吸泵启用（startDelayMs=0）、zone1「试验一路」/zone2「区域 2」启用，zone1 基准已保存（100800 / 2419 mL/min）；配置 revision=6；计划「花园」07:00 各浇 1 分钟，**自动总控 enabled**；MQTT 连 EMQX 测试环境。实验遗留：07:00 自动计划依赖信号发生器 10 Hz 门控，不接发生器会走无流超时，必要时提前暂停。
+- 当前设备数据（2026-10-23 傍晚步骤 I 后）：**19 条浇水记录（watering.v9，nextRecordId=20）；平台审计流 ACK/DB 水位 18（irrigation-audit.v6）**，最后一次 rev10 计划恢复的 `configuration.plans-changed` 审计在一次 MQTT 重连前产生、未进平台 ACK（parameter 快照已是 rev10 权威）；自吸泵启用（startDelayMs=0）、zone1「试验一路」/zone2「区域 2」启用，zone1 基准已保存（100800 / 2419 mL/min）；配置 **revision=10**；计划「花园」**07:00、zone1+zone2 各 1 分钟（已恢复实验前配置）**，**自动总控 enabled**；MQTT 连 EMQX 测试环境。实验遗留：07:00 自动计划依赖信号发生器 10 Hz 门控，不接发生器会走无流超时，必要时提前暂停。
 
-### 信号发生器门控实验（C–H 已完成，仅剩自动总控边界）
+### 信号发生器门控实验（C–I 全部完成）
 
 用户已确认：不接真实水管和 12V 阀，无物理安全顾虑；全部用 **10 Hz**（每秒 10 脉冲，方波 3.3 V、共地）模拟廉价流量计，默认 K=250 P/L → 约 **2.4 L/min**，60 s ≈ 600 脉冲 ≈ 2.4 L，便于核对计量。
 
@@ -301,9 +301,24 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
 5. ✅ F 基准学习/确认 + 低/高流量报警；
 6. ✅ G 记录回路、watering-usage、三类浇水与审计 recordKey；
 7. ✅ **H 断网补发（2026-10-23 完成）**：EMQX Client ID 黑名单制造干净离线 → 断网完成 1 次 60 s 浇水（603 脉冲/2412 mL）→ 删黑名单恢复，设备仅补发 seq17、保持原 observedAt、只换 connectionId，DB 核对浇水流 17/17/17、审计流仍 9/9，不重不丢；离线 free heap≈90 KB（在线≈41 KB），无 FD 耗尽。数据与「半挂网络触发 TLS 写卡死 WDT」的定性见上文「步骤 H 断网补发真机通过」。
-8. ⬜ **自动总控边界（必要最小集）**：验三态（启用/无限暂停/定时暂停）可下发回证；计划编辑 1 次；**只设 1 个最近分钟**验自动计划真实触发 1 次，以及「定时恢复那一分钟不触发」边界 1 次即可，不做多计划/多 zone 组合。
+8. ✅ **自动总控边界（2026-10-23 傍晚完成）**：见下节「步骤 I 自动总控边界真机通过」。
 
 > 验证边界（用户明确要求）：以上剩余项以**关键成功路径 + 明显故障 + 必要安全边界**为准，必要的做完即止，不做 soak/长稳/反复断电/全量矩阵；长稳由用户在半生产环境自行验证。
+
+### 步骤 I 自动总控边界真机通过（2026-10-23 傍晚）
+
+最小集全部在真机（`esp32-irr-8caab58ed1cc`，10 Hz 门控就绪）完成，并修复 1 个真机暴露的固件缺陷（提交 `20473c0`，已推送，烧录后回证）：
+
+- **三态下发回证**：`enabled`（幂等）、`paused-indefinitely`、`paused-until`（带未来整分钟恢复点）均 accepted→succeeded，`parameter.automatic-watering` 快照与审计一一对应：seq10 `automatic.paused{paused-indefinitely}`、seq11 `automatic.resumed{enabled}`、seq12 `automatic.paused{paused-until,resumeAtEpoch}`；定时暂停在其后第一个整分钟边界（16:36:01）自动恢复为 enabled。
+- **计划编辑 1 次**：`parameter.plan` upsert（revision 6→7）把「花园」改为 16:58/17:00、仅 zone1 1 分钟，回证快照与审计 seq15 `configuration.plans-changed{revision:7,planIds:[1]}`。
+- **自动计划真实触发（成功路径）**：17:18:00 槽位自动启动（`activity=automatic`），干节点闭合→10 Hz 出脉冲，运行 61 s，**seq19 `watering.completed sourceKey=device_schedule planId=1`，09:18:00Z→09:19:01Z、result=completed、ACK through=19**。
+- **定时恢复那一分钟不触发**：17:19:45 下发 `paused-until resumeAtEpoch=17:20:00`（审计 seq17 `automatic.paused`）；17:20:01 仅自动恢复（审计 seq18 `automatic.resumed{mode:"expired"}`、快照回 enabled），**17:20 槽位只标记不启动、不形成任何浇水记录**（浇水流仍停在 19），nextAutomatic 跳到次日 07:00，恢复后调度状态正常。
+
+期间两个被「非缺陷」正确跳过/打断的点，作为边界证据保留：16:58 槽位因该计划**当天 07:00 已在「按（计划,启动槽位）持久防重复掩码」中标记**而跳过（掩码按槽位不按分钟值，改分钟值不重置）；17:00 新槽位精确触发后被用户手动按 EN 打断，按 seq18（浇水流）`reboot_interrupted` 如实记账（0 时长）。
+
+**修复的缺陷**：`decodeAutomaticResumed` 对到期恢复也写 `resumeAtEpoch:null`，使 `automatic.resumed` 的到期投影为 `{mode:"expired",resumeAtEpoch:null}`，违反契约 oneOf（`expired` 分支 `additionalProperties:false` 只允许 mode）→ `ModelPublisher` schema 拒绝、`publishRecord` 返回 false → SDK `RecordStream` 每 5 s 静默重试，该 seq 成为**保序流队头毒记录，堵死其后全部审计**（真机 seq13 起的暂停/恢复事件与 record-ack 全部不可见，浇水流不受影响）。修复为 `expired` 只写 `mode`；新增 native 回归（reason=4 投影过 schema 且不含 resumeAtEpoch，旧实现失败、修复后通过）。烧录新固件重连后，毒记录 seq13 `{mode:"expired"}` 立即发布、ACK 推进，其后 seq14/15 自动排空。native 85 项全过，主目标构建 Flash 1,554,043 B / RAM 113,228 B / OTA 余量 215,024 B（12.15%）。遗留（SDK 侧，非本轮）：`RecordStream` 对永久性发布错误（schema/容量）仍无告警无限重试并毒死整条保序流，待立项加错误可观测性与毒记录策略。
+
+实验后已恢复设备配置：`parameter.plan` 回到「花园」**07:00、zone1+zone2 各 1 分钟**（revision 10），自动总控 **enabled**；该次配置恢复审计在一次 MQTT 重连前发出、未落平台审计流（平台审计水位停在 18），但 `parameter.plan` 快照已回证 rev10，按契约 parameter 快照即当前值权威。
 
 ### 其他待办
 
