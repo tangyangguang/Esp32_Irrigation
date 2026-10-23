@@ -144,7 +144,7 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 
 **未解决缺陷（下一会话起点）**：`operation.start-manual`（MQTT）设备 accepted 后立即 failed `controller_unavailable`，多次复现；但同时本地 `GET http://<设备IP>/irrigation/api/status`（basic auth admin/admin）显示 `ready:true`、全部 storageFault=false、且 **`zones:[]` 为空**。矛盾点说明 execute 路径独有检查失败。**首要排查假设**：配置中 zone 未启用/未配置（status.zones 为空），命令引用 zoneId=1 被判无效；下一会话先读 `parameter.plan`/zone 配置确认，勿再进入烧录循环。
 
-**实验环境事实**：当前实验板 device_id=`esp32-irr-8caab58ed1cc`（IP 漂移 .127/.155）；固定串口 `/dev/cu.usbserial-110`；该板必须手动 BOOT+EN 进下载模式，**烧录始终由用户执行**；MQTT 可用 `/tmp/mqttvenv`（已装 paho+pyserial，临时目录可能失效需重建），命令下发凭据用 `.env.local` 的 MQTT_DEVICE 账号，start-manual TTL 上限严格 30000ms。
+**实验环境事实**：当前实验板 device_id=`esp32-irr-8caab58ed1cc`（IP 漂移 .127/.155）；2026-10-24 起改用 CH340K 自动下载器，串口 `/dev/cu.wchusbserial130`（WCH，重新枚举数字可能变），**支持自动下载与软件复位，代理可直接烧录/重启**（极性时序见根 `AGENTS.md`）；MQTT 可用 `/tmp/mqttvenv`（已装 paho+pyserial，临时目录可能失效需重建），命令下发凭据用 `.env.local` 的 MQTT_DEVICE 账号，start-manual TTL 上限严格 30000ms。信号发生器 10 Hz 经水泵控制器干接点控制，用于流量脉冲注入。
 
 
 ## 修复首页 loopTask 栈溢出（2026-10-22）
@@ -205,7 +205,8 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 - `wateringBlockedSeq` / `auditBlockedSeq`：对应 recordStreamId `watering` / `irrigation-audit`，0=发布正常，非 0=该 seq 的事实被确定性拒绝、保序发布停滞。纯观测，不进 `state.overview.health`，不改变存储 Ready、本地记账、ACK 与另一条流。
 - 投影在 `IrrigationPlatformRecords::projectRecordBlocks`（native 可测纯函数），`buildDiagnostics` 出帧时读两流 `publishBlockedSequence()`；`poll()` 在两流驱动之后做边沿检测，闩住（0→N）、换 seq（N→M）或解除（N→0，合法 ACK 越过）立即 `markDiagnosticsDirty()`，不等 3600 s 周期；静态闩定不重复发。断连不检测，重连首帧全量标脏兜底；重启清零并由首帧上报。
 - 验证：iot-device `definitions:check`/typecheck/vitest 131 项全过；固件 native 87 项全过（新增 2 项用生成模型 `contract.capability("state.diagnostics")->validate(...)` 校验 0/非 0 两组帧过封闭 schema，且诊断体 measureJson < 1024）；主目标构建 Flash 1,552,743 B / RAM 113,260 B / firmware.bin 1,553,152 B / OTA 余量 216,320 B（12.23%）。经独立方案审核与最终 diff 审核，零 Critical/Warning。
-- **未做**：未烧录、未真机验证（待用户按 `/dev/cu.usbserial-110` 烧录 0.9.1 后做确定性坏记录实验）；服务端受控 definition 副本（`iot-home-server/config/device-types/...`）与 manifest checksum 未同步——服务端入站只校验消息外壳、暂不阻塞，但下次服务端发版/同步定义前需在 iot-home-server 仓更新副本与 manifest（第三仓，本次未授权）；iot-base 台账 §4 “设备映射待首个增量”状态未回写（本次未授权该仓）。
+- **真机验证（2026-10-24，CH340K 自动下载器直接烧录 0.9.1 到 app0）**：启动日志 `version=0.9.1`、两记录流 ready、TLS MQTT connected；软件复位（DTR=False 释放 GPIO0 后脉冲 RTS/EN，见根 `AGENTS.md` 新下载器边界）重连后首帧第 1 帧 `state.diagnostics` 实测携带 `"wateringBlockedSeq": 0, "auditBlockedSeq": 0`（bootId `...-842-...`、`mqttAtt:1`），设备端封闭 schema 校验通过、服务端正常接收，7 个 state + 2 个 parameter 首帧全集完整。另观察到一次已知的半挂网络 TLS 写 EAGAIN（fd 50），约 130 s 后自行恢复、无 WDT/复位，与本次观测改动无关。
+- **仍未做**：确定性坏记录的阻塞非 0/解除真机实验（当前固件无已知坏记录、无内置注入手段，需专项设计注入方式）；服务端受控 definition 副本（`iot-home-server/config/device-types/...`）与 manifest checksum 未同步——服务端入站只校验消息外壳、暂不阻塞，但下次服务端发版/同步定义前需在 iot-home-server 仓更新副本与 manifest（第三仓，本次未授权）；iot-base 台账 §4 “设备映射待首个增量”状态未回写（本次未授权该仓）。
 
 ## MQTT 凭据
 
