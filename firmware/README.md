@@ -183,7 +183,7 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 
 修复：记录解码文档容量提为共享常量 `IrrigationPlatformRecords::kRecordDocBytes = 4096`（host 实测最坏情况有余量；整包约 ≤2.75 KB < MQTT payload 4096 与 g_output 4097）；新增 native 回归 `test_six_zone_fact_fits_record_document`（6 水路最坏 payload 必须解码进生产容量、不溢出、过 schema、body 留信封余量）。RAM BSS +3584 B（109644→113228/327680），Flash 与 OTA 余量不变（215104 B/12.16%）。烧录后 seq6/seq7 应在重放中自动排空，无需数据迁移。
 
-遗留（单独立项，本轮不动 SDK）：RecordStream 对永久性发布错误（容量/schema/超大包）仍是无告警无限重试并堵死整条保序流；本次从容量根因消除已知触发路径，但未来投影/契约演进仍可能静默复发，需要错误可观测性与毒记录策略。另：本地操作记录页把 `configuration.system-field-changed` 审计显示为「未识别的历史事项」，为本地展示映射缺口，待后续修。
+当时遗留的 RecordStream 永久发布错误静默重试问题，已于 2026-10-23 在 `platform/iot-device` 提交 `f92b3ee` 修复（三态回调 + 发布阻塞，已推送），详见下方“其他待办”对应条；本仓的设备侧 diagnostics 上报待新会话补。另：本地操作记录页把 `configuration.system-field-changed` 审计显示为「未识别的历史事项」，为本地展示映射缺口，待后续修。
 
 验证：native **85 项**全过；主目标 `--tls-toolchain` 构建+OTA 门禁通过；独立 reviewer 审核通过。真机回证（seq6/7 broker 可见、水位推进、free heap/无 JsonCapacity 错误）待烧录，新 elf_sha256 前缀见构建产物。
 
@@ -316,19 +316,19 @@ foundation/Esp32Base/.piohome/arduino3-tls/penv/bin/python -m esptool \
 
 期间两个被「非缺陷」正确跳过/打断的点，作为边界证据保留：16:58 槽位因该计划**当天 07:00 已在「按（计划,启动槽位）持久防重复掩码」中标记**而跳过（掩码按槽位不按分钟值，改分钟值不重置）；17:00 新槽位精确触发后被用户手动按 EN 打断，按 seq18（浇水流）`reboot_interrupted` 如实记账（0 时长）。
 
-**修复的缺陷**：`decodeAutomaticResumed` 对到期恢复也写 `resumeAtEpoch:null`，使 `automatic.resumed` 的到期投影为 `{mode:"expired",resumeAtEpoch:null}`，违反契约 oneOf（`expired` 分支 `additionalProperties:false` 只允许 mode）→ `ModelPublisher` schema 拒绝、`publishRecord` 返回 false → SDK `RecordStream` 每 5 s 静默重试，该 seq 成为**保序流队头毒记录，堵死其后全部审计**（真机 seq13 起的暂停/恢复事件与 record-ack 全部不可见，浇水流不受影响）。修复为 `expired` 只写 `mode`；新增 native 回归（reason=4 投影过 schema 且不含 resumeAtEpoch，旧实现失败、修复后通过）。烧录新固件重连后，毒记录 seq13 `{mode:"expired"}` 立即发布、ACK 推进，其后 seq14/15 自动排空。native 85 项全过，主目标构建 Flash 1,554,043 B / RAM 113,228 B / OTA 余量 215,024 B（12.15%）。遗留（SDK 侧，非本轮）：`RecordStream` 对永久性发布错误（schema/容量）仍无告警无限重试并毒死整条保序流，待立项加错误可观测性与毒记录策略。
+**修复的缺陷**：`decodeAutomaticResumed` 对到期恢复也写 `resumeAtEpoch:null`，使 `automatic.resumed` 的到期投影为 `{mode:"expired",resumeAtEpoch:null}`，违反契约 oneOf（`expired` 分支 `additionalProperties:false` 只允许 mode）→ `ModelPublisher` schema 拒绝、`publishRecord` 返回 false → SDK `RecordStream` 每 5 s 静默重试，该 seq 成为**保序流队头毒记录，堵死其后全部审计**（真机 seq13 起的暂停/恢复事件与 record-ack 全部不可见，浇水流不受影响）。修复为 `expired` 只写 `mode`；新增 native 回归（reason=4 投影过 schema 且不含 resumeAtEpoch，旧实现失败、修复后通过）。烧录新固件重连后，毒记录 seq13 `{mode:"expired"}` 立即发布、ACK 推进，其后 seq14/15 自动排空。native 85 项全过，主目标构建 Flash 1,554,043 B / RAM 113,228 B / OTA 余量 215,024 B（12.15%）。当时遗留的 SDK 侧缺陷（`RecordStream` 对永久性发布错误无告警无限重试、毒死保序流）已在 2026-10-23 跨仓修复并推送，见下方“其他待办”对应条。
 
 实验后已恢复设备配置：`parameter.plan` 回到「花园」**07:00、zone1+zone2 各 1 分钟**（revision 10），自动总控 **enabled**；该次配置恢复审计在一次 MQTT 重连前发出、未落平台审计流（平台审计水位停在 18），但 `parameter.plan` 快照已回证 rev10，按契约 parameter 快照即当前值权威。
 
 ### 其他待办
 
-- `iot-device` 本地有 1 个未推送提交 `edcc4ce`（平台准入 `model_mismatch` 收紧，SDK 代码未动，灌溉固件不受影响），下次跨仓工作先跑门禁再推送。
-- **【跨仓 bug，待在 `platform/iot-device` 立项修复】SDK `RecordStream` 对永久性发布错误无限静默重试，毒死整条保序流**（本仓两次真机踩中，均已从设备侧消除诱因，但 SDK 缺陷仍在）：
-  - 位置：`platform/iot-device/sdk/src/RecordStream.cpp` 的 `poll()`（pending fact 发布段，约 190–219 行）与 `ModelPublisher::publishRecord`（`sdk/src/ModelPublisher.cpp`）。
-  - 机制：`publishRecord` 返回 false 的原因里既有瞬时错误（`QueueFull`、底层 Busy），也有永久性错误（`DecodeFailed`、`SchemaRejected`、`PayloadTooLarge`/`JsonCapacityExceeded`、`UnknownRecord`）。`RecordStream::poll` 不区分二者，只要 pending fact 发布返回 false 就只置 `attempted_` 并每 5 s 重试；保序流严格按序发布，**队头一条永远发不出去的坏记录会无限期阻塞其后全部 fact**，且无错误码/状态/日志上抛，外部完全无感知（设备本地存储正常、state/命令通道正常，极易误判成 MQTT 或服务端故障）。
-  - 实证：① 2026-10-22 多水路记录解码文档 512 B 容量不足，浇水流 seq6 双水路记录成为队头毒记录、seq7 一并堵死（诱因已由本仓把解码文档提到 4096 B 消除）；② 2026-10-23 步骤 I，`automatic.resumed` 到期投影 `{mode:"expired",resumeAtEpoch:null}` 被契约 schema 拒绝（`expired` 分支只允许 mode），审计流 seq13 毒死，其后 seq14/15 与 record-ack 全部不可见（诱因已由本仓提交 `20473c0` 修复投影）。
-  - 建议方向（具体设计在 iot-device 仓内决定）：区分瞬时错误（继续 5 s 重试）与永久错误（解码/schema/容量/未知类型）；永久错误必须可观测（流状态/错误计数/日志），并定义毒记录策略（死信或带告警跳过并推进 ACK 水位），不能静默无限重试堵死整条流；实现需保持保序、服务端 ACK/幂等去重语义以及「两个 RecordStream 互不阻塞」的既有契约。复现可构造一个 `codec->decode` 或 `validate` 恒 false 的 fact，观察流是否永久停在该 seq。
-  - 边界：按本仓规则跨仓修改需用户在当次任务明确授权，本条仅交接、未改 iot-device；新会话在该仓开工前先读其 AGENTS/门禁，并处理上面未推送的 `edcc4ce`。
+- ~~`iot-device` 未推送提交 `edcc4ce`~~：已随 2026-10-23 跨仓任务推送（`edcc4ce..f92b3ee`）。
+- **【跨仓 bug 已修复，2026-10-23】SDK `RecordStream` 永久性发布错误不再静默无限重试毒死保序流**：修复在 `platform/iot-device` 提交 `f92b3ee`（已推送 origin/main）。
+  - 修法（经两轮隔离子代理方案审查 + 一轮 diff 终审，零 Critical）：发布回调由 bool 改三态 `PublishOutcome{Accepted,Retry,Rejected}`；`ModelPublisher` 仅 `QueueFull`/`NotReady` 归 Retry（沿用 5 s 重试），`UnknownRecord`/`DecodeFailed`/`JsonCapacityExceeded`/`SchemaRejected`/`PayloadTooLarge`/配置坏归 Rejected。Rejected **不新增流生命周期状态、`state()` 恒为 Ready**，只在该 seq 闩正交发布阻塞 `RecordStream::publishBlocked()`/`publishBlockedSequence()`：停止驱动该事实，但本地 append、ACK 扫描释放、维护 checkpoint、受控关机与另一条流都不受影响（避免被设备“非 Ready 即存储故障”门控误报或触发重开扫描）。阻塞为 RAM 态，MQTT 重连不清，`begin()`（重启）重探一次——OTA 修复编解码/Schema 缺陷后重启即自愈；服务端合法 ACK 越过该 seq 时防御性解除。权威说明见 `platform/iot-device/sdk/docs/record_stream.md`“发布永久拒绝与发布阻塞”。
+  - **没有做、也不能在核心静默做的**：跳过毒记录/推进 ACK/换世代。服务端对同 `recordStreamId` 缺口永久 `gap` 拒绝，iot-base 规范禁止同世代静默换流，Base 在未确认记录未清时拒绝 `clear()`；真正死信跳过需要先定义跨端“缺口协议”（服务端水位模型 + Base 释放语义 + 公共契约 + 设备），已登记为后续项（`iot-base/docs/03-跨项目规划与验收台账.md` §4）。
+  - 本仓状态：本仓只透传 `ModelPublisher::publishRecord`，**业务源码零改动**；用新 SDK 本机构建 `esp32_irrigation_arduino3` 通过（Flash 1,552,592 B / OTA 余量 216,880 B / 12.26%），但**未升固件版本、未烧录、未真机验证**。
+  - 本仓两次历史诱因此前已分别消除（多水路解码文档 512 B→4096 B；`automatic.resumed` expired 投影 `20473c0`）。
+  - **新会话在本仓的待办**：① 把两个 RecordStream 的 `publishBlocked()`/`publishBlockedSequence()` 映射进 `state.diagnostics` 显式告警（接入点 `src/irrigation/IrrigationPlatform.cpp` 的 `poll()` 两流段，约 1183–1191 行），当前云端对“流已永久停滞”无专门信号，这是已知可观测性缺口；② 出固件/烧录前按本仓规则把 `IrrigationApp.cpp` 的 `kFirmwareVersion` 由 `0.9.0` 升 patch（依赖行为修正）；③ 真机验证：确定性坏记录一轮冻结不重试、不堵另一条流、本地仍记账、OTA 修复重启后自愈。esp12f-relay 已做同样适配（提交 `bec891a`，其自定义发布 lambda 把解码坏记录归 Rejected），可作参考。
 - OTA 对侧槽余量约 215 KB（12.16%），发布前评估固件尺寸优化，不靠削 TLS/OTA/日志/记录预算换体积。
 - 已知限制不修：人为 12 路以上并发猛刷单线程同步 Web 会触发一次 task_wdt；正常浏览器单域名 ≤6 连接，实测 6 并发稳定。
 - 真机 TLS/MQTT：参数命令、start-manual 成功路径、中途停止、无流失败、基准/高低报警、记录与审计上报、**断网补发（步骤 H，seq 连续/ack 水位/不重不丢）均已真机验证**。正式环境（EMQX 正式账号/ACL、固件 environment `test`→`prod`、NUC 服务、小程序发版）须用户明确发版授权后另立任务。
