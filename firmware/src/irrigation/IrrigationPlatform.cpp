@@ -24,6 +24,7 @@
 #include "WateringRecordStore.h"
 #include "IrrigationParameterConfig.h"
 #include "IrrigationTypes.h"
+#include "FlowMonitor.h"
 #include "WateringScheduler.h"
 #include "IrrigationSdkModel.generated.h"
 
@@ -628,10 +629,20 @@ void projectZoneMaintenance(const IrrigationConfig& config) {
         item["zoneId"] = zone.id;
         if (zone.baselinePulseRateX10000) {
             item["baselinePulseRateX10000"] = zone.baselinePulseRateX10000;
+            uint32_t baselineFlowMlPerMinute = 0;
+            if (FlowMonitor::pulseRateX10000ToFlowMlPerMinute(
+                    zone.baselinePulseRateX10000,
+                    config.flowMeter.pulsesPerLiterX100,
+                    baselineFlowMlPerMinute) &&
+                baselineFlowMlPerMinute > 0U) {
+                item["baselineFlowMlPerMinute"] = baselineFlowMlPerMinute;
+            } else {
+                item["baselineFlowMlPerMinute"] = nullptr;
+            }
         } else {
             item["baselinePulseRateX10000"] = nullptr;
+            item["baselineFlowMlPerMinute"] = nullptr;
         }
-        item["baselineFlowMlPerMinute"] = nullptr;
     }
 }
 
