@@ -206,7 +206,7 @@ prepareTask 修复后继续真机定位，确认最后一层连锁：
 - 投影在 `IrrigationPlatformRecords::projectRecordBlocks`（native 可测纯函数），`buildDiagnostics` 出帧时读两流 `publishBlockedSequence()`；`poll()` 在两流驱动之后做边沿检测，闩住（0→N）、换 seq（N→M）或解除（N→0，合法 ACK 越过）立即 `markDiagnosticsDirty()`，不等 3600 s 周期；静态闩定不重复发。断连不检测，重连首帧全量标脏兜底；重启清零并由首帧上报。
 - 验证：iot-device `definitions:check`/typecheck/vitest 131 项全过；固件 native 87 项全过（新增 2 项用生成模型 `contract.capability("state.diagnostics")->validate(...)` 校验 0/非 0 两组帧过封闭 schema，且诊断体 measureJson < 1024）；主目标构建 Flash 1,552,743 B / RAM 113,260 B / firmware.bin 1,553,152 B / OTA 余量 216,320 B（12.23%）。经独立方案审核与最终 diff 审核，零 Critical/Warning。
 - **真机验证（2026-10-24，CH340K 自动下载器直接烧录 0.9.1 到 app0）**：启动日志 `version=0.9.1`、两记录流 ready、TLS MQTT connected；软件复位（DTR=False 释放 GPIO0 后脉冲 RTS/EN，见根 `AGENTS.md` 新下载器边界）重连后首帧第 1 帧 `state.diagnostics` 实测携带 `"wateringBlockedSeq": 0, "auditBlockedSeq": 0`（bootId `...-842-...`、`mqttAtt:1`），设备端封闭 schema 校验通过、服务端正常接收，7 个 state + 2 个 parameter 首帧全集完整。另观察到一次已知的半挂网络 TLS 写 EAGAIN（fd 50），约 130 s 后自行恢复、无 WDT/复位，与本次观测改动无关。
-- **仍未做**：确定性坏记录的阻塞非 0/解除真机实验（当前固件无已知坏记录、无内置注入手段，需专项设计注入方式）；服务端受控 definition 副本（`iot-home-server/config/device-types/...`）与 manifest checksum 未同步——服务端入站只校验消息外壳、暂不阻塞，但下次服务端发版/同步定义前需在 iot-home-server 仓更新副本与 manifest（第三仓，本次未授权）；iot-base 台账 §4 “设备映射待首个增量”状态未回写（本次未授权该仓）。
+- **仍未做**：确定性坏记录的阻塞非 0/解除真机实验（当前固件无已知坏记录、无内置注入手段，需专项设计注入方式）；服务端 `iot-home-server` 的定义 manifest checksum 已同步（提交 `b052249`：服务端直读 `iot-device/contracts`、不存副本，只按 `config/device-definitions.manifest.json` 校验 sha256，不同步会导致服务重启时 loader 校验失败），Mac 测试服务已构建重启且 `/health/ready` 全 ok；iot-base 台账 §4 状态已回写（提交 `42a9d2b`）。
 
 ## MQTT 凭据
 
