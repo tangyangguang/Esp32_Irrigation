@@ -60,6 +60,12 @@ function paint(canvas,legend,data){
       if(k===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);
     }
     ctx.stroke();
+    // A single-point segment strokes nothing (moveTo only); draw a dot so a
+    // short zone that produced just one 30 s point stays visible.
+    if(s.c===1){
+      ctx.fillStyle=col;ctx.beginPath();
+      ctx.arc(X(s.s),Y(pts[s.s]),3.5,0,Math.PI*2);ctx.fill();
+    }
     if(s.s>0){
       ctx.strokeStyle='#d1d5db';ctx.setLineDash([3,3]);
       ctx.beginPath();ctx.moveTo(X(s.s),0);ctx.lineTo(X(s.s),h-16);ctx.stroke();
@@ -67,8 +73,9 @@ function paint(canvas,legend,data){
     }
     if(base[z]>0){
       ctx.strokeStyle=col;ctx.globalAlpha=0.4;ctx.setLineDash([4,4]);
-      var last=Math.min(pts.length-1,s.s+s.c-1);
-      ctx.beginPath();ctx.moveTo(X(s.s),Y(base[z]));ctx.lineTo(X(last),Y(base[z]));ctx.stroke();
+      var bx0=X(s.s),bx1=X(Math.min(pts.length-1,s.s+s.c-1)),by=Y(base[z]);
+      if(bx1-bx0<8){bx0-=7;bx1+=7;}  // single-point baseline: short tick
+      ctx.beginPath();ctx.moveTo(bx0,by);ctx.lineTo(bx1,by);ctx.stroke();
       ctx.globalAlpha=1;ctx.setLineDash([]);
     }
     names.push('<span style="color:'+col+'">■</span> 水路'+(z+1));
