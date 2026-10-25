@@ -22,18 +22,31 @@ public:
     bool hardwareReady() const;
     bool active() const;
     WateringStatus status() const;
-    FlowHistorySnapshot flowHistory() const;
+    FlowHistoryInfo flowHistoryInfo() const;
+    uint16_t readFlowHistory(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
+    FlowOverviewInfo flowOverviewInfo() const;
+    uint16_t readFlowOverview(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
+    void loadFlowOverview(uint32_t startedEpoch, const uint16_t* zonePointCount,
+                          uint8_t zoneCount, const uint32_t* points, uint16_t pointCount);
+    void clearFlowOverview();
     // Immutable once published; only the service task can clear or start again.
     const WateringSessionSummary* finishedSession() const;
     void clearFinishedSession();
 
 private:
-    enum class Operation { Start, Stop, Shutdown, Frequency, ClearFinished };
+    enum class Operation {
+        Start, Stop, Shutdown, Frequency, ClearFinished, LoadOverview, ClearOverview
+    };
     struct Command {
         Operation operation;
         const WateringRequest* request = nullptr;
         const IrrigationConfig* config = nullptr;
         uint32_t frequency = 0;
+        const uint16_t* overviewZoneCounts = nullptr;
+        const uint32_t* overviewPoints = nullptr;
+        uint32_t overviewStartedEpoch = 0;
+        uint16_t overviewPointCount = 0;
+        uint8_t overviewZoneCount = 0;
         WateringStartResult startResult = WateringStartResult::NotReady;
         bool result = false;
     };

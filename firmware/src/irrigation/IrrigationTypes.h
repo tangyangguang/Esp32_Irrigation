@@ -10,7 +10,13 @@ constexpr uint32_t kIrrigationConfigSchemaVersion = 5;
 constexpr std::size_t kCommandIdTextLength = 36;
 constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
-constexpr std::size_t kFlowHistorySampleCount = 120;
+// Real-time curve: one 5 s sample, ring of the current zone's last hour.
+constexpr std::size_t kFlowHistorySampleCount = 720;
+// Whole-task overview persisted for the last watering: one point per 30 s on a
+// single task timeline, shared by all zones, capped at the first six hours.
+constexpr std::size_t kFlowOverviewSampleCount = 720;
+constexpr uint8_t kFlowOverviewSecondsPerPoint = 30;
+constexpr uint8_t kFlowOverviewWindowsPerPoint = 6;  // 6 x 5 s rate windows
 constexpr std::size_t kLearningDecisionWindowCount = 5;
 constexpr std::size_t kLearningHistoryWindowCount = 10;
 constexpr uint16_t kUnusedStartMinute = 0xFFFF;
@@ -284,12 +290,25 @@ struct WateringStatus {
     std::array<ZoneWateringSummary, BoardPins::kZoneCount> zones;
 };
 
-struct FlowHistorySnapshot {
+// Real-time curve metadata. Sample values are read separately in small
+// segments so the multi-hundred-point ring is never copied onto a task stack.
+struct FlowHistoryInfo {
     uint8_t zoneId;
     uint16_t sampleCount;
     uint32_t generation;
     uint32_t latestSerial;
-    std::array<uint32_t, kFlowHistorySampleCount> samples;
+};
+
+// Samples per short critical-section read / HTTP chunk.
+constexpr uint16_t kFlowHistoryReadSegment = 32;
+
+// Whole-task overview metadata. Points sit on a single task timeline (zone 0's
+// points first, then zone 1, ...); zonePointCount[] gives each segment's size.
+struct FlowOverviewInfo {
+    uint8_t zoneCount;
+    uint16_t pointCount;
+    uint32_t startedEpoch;
+    std::array<uint16_t, BoardPins::kZoneCount> zonePointCount{};
 };
 
 struct WateringSessionSummary {

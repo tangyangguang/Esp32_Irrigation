@@ -1187,6 +1187,63 @@ struct RecordRowsContext {
     uint32_t emitted;
 };
 
+// Embed the last completed watering's 30 s whole-task flow curve as an inline
+// <canvas> plus a tiny data block drawn by an inline script. Only shown when a
+// stored overview matches this exact record id.
+void sendRecordFlowOverview(const StoredWateringRecord& record) {
+    const auto* overview = g_app->matchedFlowOverview(record.recordId);
+    if (overview == nullptr || overview->pointCount == 0) return;
+    Esp32BaseWeb::sendChunk(
+        "<div class='record-detail-section record-flow-overview'><h3>全程流量曲线</h3>"
+        "<p>每 30 秒一个点，按任务时间轴顺序排列；颜色区分水路，虚线为该路基准。" );
+    if (overview->pointCount >= kFlowOverviewSampleCount) {
+        Esp32BaseWeb::sendChunk("已达 6 小时上限，仅含任务前 6 小时。");
+    }
+    Esp32BaseWeb::sendChunk(
+        "</p><canvas class='record-flow-canvas' height='140'></canvas>"
+        "<div class='record-flow-legend'></div><script>(function(){var d=document.currentScript.closest('.record-detail-dialog');"
+        "d.__rfo={zc:");
+    sendUnsigned(overview->zoneCount);
+    Esp32BaseWeb::sendChunk(",cnt:[");
+    for (uint8_t z = 0; z < overview->zoneCount; ++z) {
+        if (z) Esp32BaseWeb::sendChunk(",");
+        sendUnsigned(overview->zonePointCount[z]);
+    }
+    Esp32BaseWeb::sendChunk("],base:[");
+    for (uint8_t z = 0; z < overview->zoneCount; ++z) {
+        if (z) Esp32BaseWeb::sendChunk(",");
+        const auto& zone = record.payload.zones[z];
+        const bool baselineAvailable =
+            (zone.flags & WateringRecordCodec::kZoneFlagFlowBaselineAvailable) != 0 &&
+            zone.result != ZoneWateringResult::NotStarted;
+        sendUnsigned(baselineAvailable ? zone.baselineFlowMlPerMinute : 0);
+    }
+    Esp32BaseWeb::sendChunk("],pts:[");
+    for (uint16_t i = 0; i < overview->pointCount; ++i) {
+        if (i) Esp32BaseWeb::sendChunk(",");
+        sendUnsigned(overview->points[i]);
+    }
+    Esp32BaseWeb::sendChunk("]};");
+    Esp32BaseWeb::sendChunk(R"JS(
+if(!window.__drawRfo){window.__drawRfo=function(d){var d0=d.__rfo;if(!d0)return;var canvas=d.querySelector('.record-flow-canvas'),legend=d.querySelector('.record-flow-legend');if(!canvas)return;
+var dpr=window.devicePixelRatio||1,w=canvas.clientWidth||d.clientWidth-40||600,h=140;canvas.width=w*dpr;canvas.height=h*dpr;var ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+var zc=d0.zc,cnt=d0.cnt,base=d0.base,pts=d0.pts,colors=['#ea580c','#2563eb','#16a34a','#9333ea','#dc2626','#0891b2'];
+var max=10;for(var i=0;i<pts.length;i++)if(pts[i]>max)max=pts[i];for(var z=0;z<zc;z++)if(cnt[z]&&base[z]*1.1>max)max=base[z]*1.1;max*=1.08;
+var cum=0,seg=[];for(var z=0;z<zc;z++){seg.push({s:cum,c:cnt[z]});cum+=cnt[z];}
+ctx.strokeStyle='#e5e7eb';ctx.beginPath();ctx.moveTo(0,h-0.5);ctx.lineTo(w,h-0.5);ctx.stroke();
+var X=function(i){return pts.length<=1?w:w*i/(pts.length-1)},Y=function(v){return h-18-(v/max)*(h-30)};
+var items=[];
+for(var z=0;z<zc;z++){var s=seg[z];if(!s.c)continue;
+ctx.strokeStyle=colors[z%6];ctx.lineWidth=2;ctx.beginPath();for(var k=0;k<s.c;k++){var idx=s.s+k,xx=X(idx),yy=Y(pts[idx]);if(k===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);}ctx.stroke();
+if(s.s>0){ctx.strokeStyle='#d1d5db';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(X(s.s),0);ctx.lineTo(X(s.s),h-16);ctx.stroke();ctx.setLineDash([]);}
+if(base[z]>0){ctx.globalAlpha=0.4;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(X(s.s),Y(base[z]));ctx.lineTo(X(Math.min(pts.length-1,s.s+s.c-1)),Y(base[z]));ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}
+items.push('<span style="color:'+colors[z%6]+'">■</span> 水路'+(z+1));}
+ctx.font='10px sans-serif';ctx.fillStyle='#9ca3af';var span=pts.length*30;for(var t=0;t<=4;t++){var sec=Math.round(span*(1-t/4)),label=sec>=3600?(sec/3600)+'时':Math.round(sec/60)+'分';ctx.fillText(label,w*t/4,h-5);}
+if(legend)legend.innerHTML=items.join('&nbsp;&nbsp;');};}
+d.addEventListener('toggle',function(e){if(e.newState==='open')window.__drawRfo(d);});
+})();</script></div>)JS");
+}
+
 void sendRecordDetailDialog(const StoredWateringRecord& record,
                             const IrrigationConfig* config,
                             const char* dialogPrefix) {
@@ -1323,7 +1380,9 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
         }
         Esp32BaseWeb::sendChunk("</div></div></td></tr>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div><p class='record-detail-note'>相对基准差值用于解释流量表现，不等同于报警结果；报警以浇水当时的阈值和连续判定结果为准。</p></div><details class='record-technical' open><summary>指标与技术说明</summary><p class='record-technical-note'>整段平均只统计水流建立后的实际浇水阶段；估算用水量还包含建立水流和关阀尾水阶段的实际脉冲。未触发报警不等于流量一定正常，没有基准时不作高低流量判定。</p><div class='record-technical-grid'><div><b>总脉冲</b><span>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div><p class='record-detail-note'>相对基准差值用于解释流量表现，不等同于报警结果；报警以浇水当时的阈值和连续判定结果为准。</p></div>");
+    sendRecordFlowOverview(record);
+    Esp32BaseWeb::sendChunk("<details class='record-technical' open><summary>指标与技术说明</summary><p class='record-technical-note'>整段平均只统计水流建立后的实际浇水阶段；估算用水量还包含建立水流和关阀尾水阶段的实际脉冲。未触发报警不等于流量一定正常，没有基准时不作高低流量判定。</p><div class='record-technical-grid'><div><b>总脉冲</b><span>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else sendUnsigned64(totals.pulseCount);
     Esp32BaseWeb::sendChunk("</span></div>");
@@ -2759,15 +2818,24 @@ void IrrigationWeb::statusApi() {
 
 void IrrigationWeb::flowHistoryApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
-    const FlowHistorySnapshot history = g_app->wateringFlowHistory();
+    // Metadata is tiny; sample values are pulled in short critical sections a
+    // segment at a time so the 720-point ring is never copied onto the stack.
+    const FlowHistoryInfo info = g_app->wateringFlowHistoryInfo();
     if (!Esp32BaseWeb::beginResponse(200, "application/json")) return;
-    Esp32BaseWeb::sendChunk("{\"zoneId\":"); sendUnsigned(history.zoneId);
-    Esp32BaseWeb::sendChunk(",\"sampleIntervalSec\":5,\"generation\":"); sendUnsigned(history.generation);
-    Esp32BaseWeb::sendChunk(",\"latestSerial\":"); sendUnsigned(history.latestSerial);
+    Esp32BaseWeb::sendChunk("{\"zoneId\":"); sendUnsigned(info.zoneId);
+    Esp32BaseWeb::sendChunk(",\"sampleIntervalSec\":5,\"generation\":"); sendUnsigned(info.generation);
+    Esp32BaseWeb::sendChunk(",\"latestSerial\":"); sendUnsigned(info.latestSerial);
     Esp32BaseWeb::sendChunk(",\"samples\":[");
-    for (uint16_t index = 0; index < history.sampleCount; ++index) {
-        if (index != 0) Esp32BaseWeb::sendChunk(",");
-        sendUnsigned(history.samples[index]);
+    uint32_t segment[kFlowHistoryReadSegment];
+    uint16_t sent = 0;
+    while (sent < info.sampleCount) {
+        const uint16_t n = g_app->readWateringFlowHistory(sent, segment, kFlowHistoryReadSegment);
+        if (n == 0) break;
+        for (uint16_t i = 0; i < n; ++i) {
+            if (sent != 0 || i != 0) Esp32BaseWeb::sendChunk(",");
+            sendUnsigned(segment[i]);
+        }
+        sent = static_cast<uint16_t>(sent + n);
     }
     Esp32BaseWeb::sendChunk("]}");
     Esp32BaseWeb::endResponse();

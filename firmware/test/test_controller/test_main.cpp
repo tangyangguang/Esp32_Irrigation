@@ -451,13 +451,15 @@ void test_live_status_reports_plan_progress_remaining_time_and_water() {
     TEST_ASSERT_GREATER_THAN_UINT32(0, status.currentFlowMlPerMinute);
     TEST_ASSERT_GREATER_THAN_UINT64(0, status.totalEstimatedWaterMl);
 
-    const FlowHistorySnapshot history = controller.flowHistory();
+    const FlowHistoryInfo history = controller.flowHistoryInfo();
+    uint32_t firstSample = 0;
+    TEST_ASSERT_EQUAL_UINT16(1, controller.readFlowHistory(0, &firstSample, 1));
     TEST_ASSERT_EQUAL_UINT8(1, history.zoneId);
     TEST_ASSERT_EQUAL_UINT16(1, history.sampleCount);
-    TEST_ASSERT_EQUAL_UINT32(status.currentFlowMlPerMinute, history.samples[0]);
+    TEST_ASSERT_EQUAL_UINT32(status.currentFlowMlPerMinute, firstSample);
 }
 
-void test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone() {
+void test_flow_history_keeps_latest_hour_and_resets_for_next_zone() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
     const IrrigationConfig config = IrrigationConfigRules::createDefault();
@@ -468,10 +470,13 @@ void test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone() {
         hardware.pulses += sample;
         controller.handle(sample * 5000U + 1U);
     }
-    const FlowHistorySnapshot full = controller.flowHistory();
+    uint32_t oldest = 0, newest = 0;
+    const FlowHistoryInfo full = controller.flowHistoryInfo();
     TEST_ASSERT_EQUAL_UINT16(kFlowHistorySampleCount, full.sampleCount);
     TEST_ASSERT_EQUAL_UINT32(kFlowHistorySampleCount + 5U, full.latestSerial);
-    TEST_ASSERT_LESS_THAN_UINT32(full.samples[kFlowHistorySampleCount - 1U], full.samples[0]);
+    TEST_ASSERT_EQUAL_UINT16(1, controller.readFlowHistory(0, &oldest, 1));
+    TEST_ASSERT_EQUAL_UINT16(1, controller.readFlowHistory(kFlowHistorySampleCount - 1U, &newest, 1));
+    TEST_ASSERT_LESS_THAN_UINT32(newest, oldest);
 
     TEST_ASSERT_TRUE(controller.stop((kFlowHistorySampleCount + 6U) * 5000U));
     controller.clearFinishedSession();
@@ -481,14 +486,49 @@ void test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone() {
     TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
                       static_cast<int>(controller.start(next, config, 0)));
     establishFlow(controller, hardware, 0);
-    const uint32_t firstGeneration = controller.flowHistory().generation;
+    const uint32_t firstGeneration = controller.flowHistoryInfo().generation;
     ++hardware.pulses;
     controller.handle(5001);
     controller.handle(6001);
-    const FlowHistorySnapshot secondZone = controller.flowHistory();
+    const FlowHistoryInfo secondZone = controller.flowHistoryInfo();
     TEST_ASSERT_EQUAL_UINT8(2, secondZone.zoneId);
     TEST_ASSERT_EQUAL_UINT16(0, secondZone.sampleCount);
     TEST_ASSERT_GREATER_THAN_UINT32(firstGeneration, secondZone.generation);
+}
+
+void test_flow_overview_aggregates_normal_run_into_thirty_second_points() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(requestFor(1, 7200), config, 0)));
+    establishFlow(controller, hardware, 0);
+    for (uint32_t w = 1; w <= 6; ++w) {
+        hardware.pulses += 25;
+        controller.handle(w * 5000U + 1U);
+    }
+    const FlowOverviewInfo info = controller.flowOverviewInfo();
+    TEST_ASSERT_EQUAL_UINT16(1, info.pointCount);
+    TEST_ASSERT_EQUAL_UINT16(1, info.zonePointCount[0]);
+    uint32_t point = 0;
+    TEST_ASSERT_EQUAL_UINT16(1, controller.readFlowOverview(0, &point, 1));
+    TEST_ASSERT_GREATER_THAN_UINT32(0, point);
+}
+
+void test_flow_overview_ignored_for_learning_run() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 600);
+    request.purpose = WateringPurpose::ZoneFlowLearning;
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    establishFlow(controller, hardware, 0);
+    for (uint32_t w = 1; w <= 6; ++w) {
+        hardware.pulses += 21;
+        controller.handle(w * 5000U + 1U);
+    }
+    TEST_ASSERT_EQUAL_UINT16(0, controller.flowOverviewInfo().pointCount);
 }
 
 void test_persistent_low_flow_alert_can_stop_watering() {
@@ -987,7 +1027,9 @@ int main(int, char**) {
     RUN_TEST(test_rate_window_uses_fixed_point_arithmetic);
     RUN_TEST(test_manual_flow_conversion_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_live_status_reports_plan_progress_remaining_time_and_water);
-    RUN_TEST(test_flow_history_keeps_latest_ten_minutes_and_resets_for_next_zone);
+    RUN_TEST(test_flow_history_keeps_latest_hour_and_resets_for_next_zone);
+    RUN_TEST(test_flow_overview_aggregates_normal_run_into_thirty_second_points);
+    RUN_TEST(test_flow_overview_ignored_for_learning_run);
     RUN_TEST(test_persistent_low_flow_alert_can_stop_watering);
     RUN_TEST(test_unlearned_zone_does_not_enable_flow_deviation_protection);
     RUN_TEST(test_persistent_high_flow_alert_can_stop_watering);

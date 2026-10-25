@@ -7,6 +7,8 @@
 #include <climits>
 #include <cstdio>
 #include <cstring>
+#include <memory>
+#include <new>
 
 #include "BoardHardware.h"
 #include "BoardPins.h"
@@ -124,6 +126,15 @@ bool IrrigationApp::begin() {
     }
 
     const bool wateringStoreReady = wateringRecordStore_.begin();
+    // Restore the last completed watering's flow overview into RAM for the
+    // record-detail view; a missing/corrupt file simply means no overview.
+    flowOverviewStore_.begin();
+    if (flowOverviewStore_.hasLoaded()) {
+        const auto& loaded = flowOverviewStore_.loaded();
+        wateringController_.loadFlowOverview(
+            loaded.startedEpoch, loaded.zonePointCount.data(), loaded.zoneCount,
+            loaded.points.data(), loaded.pointCount);
+    }
     const bool auditStoreReady = events_.begin();
     const bool recordsRegistered = IrrigationRecords::instance().begin(
         wateringRecordStore_, events_.auditStore());
@@ -248,8 +259,68 @@ WateringStatus IrrigationApp::wateringStatus() const {
     return wateringController_.status();
 }
 
-FlowHistorySnapshot IrrigationApp::wateringFlowHistory() const {
-    return wateringController_.flowHistory();
+FlowHistoryInfo IrrigationApp::wateringFlowHistoryInfo() const {
+    return wateringController_.flowHistoryInfo();
+}
+uint16_t IrrigationApp::readWateringFlowHistory(uint16_t offset,
+                                                uint32_t* out,
+                                                uint16_t maxCount) const {
+    return wateringController_.readFlowHistory(offset, out, maxCount);
+}
+FlowOverviewInfo IrrigationApp::wateringFlowOverviewInfo() const {
+    return wateringController_.flowOverviewInfo();
+}
+uint16_t IrrigationApp::readWateringFlowOverview(uint16_t offset,
+                                                uint32_t* out,
+                                                uint16_t maxCount) const {
+    return wateringController_.readFlowOverview(offset, out, maxCount);
+}
+void IrrigationApp::loadWateringFlowOverview(uint32_t startedEpoch,
+                                             const uint16_t* zonePointCount,
+                                             uint8_t zoneCount,
+                                             const uint32_t* points,
+                                             uint16_t pointCount) {
+    wateringController_.loadFlowOverview(startedEpoch, zonePointCount, zoneCount,
+                                         points, pointCount);
+}
+void IrrigationApp::clearWateringFlowOverview() {
+    wateringController_.clearFlowOverview();
+}
+
+const WateringFlowOverviewStore::Snapshot*
+IrrigationApp::matchedFlowOverview(uint32_t recordId) const {
+    if (!flowOverviewStore_.hasLoaded()) return nullptr;
+    const auto& loaded = flowOverviewStore_.loaded();
+    return loaded.valid && loaded.recordId == recordId ? &loaded : nullptr;
+}
+
+void IrrigationApp::persistFlowOverview(uint32_t startedEpoch) {
+    const FlowOverviewInfo info = wateringController_.flowOverviewInfo();
+    if (info.pointCount == 0 || info.zoneCount == 0) return;
+
+    // Pull the shared 720-point buffer out in small locked segments into a
+    // service-task heap buffer (never onto a task stack).
+    const std::size_t bytes =
+        static_cast<std::size_t>(info.pointCount) * sizeof(uint32_t);
+    std::unique_ptr<uint32_t[]> points(new (std::nothrow) uint32_t[info.pointCount]);
+    if (!points) return;
+    uint16_t fetched = 0;
+    while (fetched < info.pointCount) {
+        const uint16_t n = wateringController_.readFlowOverview(
+            fetched, &points[fetched], kFlowHistoryReadSegment);
+        if (n == 0) return;
+        fetched = static_cast<uint16_t>(fetched + n);
+    }
+
+    // The completed record's id is the task correlation id for the detail view.
+    Esp32BaseRecordStore::StoreStatus storeStatus{};
+    if (!wateringRecordStore_.readStatus(storeStatus) || storeStatus.newestRecordId == 0) {
+        return;
+    }
+    std::array<uint16_t, BoardPins::kZoneCount> zoneCounts = info.zonePointCount;
+    flowOverviewStore_.save(storeStatus.newestRecordId, startedEpoch, info.zoneCount,
+                            zoneCounts.data(), points.get(), info.pointCount);
+    (void)bytes;
 }
 
 bool IrrigationApp::readLatestWateringRecords(uint32_t offset,
@@ -751,6 +822,9 @@ void IrrigationApp::consumeFinishedWatering(uint32_t nowMs) {
                 IrrigationRecords::StoreKind::Watering);
         if (!finishedWateringStored_ || !wateringRecordStore_.cancelPreparedTask()) return;
         recordStorageFault_ = false;
+        // Persist this task's 30 s overview once, after the record is safely
+        // stored. Failure here affects only the curve, never the record.
+        persistFlowOverview(wateringRecordStore_.taskStartedEpoch());
     }
 
     resetUnexpectedFlowMonitor(nowMs);
@@ -1050,6 +1124,8 @@ void IrrigationApp::handleAfterFormatFs(const Esp32BaseWeb::FormatFsResult& resu
     // Explicit successful formatting discards the old generation, including
     // any completed RAM facts; they must not reappear in the new empty history.
     wateringController_.clearFinishedSession();
+    wateringController_.clearFlowOverview();
+    flowOverviewStore_.discard();
     finishedWateringStored_ = false;
     wateringStartTime_ = {};
     wateringStartTimeValid_ = false;

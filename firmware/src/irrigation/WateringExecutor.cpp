@@ -89,6 +89,18 @@ void WateringExecutor::execute(Command& command) {
             controller_.clearFinishedSession();
             command.result = true;
             break;
+        case Operation::LoadOverview:
+            controller_.loadFlowOverview(command.overviewStartedEpoch,
+                                         command.overviewZoneCounts,
+                                         command.overviewZoneCount,
+                                         command.overviewPoints,
+                                         command.overviewPointCount);
+            command.result = true;
+            break;
+        case Operation::ClearOverview:
+            controller_.clearFlowOverview();
+            command.result = true;
+            break;
     }
 }
 
@@ -118,6 +130,20 @@ bool WateringExecutor::configureValvePwmFrequency(uint32_t frequency) {
     return submit(command) && command.result;
 }
 void WateringExecutor::clearFinishedSession() { Command command{Operation::ClearFinished}; submit(command); }
+void WateringExecutor::loadFlowOverview(uint32_t startedEpoch,
+                                        const uint16_t* zonePointCount,
+                                        uint8_t zoneCount,
+                                        const uint32_t* points,
+                                        uint16_t pointCount) {
+    Command command{Operation::LoadOverview};
+    command.overviewStartedEpoch = startedEpoch;
+    command.overviewZoneCounts = zonePointCount;
+    command.overviewZoneCount = zoneCount;
+    command.overviewPoints = points;
+    command.overviewPointCount = pointCount;
+    submit(command);
+}
+void WateringExecutor::clearFlowOverview() { Command command{Operation::ClearOverview}; submit(command); }
 bool WateringExecutor::parametersPending() const {
     lock(); const bool value = targetFrequency_ != appliedFrequency_; unlock(); return value;
 }
@@ -130,8 +156,27 @@ bool WateringExecutor::active() const {
 WateringStatus WateringExecutor::status() const {
     lock(); const auto value = controller_.status(); unlock(); return value;
 }
-FlowHistorySnapshot WateringExecutor::flowHistory() const {
-    lock(); const auto value = controller_.flowHistory(); unlock(); return value;
+FlowOverviewInfo WateringExecutor::flowOverviewInfo() const {
+    lock(); const auto value = controller_.flowOverviewInfo(); unlock(); return value;
+}
+uint16_t WateringExecutor::readFlowOverview(uint16_t offset,
+                                            uint32_t* out,
+                                            uint16_t maxCount) const {
+    lock();
+    const uint16_t value = controller_.readFlowOverview(offset, out, maxCount);
+    unlock();
+    return value;
+}
+FlowHistoryInfo WateringExecutor::flowHistoryInfo() const {
+    lock(); const auto value = controller_.flowHistoryInfo(); unlock(); return value;
+}
+uint16_t WateringExecutor::readFlowHistory(uint16_t offset,
+                                            uint32_t* out,
+                                            uint16_t maxCount) const {
+    lock();
+    const uint16_t value = controller_.readFlowHistory(offset, out, maxCount);
+    unlock();
+    return value;
 }
 const WateringSessionSummary* WateringExecutor::finishedSession() const {
     lock(); const auto* value = controller_.finishedSession(); unlock(); return value;

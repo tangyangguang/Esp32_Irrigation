@@ -18,7 +18,21 @@ public:
     void handle(uint32_t nowMs);
     WateringStatus status() const;
     bool active() const { return active_; }
-    FlowHistorySnapshot flowHistory() const;
+    // Real-time curve: fetch small metadata, then up to maxCount samples in
+    // logical (oldest-first) order starting at logical offset 0..sampleCount.
+    // Each call is a short critical section; the ring never crosses a stack.
+    FlowHistoryInfo flowHistoryInfo() const;
+    uint16_t readFlowHistory(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
+    // Whole-task 30 s overview (persisted after a Normal watering).
+    FlowOverviewInfo flowOverviewInfo() const;
+    uint16_t readFlowOverview(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
+    // Load a persisted overview into RAM (boot) or drop it (format/loss).
+    void loadFlowOverview(uint32_t startedEpoch,
+                          const uint16_t* zonePointCount,
+                          uint8_t zoneCount,
+                          const uint32_t* points,
+                          uint16_t pointCount);
+    void clearFlowOverview();
     const WateringSessionSummary* finishedSession() const;
     void clearFinishedSession();
 
@@ -37,6 +51,9 @@ private:
     void finishSession(WateringStopReason reason, uint32_t nowMs);
     bool checkFlowRate(uint32_t nowMs);
     void appendFlowSample(uint32_t flowMlPerMinute);
+    void appendOverviewWindow(uint32_t pulseCount, uint32_t windowMs);
+    void resetOverviewAccumulator();
+    void appendOverviewPoint(uint32_t flowMlPerMinute);
 
     WateringHardware& hardware_;
     WateringRequest request_{};
@@ -49,6 +66,15 @@ private:
     std::array<uint32_t, kLearningHistoryWindowCount> learningPulseCounts_{};
     std::array<uint32_t, kLearningHistoryWindowCount> learningWindowDurationsMs_{};
     std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
+    std::array<uint32_t, kFlowOverviewSampleCount> flowOverviewPoints_{};
+    std::array<uint16_t, BoardPins::kZoneCount> flowOverviewZoneCounts_{};
+    uint16_t flowOverviewCount_ = 0;
+    uint8_t flowOverviewZoneCount_ = 0;
+    uint32_t flowOverviewStartedEpoch_ = 0;
+    uint32_t overviewAccumPulses_ = 0;
+    uint32_t overviewAccumWindowMs_ = 0;
+    uint8_t overviewAccumWindows_ = 0;
+    bool overviewFull_ = false;
     std::array<uint32_t, kLearningDecisionWindowCount> terminalPulseRatesX100_{};
     std::array<uint32_t, kLearningDecisionWindowCount> terminalPulseCounts_{};
     std::array<uint32_t, kLearningDecisionWindowCount> terminalWindowDurationsMs_{};
@@ -92,4 +118,5 @@ private:
     bool wateringEndCaptured_ = false;
     bool stopSessionAfterValveClose_ = false;
     bool finishedSessionReady_ = false;
+    bool overviewActive_ = false;  // accumulate only for Normal waterings
 };

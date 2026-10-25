@@ -81,6 +81,18 @@ WateringStartResult WateringController::start(const WateringRequest& request,
     learningAverageMlPerMinute_ = 0;
     learningMinimumMlPerMinute_ = 0;
     learningMaximumMlPerMinute_ = 0;
+    // A Normal watering starts a fresh persisted overview; a learning run does
+    // not touch the last normal watering's overview.
+    overviewActive_ = request.purpose == WateringPurpose::Normal;
+    if (overviewActive_) {
+        flowOverviewPoints_.fill(0);
+        flowOverviewZoneCounts_.fill(0);
+        flowOverviewCount_ = 0;
+        flowOverviewZoneCount_ = static_cast<uint8_t>(request.stepCount);
+        flowOverviewStartedEpoch_ = 0;
+        overviewFull_ = false;
+        resetOverviewAccumulator();
+    }
     active_ = true;
     if (!beginCurrentZone(nowMs)) {
         finishSession(WateringStopReason::HardwareFailure, nowMs);
@@ -348,17 +360,26 @@ WateringStatus WateringController::status() const {
     return result;
 }
 
-FlowHistorySnapshot WateringController::flowHistory() const {
-    FlowHistorySnapshot snapshot{};
-    snapshot.zoneId = flowHistoryZoneId_;
-    snapshot.sampleCount = flowHistoryCount_;
-    snapshot.generation = flowHistoryGeneration_;
-    snapshot.latestSerial = flowSampleSerial_;
-    for (uint16_t index = 0; index < flowHistoryCount_; ++index) {
-        snapshot.samples[index] = flowHistorySamples_[
-            (flowHistoryStart_ + index) % flowHistorySamples_.size()];
+FlowHistoryInfo WateringController::flowHistoryInfo() const {
+    FlowHistoryInfo info{};
+    info.zoneId = flowHistoryZoneId_;
+    info.sampleCount = flowHistoryCount_;
+    info.generation = flowHistoryGeneration_;
+    info.latestSerial = flowSampleSerial_;
+    return info;
+}
+
+uint16_t WateringController::readFlowHistory(uint16_t offset,
+                                             uint32_t* out,
+                                             uint16_t maxCount) const {
+    if (out == nullptr || offset >= flowHistoryCount_) return 0;
+    uint16_t count = static_cast<uint16_t>(flowHistoryCount_ - offset);
+    if (count > maxCount) count = maxCount;
+    for (uint16_t index = 0; index < count; ++index) {
+        out[index] = flowHistorySamples_[
+            (flowHistoryStart_ + offset + index) % flowHistorySamples_.size()];
     }
-    return snapshot;
+    return count;
 }
 
 WateringStartResult WateringController::validateRequest(
@@ -449,6 +470,8 @@ bool WateringController::beginCurrentZone(uint32_t nowMs) {
     flowHistoryCount_ = 0;
     flowHistoryZoneId_ = step.zoneId;
     ++flowHistoryGeneration_;
+    // A partial 30 s bucket at a zone switch is dropped, not back-filled.
+    resetOverviewAccumulator();
     currentFlowMlPerMinute_ = 0;
     learningAverageMlPerMinute_ = 0;
     learningMinimumMlPerMinute_ = 0;
@@ -615,6 +638,7 @@ void WateringController::finishSession(WateringStopReason reason, uint32_t nowMs
     }
     finalizeCurrentZone(zoneResult, nowMs);
     active_ = false;
+    overviewActive_ = false;  // keep the accumulated RAM overview for persistence
     state_ = WateringState::Idle;
     lastStopReason_ = reason;
     if (reason == WateringStopReason::Completed) {
@@ -646,6 +670,7 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
     ZoneWateringSummary& zone = sessionSummary_.zones[currentStepIndex_];
     currentFlowMlPerMinute_ = sample.flowMlPerMinute;
     appendFlowSample(sample.flowMlPerMinute);
+    if (overviewActive_) appendOverviewWindow(sample.pulseCount, sample.windowMs);
     if (normalWatering) {
         if (terminalWindowCount_ < terminalPulseRatesX100_.size()) {
             const uint8_t index = terminalWindowCount_++;
@@ -821,4 +846,95 @@ void WateringController::appendFlowSample(uint32_t flowMlPerMinute) {
     }
     flowHistorySamples_[index] = flowMlPerMinute;
     ++flowSampleSerial_;
+}
+
+void WateringController::resetOverviewAccumulator() {
+    overviewAccumPulses_ = 0;
+    overviewAccumWindowMs_ = 0;
+    overviewAccumWindows_ = 0;
+}
+
+void WateringController::appendOverviewWindow(uint32_t pulseCount, uint32_t windowMs) {
+    if (overviewFull_ || windowMs == 0) return;
+    overviewAccumPulses_ += pulseCount;
+    overviewAccumWindowMs_ += windowMs;
+    ++overviewAccumWindows_;
+    if (overviewAccumWindows_ < kFlowOverviewWindowsPerPoint) return;
+    // Weighted mean over the six 5 s windows: total pulses / total time.
+    const uint64_t pulseRate =
+        (static_cast<uint64_t>(overviewAccumPulses_) * 100000ULL +
+         overviewAccumWindowMs_ / 2U) /
+        overviewAccumWindowMs_;
+    uint32_t flowMlPerMinute = 0;
+    FlowMonitor::pulseRateToFlowMlPerMinute(
+        static_cast<uint32_t>(pulseRate > UINT32_MAX ? UINT32_MAX : pulseRate),
+        flowMeter_.pulsesPerLiterX100, flowMlPerMinute);
+    resetOverviewAccumulator();
+    appendOverviewPoint(flowMlPerMinute);
+}
+
+void WateringController::appendOverviewPoint(uint32_t flowMlPerMinute) {
+    if (overviewFull_) return;
+    if (flowOverviewCount_ < flowOverviewPoints_.size()) {
+        flowOverviewPoints_[flowOverviewCount_] = flowMlPerMinute;
+        ++flowOverviewCount_;
+        if (currentStepIndex_ < flowOverviewZoneCounts_.size()) {
+            ++flowOverviewZoneCounts_[currentStepIndex_];
+        }
+    }
+    if (flowOverviewCount_ >= flowOverviewPoints_.size()) overviewFull_ = true;
+}
+
+FlowOverviewInfo WateringController::flowOverviewInfo() const {
+    FlowOverviewInfo info{};
+    info.zoneCount = flowOverviewZoneCount_;
+    info.pointCount = flowOverviewCount_;
+    info.startedEpoch = flowOverviewStartedEpoch_;
+    info.zonePointCount = flowOverviewZoneCounts_;
+    return info;
+}
+
+uint16_t WateringController::readFlowOverview(uint16_t offset,
+                                              uint32_t* out,
+                                              uint16_t maxCount) const {
+    if (out == nullptr || offset >= flowOverviewCount_) return 0;
+    uint16_t count = static_cast<uint16_t>(flowOverviewCount_ - offset);
+    if (count > maxCount) count = maxCount;
+    for (uint16_t i = 0; i < count; ++i) out[i] = flowOverviewPoints_[offset + i];
+    return count;
+}
+
+void WateringController::loadFlowOverview(uint32_t startedEpoch,
+                                          const uint16_t* zonePointCount,
+                                          uint8_t zoneCount,
+                                          const uint32_t* points,
+                                          uint16_t pointCount) {
+    flowOverviewPoints_.fill(0);
+    flowOverviewZoneCounts_.fill(0);
+    flowOverviewCount_ = 0;
+    flowOverviewStartedEpoch_ = startedEpoch;
+    flowOverviewZoneCount_ =
+        zoneCount > BoardPins::kZoneCount ? BoardPins::kZoneCount : zoneCount;
+    overviewActive_ = false;
+    overviewFull_ = pointCount >= flowOverviewPoints_.size();
+    resetOverviewAccumulator();
+    if (zonePointCount != nullptr) {
+        for (uint8_t z = 0; z < flowOverviewZoneCount_; ++z) {
+            flowOverviewZoneCounts_[z] = zonePointCount[z];
+        }
+    }
+    if (points == nullptr || pointCount > flowOverviewPoints_.size()) return;
+    for (uint16_t i = 0; i < pointCount; ++i) flowOverviewPoints_[i] = points[i];
+    flowOverviewCount_ = pointCount;
+}
+
+void WateringController::clearFlowOverview() {
+    flowOverviewPoints_.fill(0);
+    flowOverviewZoneCounts_.fill(0);
+    flowOverviewCount_ = 0;
+    flowOverviewZoneCount_ = 0;
+    flowOverviewStartedEpoch_ = 0;
+    overviewActive_ = false;
+    overviewFull_ = false;
+    resetOverviewAccumulator();
 }

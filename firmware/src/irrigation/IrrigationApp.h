@@ -6,6 +6,7 @@
 #include "StatusIndicator.h"
 #include "DeviceAliveCheckpoint.h"
 #include "WateringRecordStore.h"
+#include "WateringFlowOverviewStore.h"
 #include "WateringHistory.h"
 #include "WateringScheduler.h"
 #include "WateringSchedulerStore.h"
@@ -24,7 +25,16 @@ public:
     bool stopWatering();
     WateringStatus wateringStatus() const;
     bool wateringActive() const { return wateringController_.active(); }
-    FlowHistorySnapshot wateringFlowHistory() const;
+    FlowHistoryInfo wateringFlowHistoryInfo() const;
+    uint16_t readWateringFlowHistory(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
+    FlowOverviewInfo wateringFlowOverviewInfo() const;
+    uint16_t readWateringFlowOverview(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
+    void loadWateringFlowOverview(uint32_t startedEpoch, const uint16_t* zonePointCount,
+                                  uint8_t zoneCount, const uint32_t* points, uint16_t pointCount);
+    void clearWateringFlowOverview();
+    // Matched RAM overview for a record-detail dialog, or null when the stored
+    // overview belongs to a different/older record.
+    const WateringFlowOverviewStore::Snapshot* matchedFlowOverview(uint32_t recordId) const;
     // activeStatus is the caller's existing status snapshot, passed by const
     // reference so the large WateringStatus (about 1.1 KB) is never copied a
     // second time onto the 8/12 KB loopTask stack while rendering a page.
@@ -122,6 +132,7 @@ private:
     void recordStartRejected(uint8_t planId, WateringStartResult result)
         __attribute__((noinline));
     void resetUnexpectedFlowMonitor(uint32_t nowMs);
+    void persistFlowOverview(uint32_t startedEpoch);
     void observeEventConditions(uint32_t nowMs, const Esp32BaseTime::Snapshot& now);
     void refreshRtcCondition(uint32_t nowMs, bool force);
     void updateStatusIndicator(uint32_t nowMs);
@@ -157,6 +168,7 @@ private:
     IrrigationEvents events_;
     WateringExecutor wateringController_;
     WateringRecordStore wateringRecordStore_;
+    WateringFlowOverviewStore flowOverviewStore_;
     WateringSchedulerStore wateringSchedulerStore_;
     WateringScheduler wateringScheduler_;
     UnexpectedFlowMonitor unexpectedFlowMonitor_;
