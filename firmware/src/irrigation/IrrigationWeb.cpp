@@ -1226,7 +1226,7 @@ void sendRecordFlowOverview(const StoredWateringRecord& record) {
     Esp32BaseWeb::sendChunk("]};");
     Esp32BaseWeb::sendChunk(R"JS(
 if(!window.__drawRfo){window.__drawRfo=function(d){var d0=d.__rfo;if(!d0)return;var canvas=d.querySelector('.record-flow-canvas'),legend=d.querySelector('.record-flow-legend');if(!canvas)return;
-var dpr=window.devicePixelRatio||1,w=canvas.clientWidth||d.clientWidth-40||600,h=140;canvas.width=w*dpr;canvas.height=h*dpr;var ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
+var dpr=window.devicePixelRatio||1,w=canvas.clientWidth||(canvas.parentElement&&canvas.parentElement.clientWidth)||d.clientWidth-40||600,h=140;canvas.width=w*dpr;canvas.height=h*dpr;var ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
 var zc=d0.zc,cnt=d0.cnt,base=d0.base,pts=d0.pts,colors=['#ea580c','#2563eb','#16a34a','#9333ea','#dc2626','#0891b2'];
 var max=10;for(var i=0;i<pts.length;i++)if(pts[i]>max)max=pts[i];for(var z=0;z<zc;z++)if(cnt[z]&&base[z]*1.1>max)max=base[z]*1.1;max*=1.08;
 var cum=0,seg=[];for(var z=0;z<zc;z++){seg.push({s:cum,c:cnt[z]});cum+=cnt[z];}
@@ -1240,8 +1240,18 @@ if(base[z]>0){ctx.globalAlpha=0.4;ctx.setLineDash([4,4]);ctx.beginPath();ctx.mov
 items.push('<span style="color:'+colors[z%6]+'">■</span> 水路'+(z+1));}
 ctx.font='10px sans-serif';ctx.fillStyle='#9ca3af';var span=pts.length*30;for(var t=0;t<=4;t++){var sec=Math.round(span*(1-t/4)),label=sec>=3600?(sec/3600)+'时':Math.round(sec/60)+'分';ctx.fillText(label,w*t/4,h-5);}
 if(legend)legend.innerHTML=items.join('&nbsp;&nbsp;');};}
-d.addEventListener('toggle',function(e){if(e.newState==='open')window.__drawRfo(d);});
 })();</script></div>)JS");
+}
+
+// Shortcut to the last completed watering's record detail (which embeds the
+// persisted whole-task curve); hidden until at least one curve is stored.
+void sendLastFlowOverviewLink() {
+    const uint32_t recordId = g_app->lastFlowOverviewRecordId();
+    if (recordId == 0) return;
+    Esp32BaseWeb::sendChunk(
+        "<p style='margin:10px 0 0'><a class='btnlink info compact' href='/irrigation/records?id=");
+    sendUnsigned(recordId);
+    Esp32BaseWeb::sendChunk("'>查看最后一次浇水曲线</a></p>");
 }
 
 void sendRecordDetailDialog(const StoredWateringRecord& record,
@@ -1443,9 +1453,9 @@ void sendRecordRow(const StoredWateringRecord& record, void* user) {
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendCompactWaterVolume(totals.estimatedWaterMl);
-    Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><button type='button' class='btnlink info compact' onclick=\"document.getElementById('record-detail-");
+    Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><button type='button' class='btnlink info compact' onclick=\"var d=document.getElementById('record-detail-");
     sendUnsigned(record.recordId);
-    Esp32BaseWeb::sendChunk("').showModal()\">查看详情</button>");
+    Esp32BaseWeb::sendChunk("');d.showModal();if(window.__drawRfo)window.__drawRfo(d);\">查看详情</button>");
     sendRecordDetailDialog(record, context ? context->config : nullptr, "record-detail-");
     Esp32BaseWeb::sendChunk("</td></tr>");
 }
@@ -1716,6 +1726,7 @@ void IrrigationWeb::overview() {
     const uint32_t day = selectedDay();
     if (day) dateNav(day);
     renderDay(day, true, watering);
+    sendLastFlowOverviewLink();
     Esp32BaseWeb::endPanel();
 
 
@@ -2078,6 +2089,7 @@ void IrrigationWeb::records() {
     if(getParam("date",date,sizeof(date)) && date[0]) q.day=selectedDay();
     uintParam("offset",0,UINT32_MAX-20,q.offset);
     getParam("result",result,sizeof(result)); q.result=result;
+    sendLastFlowOverviewLink();
     html("<form method='get' class='event-filter'><label>日期<input type='date' name='date' value='");escaped(date);html("'></label><label>结果<select name='result'><option value=''>全部结果</option><option value='ok'");if(!strcmp(result,"ok"))html(" selected");html(">仅正常完成</option><option value='issues'");if(!strcmp(result,"issues"))html(" selected");html(">停止、异常或不完整</option></select></label><button>筛选</button><a href='/irrigation/records'>清除</a></form><section class='panel'><h2>历史记录</h2><div class='tablewrap'><table class='record-table'><thead><tr><th>开始时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
     Esp32BaseRecordStore::StoreStatus state{};const bool ok=g_app->readWateringRecordStoreStatus(state)&&state.ready&&(state.recordCount==0||g_app->readLatestWateringRecords(0,state.recordCount,historyRow,&q));
     html("</tbody></table></div>");
@@ -2090,7 +2102,7 @@ void IrrigationWeb::records() {
         StoredWateringRecord detail{};
         if (g_app->readWateringRecordById(detailId,detail)==Esp32BaseRecordStore::RecordReadResult::Found) {
             sendRecordDetailDialog(detail,g_app->configuration(),"record-direct-detail-");
-            html("<script>document.getElementById('record-direct-detail-"); sendUnsigned(detailId); html("').showModal();</script>");
+            html("<script>var d=document.getElementById('record-direct-detail-"); sendUnsigned(detailId); html("');d.showModal();if(window.__drawRfo)window.__drawRfo(d);</script>");
         } else Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN,"找不到该浇水记录","记录无法读取或已被滚动淘汰。");
     }
     endPage();

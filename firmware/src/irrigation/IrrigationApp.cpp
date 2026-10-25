@@ -294,6 +294,10 @@ IrrigationApp::matchedFlowOverview(uint32_t recordId) const {
     return loaded.valid && loaded.recordId == recordId ? &loaded : nullptr;
 }
 
+uint32_t IrrigationApp::lastFlowOverviewRecordId() const {
+    return flowOverviewStore_.hasLoaded() ? flowOverviewStore_.loaded().recordId : 0U;
+}
+
 void IrrigationApp::persistFlowOverview(uint32_t startedEpoch) {
     const FlowOverviewInfo info = wateringController_.flowOverviewInfo();
     if (info.pointCount == 0 || info.zoneCount == 0) return;
