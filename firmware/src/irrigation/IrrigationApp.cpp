@@ -314,18 +314,6 @@ bool IrrigationApp::unexpectedFlowAlarm() const {
     return unexpectedFlowMonitor_.alarmActive();
 }
 
-bool IrrigationApp::unexpectedFlowObservationReady() const {
-    return unexpectedFlowMonitor_.observationReady(millis());
-}
-
-uint16_t IrrigationApp::unexpectedFlowDelayRemainingSec() const {
-    return unexpectedFlowMonitor_.delayRemainingSec(millis());
-}
-
-uint16_t IrrigationApp::unexpectedFlowWindowRemainingSec() const {
-    return unexpectedFlowMonitor_.windowRemainingSec(millis());
-}
-
 uint16_t IrrigationApp::unexpectedFlowObservedWindowSec() const {
     const uint32_t durationMs =
         unexpectedFlowMonitor_.observedDurationMs(millis());

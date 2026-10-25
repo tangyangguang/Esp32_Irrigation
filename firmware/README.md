@@ -52,13 +52,22 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,552,743 B（87.8%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,548,507 B（87.5%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 113,260 B（34.6%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,553,152 B |
-| 对侧 OTA 槽余量 | 216,320 B（约 211 KiB，12.23%） |
+| OTA 镜像 firmware.bin | 1,548,912 B |
+| 对侧 OTA 槽余量 | 220,560 B（约 215 KiB，12.46%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
+
+## 本地观看功能简化（2026-10-25，见根目录《重构优化记录.md》）
+
+按 Web 信息结构定稿删除首页冗余呈现：
+
+- 删除首页“下一次自动浇水”“最近一次浇水”两张信息卡（信息在今日计划列表、每日统计与记录页已有），同时清理仅服务两卡的 `collectLatestRecord`、`planNameById`、`formatFriendlyDateTime` 等死代码。
+- 删除 hero 区关阀后水流监测常驻行及与之重复的“查看异常说明”按钮；报警仍由 hero 红条、异常徽章与“设备状态”弹层呈现，监测业务逻辑不变。status API 移除前端无消费的 7 个 `unexpectedFlow*` 字段，IrrigationApp 删除 3 个无其他消费者的转发方法。
+- 删除空闲首页轮询满 12 次（60 秒）强制整页 reload，仅保留任务开始/结束、新记录、异常状态变化三个刷新触发。
+- 验证：Web 资产一致性脚本通过，主目标构建通过（Flash 较上版 −4,236 B，RAM 不变），未跑全量 native 测试（按重构计划，最终统一验证）。
 
 ## 调度边界修复（2026-09-17）
 
