@@ -29,8 +29,10 @@ public:
     uint16_t readWateringFlowHistory(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
     FlowOverviewInfo wateringFlowOverviewInfo() const;
     uint16_t readWateringFlowOverview(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
-    void loadWateringFlowOverview(uint32_t startedEpoch, const uint16_t* zonePointCount,
-                                  uint8_t zoneCount, const uint32_t* points, uint16_t pointCount);
+    void loadWateringFlowOverview(uint32_t recordId, uint32_t startedEpoch,
+                                  const uint16_t* zonePointCount,
+                                  const uint32_t* zoneBaselineFlow, uint8_t zoneCount,
+                                  const uint32_t* points, uint16_t pointCount);
     void clearWateringFlowOverview();
     // Matched RAM overview for a record-detail dialog, or null when the stored
     // overview belongs to a different/older record.

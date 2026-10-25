@@ -12,7 +12,7 @@ constexpr const char* kDirectory = "/app/irrigation";
 constexpr const char* kFilePath = "/app/irrigation/last_flow.bin";
 constexpr const char* kTempPath = "/app/irrigation/last_flow.tmp";
 constexpr uint32_t kMagic = 0x4F4C5749U;  // "IWLO"
-constexpr uint16_t kVersion = 1;
+constexpr uint16_t kVersion = 2;
 constexpr uint32_t kCrcPolynomial = 0xedb88320U;
 
 #pragma pack(push, 1)
@@ -25,6 +25,7 @@ struct Header {
     uint8_t zoneCount;
     uint16_t pointCount;
     uint16_t zonePointCount[BoardPins::kZoneCount];
+    uint32_t zoneBaselineFlow[BoardPins::kZoneCount];
     uint32_t crc;  // CRC of all preceding header bytes
 };
 #pragma pack(pop)
@@ -91,8 +92,10 @@ void WateringFlowOverviewStore::begin() {
     snapshot.startedEpoch = header.startedEpoch;
     snapshot.zoneCount = header.zoneCount;
     snapshot.pointCount = header.pointCount;
-    for (uint8_t z = 0; z < header.zoneCount; ++z)
+    for (uint8_t z = 0; z < header.zoneCount; ++z) {
         snapshot.zonePointCount[z] = header.zonePointCount[z];
+        snapshot.zoneBaselineFlow[z] = header.zoneBaselineFlow[z];
+    }
     std::memcpy(snapshot.points.data(), buffer.get() + sizeof(Header),
                 static_cast<std::size_t>(header.pointCount) * 4U);
     loaded_ = snapshot;
@@ -102,6 +105,7 @@ bool WateringFlowOverviewStore::save(uint32_t recordId,
                                      uint32_t startedEpoch,
                                      uint8_t zoneCount,
                                      const uint16_t* zonePointCount,
+                                     const uint32_t* zoneBaselineFlow,
                                      const uint32_t* points,
                                      uint16_t pointCount) {
     if (!Esp32BaseFs::isReady() || zonePointCount == nullptr || points == nullptr ||
@@ -121,8 +125,11 @@ bool WateringFlowOverviewStore::save(uint32_t recordId,
     header.startedEpoch = startedEpoch;
     header.zoneCount = zoneCount;
     header.pointCount = pointCount;
-    for (uint8_t z = 0; z < zoneCount; ++z)
+    for (uint8_t z = 0; z < zoneCount; ++z) {
         header.zonePointCount[z] = zonePointCount[z];
+        header.zoneBaselineFlow[z] =
+            zoneBaselineFlow != nullptr ? zoneBaselineFlow[z] : 0U;
+    }
     header.crc = crc32(reinterpret_cast<const uint8_t*>(&header),
                        sizeof(Header) - sizeof(uint32_t));
 
@@ -176,8 +183,11 @@ bool WateringFlowOverviewStore::save(uint32_t recordId,
     snapshot.startedEpoch = startedEpoch;
     snapshot.zoneCount = zoneCount;
     snapshot.pointCount = pointCount;
-    for (uint8_t z = 0; z < zoneCount; ++z)
+    for (uint8_t z = 0; z < zoneCount; ++z) {
         snapshot.zonePointCount[z] = zonePointCount[z];
+        snapshot.zoneBaselineFlow[z] =
+            zoneBaselineFlow != nullptr ? zoneBaselineFlow[z] : 0U;
+    }
     std::memcpy(snapshot.points.data(), points,
                 static_cast<std::size_t>(pointCount) * 4U);
     loaded_ = snapshot;

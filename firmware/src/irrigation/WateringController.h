@@ -27,11 +27,14 @@ public:
     FlowOverviewInfo flowOverviewInfo() const;
     uint16_t readFlowOverview(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
     // Load a persisted overview into RAM (boot) or drop it (format/loss).
-    void loadFlowOverview(uint32_t startedEpoch,
+    void loadFlowOverview(uint32_t recordId,
+                          uint32_t startedEpoch,
                           const uint16_t* zonePointCount,
+                          const uint32_t* zoneBaselineFlow,
                           uint8_t zoneCount,
                           const uint32_t* points,
                           uint16_t pointCount);
+    void setFlowOverviewRecordId(uint32_t recordId);
     void clearFlowOverview();
     const WateringSessionSummary* finishedSession() const;
     void clearFinishedSession();
@@ -68,9 +71,11 @@ private:
     std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
     std::array<uint32_t, kFlowOverviewSampleCount> flowOverviewPoints_{};
     std::array<uint16_t, BoardPins::kZoneCount> flowOverviewZoneCounts_{};
+    std::array<uint32_t, BoardPins::kZoneCount> flowOverviewBaseline_{};
     uint16_t flowOverviewCount_ = 0;
     uint8_t flowOverviewZoneCount_ = 0;
     uint32_t flowOverviewStartedEpoch_ = 0;
+    uint32_t flowOverviewRecordId_ = 0;
     uint32_t overviewAccumPulses_ = 0;
     uint32_t overviewAccumWindowMs_ = 0;
     uint8_t overviewAccumWindows_ = 0;

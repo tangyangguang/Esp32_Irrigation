@@ -17,6 +17,7 @@ public:
         uint8_t zoneCount = 0;
         uint16_t pointCount = 0;
         std::array<uint16_t, BoardPins::kZoneCount> zonePointCount{};
+        std::array<uint32_t, BoardPins::kZoneCount> zoneBaselineFlow{};
         std::array<uint32_t, kFlowOverviewSampleCount> points{};
     };
 
@@ -32,6 +33,7 @@ public:
               uint32_t startedEpoch,
               uint8_t zoneCount,
               const uint16_t* zonePointCount,
+              const uint32_t* zoneBaselineFlow,
               const uint32_t* points,
               uint16_t pointCount);
 

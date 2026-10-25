@@ -26,8 +26,11 @@ public:
     uint16_t readFlowHistory(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
     FlowOverviewInfo flowOverviewInfo() const;
     uint16_t readFlowOverview(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
-    void loadFlowOverview(uint32_t startedEpoch, const uint16_t* zonePointCount,
-                          uint8_t zoneCount, const uint32_t* points, uint16_t pointCount);
+    void loadFlowOverview(uint32_t recordId, uint32_t startedEpoch,
+                          const uint16_t* zonePointCount,
+                          const uint32_t* zoneBaselineFlow, uint8_t zoneCount,
+                          const uint32_t* points, uint16_t pointCount);
+    void setFlowOverviewRecordId(uint32_t recordId);
     void clearFlowOverview();
     // Immutable once published; only the service task can clear or start again.
     const WateringSessionSummary* finishedSession() const;
@@ -35,7 +38,8 @@ public:
 
 private:
     enum class Operation {
-        Start, Stop, Shutdown, Frequency, ClearFinished, LoadOverview, ClearOverview
+        Start, Stop, Shutdown, Frequency, ClearFinished, LoadOverview,
+        ClearOverview, SetOverviewRecordId
     };
     struct Command {
         Operation operation;
@@ -43,8 +47,10 @@ private:
         const IrrigationConfig* config = nullptr;
         uint32_t frequency = 0;
         const uint16_t* overviewZoneCounts = nullptr;
+        const uint32_t* overviewBaseline = nullptr;
         const uint32_t* overviewPoints = nullptr;
         uint32_t overviewStartedEpoch = 0;
+        uint32_t overviewRecordId = 0;
         uint16_t overviewPointCount = 0;
         uint8_t overviewZoneCount = 0;
         WateringStartResult startResult = WateringStartResult::NotReady;

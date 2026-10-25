@@ -90,11 +90,17 @@ void WateringExecutor::execute(Command& command) {
             command.result = true;
             break;
         case Operation::LoadOverview:
-            controller_.loadFlowOverview(command.overviewStartedEpoch,
+            controller_.loadFlowOverview(command.overviewRecordId,
+                                         command.overviewStartedEpoch,
                                          command.overviewZoneCounts,
+                                         command.overviewBaseline,
                                          command.overviewZoneCount,
                                          command.overviewPoints,
                                          command.overviewPointCount);
+            command.result = true;
+            break;
+        case Operation::SetOverviewRecordId:
+            controller_.setFlowOverviewRecordId(command.overviewRecordId);
             command.result = true;
             break;
         case Operation::ClearOverview:
@@ -130,17 +136,26 @@ bool WateringExecutor::configureValvePwmFrequency(uint32_t frequency) {
     return submit(command) && command.result;
 }
 void WateringExecutor::clearFinishedSession() { Command command{Operation::ClearFinished}; submit(command); }
-void WateringExecutor::loadFlowOverview(uint32_t startedEpoch,
+void WateringExecutor::loadFlowOverview(uint32_t recordId,
+                                        uint32_t startedEpoch,
                                         const uint16_t* zonePointCount,
+                                        const uint32_t* zoneBaselineFlow,
                                         uint8_t zoneCount,
                                         const uint32_t* points,
                                         uint16_t pointCount) {
     Command command{Operation::LoadOverview};
+    command.overviewRecordId = recordId;
     command.overviewStartedEpoch = startedEpoch;
     command.overviewZoneCounts = zonePointCount;
+    command.overviewBaseline = zoneBaselineFlow;
     command.overviewZoneCount = zoneCount;
     command.overviewPoints = points;
     command.overviewPointCount = pointCount;
+    submit(command);
+}
+void WateringExecutor::setFlowOverviewRecordId(uint32_t recordId) {
+    Command command{Operation::SetOverviewRecordId};
+    command.overviewRecordId = recordId;
     submit(command);
 }
 void WateringExecutor::clearFlowOverview() { Command command{Operation::ClearOverview}; submit(command); }

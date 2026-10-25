@@ -308,7 +308,12 @@ struct FlowOverviewInfo {
     uint8_t zoneCount;
     uint16_t pointCount;
     uint32_t startedEpoch;
+    // 0 while a task is running; set to the stored record id once bookkeeping
+    // completes, so a detail view can prove curve and record are the same task.
+    uint32_t recordId;
     std::array<uint16_t, BoardPins::kZoneCount> zonePointCount{};
+    // Per-zone baseline flow captured at task start (0 = no baseline).
+    std::array<uint32_t, BoardPins::kZoneCount> zoneBaselineFlow{};
 };
 
 struct WateringSessionSummary {

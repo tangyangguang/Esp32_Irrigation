@@ -11,6 +11,7 @@ enum class Asset : uint8_t {
     ActiveTaskStyle,
     ActiveTaskScript,
     PauseScript,
+    FlowOverviewScript,
     RecordsStyle,
     EventsStyle,
     LearningStyle,

@@ -1,0 +1,141 @@
+<script>(function(){
+'use strict';
+var URL='/irrigation/api/flow-overview';
+var COLORS=['#ea580c','#2563eb','#16a34a','#9333ea','#dc2626','#0891b2'];
+var SEC_PER_POINT=30;
+
+function el(id){return document.getElementById(id);}
+function widthOf(canvas){
+  if(canvas.clientWidth>0)return canvas.clientWidth;
+  var p=canvas.parentElement;
+  if(p&&p.clientWidth>0)return p.clientWidth;
+  return 0;
+}
+function fmtTime(sec){
+  if(sec>=3600)return (sec/3600)+'时';
+  return Math.round(sec/60)+'分';
+}
+
+// Draw one whole-task, zone-segmented flow curve. Returns false when the canvas
+// is not laid out yet (width 0), so the caller can retry once it is visible.
+function paint(canvas,legend,data){
+  if(!canvas)return false;
+  var w=widthOf(canvas);
+  if(w<=0)return false;
+  var pts=data.points||[],cnt=data.counts||[],base=data.baseline||[],zc=data.zoneCount||cnt.length;
+  var h=canvas.clientHeight||140;
+  var dpr=window.devicePixelRatio||1;
+  canvas.width=Math.round(w*dpr);
+  canvas.height=Math.round(h*dpr);
+  var ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+
+  // No point yet: leave the empty hint visible.
+  if(!pts.length){if(legend)legend.innerHTML='';return true;}
+
+  var max=10,i,z;
+  for(i=0;i<pts.length;i++)if(pts[i]>max)max=pts[i];
+  for(z=0;z<zc;z++)if(cnt[z]&&base[z]*1.1>max)max=base[z]*1.1;
+  max*=1.08;
+
+  var seg=[],cum=0;
+  for(z=0;z<zc;z++){seg.push({s:cum,c:cnt[z]||0});cum+=cnt[z]||0;}
+  function X(idx){return pts.length<=1?0:w*idx/(pts.length-1);}
+  function Y(v){return h-18-(v/max)*(h-30);}
+
+  ctx.strokeStyle='#e5e7eb';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,h-0.5);ctx.lineTo(w,h-0.5);ctx.stroke();
+
+  var names=[];
+  for(z=0;z<zc;z++){
+    var s=seg[z];
+    if(!s.c)continue;
+    var col=COLORS[z%COLORS.length],k,idx;
+    ctx.strokeStyle=col;ctx.lineWidth=2;ctx.globalAlpha=1;ctx.setLineDash([]);
+    ctx.beginPath();
+    for(k=0;k<s.c;k++){
+      idx=s.s+k;
+      var xx=X(idx),yy=Y(pts[idx]);
+      if(k===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);
+    }
+    ctx.stroke();
+    if(s.s>0){
+      ctx.strokeStyle='#d1d5db';ctx.setLineDash([3,3]);
+      ctx.beginPath();ctx.moveTo(X(s.s),0);ctx.lineTo(X(s.s),h-16);ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    if(base[z]>0){
+      ctx.strokeStyle=col;ctx.globalAlpha=0.4;ctx.setLineDash([4,4]);
+      var last=Math.min(pts.length-1,s.s+s.c-1);
+      ctx.beginPath();ctx.moveTo(X(s.s),Y(base[z]));ctx.lineTo(X(last),Y(base[z]));ctx.stroke();
+      ctx.globalAlpha=1;ctx.setLineDash([]);
+    }
+    names.push('<span style="color:'+col+'">■</span> 水路'+(z+1));
+  }
+
+  ctx.font='10px sans-serif';ctx.fillStyle='#9ca3af';
+  var span=pts.length*SEC_PER_POINT,t;
+  for(t=0;t<=4;t++){ctx.fillText(fmtTime(Math.round(span*t/4)),w*t/4,h-5);}
+  if(legend){
+    legend.innerHTML=names.join('&nbsp;&nbsp;')+(pts.length>=720?'&nbsp;&nbsp;<span>已达 6 小时上限，仅含前 6 小时</span>':'');
+  }
+  return true;
+}
+
+function fetchJson(cb){
+  fetch(URL,{cache:'no-store',credentials:'same-origin'})
+    .then(function(r){return r.json();})
+    .then(function(d){cb(d);})
+    .catch(function(){});
+}
+
+// Detail dialog: open then draw once layout is ready; only when the RAM curve
+// still belongs to this record (avoids showing a newer task over an old record).
+window.openRecordFlowOverview=function(dialogId){
+  var d=document.getElementById(dialogId);
+  if(!d)return;
+  d.showModal();
+  var canvas=d.querySelector('[data-rfo-record]'),legend=d.querySelector('.record-flow-legend');
+  if(!canvas)return;
+  var want=Number(canvas.getAttribute('data-rfo-record'))||0;
+  var tries=0;
+  function attempt(){
+    fetchJson(function(data){
+      var ok=data&&Number(data.recordId||0)===want&&(data.points||[]).length>0;
+      var note=d.querySelector('.record-flow-empty');
+      if(ok){
+        if(note)note.style.display='none';
+        if(!paint(canvas,legend,data)&&tries++<40)setTimeout(attempt,25);
+      }else if(note){
+        note.style.display='flex';
+      }
+    });
+  }
+  (function wait(){
+    if(widthOf(canvas)>0||tries++>40)attempt();
+    else setTimeout(wait,25);
+  })();
+};
+
+// Running task page: poll the growing whole-task curve.
+function startRunning(){
+  var canvas=el('run-overview-chart'),legend=el('run-overview-legend'),empty=el('run-overview-empty');
+  if(!canvas)return;
+  var stopped=false;
+  function draw(){
+    if(document.hidden||stopped)return;
+    fetchJson(function(data){
+      var pts=(data&&data.points)||[];
+      if(empty)empty.style.display=pts.length?'none':'flex';
+      if(paint(canvas,legend,data)===false){setTimeout(draw,100);return;}
+    });
+  }
+  draw();
+  setInterval(draw,5000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)draw();});
+}
+
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startRunning);
+else startRunning();
+})();</script>

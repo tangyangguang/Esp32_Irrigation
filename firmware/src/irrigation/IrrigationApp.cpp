@@ -132,7 +132,8 @@ bool IrrigationApp::begin() {
     if (flowOverviewStore_.hasLoaded()) {
         const auto& loaded = flowOverviewStore_.loaded();
         wateringController_.loadFlowOverview(
-            loaded.startedEpoch, loaded.zonePointCount.data(), loaded.zoneCount,
+            loaded.recordId, loaded.startedEpoch, loaded.zonePointCount.data(),
+            loaded.zoneBaselineFlow.data(), loaded.zoneCount,
             loaded.points.data(), loaded.pointCount);
     }
     const bool auditStoreReady = events_.begin();
@@ -275,12 +276,15 @@ uint16_t IrrigationApp::readWateringFlowOverview(uint16_t offset,
                                                 uint16_t maxCount) const {
     return wateringController_.readFlowOverview(offset, out, maxCount);
 }
-void IrrigationApp::loadWateringFlowOverview(uint32_t startedEpoch,
+void IrrigationApp::loadWateringFlowOverview(uint32_t recordId,
+                                             uint32_t startedEpoch,
                                              const uint16_t* zonePointCount,
+                                             const uint32_t* zoneBaselineFlow,
                                              uint8_t zoneCount,
                                              const uint32_t* points,
                                              uint16_t pointCount) {
-    wateringController_.loadFlowOverview(startedEpoch, zonePointCount, zoneCount,
+    wateringController_.loadFlowOverview(recordId, startedEpoch, zonePointCount,
+                                         zoneBaselineFlow, zoneCount,
                                          points, pointCount);
 }
 void IrrigationApp::clearWateringFlowOverview() {
@@ -322,8 +326,15 @@ void IrrigationApp::persistFlowOverview(uint32_t startedEpoch) {
         return;
     }
     std::array<uint16_t, BoardPins::kZoneCount> zoneCounts = info.zonePointCount;
-    flowOverviewStore_.save(storeStatus.newestRecordId, startedEpoch, info.zoneCount,
-                            zoneCounts.data(), points.get(), info.pointCount);
+    std::array<uint32_t, BoardPins::kZoneCount> baseline = info.zoneBaselineFlow;
+    const uint32_t recordId = storeStatus.newestRecordId;
+    if (flowOverviewStore_.save(recordId, startedEpoch, info.zoneCount,
+                                zoneCounts.data(), baseline.data(), points.get(),
+                                info.pointCount)) {
+        // Mirror the id into RAM so the same overview serves both the running
+        // view and the matched record detail without a reboot.
+        wateringController_.setFlowOverviewRecordId(recordId);
+    }
     (void)bytes;
 }
 

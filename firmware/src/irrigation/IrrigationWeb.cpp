@@ -1191,56 +1191,19 @@ struct RecordRowsContext {
 // <canvas> plus a tiny data block drawn by an inline script. Only shown when a
 // stored overview matches this exact record id.
 void sendRecordFlowOverview(const StoredWateringRecord& record) {
-    const auto* overview = g_app->matchedFlowOverview(record.recordId);
-    if (overview == nullptr || overview->pointCount == 0) return;
+    // Only the last completed task has a stored curve. The canvas carries the
+    // record id; flow-overview-script fetches /api/flow-overview when this
+    // dialog opens and draws only if the RAM curve still matches that record.
+    if (g_app->matchedFlowOverview(record.recordId) == nullptr) return;
     Esp32BaseWeb::sendChunk(
         "<div class='record-detail-section record-flow-overview'><h3>全程流量曲线</h3>"
-        "<p>每 30 秒一个点，按任务时间轴顺序排列；颜色区分水路，虚线为该路基准。" );
-    if (overview->pointCount >= kFlowOverviewSampleCount) {
-        Esp32BaseWeb::sendChunk("已达 6 小时上限，仅含任务前 6 小时。");
-    }
+        "<p>每 30 秒一个点，按任务时间轴顺序排列；颜色区分水路，虚线为该路基准。</p>"
+        "<canvas class='record-flow-canvas' data-rfo-record='");
+    sendUnsigned(record.recordId);
     Esp32BaseWeb::sendChunk(
-        "</p><canvas class='record-flow-canvas' height='140'></canvas>"
-        "<div class='record-flow-legend'></div><script>(function(){var d=document.currentScript.closest('.record-detail-dialog');"
-        "d.__rfo={zc:");
-    sendUnsigned(overview->zoneCount);
-    Esp32BaseWeb::sendChunk(",cnt:[");
-    for (uint8_t z = 0; z < overview->zoneCount; ++z) {
-        if (z) Esp32BaseWeb::sendChunk(",");
-        sendUnsigned(overview->zonePointCount[z]);
-    }
-    Esp32BaseWeb::sendChunk("],base:[");
-    for (uint8_t z = 0; z < overview->zoneCount; ++z) {
-        if (z) Esp32BaseWeb::sendChunk(",");
-        const auto& zone = record.payload.zones[z];
-        const bool baselineAvailable =
-            (zone.flags & WateringRecordCodec::kZoneFlagFlowBaselineAvailable) != 0 &&
-            zone.result != ZoneWateringResult::NotStarted;
-        sendUnsigned(baselineAvailable ? zone.baselineFlowMlPerMinute : 0);
-    }
-    Esp32BaseWeb::sendChunk("],pts:[");
-    for (uint16_t i = 0; i < overview->pointCount; ++i) {
-        if (i) Esp32BaseWeb::sendChunk(",");
-        sendUnsigned(overview->points[i]);
-    }
-    Esp32BaseWeb::sendChunk("]};");
-    Esp32BaseWeb::sendChunk(R"JS(
-if(!window.__drawRfo){window.__drawRfo=function(d){var d0=d.__rfo;if(!d0)return;var canvas=d.querySelector('.record-flow-canvas'),legend=d.querySelector('.record-flow-legend');if(!canvas)return;
-var dpr=window.devicePixelRatio||1,w=canvas.clientWidth||(canvas.parentElement&&canvas.parentElement.clientWidth)||d.clientWidth-40||600,h=140;canvas.width=w*dpr;canvas.height=h*dpr;var ctx=canvas.getContext('2d');ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,h);
-var zc=d0.zc,cnt=d0.cnt,base=d0.base,pts=d0.pts,colors=['#ea580c','#2563eb','#16a34a','#9333ea','#dc2626','#0891b2'];
-var max=10;for(var i=0;i<pts.length;i++)if(pts[i]>max)max=pts[i];for(var z=0;z<zc;z++)if(cnt[z]&&base[z]*1.1>max)max=base[z]*1.1;max*=1.08;
-var cum=0,seg=[];for(var z=0;z<zc;z++){seg.push({s:cum,c:cnt[z]});cum+=cnt[z];}
-ctx.strokeStyle='#e5e7eb';ctx.beginPath();ctx.moveTo(0,h-0.5);ctx.lineTo(w,h-0.5);ctx.stroke();
-var X=function(i){return pts.length<=1?w:w*i/(pts.length-1)},Y=function(v){return h-18-(v/max)*(h-30)};
-var items=[];
-for(var z=0;z<zc;z++){var s=seg[z];if(!s.c)continue;
-ctx.strokeStyle=colors[z%6];ctx.lineWidth=2;ctx.beginPath();for(var k=0;k<s.c;k++){var idx=s.s+k,xx=X(idx),yy=Y(pts[idx]);if(k===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);}ctx.stroke();
-if(s.s>0){ctx.strokeStyle='#d1d5db';ctx.setLineDash([3,3]);ctx.beginPath();ctx.moveTo(X(s.s),0);ctx.lineTo(X(s.s),h-16);ctx.stroke();ctx.setLineDash([]);}
-if(base[z]>0){ctx.globalAlpha=0.4;ctx.setLineDash([4,4]);ctx.beginPath();ctx.moveTo(X(s.s),Y(base[z]));ctx.lineTo(X(Math.min(pts.length-1,s.s+s.c-1)),Y(base[z]));ctx.stroke();ctx.setLineDash([]);ctx.globalAlpha=1;}
-items.push('<span style="color:'+colors[z%6]+'">■</span> 水路'+(z+1));}
-ctx.font='10px sans-serif';ctx.fillStyle='#9ca3af';var span=pts.length*30;for(var t=0;t<=4;t++){var sec=Math.round(span*(1-t/4)),label=sec>=3600?(sec/3600)+'时':Math.round(sec/60)+'分';ctx.fillText(label,w*t/4,h-5);}
-if(legend)legend.innerHTML=items.join('&nbsp;&nbsp;');};}
-})();</script></div>)JS");
+        "' height='140'></canvas>"
+        "<div class='record-flow-empty muted' style='display:none'>该记录暂无可显示的全程曲线。</div>"
+        "<div class='record-flow-legend'></div></div>");
 }
 
 // Shortcut to the last completed watering's record detail (which embeds the
@@ -1453,9 +1416,9 @@ void sendRecordRow(const StoredWateringRecord& record, void* user) {
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendCompactWaterVolume(totals.estimatedWaterMl);
-    Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><button type='button' class='btnlink info compact' onclick=\"var d=document.getElementById('record-detail-");
+    Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><button type='button' class='btnlink info compact' onclick=\"openRecordFlowOverview('record-detail-");
     sendUnsigned(record.recordId);
-    Esp32BaseWeb::sendChunk("');d.showModal();if(window.__drawRfo)window.__drawRfo(d);\">查看详情</button>");
+    Esp32BaseWeb::sendChunk("')\">查看详情</button>");
     sendRecordDetailDialog(record, context ? context->config : nullptr, "record-detail-");
     Esp32BaseWeb::sendChunk("</td></tr>");
 }
@@ -1515,7 +1478,8 @@ bool IrrigationWeb::registerRoutes(IrrigationApp& app) {
         Esp32BaseWeb::addRoute("/irrigation/zones/learning",Esp32BaseWeb::METHOD_GET,zoneLearning) &&
         Esp32BaseWeb::addRoute("/irrigation/zones/learning",Esp32BaseWeb::METHOD_POST,zoneLearning) &&
         Esp32BaseWeb::addApi("/irrigation/api/status",statusApi) &&
-        Esp32BaseWeb::addApi("/irrigation/api/flow-history",flowHistoryApi);
+        Esp32BaseWeb::addApi("/irrigation/api/flow-history",flowHistoryApi) &&
+        Esp32BaseWeb::addApi("/irrigation/api/flow-overview",flowOverviewApi);
 }
 void IrrigationWeb::overview() {
     if(Esp32BaseWeb::isMethod(Esp32BaseWeb::METHOD_POST)) {
@@ -2084,6 +2048,7 @@ void IrrigationWeb::records() {
     if(!beginPage("浇水记录","实际时长为主，估算水量为辅"))return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::FlowOverviewScript);
     HistoryRows q{};
     char date[12]{}, result[16]{};
     if(getParam("date",date,sizeof(date)) && date[0]) q.day=selectedDay();
@@ -2102,7 +2067,7 @@ void IrrigationWeb::records() {
         StoredWateringRecord detail{};
         if (g_app->readWateringRecordById(detailId,detail)==Esp32BaseRecordStore::RecordReadResult::Found) {
             sendRecordDetailDialog(detail,g_app->configuration(),"record-direct-detail-");
-            html("<script>var d=document.getElementById('record-direct-detail-"); sendUnsigned(detailId); html("');d.showModal();if(window.__drawRfo)window.__drawRfo(d);</script>");
+            html("<script>openRecordFlowOverview('record-direct-detail-"); sendUnsigned(detailId); html("');</script>");
         } else Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN,"找不到该浇水记录","记录无法读取或已被滚动淘汰。");
     }
     endPage();
@@ -2352,7 +2317,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路脉冲</span><b id='run-pulses'>"); sendUnsigned(status.pulseCount);
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路估算水量</span><b id='run-zone-water'>");
         if (status.currentStepIndex < status.stepCount) sendLiters(status.zones[status.currentStepIndex].estimatedWaterMl); else Esp32BaseWeb::sendChunk("0.000 L");
-        Esp32BaseWeb::sendChunk("</b></div></div></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>实时流量趋势（L/min）</h3></div><span id='run-chart-range'>正在等待数据 · 5 秒/点</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='205'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-steps'>");
+        Esp32BaseWeb::sendChunk("</b></div></div></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>实时流量趋势（L/min）</h3></div><span id='run-chart-range'>正在等待数据 · 5 秒/点</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='205'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-overview-card run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>本次任务</span><h3>全程流量趋势（L/min）</h3></div><span>30 秒/点 · 最多 6 小时</span></div><div class='run-chart-wrap'><canvas id='run-overview-chart' height='205'></canvas><div id='run-overview-empty' class='run-chart-empty'>正在采集全程曲线（每 30 秒一个点）</div></div><div id='run-overview-legend' class='run-overview-legend'></div></div><div class='run-steps'>");
         for (uint8_t index = 0; index < status.stepCount; ++index) {
             const ZoneWateringSummary& zone = status.zones[index];
             const char* stepClass = index < status.currentStepIndex ? " complete" : (index == status.currentStepIndex ? " current" : "");
@@ -2374,6 +2339,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::endPanel();
     }
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::ActiveTaskScript);
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::FlowOverviewScript);
     html("<section class='panel'><h2>每日浇水</h2>"); const uint32_t day=selectedDay(); if(day) dateNav(day); renderDay(day, false, status); html("</section>");
     endPage();
 }
@@ -2842,6 +2808,41 @@ void IrrigationWeb::flowHistoryApi() {
     uint16_t sent = 0;
     while (sent < info.sampleCount) {
         const uint16_t n = g_app->readWateringFlowHistory(sent, segment, kFlowHistoryReadSegment);
+        if (n == 0) break;
+        for (uint16_t i = 0; i < n; ++i) {
+            if (sent != 0 || i != 0) Esp32BaseWeb::sendChunk(",");
+            sendUnsigned(segment[i]);
+        }
+        sent = static_cast<uint16_t>(sent + n);
+    }
+    Esp32BaseWeb::sendChunk("]}");
+    Esp32BaseWeb::endResponse();
+}
+
+void IrrigationWeb::flowOverviewApi() {
+    if (!Esp32BaseWeb::checkAuth()) return;
+    // Whole-task 30 s overview: RAM while running or after the last task,
+    // restored from flash at boot. Read in short locked segments.
+    const FlowOverviewInfo info = g_app->wateringFlowOverviewInfo();
+    if (!Esp32BaseWeb::beginResponse(200, "application/json")) return;
+    Esp32BaseWeb::sendChunk("{\"recordId\":"); sendUnsigned(info.recordId);
+    Esp32BaseWeb::sendChunk(",\"startedEpoch\":"); sendUnsigned(info.startedEpoch);
+    Esp32BaseWeb::sendChunk(",\"sampleIntervalSec\":30,\"zoneCount\":"); sendUnsigned(info.zoneCount);
+    Esp32BaseWeb::sendChunk(",\"counts\":[");
+    for (uint8_t z = 0; z < info.zoneCount; ++z) {
+        if (z) Esp32BaseWeb::sendChunk(",");
+        sendUnsigned(info.zonePointCount[z]);
+    }
+    Esp32BaseWeb::sendChunk("],\"baseline\":[");
+    for (uint8_t z = 0; z < info.zoneCount; ++z) {
+        if (z) Esp32BaseWeb::sendChunk(",");
+        sendUnsigned(info.zoneBaselineFlow[z]);
+    }
+    Esp32BaseWeb::sendChunk("],\"points\":[");
+    uint32_t segment[kFlowHistoryReadSegment];
+    uint16_t sent = 0;
+    while (sent < info.pointCount) {
+        const uint16_t n = g_app->readWateringFlowOverview(sent, segment, kFlowHistoryReadSegment);
         if (n == 0) break;
         for (uint16_t i = 0; i < n; ++i) {
             if (sent != 0 || i != 0) Esp32BaseWeb::sendChunk(",");
