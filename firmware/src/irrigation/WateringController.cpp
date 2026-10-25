@@ -603,18 +603,6 @@ void WateringController::finalizeTerminalFlow(ZoneWateringSummary& zone) {
             static_cast<uint32_t>(
                 static_cast<uint64_t>(terminalRateX100) * 100U);
     }
-    FlowMonitor::pulseRateToFlowMlPerMinute(
-        terminalRateX100,
-        flowMeter_.pulsesPerLiterX100,
-        zone.terminalFlowMlPerMinute);
-    FlowMonitor::pulseRateToFlowMlPerMinute(
-        minimumRate,
-        flowMeter_.pulsesPerLiterX100,
-        zone.terminalMinimumFlowMlPerMinute);
-    FlowMonitor::pulseRateToFlowMlPerMinute(
-        maximumRate,
-        flowMeter_.pulsesPerLiterX100,
-        zone.terminalMaximumFlowMlPerMinute);
 }
 
 void WateringController::finishSession(WateringStopReason reason, uint32_t nowMs) {
@@ -778,7 +766,6 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
             zone.lowFlowActive = true;
             lowFlowDurationMs_ = 0;
             zone.lowFlowDetected = true;
-            zone.lowFlowDetectedMlPerMinute = sample.flowMlPerMinute;
             if (flowProtection_.lowFlowAction == FlowAlertAction::StopWatering) {
                 finishSession(WateringStopReason::LowFlow, nowMs);
                 return false;
@@ -810,7 +797,6 @@ bool WateringController::checkFlowRate(uint32_t nowMs) {
             zone.highFlowActive = true;
             highFlowDurationMs_ = 0;
             zone.highFlowDetected = true;
-            zone.highFlowDetectedMlPerMinute = sample.flowMlPerMinute;
             if (flowProtection_.highFlowAction == FlowAlertAction::StopWatering) {
                 finishSession(WateringStopReason::HighFlow, nowMs);
                 return false;

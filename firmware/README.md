@@ -52,13 +52,17 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,548,507 B（87.5%，分区 1,769,472 B） |
-| 静态 RAM（DRAM data+bss） | 113,260 B（34.6%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,548,912 B |
-| 对侧 OTA 槽余量 | 220,560 B（约 215 KiB，12.46%） |
+| Flash（应用分区） | 1,548,275 B（87.5%，分区 1,769,472 B） |
+| 静态 RAM（DRAM data+bss） | 113,140 B（34.5%，327,680 B） |
+| OTA 镜像 firmware.bin | 1,548,672 B |
+| 对侧 OTA 槽余量 | 220,800 B（约 216 KiB，12.48%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
+
+## 死代码清理（2026-10-25，见根目录《重构优化记录.md》会话 2）
+
+全仓删除无引用、只写不读或被取代的代码：Web 层 3 个无调用辅助函数；App 层旧通用保存入口 `saveConfiguration` 与无调用 getter `baseReady()`；平台层 `writeIso()`；`IrrigationJsonCapacity` 4 个遗留容量常量（仅保留 config）；EventCode 7 个、ReasonCode 14 个从不写入记录的死枚举值（保留值编号不变）；ZoneWateringSummary 5 个只写不读字段（终段/报警瞬时流量）。行为、记录 payload 与平台契约不变。主目标构建通过（Flash −232 B，RAM −120 B），native 87 项全部通过。
 
 ## 本地观看功能简化（2026-10-25，见根目录《重构优化记录.md》）
 

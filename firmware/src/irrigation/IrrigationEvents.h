@@ -11,39 +11,23 @@
 
 class IrrigationEvents {
 public:
+    // Numeric codes are persisted in audit records. Only codes actually written
+    // by the current event producers are kept; presentation maps unknown/old
+    // values to a generic label.
     enum class EventCode : uint32_t {
-        WateringStoppedAbnormally = 1001,
         AutomaticWateringStateChanged = 1002,
-        RtcRollback = 1004,
-        FlowDeviation = 1201,
         ClosedValveFlow = 1006,
-        ZoneFlowSaved = 1203,
         ConfigurationChanged = 1009,
-        WateringRecordSaveFailed = 1101,
-        SchedulerStateSaveFailed = 1102,
-        RtcUnavailable = 1103,
-        TrustedTimeUnavailable = 1104,
+        ZoneFlowSaved = 1203,
     };
+    // Numeric values are persisted as audit reason bytes; keep the historical
+    // numbers of codes still in use, even though obsolete middle values were removed.
     enum class ReasonCode : uint32_t {
         PausedIndefinitely = 1,
         PausedUntil,
         ResumedManually,
         ResumedAutomatically,
-        FlowStartTimeout,
-        NoFlowTimeout,
-        HardwareFailure,
-        MaintenanceInterrupted,
-        LowFlow,
-        HighFlow,
-        ClosedValveFlow,
-        TargetVolumeTimeout,
-        RecordStartTimeUnavailable,
-        RecordAppendFailed,
-        SchedulerStateStorage,
-        RtcRollback,
-        RtcUnavailable,
-        TrustedTimeUnavailable,
-        ZoneFlowSaved,
+        ZoneFlowSaved = 19,
         PlanCreated,
         PlanUpdated,
         PlanDeleted,

@@ -566,8 +566,6 @@ void test_flow_alert_recovers_and_can_become_active_again_in_same_run() {
     controller.handle(5001);
     TEST_ASSERT_TRUE(controller.status().zones[0].highFlowActive);
     TEST_ASSERT_TRUE(controller.status().zones[0].highFlowDetected);
-    const uint32_t firstDetectedFlow =
-        controller.status().zones[0].highFlowDetectedMlPerMinute;
 
     hardware.pulses += 10;
     controller.handle(10001);
@@ -578,9 +576,6 @@ void test_flow_alert_recovers_and_can_become_active_again_in_same_run() {
     controller.handle(15001);
     TEST_ASSERT_TRUE(controller.status().zones[0].highFlowActive);
     TEST_ASSERT_TRUE(controller.status().zones[0].highFlowDetected);
-    TEST_ASSERT_GREATER_THAN_UINT32(
-        firstDetectedFlow,
-        controller.status().zones[0].highFlowDetectedMlPerMinute);
 }
 
 void test_terminal_flow_uses_last_five_complete_windows_and_reports_stability() {
@@ -599,9 +594,6 @@ void test_terminal_flow_uses_last_five_complete_windows_and_reports_stability() 
     const ZoneWateringSummary& zone = controller.finishedSession()->zones[0];
     TEST_ASSERT_TRUE(zone.terminalFlowAvailable);
     TEST_ASSERT_TRUE(zone.terminalFlowStable);
-    TEST_ASSERT_EQUAL_UINT32(1008, zone.terminalFlowMlPerMinute);
-    TEST_ASSERT_EQUAL_UINT32(1008, zone.terminalMinimumFlowMlPerMinute);
-    TEST_ASSERT_EQUAL_UINT32(1008, zone.terminalMaximumFlowMlPerMinute);
     TEST_ASSERT_EQUAL_UINT32(1008, zone.baselineFlowMlPerMinute);
 }
 

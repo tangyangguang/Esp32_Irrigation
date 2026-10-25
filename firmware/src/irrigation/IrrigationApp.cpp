@@ -194,9 +194,6 @@ void IrrigationApp::handle() {
     IrrigationPlatform::poll();
 }
 
-bool IrrigationApp::baseReady() const {
-    return baseReady_;
-}
 
 bool IrrigationApp::businessReady() const {
     return businessReady_;
@@ -676,27 +673,6 @@ IrrigationConfigStore::LoadResult IrrigationApp::configurationLoadResult() const
     return configStore_.loadResult();
 }
 
-bool IrrigationApp::saveConfiguration(const IrrigationConfig& proposed,
-                                      uint32_t expectedRevision,
-                                      IrrigationEvents::ConfigurationChange change,
-                                      uint8_t objectId) {
-    const IrrigationConfig* current = configStore_.current();
-    if (!businessReady_ || !current) {
-        return false;
-    }
-    const bool audited = change == IrrigationEvents::ConfigurationChange::PlanCreated ||
-                         change == IrrigationEvents::ConfigurationChange::PlanUpdated ||
-                         change == IrrigationEvents::ConfigurationChange::PlanDeleted;
-    if (audited && !IrrigationRecords::instance().writable(IrrigationRecords::StoreKind::Audit)) return false;
-    const bool active = wateringController_.active();
-    if (!configStore_.save(proposed, expectedRevision)) return false;
-    wateringScheduler_.rebaseTimeCheck();
-    if (!active) {
-        resetUnexpectedFlowMonitor(millis());
-    }
-    events_.recordConfigurationChanged(change, objectId, configStore_.current());
-    return true;
-}
 
 const char* IrrigationApp::configurationError() const {
     return configStore_.lastError();

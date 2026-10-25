@@ -19,7 +19,6 @@ public:
     bool begin();
     void handle();
 
-    bool baseReady() const;
     bool businessReady() const;
     WateringStartResult startWatering(const WateringRequest& request);
     bool stopWatering();
@@ -105,10 +104,6 @@ public:
                                 bool valueIsBoolean,
                                 bool booleanValue,
                                 const char* textValue);
-    bool saveConfiguration(const IrrigationConfig& proposed,
-                           uint32_t expectedRevision,
-                           IrrigationEvents::ConfigurationChange change,
-                           uint8_t objectId = 0);
     const char* configurationError() const;
 
 private:

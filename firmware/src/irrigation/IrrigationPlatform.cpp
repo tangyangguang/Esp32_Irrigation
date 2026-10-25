@@ -535,16 +535,6 @@ void buildBootId() {
 
 // ---- time helpers ---------------------------------------------------------
 
-void writeIso(char out[25], uint32_t epochSec) {
-    if (!epochSec) {
-        out[0] = '\0';
-        return;
-    }
-    time_t seconds = static_cast<time_t>(epochSec);
-    tm utc{};
-    gmtime_r(&seconds, &utc);
-    strftime(out, 25, "%Y-%m-%dT%H:%M:%S.000Z", &utc);
-}
 
 // ---- state projection -----------------------------------------------------
 

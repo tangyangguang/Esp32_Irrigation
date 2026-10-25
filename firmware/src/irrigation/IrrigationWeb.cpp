@@ -378,35 +378,6 @@ void sendMilliseconds(uint32_t value) {
     Esp32BaseWeb::sendChunk(text);
 }
 
-void formatPulseRate(uint32_t pulses,
-                     uint32_t durationMs,
-                     char* output,
-                     size_t outputLength) {
-    if (!output || outputLength == 0) return;
-    if (durationMs == 0) {
-        strlcpy(output, "—", outputLength);
-        return;
-    }
-    const uint64_t scaled =
-        (static_cast<uint64_t>(pulses) * 100000ULL + durationMs / 2U) /
-        durationMs;
-    formatSignedHundredths(scaled > INT64_MAX
-                               ? INT64_MAX
-                               : static_cast<int64_t>(scaled),
-                           output,
-                           outputLength);
-}
-
-uint32_t calculateFlowMlPerMinute(uint32_t pulses,
-                                  uint32_t durationMs,
-                                  uint32_t pulsesPerLiterX100) {
-    if (durationMs == 0 || pulsesPerLiterX100 == 0) return 0;
-    const double value = static_cast<double>(pulses) * 6000000000.0 /
-                         (static_cast<double>(durationMs) * pulsesPerLiterX100);
-    if (value <= 0.0) return 0;
-    return value >= UINT32_MAX ? UINT32_MAX
-                               : static_cast<uint32_t>(value + 0.5);
-}
 
 void sendRecordTime(const Esp32BaseRecordStore::RecordTiming& timing,
                     const char* format = "%m-%d %H:%M") {
@@ -821,9 +792,6 @@ void sendRecordFlowAlertSummary(const WateringRecordPayload& payload,
 void html(const char* text) { Esp32BaseWeb::sendChunk(text); }
 
 void escaped(const char* text) { Esp32BaseWeb::writeHtmlEscaped(text ? text : ""); }
-void hidden(const char* name, uint32_t value) {
-    html("<input type='hidden' name='"); escaped(name); html("' value='"); sendUnsigned(value); html("'>");
-}
 void epochText(uint32_t epoch, const char* format = "%m-%d %H:%M") {
     char text[32]{};
     if (epoch && Esp32BaseTime::formatEpoch(epoch, text, sizeof(text), format)) escaped(text);
