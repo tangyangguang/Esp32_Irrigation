@@ -152,7 +152,7 @@ function drawAxis(ctx,w,h,ticks){
 
 function fetchJson(tail,cb){
   fetch(URL+(tail?'?tail='+tail:''),{cache:'no-store',credentials:'same-origin'})
-    .then(function(r){return r.json();}).then(cb).catch(function(){});
+    .then(function(r){return r.json();}).then(cb).catch(function(){cb(null);});
 }
 
 // Record detail: fetch the whole curve once the dialog is laid out; draw only
@@ -182,25 +182,31 @@ window.openRecordFlowOverview=function(dialogId){
   })();
 };
 
-// Running task page: poll the last hour of the growing whole-task curve.
+// Running task page. The overview poll is driven by the status poller via
+// refreshRunningOverview() so there is only one request in flight at a time on
+// the device's single-connection HTTP server (avoids favicon/asset breakage
+// caused by requests queueing past the server read timeout).
 function startRunning(){
   var canvas=el('run-overview-chart'),legend=el('run-overview-legend'),empty=el('run-overview-empty');
-  if(!canvas)return;
-  var stopped=false,firstPaint=true;
+  if(!canvas)return false;
+  var stopped=false,firstPaint=true,inFlight=false;
   function draw(){
-    if(document.hidden||stopped)return;
+    if(document.hidden||stopped||inFlight)return;
+    inFlight=true;
     fetchJson(TAIL,function(data){
+      inFlight=false;
+      if(!data)return;  // transient fetch failure: next tick/status refresh retries
       var pts=(data&&data.points)||[];
       if(empty)empty.style.display=pts.length?'none':'flex';
       if(paint(canvas,legend,data,'scroll',firstPaint&&pts.length>0)===false){setTimeout(draw,100);return;}
       if(pts.length>0)firstPaint=false;
     });
   }
-  draw();
-  setInterval(draw,5000);
-  document.addEventListener('visibilitychange',function(){if(!document.hidden)draw();});
+  window.refreshRunningOverview=draw;
+  draw();  // immediate first paint; later refreshes ride the status poll chain
+  return true;
 }
 
-if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startRunning);
-else startRunning();
+// Detail-only page: no running canvas, nothing to poll.
+if(document.getElementById('run-overview-chart'))startRunning();
 })();</script>

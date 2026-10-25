@@ -208,6 +208,18 @@ void redirectResult(const char* path, bool success) {
     Esp32BaseWeb::redirectSeeOther(location);
 }
 
+// Inline SVG favicon (a water drop) as a data URI. The shared head emitted by
+// Esp32BaseWeb::sendHeader carries no icon, so Chrome otherwise fetches
+// /favicon.ico on its own; on this single-connection device server that request
+// can queue behind the active-page polls and occasionally fail, showing a
+// broken-image glyph in the tab. An inline icon needs no request at all.
+constexpr const char* kInlineFavicon =
+    "<link rel='icon' href=\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3C16 3 6 15 6 21a10 10 0 0 0 20 0C26 15 16 3 16 3Z' fill='%23117b8b'/%3E%3C/svg%3E\">";
+
+void sendInlineFavicon() {
+    Esp32BaseWeb::sendChunk(kInlineFavicon);
+}
+
 bool beginPage(const char* title, const char* subtitle = nullptr) {
     if (!Esp32BaseWeb::checkAuth()) {
         return false;
@@ -216,6 +228,7 @@ bool beginPage(const char* title, const char* subtitle = nullptr) {
     // content-hashed assets change, so a stale page would drive stale scripts.
     Esp32BaseWeb::sendResponseHeader("Cache-Control", "no-store");
     Esp32BaseWeb::sendHeader(title);
+    sendInlineFavicon();
     Esp32BaseWeb::sendPageTitle(title, subtitle);
     char result[12]{};
     if (getParam("result", result, sizeof(result))) {
@@ -1537,6 +1550,7 @@ void IrrigationWeb::overview() {
     if (!Esp32BaseWeb::checkAuth()) return;
     Esp32BaseWeb::sendResponseHeader("Cache-Control", "no-store");
     Esp32BaseWeb::sendHeader("智能浇水");
+    sendInlineFavicon();
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
     const WateringScheduler::TimeState schedulerTime = g_app->schedulerTimeState();

@@ -52,10 +52,10 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,558,007 B（88.0%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,558,475 B（88.1%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 115,652 B（35.3%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,558,416 B |
-| 对侧 OTA 槽余量 | 211,056 B（约 206.1 KiB，11.93%） |
+| OTA 镜像 firmware.bin | 1,558,880 B |
+| 对侧 OTA 槽余量 | 210,592 B（约 205.7 KiB，11.90%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
@@ -69,6 +69,7 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 - **统一展示（本地 API + 资产化绘图）**：只读 `/irrigation/api/flow-overview`（短持锁 32 点/段读出）：无参数=详情整段（最多 4320 点），`?tail=720`=进行中最近 1 小时切片（后端按偏移切 counts/baseline 并返回 `zoneStart/totalPoints`）。绘图收敛到独立资产 `flow-overview-script.html` 两种模式：进行中=固定 6 px/点、容器横向滚动、首帧及随后自动钉在最新点（用户拖走看历史不抢滚，回到底部重新跟随）；记录详情=整条等比缩放到画布宽。两种模式都加左右内边距，端点/单点圆点不被边缘裁切；颜色按绝对水路（zoneStart 偏移），5 秒时间轴、段间分隔线、基准虚线、图例。
 - 旧 30 秒方案的两个缺陷随重做消除：(1) 显示层端点贴边被裁导致“两个点只看到一个”；(2) 30 秒跨水路残段被丢弃导致每路 60 秒常只剩 1 点。现每 5 秒窗 1 点、不切路清零，每路 60 秒约 12 点。文件 v2 不被 v3 读取（未正式发布，实验板重新浇一次水生成）。读写失败只影响曲线，不阻断浇水/记账；格式化删文件；过程中断电丢本次、保留上次。本轮仅本地 Web/文件，不进 MQTT 契约。
 - OTA 缓存加固：HTML 页面响应统一加 `Cache-Control: no-store`（JS/CSS 仍按 `?v=内容哈希` 长缓存），保证 OTA 后必取新页面。
+- 进行中页轮询串行化 + 内联 favicon（修复标签页偶发“图片损坏”图标）：根因是设备 WebServer **单连接串行**（同一时刻只服务一个 socket）且读超时 5s、每请求 `Connection: close`；进行中页原本有 status(1s)、flow-overview(5s 独立定时器)、flow-history 三个并发轮询，空闲真机并发压测即有请求排到 4.5–5.5s，浇水时主循环更忙，排队超 5s 的请求被丢弃；浏览器自动发起的 `/favicon.ico`（页面 head 无图标）赶上一次失败就在标签页显示破损图标，而业务 fetch 都 `.catch()` 静默。修复：(1) 取消 overview 的独立 `setInterval`，改由 status 的 setTimeout 链在成功后链式触发（首 tick 补 history、其后每 5 tick 拉一次 overview tail），保证任意时刻最多 1 个在途请求（fixture 实测 maxFlight=1，请求序列 status→history→status×4→overview）；(2) 在 `beginPage`/首页入口注入内联 data-URI SVG favicon（水滴），页面不依赖 `/favicon.ico` 网络请求。CDP 真机确认内联图标生效、业务轮询串行。
 - 验证：Web 资产一致性脚本通过（片段计数按 ASSETS 自动统计，含 JS 语法检查）；主目标构建通过（Flash 1,558,007 B/88.0%，静态 RAM 115,652 B/35.3%，曲线缓冲在堆不计入）；native 91 项全部通过（含 5 秒逐窗 1 点、跨路计数、6 小时填满即止、学习不产生概览）；无头 Chrome 对绘图做**饱和色像素级**断言：真机形状 [1,1] 详情两圆点均在（左 76/右 42 像素，修复前为 0）、单点落内边距、多点连线 3161、tail 滚动 cssW=4334 且 scrollLeft=max 钉最新。
 
 ## 死代码清理（2026-10-25，见根目录《重构优化记录.md》会话 2）
