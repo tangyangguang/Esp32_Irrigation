@@ -212,6 +212,9 @@ bool beginPage(const char* title, const char* subtitle = nullptr) {
     if (!Esp32BaseWeb::checkAuth()) {
         return false;
     }
+    // HTML pages must always be revalidated: after an OTA the referenced
+    // content-hashed assets change, so a stale page would drive stale scripts.
+    Esp32BaseWeb::sendResponseHeader("Cache-Control", "no-store");
     Esp32BaseWeb::sendHeader(title);
     Esp32BaseWeb::sendPageTitle(title, subtitle);
     char result[12]{};
@@ -1535,6 +1538,7 @@ void IrrigationWeb::overview() {
         return;
     }
     if (!Esp32BaseWeb::checkAuth()) return;
+    Esp32BaseWeb::sendResponseHeader("Cache-Control", "no-store");
     Esp32BaseWeb::sendHeader("智能浇水");
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
     const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
