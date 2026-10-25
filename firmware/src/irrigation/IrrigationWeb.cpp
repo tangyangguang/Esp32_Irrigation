@@ -1190,17 +1190,14 @@ struct RecordRowsContext {
     uint32_t emitted;
 };
 
-// Embed the last completed watering's 30 s whole-task flow curve as an inline
-// <canvas> plus a tiny data block drawn by an inline script. Only shown when a
-// stored overview matches this exact record id.
+// Embed the last completed watering's whole-task flow curve as a canvas. The
+// curve is fetched from /api/flow-overview when the dialog opens and drawn only
+// if the in-RAM curve still belongs to this exact record id.
 void sendRecordFlowOverview(const StoredWateringRecord& record) {
-    // Only the last completed task has a stored curve. The canvas carries the
-    // record id; flow-overview-script fetches /api/flow-overview when this
-    // dialog opens and draws only if the RAM curve still matches that record.
-    if (g_app->matchedFlowOverview(record.recordId) == nullptr) return;
+    if (!g_app->hasFlowOverviewForRecord(record.recordId)) return;
     Esp32BaseWeb::sendChunk(
         "<div class='record-detail-section record-flow-overview'><h3>全程流量曲线</h3>"
-        "<p>每 30 秒一个点，按任务时间轴顺序排列；颜色区分水路，虚线为该路基准。</p>"
+        "<p>每 5 秒一个点，按任务时间轴顺序排列；颜色区分水路，虚线为该路基准。</p>"
         "<canvas class='record-flow-canvas' data-rfo-record='");
     sendUnsigned(record.recordId);
     Esp32BaseWeb::sendChunk(
@@ -2321,7 +2318,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路脉冲</span><b id='run-pulses'>"); sendUnsigned(status.pulseCount);
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路估算水量</span><b id='run-zone-water'>");
         if (status.currentStepIndex < status.stepCount) sendLiters(status.zones[status.currentStepIndex].estimatedWaterMl); else Esp32BaseWeb::sendChunk("0.000 L");
-        Esp32BaseWeb::sendChunk("</b></div></div></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>实时流量趋势（L/min）</h3></div><span id='run-chart-range'>正在等待数据 · 5 秒/点</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='205'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-overview-card run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>本次任务</span><h3>全程流量趋势（L/min）</h3></div><span>30 秒/点 · 最多 6 小时</span></div><div class='run-chart-wrap'><canvas id='run-overview-chart' height='205'></canvas><div id='run-overview-empty' class='run-chart-empty'>正在采集全程曲线（每 30 秒一个点）</div></div><div id='run-overview-legend' class='run-overview-legend'></div></div><div class='run-steps'>");
+        Esp32BaseWeb::sendChunk("</b></div></div></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>实时流量趋势（L/min）</h3></div><span id='run-chart-range'>正在等待数据 · 5 秒/点</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='205'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-overview-card run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>本次任务</span><h3>全程流量趋势（L/min）</h3></div><span>5 秒/点 · 最近 1 小时</span></div><div id='run-overview-scroll' class='run-chart-scroll'><canvas id='run-overview-chart' height='205'></canvas><div id='run-overview-empty' class='run-chart-empty'>正在采集全程曲线（连续出水约 5 秒后出现）</div></div><div id='run-overview-legend' class='run-overview-legend'></div></div><div class='run-steps'>");
         for (uint8_t index = 0; index < status.stepCount; ++index) {
             const ZoneWateringSummary& zone = status.zones[index];
             const char* stepClass = index < status.currentStepIndex ? " complete" : (index == status.currentStepIndex ? " current" : "");
@@ -2825,34 +2822,70 @@ void IrrigationWeb::flowHistoryApi() {
 
 void IrrigationWeb::flowOverviewApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
-    // Whole-task 30 s overview: RAM while running or after the last task,
-    // restored from flash at boot. Read in short locked segments.
+    // Whole-task 5 s overview, RAM while running or after the last task and
+    // restored from flash at boot. No tail param returns the whole (up to six
+    // hour) curve for the record-detail view; tail=N returns the last N points
+    // (running UI polls 720 = last hour) with counts sliced to that window.
     const FlowOverviewInfo info = g_app->wateringFlowOverviewInfo();
+    uint32_t tail = 0;
+    const bool tailRequested = uintParam("tail", 1, kFlowOverviewSampleCount, tail);
+    const uint16_t total = info.pointCount;
+    uint16_t startOffset = 0;
+    if (tailRequested && tail < total) startOffset = static_cast<uint16_t>(total - tail);
+
+    // First zone represented in the returned window and its per-zone counts.
+    uint8_t zoneStart = 0;
+    uint16_t overlap[BoardPins::kZoneCount]{};
+    uint32_t cumulative = 0;
+    bool foundStart = false;
+    uint16_t returned = 0;
+    for (uint8_t z = 0; z < info.zoneCount; ++z) {
+        const uint32_t before = cumulative;
+        cumulative += info.zonePointCount[z];
+        const uint32_t lo = before > startOffset ? before : startOffset;
+        const uint32_t hi = cumulative < total ? cumulative : total;
+        overlap[z] = static_cast<uint16_t>(hi > lo ? hi - lo : 0U);
+        if (overlap[z] > 0) {
+            if (!foundStart) { zoneStart = z; foundStart = true; }
+            returned = static_cast<uint16_t>(returned + overlap[z]);
+        }
+    }
+    const uint8_t zoneCountRep =
+        info.zoneCount > zoneStart ? static_cast<uint8_t>(info.zoneCount - zoneStart) : 0;
+
     if (!Esp32BaseWeb::beginResponse(200, "application/json")) return;
     Esp32BaseWeb::sendChunk("{\"recordId\":"); sendUnsigned(info.recordId);
     Esp32BaseWeb::sendChunk(",\"startedEpoch\":"); sendUnsigned(info.startedEpoch);
-    Esp32BaseWeb::sendChunk(",\"sampleIntervalSec\":30,\"zoneCount\":"); sendUnsigned(info.zoneCount);
+    Esp32BaseWeb::sendChunk(",\"sampleIntervalSec\":5,\"zoneStart\":"); sendUnsigned(zoneStart);
+    Esp32BaseWeb::sendChunk(",\"zoneCount\":"); sendUnsigned(zoneCountRep);
+    Esp32BaseWeb::sendChunk(",\"totalPoints\":"); sendUnsigned(total);
     Esp32BaseWeb::sendChunk(",\"counts\":[");
-    for (uint8_t z = 0; z < info.zoneCount; ++z) {
-        if (z) Esp32BaseWeb::sendChunk(",");
-        sendUnsigned(info.zonePointCount[z]);
+    for (uint8_t z = zoneStart; z < info.zoneCount; ++z) {
+        if (z != zoneStart) Esp32BaseWeb::sendChunk(",");
+        sendUnsigned(overlap[z]);
     }
     Esp32BaseWeb::sendChunk("],\"baseline\":[");
-    for (uint8_t z = 0; z < info.zoneCount; ++z) {
-        if (z) Esp32BaseWeb::sendChunk(",");
+    for (uint8_t z = zoneStart; z < info.zoneCount; ++z) {
+        if (z != zoneStart) Esp32BaseWeb::sendChunk(",");
         sendUnsigned(info.zoneBaselineFlow[z]);
     }
     Esp32BaseWeb::sendChunk("],\"points\":[");
     uint32_t segment[kFlowHistoryReadSegment];
-    uint16_t sent = 0;
-    while (sent < info.pointCount) {
-        const uint16_t n = g_app->readWateringFlowOverview(sent, segment, kFlowHistoryReadSegment);
+    uint16_t fetched = 0;
+    bool firstPoint = true;
+    while (fetched < returned) {
+        const uint16_t want = static_cast<uint16_t>(returned - fetched) < kFlowHistoryReadSegment
+                                  ? static_cast<uint16_t>(returned - fetched)
+                                  : kFlowHistoryReadSegment;
+        const uint16_t n = g_app->readWateringFlowOverview(
+            static_cast<uint16_t>(startOffset + fetched), segment, want);
         if (n == 0) break;
         for (uint16_t i = 0; i < n; ++i) {
-            if (sent != 0 || i != 0) Esp32BaseWeb::sendChunk(",");
+            if (!firstPoint) Esp32BaseWeb::sendChunk(",");
+            firstPoint = false;
             sendUnsigned(segment[i]);
         }
-        sent = static_cast<uint16_t>(sent + n);
+        fetched = static_cast<uint16_t>(fetched + n);
     }
     Esp32BaseWeb::sendChunk("]}");
     Esp32BaseWeb::endResponse();

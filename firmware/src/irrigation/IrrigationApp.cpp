@@ -134,7 +134,9 @@ bool IrrigationApp::begin() {
         wateringController_.loadFlowOverview(
             loaded.recordId, loaded.startedEpoch, loaded.zonePointCount.data(),
             loaded.zoneBaselineFlow.data(), loaded.zoneCount,
-            loaded.points.data(), loaded.pointCount);
+            loaded.points.get(), loaded.pointCount);
+        // Controller now owns the points; release the boot-time heap copy.
+        flowOverviewStore_.releaseLoadedPoints();
     }
     const bool auditStoreReady = events_.begin();
     const bool recordsRegistered = IrrigationRecords::instance().begin(
@@ -291,15 +293,15 @@ void IrrigationApp::clearWateringFlowOverview() {
     wateringController_.clearFlowOverview();
 }
 
-const WateringFlowOverviewStore::Snapshot*
-IrrigationApp::matchedFlowOverview(uint32_t recordId) const {
-    if (!flowOverviewStore_.hasLoaded()) return nullptr;
-    const auto& loaded = flowOverviewStore_.loaded();
-    return loaded.valid && loaded.recordId == recordId ? &loaded : nullptr;
+bool IrrigationApp::hasFlowOverviewForRecord(uint32_t recordId) const {
+    // The drawable curve lives in the controller (RAM), restored at boot or
+    // produced by the latest task; match against its current record id.
+    return recordId != 0 &&
+           wateringController_.flowOverviewInfo().recordId == recordId;
 }
 
 uint32_t IrrigationApp::lastFlowOverviewRecordId() const {
-    return flowOverviewStore_.hasLoaded() ? flowOverviewStore_.loaded().recordId : 0U;
+    return wateringController_.flowOverviewInfo().recordId;
 }
 
 void IrrigationApp::persistFlowOverview(uint32_t startedEpoch) {

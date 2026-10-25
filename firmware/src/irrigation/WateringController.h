@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "FlowMonitor.h"
 #include "IrrigationTypes.h"
@@ -23,7 +24,7 @@ public:
     // Each call is a short critical section; the ring never crosses a stack.
     FlowHistoryInfo flowHistoryInfo() const;
     uint16_t readFlowHistory(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
-    // Whole-task 30 s overview (persisted after a Normal watering).
+    // Whole-task 5 s overview (persisted after a Normal watering).
     FlowOverviewInfo flowOverviewInfo() const;
     uint16_t readFlowOverview(uint16_t offset, uint32_t* out, uint16_t maxCount) const;
     // Load a persisted overview into RAM (boot) or drop it (format/loss).
@@ -54,8 +55,6 @@ private:
     void finishSession(WateringStopReason reason, uint32_t nowMs);
     bool checkFlowRate(uint32_t nowMs);
     void appendFlowSample(uint32_t flowMlPerMinute);
-    void appendOverviewWindow(uint32_t pulseCount, uint32_t windowMs);
-    void resetOverviewAccumulator();
     void appendOverviewPoint(uint32_t flowMlPerMinute);
 
     WateringHardware& hardware_;
@@ -69,16 +68,15 @@ private:
     std::array<uint32_t, kLearningHistoryWindowCount> learningPulseCounts_{};
     std::array<uint32_t, kLearningHistoryWindowCount> learningWindowDurationsMs_{};
     std::array<uint32_t, kFlowHistorySampleCount> flowHistorySamples_{};
-    std::array<uint32_t, kFlowOverviewSampleCount> flowOverviewPoints_{};
+    // Six-hour 5 s buffer is large (~17 KB) and would not fit the static DRAM
+    // segment, so it is heap-allocated once and held for the controller's life.
+    std::unique_ptr<uint32_t[]> flowOverviewPoints_;
     std::array<uint16_t, BoardPins::kZoneCount> flowOverviewZoneCounts_{};
     std::array<uint32_t, BoardPins::kZoneCount> flowOverviewBaseline_{};
     uint16_t flowOverviewCount_ = 0;
     uint8_t flowOverviewZoneCount_ = 0;
     uint32_t flowOverviewStartedEpoch_ = 0;
     uint32_t flowOverviewRecordId_ = 0;
-    uint32_t overviewAccumPulses_ = 0;
-    uint32_t overviewAccumWindowMs_ = 0;
-    uint8_t overviewAccumWindows_ = 0;
     bool overviewFull_ = false;
     std::array<uint32_t, kLearningDecisionWindowCount> terminalPulseRatesX100_{};
     std::array<uint32_t, kLearningDecisionWindowCount> terminalPulseCounts_{};

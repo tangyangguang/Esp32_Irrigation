@@ -12,11 +12,12 @@ constexpr std::size_t kWateringPlanCount = 8;
 constexpr std::size_t kPlanStartTimeCount = 4;
 // Real-time curve: one 5 s sample, ring of the current zone's last hour.
 constexpr std::size_t kFlowHistorySampleCount = 720;
-// Whole-task overview persisted for the last watering: one point per 30 s on a
-// single task timeline, shared by all zones, capped at the first six hours.
-constexpr std::size_t kFlowOverviewSampleCount = 720;
-constexpr uint8_t kFlowOverviewSecondsPerPoint = 30;
-constexpr uint8_t kFlowOverviewWindowsPerPoint = 6;  // 6 x 5 s rate windows
+// Whole-task overview persisted for the last watering: one point per 5 s rate
+// window on a single task timeline shared by all zones, capped at the first
+// six hours (4320 points). The running UI only polls the last 720 (1 h).
+constexpr std::size_t kFlowOverviewSampleCount = 4320;
+constexpr std::size_t kFlowOverviewTailCount = 720;  // running view: last hour
+constexpr uint8_t kFlowOverviewSecondsPerPoint = 5;
 constexpr std::size_t kLearningDecisionWindowCount = 5;
 constexpr std::size_t kLearningHistoryWindowCount = 10;
 constexpr uint16_t kUnusedStartMinute = 0xFFFF;

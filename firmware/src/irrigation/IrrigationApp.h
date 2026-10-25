@@ -36,8 +36,9 @@ public:
     void clearWateringFlowOverview();
     // Matched RAM overview for a record-detail dialog, or null when the stored
     // overview belongs to a different/older record.
-    const WateringFlowOverviewStore::Snapshot* matchedFlowOverview(uint32_t recordId) const;
-    // Record id of the persisted last-task flow curve, or 0 when none exists.
+    // Whether the RAM curve currently belongs to this record (detail view).
+    bool hasFlowOverviewForRecord(uint32_t recordId) const;
+    // Record id of the drawable last-task flow curve (0 while a task runs).
     uint32_t lastFlowOverviewRecordId() const;
     // activeStatus is the caller's existing status snapshot, passed by const
     // reference so the large WateringStatus (about 1.1 KB) is never copied a

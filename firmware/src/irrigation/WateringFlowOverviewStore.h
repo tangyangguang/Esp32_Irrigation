@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "IrrigationTypes.h"
 
@@ -18,14 +19,18 @@ public:
         uint16_t pointCount = 0;
         std::array<uint16_t, BoardPins::kZoneCount> zonePointCount{};
         std::array<uint32_t, BoardPins::kZoneCount> zoneBaselineFlow{};
-        std::array<uint32_t, kFlowOverviewSampleCount> points{};
+        // Heap-backed, sized to the actual file (not the 4320-point worst case)
+        // and released by the app once the controller owns its RAM copy.
+        std::unique_ptr<uint32_t[]> points{};
     };
 
     void begin();
 
-    // Load the persisted overview (if any) into the given snapshot.
+    // Valid between begin() and releaseLoadedPoints(); points stay available
+    // only until the app has handed them to the controller.
     const Snapshot& loaded() const { return loaded_; }
     bool hasLoaded() const { return loaded_.valid; }
+    void releaseLoadedPoints();
 
     // Atomically persist an overview. zonePointCount has zoneCount entries and
     // points has pointCount entries (pointCount <= kFlowOverviewSampleCount).

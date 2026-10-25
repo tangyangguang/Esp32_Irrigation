@@ -496,7 +496,7 @@ void test_flow_history_keeps_latest_hour_and_resets_for_next_zone() {
     TEST_ASSERT_GREATER_THAN_UINT32(firstGeneration, secondZone.generation);
 }
 
-void test_flow_overview_aggregates_normal_run_into_thirty_second_points() {
+void test_flow_overview_records_one_point_per_five_second_window() {
     FakeWateringHardware hardware;
     WateringController controller(hardware);
     const IrrigationConfig config = IrrigationConfigRules::createDefault();
@@ -508,11 +508,51 @@ void test_flow_overview_aggregates_normal_run_into_thirty_second_points() {
         controller.handle(w * 5000U + 1U);
     }
     const FlowOverviewInfo info = controller.flowOverviewInfo();
-    TEST_ASSERT_EQUAL_UINT16(1, info.pointCount);
-    TEST_ASSERT_EQUAL_UINT16(1, info.zonePointCount[0]);
+    TEST_ASSERT_EQUAL_UINT16(6, info.pointCount);  // one raw point per 5 s window
+    TEST_ASSERT_EQUAL_UINT16(6, info.zonePointCount[0]);
     uint32_t point = 0;
-    TEST_ASSERT_EQUAL_UINT16(1, controller.readFlowOverview(0, &point, 1));
+    TEST_ASSERT_EQUAL_UINT16(1, controller.readFlowOverview(5, &point, 1));
     TEST_ASSERT_GREATER_THAN_UINT32(0, point);
+}
+
+void test_flow_overview_counts_points_per_zone_across_switch() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    const IrrigationConfig config = IrrigationConfigRules::createDefault();
+    WateringRequest request = requestFor(1, 120);
+    request.stepCount = 2;
+    request.steps[1] = {2, 120};
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(request, config, 0)));
+    establishFlow(controller, hardware, 0);
+    // 30 windows = 150 s: zone 1 runs 120 s, then zone 2.
+    for (uint32_t w = 1; w <= 30; ++w) {
+        hardware.pulses += 25;
+        controller.handle(w * 5000U + 1U);
+    }
+    const FlowOverviewInfo info = controller.flowOverviewInfo();
+    TEST_ASSERT_EQUAL_UINT16(2, info.zoneCount);
+    TEST_ASSERT_GREATER_THAN_UINT16(18, info.zonePointCount[0]);  // ~24 on zone 1
+    TEST_ASSERT_GREATER_THAN_UINT16(3, info.zonePointCount[1]);   // ~6 on zone 2
+    TEST_ASSERT_EQUAL_UINT16(info.zonePointCount[0] + info.zonePointCount[1],
+                             info.pointCount);
+}
+
+void test_flow_overview_stops_at_six_hour_cap() {
+    FakeWateringHardware hardware;
+    WateringController controller(hardware);
+    IrrigationConfig config = IrrigationConfigRules::createDefault();
+    config.runLimits.maximumZoneDurationMinutes = kMaximumConfigurableZoneDurationMinutes;
+    TEST_ASSERT_EQUAL(static_cast<int>(WateringStartResult::Started),
+                      static_cast<int>(controller.start(requestFor(1, 30000), config, 0)));
+    establishFlow(controller, hardware, 0);
+    for (uint32_t w = 1; w <= kFlowOverviewSampleCount + 10; ++w) {
+        hardware.pulses += 25;
+        controller.handle(w * 5000U + 1U);
+    }
+    const FlowOverviewInfo info = controller.flowOverviewInfo();
+    TEST_ASSERT_EQUAL_UINT16(kFlowOverviewSampleCount, info.pointCount);
+    TEST_ASSERT_EQUAL_UINT16(kFlowOverviewSampleCount, info.zonePointCount[0]);
 }
 
 void test_flow_overview_ignored_for_learning_run() {
@@ -1028,7 +1068,9 @@ int main(int, char**) {
     RUN_TEST(test_manual_flow_conversion_uses_exact_fixed_point_arithmetic);
     RUN_TEST(test_live_status_reports_plan_progress_remaining_time_and_water);
     RUN_TEST(test_flow_history_keeps_latest_hour_and_resets_for_next_zone);
-    RUN_TEST(test_flow_overview_aggregates_normal_run_into_thirty_second_points);
+    RUN_TEST(test_flow_overview_records_one_point_per_five_second_window);
+    RUN_TEST(test_flow_overview_counts_points_per_zone_across_switch);
+    RUN_TEST(test_flow_overview_stops_at_six_hour_cap);
     RUN_TEST(test_flow_overview_ignored_for_learning_run);
     RUN_TEST(test_persistent_low_flow_alert_can_stop_watering);
     RUN_TEST(test_unlearned_zone_does_not_enable_flow_deviation_protection);

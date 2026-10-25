@@ -12,7 +12,7 @@ constexpr const char* kDirectory = "/app/irrigation";
 constexpr const char* kFilePath = "/app/irrigation/last_flow.bin";
 constexpr const char* kTempPath = "/app/irrigation/last_flow.tmp";
 constexpr uint32_t kMagic = 0x4F4C5749U;  // "IWLO"
-constexpr uint16_t kVersion = 2;
+constexpr uint16_t kVersion = 3;
 constexpr uint32_t kCrcPolynomial = 0xedb88320U;
 
 #pragma pack(push, 1)
@@ -96,9 +96,19 @@ void WateringFlowOverviewStore::begin() {
         snapshot.zonePointCount[z] = header.zonePointCount[z];
         snapshot.zoneBaselineFlow[z] = header.zoneBaselineFlow[z];
     }
-    std::memcpy(snapshot.points.data(), buffer.get() + sizeof(Header),
-                static_cast<std::size_t>(header.pointCount) * 4U);
-    loaded_ = snapshot;
+    // Heap sized to the real point count; the app hands it to the controller
+    // and then calls releaseLoadedPoints() so only one copy stays resident.
+    if (header.pointCount > 0) {
+        snapshot.points.reset(new (std::nothrow) uint32_t[header.pointCount]);
+        if (!snapshot.points) return;
+        std::memcpy(snapshot.points.get(), buffer.get() + sizeof(Header),
+                    static_cast<std::size_t>(header.pointCount) * 4U);
+    }
+    loaded_ = std::move(snapshot);
+}
+
+void WateringFlowOverviewStore::releaseLoadedPoints() {
+    loaded_.points.reset();
 }
 
 bool WateringFlowOverviewStore::save(uint32_t recordId,
@@ -133,8 +143,8 @@ bool WateringFlowOverviewStore::save(uint32_t recordId,
     header.crc = crc32(reinterpret_cast<const uint8_t*>(&header),
                        sizeof(Header) - sizeof(uint32_t));
 
-    // One combined heap buffer (at most ~3 KB) written atomically to the temp
-    // file; allocated on the service task and safely rejected on failure.
+    // One combined heap buffer (at most ~17 KB at six hours) written atomically
+    // to the temp file; allocated on the service task, freed on exit.
     const std::size_t totalSize =
         sizeof(Header) + static_cast<std::size_t>(pointCount) * 4U;
     std::unique_ptr<uint8_t[]> encoded(new (std::nothrow) uint8_t[totalSize]);
@@ -178,19 +188,19 @@ bool WateringFlowOverviewStore::save(uint32_t recordId,
         return false;
     }
 
-    snapshot.valid = true;
-    snapshot.recordId = recordId;
-    snapshot.startedEpoch = startedEpoch;
-    snapshot.zoneCount = zoneCount;
-    snapshot.pointCount = pointCount;
+    // The controller already owns these points in RAM, so keep only the small
+    // metadata here (used for boot id matching); do not hold a second full copy.
+    loaded_ = Snapshot{};
+    loaded_.valid = true;
+    loaded_.recordId = recordId;
+    loaded_.startedEpoch = startedEpoch;
+    loaded_.zoneCount = zoneCount;
+    loaded_.pointCount = pointCount;
     for (uint8_t z = 0; z < zoneCount; ++z) {
-        snapshot.zonePointCount[z] = zonePointCount[z];
-        snapshot.zoneBaselineFlow[z] =
+        loaded_.zonePointCount[z] = zonePointCount[z];
+        loaded_.zoneBaselineFlow[z] =
             zoneBaselineFlow != nullptr ? zoneBaselineFlow[z] : 0U;
     }
-    std::memcpy(snapshot.points.data(), points,
-                static_cast<std::size_t>(pointCount) * 4U);
-    loaded_ = snapshot;
     return true;
 }
 

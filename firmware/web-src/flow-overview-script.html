@@ -2,56 +2,96 @@
 'use strict';
 var URL='/irrigation/api/flow-overview';
 var COLORS=['#ea580c','#2563eb','#16a34a','#9333ea','#dc2626','#0891b2'];
-var SEC_PER_POINT=30;
+var SEC_PER_POINT=5;
+var PAD_L=10,PAD_R=10,TOP=8,AXIS=18;     // insets keep edge dots/segments on canvas
+var TAIL=720;                            // running view: last hour
+var STEP_PX=6;                           // fixed px per point in scroll mode
+var NICE=[1,2,3,6,12,30,60,120,360,720]; // tick spacing candidates (points)
 
 function el(id){return document.getElementById(id);}
-function widthOf(canvas){
-  if(canvas.clientWidth>0)return canvas.clientWidth;
-  var p=canvas.parentElement;
-  if(p&&p.clientWidth>0)return p.clientWidth;
-  return 0;
-}
+function cssHeightOf(canvas){var h=parseInt(canvas.getAttribute('height'),10);return h>0?h:140;}
 function fmtTime(sec){
-  if(sec>=3600)return (sec/3600)+'时';
-  return Math.round(sec/60)+'分';
+  sec=Math.round(sec);
+  if(sec>=3600){var h=Math.floor(sec/3600),m=Math.round((sec%3600)/60);return h+'时'+(m?m+'分':'');}
+  if(sec>=60)return Math.round(sec/60)+'分';
+  return sec+'秒';
 }
 
-// Draw one whole-task, zone-segmented flow curve. Returns false when the canvas
-// is not laid out yet (width 0), so the caller can retry once it is visible.
-function paint(canvas,legend,data){
+// Draw a zone-segmented whole-task flow curve.
+//   mode 'fit'    : shrink the whole curve to canvas width (record detail)
+//   mode 'scroll' : fixed px/point inside a horizontal scroller (running page),
+//                   auto-sticking to the newest point.
+// Returns false when the canvas is not laid out yet so the caller can retry.
+function paint(canvas,legend,data,mode,pinToEnd){
   if(!canvas)return false;
-  var w=widthOf(canvas);
-  if(w<=0)return false;
-  var pts=data.points||[],cnt=data.counts||[],base=data.baseline||[],zc=data.zoneCount||cnt.length;
-  var h=canvas.clientHeight||140;
+  var host=canvas.parentElement;
+  var viewW=host?host.clientWidth:0;            // visible/container width
+  if(viewW<=0)viewW=canvas.clientWidth;
+  if(viewW<=0)return false;
+  mode=mode||'fit';
+
+  var pts=data.points||[],cnt=data.counts||[],base=data.baseline||[];
+  var zoneStart=Number(data.zoneStart||0);
+  var zc=(typeof data.zoneCount==='number'&&data.zoneCount>0)?data.zoneCount:cnt.length;
+  var n=pts.length;
+  var h=cssHeightOf(canvas);
+
+  // CSS size first, then backing store at devicePixelRatio.
+  var plotW,cssW;
+  if(mode==='scroll'){
+    plotW=Math.max(1,n-1)*STEP_PX;
+    cssW=Math.max(viewW,PAD_L+plotW+PAD_R);
+  }else{
+    cssW=viewW;
+    plotW=Math.max(1,cssW-PAD_L-PAD_R);
+  }
   var dpr=window.devicePixelRatio||1;
-  canvas.width=Math.round(w*dpr);
+  canvas.style.width=cssW+'px';
+  canvas.style.height=h+'px';
+  canvas.width=Math.round(cssW*dpr);
   canvas.height=Math.round(h*dpr);
   var ctx=canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,w,h);
+  ctx.clearRect(0,0,cssW,h);
 
-  // No point yet: leave the empty hint visible.
-  if(!pts.length){if(legend)legend.innerHTML='';return true;}
+  if(legend)legend.innerHTML='';
+  if(!n){
+    drawAxis(ctx,cssW,h,[]);
+    return true;
+  }
 
   var max=10,i,z;
-  for(i=0;i<pts.length;i++)if(pts[i]>max)max=pts[i];
+  for(i=0;i<n;i++)if(pts[i]>max)max=pts[i];
   for(z=0;z<zc;z++)if(cnt[z]&&base[z]*1.1>max)max=base[z]*1.1;
   max*=1.08;
 
   var seg=[],cum=0;
   for(z=0;z<zc;z++){seg.push({s:cum,c:cnt[z]||0});cum+=cnt[z]||0;}
-  function X(idx){return pts.length<=1?0:w*idx/(pts.length-1);}
-  function Y(v){return h-18-(v/max)*(h-30);}
 
-  ctx.strokeStyle='#e5e7eb';ctx.lineWidth=1;
-  ctx.beginPath();ctx.moveTo(0,h-0.5);ctx.lineTo(w,h-0.5);ctx.stroke();
+  function X(idx){
+    if(mode==='scroll')return PAD_L+idx*STEP_PX;
+    return n<=1?PAD_L:PAD_L+plotW*idx/(n-1);
+  }
+  function Y(v){return h-AXIS-(v/max)*(h-AXIS-TOP);}
+
+  // axis + time ticks (task-elapsed seconds; tail window offsets correctly)
+  var startSec=(Number(data.totalPoints||n)-n)*SEC_PER_POINT;
+  var ticks=[];
+  if(mode==='fit'){
+    for(var t=0;t<=4;t++){var idx=(n-1)*t/4;ticks.push({x:X(Math.round(idx)),s:startSec+idx*SEC_PER_POINT});}
+  }else{
+    var want=70/STEP_PX,step=NICE[NICE.length-1];
+    for(i=0;i<NICE.length;i++){if(NICE[i]>=want){step=NICE[i];break;}}
+    for(i=0;i<n;i+=step)ticks.push({x:X(i),s:startSec+i*SEC_PER_POINT});
+  }
+  drawAxis(ctx,cssW,h,ticks);
 
   var names=[];
   for(z=0;z<zc;z++){
     var s=seg[z];
     if(!s.c)continue;
-    var col=COLORS[z%COLORS.length],k,idx;
+    var zAbs=zoneStart+z;
+    var col=COLORS[zAbs%COLORS.length],k,idx;
     ctx.strokeStyle=col;ctx.lineWidth=2;ctx.globalAlpha=1;ctx.setLineDash([]);
     ctx.beginPath();
     for(k=0;k<s.c;k++){
@@ -60,45 +100,63 @@ function paint(canvas,legend,data){
       if(k===0)ctx.moveTo(xx,yy);else ctx.lineTo(xx,yy);
     }
     ctx.stroke();
-    // A single-point segment strokes nothing (moveTo only); draw a dot so a
-    // short zone that produced just one 30 s point stays visible.
+    // A one-point segment strokes nothing (moveTo only): draw a dot so a zone
+    // that produced a single 5 s point stays visible (padded, never clipped).
     if(s.c===1){
       ctx.fillStyle=col;ctx.beginPath();
       ctx.arc(X(s.s),Y(pts[s.s]),3.5,0,Math.PI*2);ctx.fill();
     }
-    if(s.s>0){
+    // Zone boundary (skip the first segment and crowded boundaries).
+    if(s.s>0&&X(s.s)-X(s.s-1)>=3){
       ctx.strokeStyle='#d1d5db';ctx.setLineDash([3,3]);
-      ctx.beginPath();ctx.moveTo(X(s.s),0);ctx.lineTo(X(s.s),h-16);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(X(s.s),TOP);ctx.lineTo(X(s.s),h-AXIS);ctx.stroke();
       ctx.setLineDash([]);
     }
     if(base[z]>0){
       ctx.strokeStyle=col;ctx.globalAlpha=0.4;ctx.setLineDash([4,4]);
-      var bx0=X(s.s),bx1=X(Math.min(pts.length-1,s.s+s.c-1)),by=Y(base[z]);
+      var bx0=X(s.s),bx1=X(Math.min(n-1,s.s+s.c-1)),by=Y(base[z]);
       if(bx1-bx0<8){bx0-=7;bx1+=7;}  // single-point baseline: short tick
       ctx.beginPath();ctx.moveTo(bx0,by);ctx.lineTo(bx1,by);ctx.stroke();
       ctx.globalAlpha=1;ctx.setLineDash([]);
     }
-    names.push('<span style="color:'+col+'">■</span> 水路'+(z+1));
+    names.push('<span style="color:'+col+'">■</span> 水路'+(zAbs+1));
   }
 
-  ctx.font='10px sans-serif';ctx.fillStyle='#9ca3af';
-  var span=pts.length*SEC_PER_POINT,t;
-  for(t=0;t<=4;t++){ctx.fillText(fmtTime(Math.round(span*t/4)),w*t/4,h-5);}
   if(legend){
-    legend.innerHTML=names.join('&nbsp;&nbsp;')+(pts.length>=720?'&nbsp;&nbsp;<span>已达 6 小时上限，仅含前 6 小时</span>':'');
+    var note=(Number(data.totalPoints||0)>=4320)?'&nbsp;&nbsp;<span>已达 6 小时上限，仅含前 6 小时</span>':'';
+    legend.innerHTML=names.join('&nbsp;&nbsp;')+note;
+  }
+
+  // Running scroller: stay pinned to the newest point. New points grow the
+  // canvas by one step (6 px), within the 48 px tolerance, so a pinned view
+  // keeps pinning; pinToEnd forces the first frame to the newest point.
+  if(mode==='scroll'&&host){
+    var nearEnd=pinToEnd||(host.scrollWidth-host.clientWidth-host.scrollLeft)<48;
+    if(nearEnd)host.scrollLeft=host.scrollWidth-host.clientWidth;
   }
   return true;
 }
 
-function fetchJson(cb){
-  fetch(URL,{cache:'no-store',credentials:'same-origin'})
-    .then(function(r){return r.json();})
-    .then(function(d){cb(d);})
-    .catch(function(){});
+function drawAxis(ctx,w,h,ticks){
+  ctx.font='10px sans-serif';ctx.fillStyle='#9ca3af';
+  ctx.strokeStyle='#e5e7eb';ctx.lineWidth=1;ctx.setLineDash([]);
+  ctx.beginPath();ctx.moveTo(0,h-AXIS+0.5);ctx.lineTo(w,h-AXIS+0.5);ctx.stroke();
+  for(var i=0;i<ticks.length;i++){
+    var label=fmtTime(ticks[i].s);
+    var x=ticks[i].x;
+    if(i===0)x=PAD_L;
+    if(i===ticks.length-1)x=Math.max(PAD_L,w-PAD_R-ctx.measureText(label).width);
+    ctx.fillText(label,x,h-5);
+  }
 }
 
-// Detail dialog: open then draw once layout is ready; only when the RAM curve
-// still belongs to this record (avoids showing a newer task over an old record).
+function fetchJson(tail,cb){
+  fetch(URL+(tail?'?tail='+tail:''),{cache:'no-store',credentials:'same-origin'})
+    .then(function(r){return r.json();}).then(cb).catch(function(){});
+}
+
+// Record detail: fetch the whole curve once the dialog is laid out; draw only
+// when the in-RAM curve still belongs to this exact record.
 window.openRecordFlowOverview=function(dialogId){
   var d=document.getElementById(dialogId);
   if(!d)return;
@@ -106,36 +164,36 @@ window.openRecordFlowOverview=function(dialogId){
   var canvas=d.querySelector('[data-rfo-record]'),legend=d.querySelector('.record-flow-legend');
   if(!canvas)return;
   var want=Number(canvas.getAttribute('data-rfo-record'))||0;
-  var tries=0;
+  var tries=0,note=d.querySelector('.record-flow-empty');
   function attempt(){
-    fetchJson(function(data){
+    fetchJson(0,function(data){
       var ok=data&&Number(data.recordId||0)===want&&(data.points||[]).length>0;
-      var note=d.querySelector('.record-flow-empty');
       if(ok){
         if(note)note.style.display='none';
-        if(!paint(canvas,legend,data)&&tries++<40)setTimeout(attempt,25);
+        if(!paint(canvas,legend,data,'fit')&&tries++<40)setTimeout(attempt,25);
       }else if(note){
         note.style.display='flex';
       }
     });
   }
   (function wait(){
-    if(widthOf(canvas)>0||tries++>40)attempt();
+    if((canvas.parentElement&&canvas.parentElement.clientWidth>0)||tries++>40)attempt();
     else setTimeout(wait,25);
   })();
 };
 
-// Running task page: poll the growing whole-task curve.
+// Running task page: poll the last hour of the growing whole-task curve.
 function startRunning(){
   var canvas=el('run-overview-chart'),legend=el('run-overview-legend'),empty=el('run-overview-empty');
   if(!canvas)return;
-  var stopped=false;
+  var stopped=false,firstPaint=true;
   function draw(){
     if(document.hidden||stopped)return;
-    fetchJson(function(data){
+    fetchJson(TAIL,function(data){
       var pts=(data&&data.points)||[];
       if(empty)empty.style.display=pts.length?'none':'flex';
-      if(paint(canvas,legend,data)===false){setTimeout(draw,100);return;}
+      if(paint(canvas,legend,data,'scroll',firstPaint&&pts.length>0)===false){setTimeout(draw,100);return;}
+      if(pts.length>0)firstPaint=false;
     });
   }
   draw();
