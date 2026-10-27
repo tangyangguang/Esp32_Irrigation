@@ -2015,46 +2015,62 @@ void IrrigationWeb::plans() {
     // Overlap hint: the device only rejects the same start minute; plans whose
     // estimated run windows overlap can still both be saved (the later start
     // is skipped as busy). Warn before saving instead of silently allowing it.
-    html("<script>window.IRR_PLAN_WINDOWS=[");
-    bool firstWindow = true;
-    for (const WateringPlan& savedPlan : config->plans) {
-        if (!savedPlan.configured || !savedPlan.scheduleEnabled) continue;
-        uint32_t totalMinutes = 0;
-        for (uint16_t duration : savedPlan.zoneDurationMinutes) totalMinutes += duration;
-        if (totalMinutes == 0) continue;
-        for (uint16_t start : savedPlan.startMinutes) {
-            if (start == kUnusedStartMinute) continue;
-            if (!firstWindow) html(",");
-            firstWindow = false;
-            html("{id:"); sendUnsigned(savedPlan.id);
-            // Names are validated UTF-8 without control chars; still escape the
-            // three characters that could break out of a JS single-quoted string.
-            html(",name:'");
-            for (const char* p = savedPlan.name.data(); *p; ++p) {
-                if (*p == '\\' || *p == '\'' || *p == '"') html("\\");
-                char ch[2] = {*p, 0};
-                html(ch);
+    // Guard on config: when configuration is unavailable the page must still
+    // render the error state instead of dereferencing a null config here.
+    if (config) {
+        html("<script>window.IRR_PLAN_WINDOWS=[");
+        bool firstWindow = true;
+        for (const WateringPlan& savedPlan : config->plans) {
+            if (!savedPlan.configured || !savedPlan.scheduleEnabled) continue;
+            uint32_t totalMinutes = 0;
+            for (uint16_t duration : savedPlan.zoneDurationMinutes) totalMinutes += duration;
+            if (totalMinutes == 0) continue;
+            for (uint16_t start : savedPlan.startMinutes) {
+                if (start == kUnusedStartMinute) continue;
+                if (!firstWindow) html(",");
+                firstWindow = false;
+                html("{id:"); sendUnsigned(savedPlan.id);
+                // Names are validated UTF-8 without control chars, but < and > are
+                // allowed. Escape quotes/backslash for the JS single-quoted string
+                // and hex-encode angle brackets so a name containing </script> cannot
+                // terminate the inline script tag (stored XSS).
+                html(",name:'");
+                for (const char* p = savedPlan.name.data(); *p; ++p) {
+                    const char ch = *p;
+                    if (ch == '\\' || ch == '\'' || ch == '"') {
+                        html("\\");
+                        char escaped[2] = {ch, 0};
+                        html(escaped);
+                    } else if (ch == '<') {
+                        html("\\x3c");
+                    } else if (ch == '>') {
+                        html("\\x3e");
+                    } else {
+                        char raw[2] = {ch, 0};
+                        html(raw);
+                    }
+                }
+                html("',start:"); sendUnsigned(start);
+                html(",minutes:"); sendUnsigned(totalMinutes); html("}");
             }
-            html("',start:"); sendUnsigned(start);
-            html(",minutes:"); sendUnsigned(totalMinutes); html("}");
         }
+        html("];document.querySelectorAll('form[action=\"/irrigation/plans\"]').forEach(function(form){"
+             "if(form.elements['action'].value!=='save')return;"
+             "form.addEventListener('submit',function(e){"
+             "if(form.dataset.confirmed==='1')return;"
+             "var pid=Number(form.elements['plan_id'].value);"
+             "if(!form.elements['schedule_enabled'].checked)return;"
+             "var starts=[];for(var i=1;i<=4;i++){var v=form.elements['time'+i].value;if(v){var h=Number(v.slice(0,2)),m=Number(v.slice(3,5));if(!isNaN(h)&&!isNaN(m))starts.push(h*60+m);}}"
+             "var minutes=0;var z=form.querySelectorAll('input[name^=zone]');for(var j=0;j<z.length;j++){minutes+=Number(z[j].value)||0;}"
+             "if(!starts.length||!minutes)return;"
+             "var conflicts=[];window.IRR_PLAN_WINDOWS.forEach(function(w){"
+             "if(w.id===pid)return;"
+             "starts.forEach(function(s){"
+             "var aS=s,aE=s+minutes,bS=w.start,bE=w.start+w.minutes;"
+             "if(aS<bE&&bS<aE)conflicts.push(w.name);});});"
+             "if(conflicts.length&&!confirm('估算浇水时段可能与计划“'+conflicts.join('、')+'”重叠；重叠时后启动的计划会因设备忙碌被跳过。仍要保存？')){e.preventDefault();return;}"
+             "form.dataset.confirmed='1';});});</script>");
     }
-    html("];document.querySelectorAll('form[action=\"/irrigation/plans\"]').forEach(function(form){"
-         "if(form.elements['action'].value!=='save')return;"
-         "form.addEventListener('submit',function(e){"
-         "if(form.dataset.confirmed==='1')return;"
-         "var pid=Number(form.elements['plan_id'].value);"
-         "if(!form.elements['schedule_enabled'].checked)return;"
-         "var starts=[];for(var i=1;i<=4;i++){var v=form.elements['time'+i].value;if(v){var h=Number(v.slice(0,2)),m=Number(v.slice(3,5));if(!isNaN(h)&&!isNaN(m))starts.push(h*60+m);}}"
-         "var minutes=0;var z=form.querySelectorAll('input[name^=zone]');for(var j=0;j<z.length;j++){minutes+=Number(z[j].value)||0;}"
-         "if(!starts.length||!minutes)return;"
-         "var conflicts=[];window.IRR_PLAN_WINDOWS.forEach(function(w){"
-         "if(w.id===pid)return;"
-         "starts.forEach(function(s){"
-         "var aS=s,aE=s+minutes,bS=w.start,bE=w.start+w.minutes;"
-         "if(aS<bE&&bS<aE)conflicts.push(w.name);});});"
-         "if(conflicts.length&&!confirm('估算浇水时段可能与计划“'+conflicts.join('、')+'”重叠；重叠时后启动的计划会因设备忙碌被跳过。仍要保存？')){e.preventDefault();return;}"
-         "form.dataset.confirmed='1';});});</script>");
     if(failed && postedPlan) { html("<script>var d=document.getElementById('plan-");sendUnsigned(postedPlan);html("');if(d)d.showModal();</script>"); }
     endPage();
 }

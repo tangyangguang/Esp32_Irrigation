@@ -251,6 +251,11 @@ IrrigationEvents::EventRecord IrrigationEvents::present(
             event.eventCode = static_cast<uint32_t>(EventCode::AutomaticWateringStateChanged);
             break;
         case IrrigationAuditPayload::Kind::PlansChanged:
+        // Zone enable/name edits and system parameter edits are both local
+        // "settings changed" events; present() only distinguishes them via
+        // their ReasonCode (ZoneUpdated / SystemParametersUpdated).
+        case IrrigationAuditPayload::Kind::ZoneChanged:
+        case IrrigationAuditPayload::Kind::SystemFieldChanged:
             event.eventCode = static_cast<uint32_t>(EventCode::ConfigurationChanged);
             break;
         case IrrigationAuditPayload::Kind::ZoneBaselineSaved:
