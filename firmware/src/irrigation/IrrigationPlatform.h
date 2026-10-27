@@ -17,7 +17,7 @@ class IrrigationAuditStore;
 // recordKey directory and are never reused.
 namespace IrrigationPlatform {
 enum FactType : uint16_t {
-    // watering stream business records (business payload: 246B codec payload)
+    // watering stream business records (business payload: 270B codec payload)
     FactWateringCompleted = 1,
     FactWateringStopped = 2,
     FactWateringFailed = 3,

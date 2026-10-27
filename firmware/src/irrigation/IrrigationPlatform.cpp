@@ -44,11 +44,6 @@ constexpr size_t kWillBytes = 512;
 constexpr size_t kOutputBytes = 4097;
 constexpr size_t kCommandSlots = 6;
 constexpr size_t kCommandFrameBytes = 1024;
-constexpr size_t kWateringScratchBytes =
-    RecordStream::HeaderBytes +
-    WateringRecordCodec::kPayloadSize;  // IR/v1 header + watering payload
-constexpr size_t kAuditScratchBytes =
-    RecordStream::HeaderBytes + 20;  // IR/v1 header + audit payload
 
 
 char g_deviceId[40] = {};
@@ -60,7 +55,6 @@ char g_will[kWillBytes];
 char g_output[kOutputBytes];
 
 bool g_configured = false;
-bool g_stopping = false;
 const char* g_configureResult = "not_run";
 
 bool randomBytes(uint8_t output[16], void*) {
@@ -127,7 +121,6 @@ struct PendingCommand {
     char commandId[37] = {};
     bool active = false;
     bool runningSent = false;
-    WateringSource source = WateringSource::LocalWeb;
 };
 PendingCommand g_pending[kCommandSlots];
 
@@ -445,18 +438,43 @@ void executeCommand(CommandHandle handle, const CommandView& cmd, void*) {
     if (keyIs(key, kKeyAutomatic)) {
         const char* mode = cmd.parameters["mode"].as<const char*>();
         bool ok = false;
+        bool pausedUntil = false;
+        uint32_t resumeEpoch = 0;
         if (mode && std::strcmp(mode, "enabled") == 0) {
             ok = app.resumeAutomaticWatering();
         } else if (mode && std::strcmp(mode, "paused-indefinitely") == 0) {
             ok = app.pauseAutomaticWateringIndefinitely();
         } else if (mode && std::strcmp(mode, "paused-until") == 0) {
-            const uint32_t resume =
-                cmd.parameters["resumeAtEpoch"].as<uint32_t>();
-                ok = app.pauseAutomaticWateringUntil(resume);
+            pausedUntil = true;
+            resumeEpoch = cmd.parameters["resumeAtEpoch"].as<uint32_t>();
+            ok = app.pauseAutomaticWateringUntil(resumeEpoch);
+        }
+        // Only classify failures we can prove at this layer as invalid
+        // arguments (unknown mode; paused-until with an untrusted clock or a
+        // resume time not in the future). Every other rejection (business not
+        // ready, NVS write failure) keeps persistence_error.
+        const char* error = "persistence_error";
+        if (!ok) {
+            const bool knownMode =
+                mode && (std::strcmp(mode, "enabled") == 0 ||
+                         std::strcmp(mode, "paused-indefinitely") == 0 ||
+                         std::strcmp(mode, "paused-until") == 0);
+            if (!knownMode) {
+                error = "invalid_field_value";
+            } else if (pausedUntil) {
+                const Esp32BaseTime::Snapshot now = Esp32BaseTime::snapshot();
+                const bool timeReady =
+                    now.synced &&
+                    app.schedulerTimeState() ==
+                        WateringScheduler::TimeState::Ready;
+                if (!timeReady || resumeEpoch <= now.epochSec) {
+                    error = "invalid_field_value";
+                }
+            }
         }
         g_inbox.progress(handle, ok ? ProgressStatus::Succeeded
                                     : ProgressStatus::Failed,
-                         ok ? nullptr : "persistence_error");
+                         ok ? nullptr : error);
         pc.active = false;
         return;
     }
@@ -1185,7 +1203,7 @@ void poll() {
 
     iot_device::RecordStream::PublishFact publish = nullptr;
     void* publishCtx = nullptr;
-    if (g_session.ready() && !g_stopping) {
+    if (g_session.ready()) {
         publish = &ModelPublisher::publishRecord;
         publishCtx = &g_publisher;
     }
@@ -1194,7 +1212,7 @@ void poll() {
     if (g_auditStore) g_auditStore->poll(publish, publishCtx);
 
     const uint32_t now = millis();
-    if (!g_session.ready() || g_stopping) {
+    if (!g_session.ready()) {
         // Drop the policy when offline so a reconnect re-marks all snapshots dirty.
         if (g_policyConnected) {
             g_publishPolicy.disconnected();
