@@ -1368,7 +1368,7 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div><p class='record-detail-note'>相对基准差值用于解释流量表现，不等同于报警结果；报警以浇水当时的阈值和连续判定结果为准。</p></div>");
     sendRecordFlowOverview(record);
-    Esp32BaseWeb::sendChunk("<details class='record-technical' open><summary>指标与技术说明</summary><p class='record-technical-note'>整段平均只统计水流建立后的实际浇水阶段；估算用水量还包含建立水流和关阀尾水阶段的实际脉冲。未触发报警不等于流量一定正常，没有基准时不作高低流量判定。</p><div class='record-technical-grid'><div><b>总脉冲</b><span>");
+    Esp32BaseWeb::sendChunk("<details class='record-technical'><summary>指标与技术说明</summary><p class='record-technical-note'>整段平均只统计水流建立后的实际浇水阶段；估算用水量还包含建立水流和关阀尾水阶段的实际脉冲。未触发报警不等于流量一定正常，没有基准时不作高低流量判定。</p><div class='record-technical-grid'><div><b>总脉冲</b><span>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else sendUnsigned64(totals.pulseCount);
     Esp32BaseWeb::sendChunk("</span></div>");
