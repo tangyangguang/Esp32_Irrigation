@@ -5,7 +5,7 @@
 
 #include "IrrigationTypes.h"
 
-// Persists the last *normally completed* watering's 30 s whole-task flow
+// Persists the last *normally completed* watering's 5 s whole-task flow
 // overview to a single LittleFS file. Only one overview is kept; the next
 // completed watering overwrites it. All methods run on the service task;
 // failures never block watering or record keeping.

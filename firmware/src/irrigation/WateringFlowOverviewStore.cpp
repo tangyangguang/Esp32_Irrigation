@@ -11,8 +11,11 @@ namespace {
 constexpr const char* kDirectory = "/app/irrigation";
 constexpr const char* kFilePath = "/app/irrigation/last_flow.bin";
 constexpr const char* kTempPath = "/app/irrigation/last_flow.tmp";
+constexpr const char* kBackupPath = "/app/irrigation/last_flow.bak";
 constexpr uint32_t kMagic = 0x4F4C5749U;  // "IWLO"
-constexpr uint16_t kVersion = 3;
+// v4: CRC covers the header (excluding its trailing crc field) plus every
+// point. v3 (header-only CRC, experiment-only, never released) is rejected.
+constexpr uint16_t kVersion = 4;
 constexpr uint32_t kCrcPolynomial = 0xedb88320U;
 
 #pragma pack(push, 1)
@@ -26,12 +29,15 @@ struct Header {
     uint16_t pointCount;
     uint16_t zonePointCount[BoardPins::kZoneCount];
     uint32_t zoneBaselineFlow[BoardPins::kZoneCount];
-    uint32_t crc;  // CRC of all preceding header bytes
+    uint32_t crc;  // CRC of every preceding byte (header minus crc) + points
 };
 #pragma pack(pop)
 
-uint32_t crc32(const uint8_t* data, std::size_t length) {
-    uint32_t crc = UINT32_MAX;
+// Fold bytes into a running CRC32 (0xedb88320, init/final XOR 0xFFFFFFFF),
+// so the header prefix and the points can both be covered while skipping the
+// crc field that sits between them.
+uint32_t crc32Append(uint32_t crc, const uint8_t* data, std::size_t length) {
+    crc = ~crc;
     for (std::size_t i = 0; i < length; ++i) {
         crc ^= data[i];
         for (unsigned bit = 0; bit < 8; ++bit)
@@ -40,9 +46,26 @@ uint32_t crc32(const uint8_t* data, std::size_t length) {
     return ~crc;
 }
 
+// CRC of the on-file record excluding its 4-byte crc field (the last packed
+// header member, immediately before the points): the header prefix up to the
+// crc slot, then every point byte. One contiguous range would wrongly include
+// the crc slot that lies between the two regions.
+uint32_t recordCrc(const uint8_t* buffer, std::size_t pointBytes) {
+    constexpr std::size_t kPrefixBytes = sizeof(Header) - sizeof(uint32_t);
+    // crc32Append() inverts on entry, so a 0 seed yields the standard init.
+    uint32_t crc = crc32Append(0U, buffer, kPrefixBytes);
+    return crc32Append(crc, buffer + sizeof(Header), pointBytes);
+}
+
 bool ensureDirectory() {
     if (!Esp32BaseFs::exists("/app") && !Esp32BaseFs::mkdir("/app")) return false;
     return Esp32BaseFs::exists(kDirectory) || Esp32BaseFs::mkdir(kDirectory);
+}
+
+bool removeIfExists(const char* path) {
+    if (!Esp32BaseFs::exists(path)) return true;
+    return Esp32BaseFs::removeFileWithRecovery(path) ==
+           Esp32BaseFs::REMOVE_FILE_DELETED;
 }
 
 }  // namespace
@@ -70,14 +93,15 @@ void WateringFlowOverviewStore::begin() {
 
     Header header{};
     std::memcpy(&header, buffer.get(), sizeof(header));
+    const std::size_t pointBytes =
+        static_cast<std::size_t>(header.pointCount) * 4U;
     if (header.magic != kMagic || header.version != kVersion ||
         header.headerBytes != sizeof(Header) ||
         header.zoneCount == 0 ||
         header.zoneCount > BoardPins::kZoneCount ||
         header.pointCount > kFlowOverviewSampleCount ||
-        readLength != sizeof(Header) +
-                           static_cast<std::size_t>(header.pointCount) * 4U ||
-        header.crc != crc32(buffer.get(), sizeof(Header) - sizeof(uint32_t))) {
+        readLength != sizeof(Header) + pointBytes ||
+        header.crc != recordCrc(buffer.get(), pointBytes)) {
         return;
     }
 
@@ -102,7 +126,7 @@ void WateringFlowOverviewStore::begin() {
         snapshot.points.reset(new (std::nothrow) uint32_t[header.pointCount]);
         if (!snapshot.points) return;
         std::memcpy(snapshot.points.get(), buffer.get() + sizeof(Header),
-                    static_cast<std::size_t>(header.pointCount) * 4U);
+                    pointBytes);
     }
     loaded_ = std::move(snapshot);
 }
@@ -140,53 +164,69 @@ bool WateringFlowOverviewStore::save(uint32_t recordId,
         header.zoneBaselineFlow[z] =
             zoneBaselineFlow != nullptr ? zoneBaselineFlow[z] : 0U;
     }
-    header.crc = crc32(reinterpret_cast<const uint8_t*>(&header),
-                       sizeof(Header) - sizeof(uint32_t));
 
-    // One combined heap buffer (at most ~17 KB at six hours) written atomically
-    // to the temp file; allocated on the service task, freed on exit.
-    const std::size_t totalSize =
-        sizeof(Header) + static_cast<std::size_t>(pointCount) * 4U;
+    // One combined heap buffer (at most ~17 KB at six hours); CRC covers the
+    // header (minus its trailing crc field) and every point.
+    const std::size_t pointBytes = static_cast<std::size_t>(pointCount) * 4U;
+    const std::size_t totalSize = sizeof(Header) + pointBytes;
     std::unique_ptr<uint8_t[]> encoded(new (std::nothrow) uint8_t[totalSize]);
     if (!encoded) return false;
     std::memcpy(encoded.get(), &header, sizeof(Header));
     if (pointCount > 0) {
-        std::memcpy(encoded.get() + sizeof(Header), points,
-                    static_cast<std::size_t>(pointCount) * 4U);
+        std::memcpy(encoded.get() + sizeof(Header), points, pointBytes);
     }
+    header.crc = recordCrc(encoded.get(), pointBytes);
+    // crc is the last packed header field; write the whole header back so the
+    // crc slot is actually persisted.
+    std::memcpy(encoded.get(), &header, sizeof(Header));
+
     if (!Esp32BaseFs::writeBytes(kTempPath, encoded.get(), totalSize)) {
-        Esp32BaseFs::removeFileWithRecovery(kTempPath);
+        removeIfExists(kTempPath);
         return false;
     }
 
-    Snapshot snapshot{};
-    // Verify the temp file before swapping it into place.
+    // Verify the temp file (length + CRC) before swapping it into place.
     const int64_t verifySize = Esp32BaseFs::fileSize(kTempPath);
-    const std::size_t expectedSize =
-        sizeof(Header) + static_cast<std::size_t>(pointCount) * 4U;
-    if (verifySize != static_cast<int64_t>(expectedSize)) {
-        Esp32BaseFs::removeFileWithRecovery(kTempPath);
+    if (verifySize != static_cast<int64_t>(totalSize)) {
+        removeIfExists(kTempPath);
         return false;
     }
-    std::unique_ptr<uint8_t[]> verify(new (std::nothrow) uint8_t[expectedSize]);
+    std::unique_ptr<uint8_t[]> verify(new (std::nothrow) uint8_t[totalSize]);
     if (!verify) {
-        Esp32BaseFs::removeFileWithRecovery(kTempPath);
+        removeIfExists(kTempPath);
         return false;
     }
     std::size_t verifyLength = 0;
-    if (!Esp32BaseFs::readBytes(kTempPath, verify.get(), expectedSize,
+    if (!Esp32BaseFs::readBytes(kTempPath, verify.get(), totalSize,
                                 &verifyLength) ||
-        verifyLength != expectedSize ||
-        std::memcmp(verify.get(), encoded.get(), expectedSize) != 0) {
-        Esp32BaseFs::removeFileWithRecovery(kTempPath);
+        verifyLength != totalSize) {
+        removeIfExists(kTempPath);
+        return false;
+    }
+    Header verifyHeader{};
+    std::memcpy(&verifyHeader, verify.get(), sizeof(Header));
+    if (recordCrc(verify.get(), pointBytes) != verifyHeader.crc) {
+        removeIfExists(kTempPath);
         return false;
     }
 
-    Esp32BaseFs::removeFileWithRecovery(kFilePath);
-    if (!Esp32BaseFs::rename(kTempPath, kFilePath)) {
-        Esp32BaseFs::removeFileWithRecovery(kTempPath);
+    // Backup -> promote temp -> rollback on failure, mirroring ConfigStore so
+    // a failed replace never leaves the previous overview silently deleted.
+    if (!removeIfExists(kBackupPath)) {
+        removeIfExists(kTempPath);
         return false;
     }
+    const bool hadCurrent = Esp32BaseFs::exists(kFilePath);
+    if (hadCurrent && !Esp32BaseFs::rename(kFilePath, kBackupPath)) {
+        removeIfExists(kTempPath);
+        return false;
+    }
+    if (!Esp32BaseFs::rename(kTempPath, kFilePath)) {
+        if (hadCurrent) Esp32BaseFs::rename(kBackupPath, kFilePath);
+        removeIfExists(kTempPath);
+        return false;
+    }
+    removeIfExists(kBackupPath);
 
     // The controller already owns these points in RAM, so keep only the small
     // metadata here (used for boot id matching); do not hold a second full copy.
@@ -207,7 +247,8 @@ bool WateringFlowOverviewStore::save(uint32_t recordId,
 void WateringFlowOverviewStore::discard() {
     loaded_ = Snapshot{};
     if (Esp32BaseFs::isReady()) {
-        Esp32BaseFs::removeFileWithRecovery(kFilePath);
-        Esp32BaseFs::removeFileWithRecovery(kTempPath);
+        removeIfExists(kFilePath);
+        removeIfExists(kTempPath);
+        removeIfExists(kBackupPath);
     }
 }
