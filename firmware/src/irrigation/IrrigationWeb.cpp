@@ -1663,7 +1663,7 @@ void IrrigationWeb::overview() {
     Esp32BaseWeb::writeHtmlEscaped(heroTitle);
     Esp32BaseWeb::sendChunk("</h1><p id='home-hero-description'>");
     Esp32BaseWeb::writeHtmlEscaped(heroDescription);
-    Esp32BaseWeb::sendChunk("</p></div><div class='home-hero-side'>");
+    Esp32BaseWeb::sendChunk("</p></div><div class='home-hero-side'><div id='home-clock' class='home-clock");
     if (!timeTrusted) Esp32BaseWeb::sendChunk(" pending");
     if (rtcUnavailable) Esp32BaseWeb::sendChunk(" has-warning");
     Esp32BaseWeb::sendChunk("'");
