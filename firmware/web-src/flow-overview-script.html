@@ -7,9 +7,11 @@ var PAD_L=10,PAD_R=10,TOP=8,AXIS=18;     // insets keep edge dots/segments on ca
 var TAIL=720;                            // running view: last hour
 var STEP_PX=6;                           // fixed px per point in scroll mode
 var NICE=[1,2,3,6,12,30,60,120,360,720]; // tick spacing candidates (points)
+var RUN_H=205;                           // running page canvas CSS height (matches live chart)
+var FIT_H=140;                           // record-detail canvas CSS height
+var MAX_BACKING=4096;                    // conservative mobile canvas backing-store edge limit
 
 function el(id){return document.getElementById(id);}
-function cssHeightOf(canvas){var h=parseInt(canvas.getAttribute('height'),10);return h>0?h:140;}
 function fmtTime(sec){
   sec=Math.round(sec);
   if(sec>=3600){var h=Math.floor(sec/3600),m=Math.round((sec%3600)/60);return h+'时'+(m?m+'分':'');}
@@ -34,24 +36,31 @@ function paint(canvas,legend,data,mode,pinToEnd){
   var zoneStart=Number(data.zoneStart||0);
   var zc=(typeof data.zoneCount==='number'&&data.zoneCount>0)?data.zoneCount:cnt.length;
   var n=pts.length;
-  var h=cssHeightOf(canvas);
+  // Height is a fixed constant per mode: never read it back from the canvas
+  // height attribute, since assigning the backing-store size reflects into
+  // that attribute and would multiply by devicePixelRatio on every repaint.
+  var h=mode==='scroll'?RUN_H:FIT_H;
 
-  // CSS size first, then backing store at devicePixelRatio.
+  // CSS size first, then backing store. Scroll mode grows with the points
+  // (canvas is only as wide as the data, one step per new point); with no
+  // data yet it fills the container so the empty hint covers the area.
   var plotW,cssW;
   if(mode==='scroll'){
     plotW=Math.max(1,n-1)*STEP_PX;
-    cssW=Math.max(viewW,PAD_L+plotW+PAD_R);
+    cssW=n>0?PAD_L+plotW+PAD_R:viewW;
   }else{
     cssW=viewW;
     plotW=Math.max(1,cssW-PAD_L-PAD_R);
   }
-  var dpr=window.devicePixelRatio||1;
+  // Cap the backing store at MAX_BACKING px per edge; scale may drop below 1
+  // (slight downsampling only — drawing coordinates are unaffected).
+  var scale=Math.min(window.devicePixelRatio||1,MAX_BACKING/Math.max(cssW,1),MAX_BACKING/Math.max(h,1));
   canvas.style.width=cssW+'px';
   canvas.style.height=h+'px';
-  canvas.width=Math.round(cssW*dpr);
-  canvas.height=Math.round(h*dpr);
+  canvas.width=Math.round(cssW*scale);
+  canvas.height=Math.round(h*scale);
   var ctx=canvas.getContext('2d');
-  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.setTransform(scale,0,0,scale,0,0);
   ctx.clearRect(0,0,cssW,h);
 
   if(legend)legend.innerHTML='';

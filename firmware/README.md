@@ -52,10 +52,10 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,558,475 B（88.1%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,556,531 B（88.0%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 115,652 B（35.3%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,558,880 B |
-| 对侧 OTA 槽余量 | 210,592 B（约 205.7 KiB，11.90%） |
+| OTA 镜像 firmware.bin | 1,556,928 B |
+| 对侧 OTA 槽余量 | 212,544 B（约 207.6 KiB，12.01%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
@@ -71,6 +71,18 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 - OTA 缓存加固：HTML 页面响应统一加 `Cache-Control: no-store`（JS/CSS 仍按 `?v=内容哈希` 长缓存），保证 OTA 后必取新页面。
 - 进行中页轮询串行化 + 内联 favicon（修复标签页偶发“图片损坏”图标）：根因是设备 WebServer **单连接串行**（同一时刻只服务一个 socket）且读超时 5s、每请求 `Connection: close`；进行中页原本有 status(1s)、flow-overview(5s 独立定时器)、flow-history 三个并发轮询，空闲真机并发压测即有请求排到 4.5–5.5s，浇水时主循环更忙，排队超 5s 的请求被丢弃；浏览器自动发起的 `/favicon.ico`（页面 head 无图标）赶上一次失败就在标签页显示破损图标，而业务 fetch 都 `.catch()` 静默。修复：(1) 取消 overview 的独立 `setInterval`，改由 status 的 setTimeout 链在成功后链式触发（首 tick 补 history、其后每 5 tick 拉一次 overview tail），保证任意时刻最多 1 个在途请求（fixture 实测 maxFlight=1，请求序列 status→history→status×4→overview）；(2) 在 `beginPage`/首页入口注入内联 data-URI SVG favicon（水滴），页面不依赖 `/favicon.ico` 网络请求。CDP 真机确认内联图标生效、业务轮询串行。
 - 验证：Web 资产一致性脚本通过（片段计数按 ASSETS 自动统计，含 JS 语法检查）；主目标构建通过（Flash 1,558,007 B/88.0%，静态 RAM 115,652 B/35.3%，曲线缓冲在堆不计入）；native 91 项全部通过（含 5 秒逐窗 1 点、跨路计数、6 小时填满即止、学习不产生概览）；无头 Chrome 对绘图做**饱和色像素级**断言：真机形状 [1,1] 详情两圆点均在（左 76/右 42 像素，修复前为 0）、单点落内边距、多点连线 3161、tail 滚动 cssW=4334 且 scrollLeft=max 钉最新。
+
+### 进行中全程图高度指数增长修复（2026-10-25）
+
+真机（手机，DPR=3）出水过程页「本次任务 全程流量趋势」每 5 秒刷新一次就变高一次，最终撑破页面并白屏。根因：`flow-overview-script.html` 的 `paint()` 每轮从 canvas `height` **content attribute 回读** CSS 高度（`cssHeightOf`），同轮又把后备存储尺寸 `canvas.height=h×DPR` 写回该 attribute（canvas IDL 与 content attribute 双向反射），下一轮回读到污染值再乘 DPR，高度按 205→615→1845→5535… 指数增长；超过手机 canvas 单边上限（iPhone 常见 4096）后白屏。桌面 DPR=1 不增长，故桌面无法复现。实时图（常量高度、只写不读）与后端接口均无问题。
+
+修复（仅 `web-src/flow-overview-script.html` + 重生成资产，HTML/后端/契约不变）：
+
+- 高度改为模式常量（进行中 scroll=205，与「当前水路」实时图一致；记录详情 fit=140），canvas attribute 只写不读；
+- scroll 模式宽度改为随数据生长：有数据时 `cssW=20+max(1,n-1)×6`px（有多少点多宽，每点向右长 6px），空数据时铺满容器以显示采集提示；超出卡片宽度后仍横向滚动并自动吸附最新点；
+- 后备存储按 `scale=min(DPR,4096/cssW,4096/h)` 封顶（允许 scale<1，仅轻微降采样，绘制坐标经 `setTransform` 不变）：720 点（1 小时，cssW=4334）时后备宽恰好封顶 4096，消除长任务白屏隐患；
+- fit 记录详情共用同一函数，手机重复打开的同款变高隐患一并消除。
+- 验证：`test_web_assets.py` PASS；Node stub DOM（DPR=3、360px 容器、真实 attribute 反射）断言 n=0→20 高度恒定 205、宽度每点 +6px、backing 不超 4096，n=720 backing=4096×194，fit 140 恒定且重开不膨胀；同一 stub 跑修复前代码复现 205→615→1845 指数增长（负对照）；主目标构建通过（Flash 1,556,531 B/88.0%，RAM 115,652 B/35.3%）；独立 reviewer 方案审核+终审均通过。**实机烧录与页面视觉回证待用户执行**（Web OTA）。
 
 ## 死代码清理（2026-10-25，见根目录《重构优化记录.md》会话 2）
 
