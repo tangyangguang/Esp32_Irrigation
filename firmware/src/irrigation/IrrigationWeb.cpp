@@ -14,6 +14,36 @@
 #include "IrrigationTime.h"
 #include "generated/IrrigationWebAssets.h"
 
+// 本文件是灌溉设备本地 Web 表现层的唯一实现单元。各页面共享同一个 g_app
+// 上下文与下面这批输出/格式化助手；它们同属一个表现层、没有独立子系统边界，
+// 按页面拆成多个 .cpp 只会新增一个内部公共头并改变约 40 个函数的 linkage，
+// 并不降低耦合。故保持单文件，用下方结构索引配合编辑器函数大纲导航。
+//
+// 逻辑分区（用函数名锡定，行号会随改动漂移）：
+//  匿名 namespace —— 仅本翻译单元可见的内部助手
+//   A. 请求解析与 POST 动作  getParam / parseUint / uintParam / parseStartMinute /
+//                            actionIs / savePlanFromRequest / saveZoneFromRequest /
+//                            buildManualWateringRequest / manualRowParam /
+//                            redirectResult
+//   B. 页面骨架与基础输出     sendInlineFavicon / beginPage / endPage
+//   C. 枚举中文案            wateringStateName / stopReasonName /
+//                            zoneResultName / sourceName / startRejectionReasonText
+//   D. 数值/时间/水量/HTML 输出 html / escaped / sendUnsigned / sendUnsigned64 /
+//                            formatSignedHundredths / formatTenThousandths /
+//                            formatFlowChange / sendMilliseconds / formatChineseDate /
+//                            formatFullDateTime / formatInputDateTime / formatElapsed /
+//                            sendDuration / sendWaterVolume / sendCompactWaterVolume /
+//                            sendLiters / sendFlowRate / sendZoneName
+//   E. 浇水记录与审计渲染     record* / sendRecord* / outcome / historyRow /
+//                            auditRow / sendRecordRow / sendRecordDetailDialog /
+//                            sendRecordFlowOverview / sendLastFlowOverviewLink
+//   F. 条件徽章与首页“今日”   collectConditions / conditionDetail / conditions /
+//                            epochText / selectedDay / dateNav / renderDayPlans /
+//                            renderDay / renderManualDialog / renderZoneManagement
+//  IrrigationWeb 成员 —— 路由与各页面/接口 handler
+//   registerRoutes / overview / settings / plans / records / events / zones /
+//   activeTask / zoneLearning / statusApi / flowHistoryApi / flowOverviewApi
+
 namespace {
 
 IrrigationApp* g_app = nullptr;
