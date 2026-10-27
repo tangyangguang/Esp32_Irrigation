@@ -169,6 +169,7 @@ bool buildManualWateringRequest(const IrrigationConfig& config, WateringRequest&
                 return false;
             }
             if (waterMl == 0) continue;
+            if (request.stepCount >= request.steps.size()) return false;
             request.steps[request.stepCount++] = {
                 static_cast<uint8_t>(index + 1U),
                 static_cast<uint32_t>(config.runLimits.maximumZoneDurationMinutes) * 60U,
@@ -181,6 +182,7 @@ bool buildManualWateringRequest(const IrrigationConfig& config, WateringRequest&
                 return false;
             }
             if (minutes == 0) continue;
+            if (request.stepCount >= request.steps.size()) return false;
             request.steps[request.stepCount++] = {
                 static_cast<uint8_t>(index + 1U), minutes * 60U, 0U};
             hasDuration = true;
@@ -836,6 +838,11 @@ struct ConditionItem {
     const char* title;
 };
 
+// collectConditions() appends at most one item per abnormality below; size the
+// shared badge/dialog list from this constant so adding a condition does not
+// silently truncate at a hard-coded array bound.
+constexpr uint8_t kMaxConditionItems = 9;
+
 // All current abnormalities in severity order. Details are rendered by
 // renderConditionDetail; the badges and the dialog share the same item list.
 uint8_t collectConditions(ConditionItem* items, uint8_t capacity) {
@@ -924,8 +931,8 @@ void conditionDetail(const char* title) {
 }
 
 void conditions() {
-    ConditionItem items[9]{};
-    const uint8_t count = collectConditions(items, 9);
+    ConditionItem items[kMaxConditionItems]{};
+    const uint8_t count = collectConditions(items, kMaxConditionItems);
     if (count == 0) return;
     html("<section id='conditions' class='conditions' aria-label='设备状态'><div class='cond-badges'>");
     for (uint8_t i = 0; i < count; ++i) {
@@ -2745,24 +2752,18 @@ void IrrigationWeb::statusApi() {
     if (!Esp32BaseWeb::checkAuth()) return;
     const WateringStatus status = g_app->wateringStatus();
     if (!Esp32BaseWeb::beginResponse(200, "application/json")) return;
-    Esp32BaseWeb::sendChunk("{\"ready\":"); Esp32BaseWeb::sendChunk(g_app->businessReady() ? "true" : "false");
+    Esp32BaseWeb::sendChunk("{\"active\":"); Esp32BaseWeb::sendChunk(status.active ? "true" : "false");
     Esp32BaseRecordStore::StoreStatus history{}; g_app->readWateringRecordStoreStatus(history);
     Esp32BaseWeb::sendChunk(",\"historyNextId\":"); sendUnsigned(history.nextRecordId);
-    Esp32BaseWeb::sendChunk(",\"targetMode\":"); sendUnsigned(static_cast<uint32_t>(status.targetMode));
-    Esp32BaseWeb::sendChunk(",\"active\":"); Esp32BaseWeb::sendChunk(status.active ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"state\":"); sendUnsigned(static_cast<uint32_t>(status.state));
-    Esp32BaseWeb::sendChunk(",\"source\":"); sendUnsigned(static_cast<uint32_t>(status.source));
-    Esp32BaseWeb::sendChunk(",\"planId\":"); sendUnsigned(status.planId);
     Esp32BaseWeb::sendChunk(",\"stepCount\":"); sendUnsigned(status.stepCount);
     Esp32BaseWeb::sendChunk(",\"currentStepIndex\":"); sendUnsigned(status.currentStepIndex);
     Esp32BaseWeb::sendChunk(",\"zoneId\":"); sendUnsigned(status.activeZoneId);
-    Esp32BaseWeb::sendChunk(",\"lastZoneId\":"); sendUnsigned(status.lastZoneId);
     Esp32BaseWeb::sendChunk(",\"flowEstablished\":"); Esp32BaseWeb::sendChunk(status.flowEstablished ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"purpose\":"); sendUnsigned(static_cast<uint32_t>(status.purpose));
     Esp32BaseWeb::sendChunk(",\"elapsedSec\":"); sendUnsigned(status.elapsedSec);
     Esp32BaseWeb::sendChunk(",\"currentZoneElapsedSec\":"); sendUnsigned(status.currentZoneElapsedSec);
     Esp32BaseWeb::sendChunk(",\"currentZoneRemainingSec\":"); sendUnsigned(status.currentZoneRemainingSec);
-    Esp32BaseWeb::sendChunk(",\"currentZoneTargetWaterMl\":"); sendUnsigned(status.currentZoneTargetWaterMl);
     Esp32BaseWeb::sendChunk(",\"plannedRemainingSec\":"); sendUnsigned(status.plannedRemainingSec);
     Esp32BaseWeb::sendChunk(",\"pulseCount\":"); sendUnsigned(status.pulseCount);
     Esp32BaseWeb::sendChunk(",\"currentFlowMlPerMinute\":"); sendUnsigned(status.currentFlowMlPerMinute);
@@ -2773,7 +2774,6 @@ void IrrigationWeb::statusApi() {
     Esp32BaseWeb::sendChunk(",\"learningAverageMlPerMinute\":"); sendUnsigned(status.learningAverageMlPerMinute);
     Esp32BaseWeb::sendChunk(",\"learningMinimumMlPerMinute\":"); sendUnsigned(status.learningMinimumMlPerMinute);
     Esp32BaseWeb::sendChunk(",\"learningMaximumMlPerMinute\":"); sendUnsigned(status.learningMaximumMlPerMinute);
-    Esp32BaseWeb::sendChunk(",\"learningAveragePulseRateX100\":"); sendUnsigned(status.learningAveragePulseRateX100);
     Esp32BaseWeb::sendChunk(",\"learningMinimumPulseRateX100\":"); sendUnsigned(status.learningMinimumPulseRateX100);
     Esp32BaseWeb::sendChunk(",\"learningMaximumPulseRateX100\":"); sendUnsigned(status.learningMaximumPulseRateX100);
     Esp32BaseWeb::sendChunk(",\"learningAllowedPulseRateSpreadX100\":"); sendUnsigned(status.learningAllowedPulseRateSpreadX100);
@@ -2792,7 +2792,6 @@ void IrrigationWeb::statusApi() {
         Esp32BaseWeb::sendChunk("}");
     }
     Esp32BaseWeb::sendChunk("]");
-    Esp32BaseWeb::sendChunk(",\"automaticMode\":"); sendUnsigned(static_cast<uint32_t>(g_app->automaticWateringState().mode));
     const IrrigationEvents::ConditionDisplayState rtcCondition =
         g_app->eventConditionState(1);
     const bool rtcUnavailable =
@@ -2800,23 +2799,16 @@ void IrrigationWeb::statusApi() {
         rtcCondition == IrrigationEvents::ConditionDisplayState::ConfirmingRecovery;
     Esp32BaseWeb::sendChunk(",\"rtcUnavailable\":"); Esp32BaseWeb::sendChunk(rtcUnavailable ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"unexpectedFlowAlarm\":"); Esp32BaseWeb::sendChunk(g_app->unexpectedFlowAlarm() ? "true" : "false");
-    Esp32BaseWeb::sendChunk(",\"recordStorageFault\":"); Esp32BaseWeb::sendChunk(g_app->recordStorageFault() ? "true" : "false");
-    Esp32BaseWeb::sendChunk(",\"eventStorageFault\":"); Esp32BaseWeb::sendChunk(g_app->eventStorageFault() ? "true" : "false");
-    Esp32BaseWeb::sendChunk(",\"schedulerStorageFault\":"); Esp32BaseWeb::sendChunk(g_app->schedulerStorageFault() ? "true" : "false");
-    Esp32BaseWeb::sendChunk(",\"checkpointStorageFault\":"); Esp32BaseWeb::sendChunk(g_app->checkpointStorageFault() ? "true" : "false");
     Esp32BaseWeb::sendChunk(",\"zones\":[");
     for (uint8_t index = 0; index < status.stepCount; ++index) {
         if (index != 0) Esp32BaseWeb::sendChunk(",");
         const ZoneWateringSummary& zone = status.zones[index];
         Esp32BaseWeb::sendChunk("{\"zoneId\":"); sendUnsigned(zone.zoneId);
-        Esp32BaseWeb::sendChunk(",\"result\":"); sendUnsigned(static_cast<uint32_t>(zone.result));
         Esp32BaseWeb::sendChunk(",\"plannedDurationSec\":"); sendUnsigned(zone.plannedDurationSec);
         Esp32BaseWeb::sendChunk(",\"targetWaterMl\":"); sendUnsigned(zone.targetWaterMl);
         Esp32BaseWeb::sendChunk(",\"actualWateringSec\":"); sendUnsigned(zone.actualWateringSec);
         Esp32BaseWeb::sendChunk(",\"pulseCount\":"); sendUnsigned(zone.pulseCount);
         Esp32BaseWeb::sendChunk(",\"estimatedWaterMl\":"); sendUnsigned(zone.estimatedWaterMl);
-        Esp32BaseWeb::sendChunk(",\"lowFlowDetected\":"); Esp32BaseWeb::sendChunk(zone.lowFlowDetected ? "true" : "false");
-        Esp32BaseWeb::sendChunk(",\"highFlowDetected\":"); Esp32BaseWeb::sendChunk(zone.highFlowDetected ? "true" : "false");
         Esp32BaseWeb::sendChunk(",\"lowFlowActive\":"); Esp32BaseWeb::sendChunk(zone.lowFlowActive ? "true" : "false");
         Esp32BaseWeb::sendChunk(",\"highFlowActive\":"); Esp32BaseWeb::sendChunk(zone.highFlowActive ? "true" : "false");
         Esp32BaseWeb::sendChunk("}");
