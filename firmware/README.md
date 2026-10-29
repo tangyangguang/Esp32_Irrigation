@@ -52,10 +52,10 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,556,531 B（88.0%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,556,235 B（87.9%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 115,652 B（35.3%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,556,928 B |
-| 对侧 OTA 槽余量 | 212,544 B（约 207.6 KiB，12.01%） |
+| OTA 镜像 firmware.bin | 1,556,640 B |
+| 对侧 OTA 槽余量 | 212,832 B（约 207.8 KiB，12.03%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
@@ -82,7 +82,14 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 - scroll 模式宽度改为随数据生长：有数据时 `cssW=20+max(1,n-1)×6`px（有多少点多宽，每点向右长 6px），空数据时铺满容器以显示采集提示；超出卡片宽度后仍横向滚动并自动吸附最新点；
 - 后备存储按 `scale=min(DPR,4096/cssW,4096/h)` 封顶（允许 scale<1，仅轻微降采样，绘制坐标经 `setTransform` 不变）：720 点（1 小时，cssW=4334）时后备宽恰好封顶 4096，消除长任务白屏隐患；
 - fit 记录详情共用同一函数，手机重复打开的同款变高隐患一并消除。
-- 验证：`test_web_assets.py` PASS；Node stub DOM（DPR=3、360px 容器、真实 attribute 反射）断言 n=0→20 高度恒定 205、宽度每点 +6px、backing 不超 4096，n=720 backing=4096×194，fit 140 恒定且重开不膨胀；同一 stub 跑修复前代码复现 205→615→1845 指数增长（负对照）；主目标构建通过（Flash 1,556,531 B/88.0%，RAM 115,652 B/35.3%）；独立 reviewer 方案审核+终审均通过。**实机烧录与页面视觉回证待用户执行**（Web OTA）。
+- 验证：`test_web_assets.py` PASS；Node stub DOM（DPR=3、360px 容器、真实 attribute 反射）断言 n=0→20 高度恒定 205、宽度每点 +6px、backing 不超 4096，n=720 backing=4096×194，fit 140 恒定且重开不膨胀；同一 stub 跑修复前代码复现 205→615→1845 指数增长（负对照）；主目标构建通过（Flash 1,556,531 B/88.0%，RAM 115,652 B/35.3%）；独立 reviewer 方案审核+终审均通过。**用户 Web OTA 后真机回证通过（2026-10-28），本项关闭。**
+
+## 暂停弹层精简 B3（2026-10-28，见根目录《重构优化记录.md》会话 9）
+
+用户确认 DPR 白屏修复真机 OK 后，按其决定精简 /irrigation/plans 的「暂停自动浇水」弹层：删除「暂停时长（小时）」手输 number 框（与恢复时间两个入口表达同一件事、易混），12/24/48 小时保留为独立一行「常用暂停时长」快捷按钮，点击直接设置恢复时间；「恢复时间」datetime-local、明早/后早 6:00 快捷、无限期暂停、提交 confirm、时间不可信置灰全部保留。后端 POST `pause_until` 只收 `resume_at`，零契约改动。同步删除 pause-script.html 中 hours 元素及其守卫引用（守卫保留 `if(!form||!resume)return`）。
+
+- 验证：`python3 scripts/generate_web_assets.py` 重生成、`test_web_assets.py` PASS（11 片段）；主目标构建 SUCCESS（Flash 1,556,235 B/87.9%，RAM 115,652 B/35.3%）；native 不编译 Web.cpp/JS 不跑；隔离子代理 plan review 通过。页面视觉待 Web OTA 真机确认。
+- B4（计划编辑「估算时段重叠」confirm）定案保留：解释后者静默按忙跳过，D1/D2 已修其空指针/XSS；B2（关阀后水流监测）维持不重构（逻辑正确、无故障现象）。
 
 ## 死代码清理（2026-10-25，见根目录《重构优化记录.md》会话 2）
 

@@ -1920,9 +1920,7 @@ void IrrigationWeb::plans() {
                                 sizeof(minimumDateTime));
             Esp32BaseWeb::sendChunk("<dialog id='plan-pause' class='panel eb-modal plan-pause-modal' data-eb-light-dismiss='1'><h2>暂停自动浇水</h2><p class='muted'>只影响之后的自动计划，不停止当前任务，也不影响手动浇水。</p><div class='plan-pause-options'><form id='plan-pause-timed' class='plan-pause-option' method='post' action='/irrigation/plans' data-now-epoch='");
             sendUnsigned(now.epochSec);
-            Esp32BaseWeb::sendChunk("' onsubmit='return submitTimedPause(this)'><input type='hidden' name='action' value='pause_until'><h3>暂停至恢复时间</h3><small>小时数和常用时间只用于快捷填写，最终以恢复时间为准。</small><div class='plan-pause-fields'><p class='field plan-pause-field'><label for='pause-hours'>暂停时长（小时）</label><input id='pause-hours' type='number' min='1' max='8760' step='1' value='24' inputmode='numeric'");
-            if (!timeTrusted) Esp32BaseWeb::sendChunk(" disabled");
-            Esp32BaseWeb::sendChunk("><span class='plan-pause-shortcuts' aria-label='暂停时长快捷选择'><button type='button' class='secondary' data-pause-hours='12'");
+            Esp32BaseWeb::sendChunk("' onsubmit='return submitTimedPause(this)'><input type='hidden' name='action' value='pause_until'><h3>暂停至恢复时间</h3><small>快捷选择会自动设置恢复时间，也可直接在下方选择具体时间。</small><div class='plan-pause-fields'><p class='field plan-pause-field'><label>常用暂停时长</label><span class='plan-pause-shortcuts' aria-label='暂停时长快捷选择'><button type='button' class='secondary' data-pause-hours='12'");
             if (!timeTrusted) Esp32BaseWeb::sendChunk(" disabled");
             Esp32BaseWeb::sendChunk(">12 小时</button><button type='button' class='secondary selected' data-pause-hours='24'");
             if (!timeTrusted) Esp32BaseWeb::sendChunk(" disabled");
