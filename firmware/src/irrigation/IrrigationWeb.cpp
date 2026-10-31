@@ -37,7 +37,7 @@
 //                            sendLiters / sendFlowRate / sendZoneName
 //   E. 浇水记录与审计渲染     record* / sendRecord* / outcome / historyRow /
 //                            auditRow / sendRecordRow / sendRecordDetailSections /
-//                            sendRecordFlowOverview / sendLastFlowOverviewLink
+//                            sendRecordFlowOverview
 //   F. 条件徽章与首页“今日”   collectConditions / conditionDetail / conditions /
 //                            epochText / selectedDay / dateNav / renderDayPlans /
 //                            renderDay / renderManualDialog / renderZoneManagement
@@ -912,10 +912,10 @@ uint32_t selectedDay() {
 }
 void dayText(uint32_t day) { epochText(day * 86400U - 8U * 3600U, "%Y-%m-%d"); }
 void dateNav(uint32_t day) {
-    html("<nav class='actions day-nav' aria-label='选择日期'><a class='btnlink secondary' href='?date="); dayText(day - 1);
+    html("<div class='day-nav' role='group' aria-label='选择日期'><a class='day-nav-step' href='?date="); dayText(day - 1);
     html("' aria-label='前一天'>‹</a><form method='get' class='day-nav-form'><input class='day-nav-date' aria-label='日期' type='date' name='date' value='"); dayText(day);
-    html("' onchange='this.form.submit()'><noscript><button>查看</button></noscript></form><a class='btnlink secondary' href='?date="); dayText(day + 1);
-    html("' aria-label='后一天'>›</a><a class='day-nav-today' href='?'>今天</a></nav>");
+    html("' onchange='this.form.submit()'><noscript><button>查看</button></noscript></form><a class='day-nav-step' href='?date="); dayText(day + 1);
+    html("' aria-label='后一天'>›</a><a class='day-nav-today' href='?'>今天</a></div>");
 }
 enum class ConditionLevel : uint8_t { Danger, Warn };
 
@@ -1020,15 +1020,15 @@ void conditions() {
     ConditionItem items[kMaxConditionItems]{};
     const uint8_t count = collectConditions(items, kMaxConditionItems);
     if (count == 0) return;
-    html("<section id='conditions' class='conditions' aria-label='设备状态'><div class='cond-badges'>");
-    for (uint8_t i = 0; i < count; ++i) {
-        html("<button type='button' class='cond-badge ");
-        html(items[i].level == ConditionLevel::Danger ? "danger" : "warn");
-        html("' onclick=\"document.getElementById('device-conditions').showModal()\">");
-        Esp32BaseWeb::writeHtmlEscaped(items[i].title);
-        html("</button>");
-    }
-    html("</div><dialog id='device-conditions' class='panel eb-modal cond-modal' data-eb-light-dismiss='1'>"
+    bool hasDanger = false;
+    for (uint8_t i = 0; i < count; ++i)
+        if (items[i].level == ConditionLevel::Danger) hasDanger = true;
+    html("<section id='conditions' class='conditions' aria-label='设备状态'><button type='button' class='cond-summary ");
+    html(hasDanger ? "danger" : "warn");
+    html("' onclick=\"document.getElementById('device-conditions').showModal()\"><b>");
+    sendUnsigned(count);
+    html("</b> 项需关注 · 查看详情</button>"
+         "<dialog id='device-conditions' class='panel eb-modal cond-modal' data-eb-light-dismiss='1'>"
          "<h2>设备状态</h2><p class='muted'>以下是当前需要关注的问题，按严重程度排列；没有列出的项目状态正常。</p>");
     for (uint8_t i = 0; i < count; ++i) {
         html("<article class='cond-item ");
@@ -1142,10 +1142,10 @@ void renderDayPlans(uint32_t day,
         if (isNext) html("<span class='tag info'>下一次</span>");
         html("</b><span class='home-day-plan-name'>");
         Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
-        html("</span><small>");
-        if (zoneCount == 0) html("计划内没有可执行水路，到点会记录一条启动失败");
-        else { sendUnsigned(zoneCount); html(" 路 · 共 "); sendUnsigned(totalMinutes); html(" 分钟"); }
-        html("</small></div>");
+        html("</span><span class='home-day-plan-meta'>");
+        if (zoneCount == 0) html("<span class='tag warn'>无可执行水路</span>");
+        else { sendUnsigned(zoneCount); html(" 路 · "); sendUnsigned(totalMinutes); html(" 分钟"); }
+        html("</span></div>");
         listed = true;
     }
     if (!listed) html("<p class='muted'>今天剩余时间没有已排期的自动浇水。</p>");
@@ -1156,25 +1156,28 @@ void renderDay(uint32_t day, bool includePlans, const WateringStatus& activeStat
     if (!day) { html("<p class='muted'>设备时间未知，日期统计暂不可用。仍可查看全部浇水记录。</p>"); return; }
     const auto daily = g_app->wateringDay(day, activeStatus); const auto* config = g_app->configuration();
     if (!daily.readable) { html("<p class='notice warn'>记录暂时无法读取，不能据此判断没有浇水。</p>"); return; }
-    html("<div class='home-grid'>");
+    html("<div class='tablewrap'><table class='home-zone-table'><thead><tr>"
+         "<th>水路</th><th>实际时长</th><th>出水</th><th>状态</th><th>估算用水</th><th></th></tr></thead><tbody>");
     bool shown = false;
     for (size_t i = 0; i < daily.zones.size(); ++i) {
         const auto& z = daily.zones[i];
         if ((!config || !config->zones[i].enabled) && !z.count && !z.failures && !z.unknown && !z.active) continue;
         shown = true;
-        html("<a class='home-plan' style='text-decoration:none;color:inherit' href='/irrigation/records?date="); dayText(day); html("'><span class='zone-title'>");
-        sendZoneName(config, i); html("</span><b class='home-main'>");
+        html("<tr><td data-label='水路' class='hz-name'>"); sendZoneName(config, i);
+        html("</td><td data-label='实际时长' class='hz-main'>");
         if (z.unknown && !z.count) html("时长未知"); else sendDuration(z.seconds);
-        html("</b><span>"); sendUnsigned(z.count); html(" 次出水");
-        if (z.active) html(" · 进行中，暂计");
-        else if (z.failures) { html(" · "); sendUnsigned(z.failures); html(" 次停止或异常"); }
-        else if (!z.count && !z.unknown) html(" · 暂无出水记录");
-        if (z.unknown) { html(" · "); sendUnsigned(z.unknown); html(" 次结果不完整"); }
-        html("</span><small>估算用水 ");
-        if (z.unknown && !z.count) html("未知"); else { sendWaterVolume(z.waterMl); if (z.unknown) html("（仅已知部分）"); }
-        html("</small></a>");
+        html("</td><td data-label='出水'>"); sendUnsigned(z.count); html(" 次");
+        html("</td><td data-label='状态' class='hz-status'>");
+        if (z.active) html("<span class='tag info'>进行中，暂计</span>");
+        else if (z.failures) { html("<span class='tag warn hz-tag'>"); sendUnsigned(z.failures); html(" 次停止或异常</span>"); }
+        else if (z.unknown) { html("<span class='tag warn hz-tag'>"); sendUnsigned(z.unknown); html(" 次不完整</span>"); }
+        else if (!z.count) html("<span class='muted'>暂无出水</span>");
+        else html("<span class='tag ok'>正常</span>");
+        html("</td><td data-label='估算用水' class='hz-water'>");
+        if (z.unknown && !z.count) html("未知"); else { html("<span class='hz-water-val'>"); sendWaterVolume(z.waterMl); if (z.unknown) html(" <span class='muted'>部分</span>"); html("</span>"); }
+        html("</td><td data-label='详情' class='hz-link'><a class='btnlink info compact' href='/irrigation/records?date="); dayText(day); html("'>记录</a></td></tr>");
     }
-    html("</div>");
+    html("</tbody></table></div>");
     if (!shown) html("<p class='muted'>暂无启用水路或该日记录。请到设备设置配置水路。</p>");
     if (daily.truncated) html("<p class='notice warn'>较早历史已滚动淘汰，本日统计可能不完整。</p>");
     if (daily.unknownTimeCount) { html("<p class='muted'>另有 "); sendUnsigned(daily.unknownTimeCount); html(" 条时间未知的记录未计入日期统计。</p>"); }
@@ -1218,7 +1221,7 @@ void renderManualDialog(const IrrigationConfig& config) {
                 ++activeZoneCount;
                 totalMinutes += plan.zoneDurationMinutes[index];
             }
-            html("<button type='button' class='manual-template-card' data-plan-name='");
+            html("<button type='button' class='manual-template-chip' data-plan-name='");
             Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
             html("' data-durations='");
             for (uint8_t index = 0; index < plan.zoneDurationMinutes.size(); ++index) {
@@ -1227,20 +1230,12 @@ void renderManualDialog(const IrrigationConfig& config) {
             }
             html("'");
             if (activeZoneCount == 0) html(" disabled");
-            html("><b>");
+            html("<b>");
             Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
-            html("</b><span>");
-            bool emittedZone = false;
-            for (uint8_t index = 0; index < plan.zoneDurationMinutes.size(); ++index) {
-                if (!config.zones[index].enabled || plan.zoneDurationMinutes[index] == 0) continue;
-                if (emittedZone) html(" · ");
-                Esp32BaseWeb::writeHtmlEscaped(config.zones[index].name.data());
-                html(" "); sendUnsigned(plan.zoneDurationMinutes[index]); html("分");
-                emittedZone = true;
-            }
-            if (!emittedZone) html("当前无可执行水路");
-            html("</span><small>"); sendUnsigned(activeZoneCount); html(" 路 · 共 ");
-            sendUnsigned(totalMinutes); html(" 分钟</small></button>");
+            html("</b><span>"); sendUnsigned(activeZoneCount);
+            if (totalMinutes) { html(" 路 · "); sendUnsigned(totalMinutes); html(" 分"); }
+            else html(" 路 · 不浇");
+            html("</span></button>");
         }
         html("</div>");
     } else {
@@ -1311,17 +1306,6 @@ void sendRecordFlowOverview(const StoredWateringRecord& record) {
         "<div class='record-flow-empty muted' style='display:none'>该记录暂无可显示的全程曲线。</div>"
         "<div class='record-flow-legend'></div></div>");
     Esp32BaseWeb::endPanel();
-}
-
-// Shortcut to the last completed watering's record detail (which embeds the
-// persisted whole-task curve); hidden until at least one curve is stored.
-void sendLastFlowOverviewLink() {
-    const uint32_t recordId = g_app->lastFlowOverviewRecordId();
-    if (recordId == 0) return;
-    Esp32BaseWeb::sendChunk(
-        "<p style='margin:10px 0 0'><a class='btnlink info compact' href='/irrigation/records?id=");
-    sendUnsigned(recordId);
-    Esp32BaseWeb::sendChunk("'>查看最后一次浇水曲线</a></p>");
 }
 
 void sendRecordDetailSections(const StoredWateringRecord& record,
@@ -1736,7 +1720,7 @@ void IrrigationWeb::overview() {
     html(flowAlarm ? "1" : "0");
     html("' data-rtc-unavailable='");
     Esp32BaseWeb::sendChunk(rtcUnavailable ? "1" : "0");
-    Esp32BaseWeb::sendChunk("'><div><span class='home-eyebrow'>");
+    Esp32BaseWeb::sendChunk("'><div class='home-hero-main'><span class='home-eyebrow'>");
     Esp32BaseWeb::writeHtmlEscaped(heroEyebrow);
     Esp32BaseWeb::sendChunk("</span><h1 id='home-hero-title'>");
     Esp32BaseWeb::writeHtmlEscaped(heroTitle);
@@ -1744,32 +1728,25 @@ void IrrigationWeb::overview() {
     Esp32BaseWeb::writeHtmlEscaped(heroDescription);
     Esp32BaseWeb::sendChunk("</p></div><div class='home-hero-side'><div id='home-clock' class='home-clock");
     if (!timeTrusted) Esp32BaseWeb::sendChunk(" pending");
-    if (rtcUnavailable) Esp32BaseWeb::sendChunk(" has-warning");
     Esp32BaseWeb::sendChunk("'");
     if (timeTrusted) {
         Esp32BaseWeb::sendChunk(" data-epoch='");
         sendUnsigned(now.epochSec);
         Esp32BaseWeb::sendChunk("'");
     }
-    Esp32BaseWeb::sendChunk("><b id='home-clock-time' class='home-clock-time'>");
-    if (timeTrusted && Esp32BaseTime::formatEpoch(now.epochSec, value, sizeof(value), "%H:%M:%S")) {
+    Esp32BaseWeb::sendChunk("><span id='home-clock-time' class='home-clock-time'>");
+    if (timeTrusted && Esp32BaseTime::formatEpoch(now.epochSec, value, sizeof(value), "%H:%M")) {
         Esp32BaseWeb::writeHtmlEscaped(value);
     } else {
-        Esp32BaseWeb::sendChunk("尚未就绪");
+        Esp32BaseWeb::sendChunk("时间未就绪");
     }
-    Esp32BaseWeb::sendChunk("</b><span class='home-clock-date'><span id='home-clock-date'>");
+    Esp32BaseWeb::sendChunk("</span><span class='home-clock-date'><span id='home-clock-date'>");
     if (timeTrusted && formatChineseDate(now.epochSec, value, sizeof(value))) {
         Esp32BaseWeb::writeHtmlEscaped(value);
-        Esp32BaseWeb::sendChunk("</span>");
-        Esp32BaseWeb::sendChunk(now.source == Esp32BaseTime::SOURCE_NTP ? " · NTP 校时" : " · RTC 时间");
     } else {
         Esp32BaseWeb::sendChunk("等待 RTC 或 NTP 提供可信时间");
-        Esp32BaseWeb::sendChunk("</span>");
     }
-    Esp32BaseWeb::sendChunk("</span>");
-    if (rtcUnavailable) {
-        Esp32BaseWeb::sendChunk("<button type='button' class='home-clock-warning' onclick=\"document.getElementById('device-conditions').showModal()\">硬件时钟不可用 · 断网后计划可能暂停</button>");
-    }
+    Esp32BaseWeb::sendChunk("</span></span>");
     Esp32BaseWeb::sendChunk("</div>");
     Esp32BaseWeb::sendChunk("<span id='home-default-action' class='home-action");
     if (flowAlarm) Esp32BaseWeb::sendChunk(" hidden");
@@ -1791,7 +1768,6 @@ void IrrigationWeb::overview() {
     const uint32_t day = selectedDay();
     if (day) dateNav(day);
     renderDay(day, true, watering);
-    sendLastFlowOverviewLink();
     Esp32BaseWeb::endPanel();
 
 
@@ -2309,14 +2285,12 @@ void IrrigationWeb::records() {
         html("&offset="); sendUnsigned(page * kPageSize);
     });
     if(state.oldestRecordId>1)html("<p class='muted'>本地历史按预算滚动保留，较早记录可能已淘汰。</p>");
-    html("<p><a href='/irrigation/events'>操作日志 ›</a></p>");
     endPage();
 }
 void IrrigationWeb::events() {
     if(!beginPage("操作日志","查看影响计划和水路的必要变化"))return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
-    html("<p class='irr-back'><a class='btnlink secondary compact' href='/irrigation/records'>‹ 业务记录</a></p>");
     char date[12]{};
     AuditRows q{};
     uint32_t category = 0;
@@ -2544,7 +2518,7 @@ void IrrigationWeb::activeTask() {
         }
         Esp32BaseWeb::sendChunk("</span><span id='run-current-remaining'>");
         Esp32BaseWeb::sendChunk(currentTargetWaterMl != 0 ? "安全时限剩余 " : "剩余 "); sendDuration(status.currentZoneRemainingSec);
-        Esp32BaseWeb::sendChunk("</span></div><div class='run-flow-facts'><div class='run-flow-fact'><span>当前流量</span><b id='run-flow'>");
+        Esp32BaseWeb::sendChunk("</span></div><details class='run-flow-details'><summary>流量与脉冲技术数据</summary><div class='run-flow-facts'><div class='run-flow-fact'><span>当前流量</span><b id='run-flow'>");
         char flowText[20]{}; IrrigationConfigRules::formatLitersPerMinute(status.currentFlowMlPerMinute, flowText, sizeof(flowText)); Esp32BaseWeb::writeHtmlEscaped(flowText);
         Esp32BaseWeb::sendChunk(" L/min</b></div><div class='run-flow-fact'><span>基准流量</span><b id='run-expected-flow'>");
         if (status.expectedFlowMlPerMinute == 0) Esp32BaseWeb::sendChunk("未设置");
@@ -2552,7 +2526,7 @@ void IrrigationWeb::activeTask() {
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路脉冲</span><b id='run-pulses'>"); sendUnsigned(status.pulseCount);
         Esp32BaseWeb::sendChunk("</b></div><div class='run-flow-fact'><span>当前水路估算水量</span><b id='run-zone-water'>");
         if (status.currentStepIndex < status.stepCount) sendLiters(status.zones[status.currentStepIndex].estimatedWaterMl); else Esp32BaseWeb::sendChunk("0.000 L");
-        Esp32BaseWeb::sendChunk("</b></div></div></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>实时流量趋势（L/min）</h3></div><span id='run-chart-range'>正在等待数据 · 5 秒/点</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='205'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-overview-card run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>本次任务</span><h3>全程流量趋势（L/min）</h3></div><span>5 秒/点 · 最近 1 小时</span></div><div id='run-overview-scroll' class='run-chart-scroll'><canvas id='run-overview-chart' height='205'></canvas><div id='run-overview-empty' class='run-chart-empty'>正在采集全程曲线（连续出水约 5 秒后出现）</div></div><div id='run-overview-legend' class='run-overview-legend'></div></div><div class='run-steps'>");
+        Esp32BaseWeb::sendChunk("</b></div></div></details></div><div class='run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>当前水路</span><h3>实时流量趋势（L/min）</h3></div><span id='run-chart-range'>正在等待数据 · 5 秒/点</span></div><div class='run-chart-wrap'><canvas id='run-flow-chart' height='205'></canvas><div id='run-chart-empty' class='run-chart-empty'>正在等待流量数据</div></div></div></div><div class='run-overview-card run-chart-card'><div class='run-chart-head'><div><span class='run-section-label'>本次任务</span><h3>全程流量趋势（L/min）</h3></div><span>5 秒/点 · 最近 1 小时</span></div><div id='run-overview-scroll' class='run-chart-scroll'><canvas id='run-overview-chart' height='205'></canvas><div id='run-overview-empty' class='run-chart-empty'>正在采集全程曲线（连续出水约 5 秒后出现）</div></div><div id='run-overview-legend' class='run-overview-legend'></div></div><div class='run-steps'>");
         for (uint8_t index = 0; index < status.stepCount; ++index) {
             const ZoneWateringSummary& zone = status.zones[index];
             const char* stepClass = index < status.currentStepIndex ? " complete" : (index == status.currentStepIndex ? " current" : "");
@@ -2575,7 +2549,6 @@ void IrrigationWeb::activeTask() {
     }
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::ActiveTaskScript);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::FlowOverviewScript);
-    html("<section class='panel'><h2>每日浇水</h2>"); const uint32_t day=selectedDay(); if(day) dateNav(day); renderDay(day, false, status); html("</section>");
     endPage();
 }
 
@@ -2672,7 +2645,7 @@ void IrrigationWeb::zoneLearning() {
         } else {
             Esp32BaseWeb::sendChunk("波动偏大");
         }
-        Esp32BaseWeb::sendChunk("</span></div></div><p class='learning-rule' id='learn-rule'>");
+        Esp32BaseWeb::sendChunk("</span></div></div><details class='learning-rule' open><summary>判定原理与实时窗口</summary><p id='learn-rule'>");
         if (status.learningWindowCount == 0) {
             Esp32BaseWeb::sendChunk("窗口 #1 正在采集；每个窗口约 5 秒且互不重叠。");
         } else {
@@ -2713,7 +2686,7 @@ void IrrigationWeb::zoneLearning() {
             Esp32BaseWeb::writeHtmlEscaped(allowedRate);
             Esp32BaseWeb::sendChunk(" P/s</span>。收满 5 窗、每窗均有脉冲且跨度不超过允许值时完成。");
         }
-        Esp32BaseWeb::sendChunk("</p>");
+        Esp32BaseWeb::sendChunk("</p></details>");
     } else if (g_app->pendingLearnedZoneId() == zoneId) {
         char suggestion[20]{};
         const bool validSuggestion = IrrigationConfigRules::formatLitersPerMinute(
