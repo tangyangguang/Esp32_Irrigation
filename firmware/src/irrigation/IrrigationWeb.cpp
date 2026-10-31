@@ -1752,11 +1752,8 @@ void IrrigationWeb::overview() {
 void renderZoneManagement(bool failed, uint32_t postedZone) {
     const IrrigationConfig* config = g_app->configuration();
     if (!config) return;
-    char coefficient[20]{};
-    IrrigationConfigRules::formatPulsesPerLiter(
-        config->flowMeter.pulsesPerLiterX100, coefficient, sizeof(coefficient));
     Esp32BaseWeb::beginPanel("水路管理");
-    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part zone-table'><thead><tr><th>水路</th><th>名称</th><th>启用状态</th><th>基准流量</th><th>操作</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("<div class='tablewrap'><table class='part'><thead><tr><th>水路</th><th>名称</th><th>启用状态</th><th>基准流量</th><th>操作</th></tr></thead><tbody>");
     for (const ZoneConfig& zone : config->zones) {
         char value[20]{};
         uint32_t flowMlPerMinute = 0;
@@ -1782,11 +1779,6 @@ void renderZoneManagement(bool failed, uint32_t postedZone) {
         Esp32BaseWeb::sendChunk("</div></td></tr>");
     }
     Esp32BaseWeb::sendChunk("</tbody></table></div>");
-    Esp32BaseWeb::endPanel();
-    Esp32BaseWeb::beginPanel("流量计维护");
-    Esp32BaseWeb::sendChunk("<div class='zone-meter'><div class='zone-meter-main'><p class='zone-meter-label'>稳态流量系数</p><div class='zone-meter-value'><span class='zone-meter-number'>");
-    Esp32BaseWeb::writeHtmlEscaped(coefficient);
-    Esp32BaseWeb::sendChunk("</span><span class='zone-meter-unit'>P/L</span></div></div><a class='btnlink ok compact' href='/esp32base/app-config'>设置每升脉冲数</a></div>");
     Esp32BaseWeb::endPanel();
     for (const ZoneConfig& savedZone : config->zones) {
         ZoneConfig zone = savedZone;
@@ -1816,8 +1808,27 @@ void renderZoneManagement(bool failed, uint32_t postedZone) {
     }
 }
 
+// 系统参数统一入口面板：流量计系数读数 + 跳转基础库的硬件参数页。
+void renderSystemConfigPanel(const IrrigationConfig* config) {
+    Esp32BaseWeb::beginPanel("系统配置");
+    html("<ul class='irr-setlist'>");
+    if (config) {
+        char coefficient[20]{};
+        IrrigationConfigRules::formatPulsesPerLiter(
+            config->flowMeter.pulsesPerLiterX100, coefficient, sizeof(coefficient));
+        html("<li><div><b>流量计系数</b><small>稳态每升脉冲数，用于把脉冲换算为流量和水量</small></div>"
+             "<div class='side'><span class='num'>");
+        Esp32BaseWeb::writeHtmlEscaped(coefficient);
+        html(" P/L</span><a class='btnlink secondary compact' href='/esp32base/app-config'>设置</a></div></li>");
+    }
+    html("<li><div><b>计量、保护与硬件参数</b><small>流量保护、单水路最长运行与单次水量上限、阀与泵等</small></div>"
+         "<a class='btnlink secondary' href='/esp32base/app-config'>打开</a></li></ul>");
+    Esp32BaseWeb::endPanel();
+}
+
 void IrrigationWeb::settings() {
     if(!beginPage("设置","水路与系统参数")) return;
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
     char result[12]{};
     if (getParam("result", result, sizeof(result)) && std::strcmp(result, "ok") == 0) {
@@ -1825,9 +1836,7 @@ void IrrigationWeb::settings() {
     }
     conditions();
     renderZoneManagement(false, 0);
-    Esp32BaseWeb::beginPanel("系统配置");
-    html("<div class='fieldgrid'><p class='field full'><a class='btnlink secondary' href='/esp32base/app-config'><b>计量、保护与硬件参数</b></a><small>每升脉冲数、流量保护、单水路最长运行与单次水量上限、阀与泵等系统参数</small></p></div>");
-    Esp32BaseWeb::endPanel();
+    renderSystemConfigPanel(g_app->configuration());
     endPage();
 }
 void IrrigationWeb::plans() {
@@ -2128,13 +2137,12 @@ void IrrigationWeb::records() {
     if(!beginPage("浇水记录","实际时长为主，估算水量为辅"))return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
-    IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
     HistoryRows q{};
     char date[12]{}, result[16]{};
     if(getParam("date",date,sizeof(date)) && date[0]) q.day=selectedDay();
     uintParam("offset",0,UINT32_MAX-20,q.offset);
     getParam("result",result,sizeof(result)); q.result=result;
-    html("<form method='get' class='event-filter'><label>日期<input type='date' name='date' value='");escaped(date);html("'></label><label>结果<select name='result'><option value=''>全部结果</option><option value='ok'");if(!strcmp(result,"ok"))html(" selected");html(">仅正常完成</option><option value='issues'");if(!strcmp(result,"issues"))html(" selected");html(">停止、异常或不完整</option></select></label><button>筛选</button><a href='/irrigation/records'>清除</a></form><section class='panel'><h2>历史记录</h2><div class='tablewrap'><table class='record-table'><thead><tr><th>开始时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
+    html("<form method='get' class='irr-filter'><label>日期<input type='date' name='date' value='");escaped(date);html("'></label><label>结果<select name='result'><option value=''>全部结果</option><option value='ok'");if(!strcmp(result,"ok"))html(" selected");html(">仅正常完成</option><option value='issues'");if(!strcmp(result,"issues"))html(" selected");html(">停止、异常或不完整</option></select></label><button>筛选</button><a class='btnlink secondary' href='/irrigation/records'>清除</a></form><section class='panel'><h2>历史记录</h2><div class='tablewrap'><table class='record-table'><thead><tr><th>开始时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
     Esp32BaseRecordStore::StoreStatus state{};const bool ok=g_app->readWateringRecordStoreStatus(state)&&state.ready&&(state.recordCount==0||g_app->readLatestWateringRecords(0,state.recordCount,historyRow,&q));
     html("</tbody></table></div>");
     if(!ok)html("<p class='notice warn'>记录读取失败，不能据此判断没有浇水。</p>");else if(!q.shown)html("<p>当前条件下暂无浇水记录。</p>");html("</section>");
@@ -2145,8 +2153,9 @@ void IrrigationWeb::records() {
 }
 void IrrigationWeb::events() {
     if(!beginPage("操作与设备异常历史","查看影响计划和水路的必要变化"))return;
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
-    html("<p><a href='/irrigation/records'>‹ 浇水记录</a></p>");
+    html("<p class='irr-back'><a class='btnlink secondary compact' href='/irrigation/records'>‹ 浇水记录</a></p>");
     char date[12]{};
     AuditRows q{};
     uint32_t category = 0;
@@ -2158,7 +2167,7 @@ void IrrigationWeb::events() {
     }
     if (uintParam("category", 1, 4, category)) q.category = static_cast<uint8_t>(category);
     uintParam("offset", 0, UINT32_MAX - 20, q.offset);
-    html("<form method='get' class='event-filter'><label>日期<input type='date' name='date' value='"); escaped(date);
+    html("<form method='get' class='irr-filter'><label>日期<input type='date' name='date' value='"); escaped(date);
     html("'></label><label>类别<select name='category'><option value='0'>全部类别</option>");
     for (uint8_t index = 0; index < 4; ++index) {
         const auto categoryEnum = static_cast<IrrigationEvents::Category>(index);
@@ -2166,7 +2175,7 @@ void IrrigationWeb::events() {
         if (q.category == index + 1U) html(" selected");
         html(">"); escaped(IrrigationEvents::categoryName(categoryEnum)); html("</option>");
     }
-    html("</select></label><button>筛选</button><a href='/irrigation/events'>清除</a></form>");
+    html("</select></label><button>筛选</button><a class='btnlink secondary' href='/irrigation/events'>清除</a></form>");
     html("<section class='panel'><h2>事件记录</h2><div class='tablewrap'><table class='event-table'><thead><tr><th>时间</th><th>等级</th><th>事件</th><th>说明</th></tr></thead><tbody>");
     IrrigationEvents::EventStatus status{};
     const bool readable=g_app->readEventStatus(status) && status.eventStore.ready &&
@@ -2201,13 +2210,12 @@ void IrrigationWeb::zones() {
         failed = true;
         // Render the settings page with the failed dialog reopened and refilled.
         if (!beginPage("设置", "水路与系统参数")) return;
+        IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
         IrrigationWebAssets::send(IrrigationWebAssets::Asset::HomeStyle);
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "操作失败", "请检查水路名称后重试。");
         conditions();
         renderZoneManagement(failed, postedZone);
-        Esp32BaseWeb::beginPanel("系统配置");
-        html("<div class='fieldgrid'><p class='field full'><a class='btnlink secondary' href='/esp32base/app-config'><b>计量、保护与硬件参数</b></a><small>每升脉冲数、流量保护、单水路最长运行与单次水量上限、阀与泵等系统参数</small></p></div>");
-        Esp32BaseWeb::endPanel();
+        renderSystemConfigPanel(g_app->configuration());
         endPage();
         return;
     }

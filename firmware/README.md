@@ -52,13 +52,22 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,556,319 B（88.0%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,555,847 B（87.9%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 115,652 B（35.3%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,556,624 B |
-| 对侧 OTA 槽余量 | 212,848 B（约 207.9 KiB，12.03%） |
+| OTA 镜像 firmware.bin | 1,556,256 B |
+| 对侧 OTA 槽余量 | 213,216 B（约 208.2 KiB，12.05%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
+
+## 本地网页 UI 重构 · 组2：设置页与事件页紧凑化（2026-10-31，专题进行中）
+
+仅表现层，后端契约零改动。
+
+- 新增共享组件：`.irr-filter`（紧凑筛选条，桌面横向/手机两列）、`.irr-setlist`（设置入口列表，一行一项、左文右链接，手机整行按钮）。记录页与事件页筛选条统一切换到 `.irr-filter`，记录页因此不再跨引 events-style。
+- 设置页：删除独立的「流量计维护」zone-meter 大卡，流量系数读数与「计量/保护/硬件参数」合并进「系统配置」面板的紧凑列表（系数当前值 + 设置链接）；水路管理表用回基础库 `.part`，删除 home-style 中仅服务本页的 zone-meter/zone-table CSS。`settings()` 与 `zones()` POST 失败页共用 `renderSystemConfigPanel`。
+- 事件页：events-style 删除大量死样式（旧 condition-* 网格、event-detail-*、event-category、event-action、event-empty 等），表格收紧（720px 最小宽、行高 9px）；移动端卡片重排：时间/等级 label+值，事件标题/说明全宽分层；返回链接用 `.irr-back`。类别筛选与分页的 category 参数、后端过滤不变。
+- 验证：`test_web_assets.py` PASS（12 片段）；主目标构建 SUCCESS（Flash 1,555,847 B/87.9%，较组1 -472 B；RAM 不变）；隔离子代理终审通过；串口烧录 `/dev/cu.wchusbserial130`（boot 898 正常启动、Web server ready、IP 192.168.2.127）；HTTP 实测设置页含 irr-setlist/系数行、无 zone-meter，事件页含 irr-filter/无 event-filter/无 condition-grid，记录页无 EventsStyle 引用。页面视觉待用户真机确认。
 
 ## 本地网页 UI 重构 · 组1：记录列表与详情独立页（2026-10-29，专题进行中）
 

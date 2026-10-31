@@ -1,6 +1,26 @@
 <style>
 /* 灌溉业务页共享样式：只放跨页面复用的紧凑组件，不覆盖基础库全局类。 */
 .irr-back{margin:0 0 10px}
+/* 紧凑筛选条：小标签在上，控件在下，桌面横向排列，手机两列 */
+.irr-filter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 12px;margin:0 0 12px}
+.irr-filter label{display:grid;gap:3px;margin:0;color:var(--eb-muted);font-size:12px;font-weight:400}
+.irr-filter select,.irr-filter input[type=date]{width:auto;max-width:none;min-height:32px;margin:0;padding:4px 9px;border:1px solid #ccd5dd;border-radius:7px;background:#fff;color:#1f2933;font-size:13px;font-family:inherit}
+.irr-filter input[type=date]{width:158px}
+.irr-filter select:focus,.irr-filter input[type=date]:focus{outline:none;border-color:var(--eb-primary);box-shadow:0 0 0 2px var(--eb-primary-soft)}
+.irr-filter input[type=date]::-webkit-calendar-picker-indicator{opacity:.55;cursor:pointer}
+.irr-filter button,.irr-filter .btnlink{min-height:32px;margin:0}
+.irr-filter .btnlink{padding:0 10px}
+@media(max-width:760px){.irr-filter{display:grid;grid-template-columns:1fr 1fr;align-items:end}.irr-filter label,.irr-filter select,.irr-filter input[type=date]{width:100%}.irr-filter>button,.irr-filter>.btnlink{grid-column:1/-1}}
+/* 设置类入口列表：一行一项，左文右链接 */
+.irr-setlist{margin:0;padding:0;list-style:none}
+.irr-setlist li{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--eb-line-soft)}
+.irr-setlist li:last-child{border-bottom:0}
+.irr-setlist b{font-weight:600}
+.irr-setlist small{display:block;margin-top:2px;color:var(--eb-muted);font-size:12px;font-weight:400}
+.irr-setlist .side{display:flex;align-items:center;gap:10px;flex-wrap:wrap;flex:0 0 auto}
+.irr-setlist .num{font-variant-numeric:tabular-nums;white-space:nowrap}
+.irr-setlist .btnlink{flex:0 0 auto}
+@media(max-width:760px){.irr-setlist li{flex-direction:column;align-items:stretch;gap:8px}.irr-setlist .side{width:100%;justify-content:space-between}.irr-setlist .btnlink{min-height:36px}}
 .irr-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:4px 0 0}
 .irr-metrics>div{min-width:0;padding:10px 11px;border:1px solid var(--eb-line-soft);border-radius:8px;background:var(--eb-soft)}
 .irr-metrics span{display:block;color:var(--eb-muted);font-size:11px}
