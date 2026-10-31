@@ -52,13 +52,23 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,555,847 B（87.9%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,555,275 B（87.9%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 115,652 B（35.3%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,556,256 B |
-| 对侧 OTA 槽余量 | 213,216 B（约 208.2 KiB，12.05%） |
+| OTA 镜像 firmware.bin | 1,555,680 B |
+| 对侧 OTA 槽余量 | 213,792 B（约 208.8 KiB，12.08%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
+
+## 本地网页 UI 重构 · 组3：计划页列表化 + 编辑独立页（2026-10-31，专题进行中）
+
+仅表现层，后端 `/irrigation/plans` POST 契约（save/delete/pause_until/pause_indefinitely/resume、plan_id/revision/name/schedule_enabled/time1..4/zoneN/resume_at）、revision 乐观锁、checkPostAllowed 零改动。
+
+- 计划列表从左色条大卡片改为紧凑行（名称 + 自动开关 tag + 时间 chip + N路共M分钟 + 编辑），列表体积明显下降；去掉左侧 4px 色条与渐变。
+- 新增/编辑从长 dialog 改为独立页 `GET /irrigation/plans/edit[?id=N]`（新路由仅 GET；无 id 取首个空槽、有 id 编辑该槽，越界/满额有提示）。保存 POST 仍打 `/irrigation/plans`，失败时在 POST 处理器内直接重渲染编辑页并 `applyPostedPlanValues` 就地回填（保住用户输入与 revision 冲突提示），成功跳回列表。删除计划为编辑页内独立表单。
+- 重叠时段校验内联脚本随编辑页，计划名仍逐字符转义引号/反斜杠并把 `< >` 编为 `\x3c/\x3e`（防 `</script>` 存储型 XSS）。
+- 暂停自动浇水保留短 dialog 与 PauseScript，字段不变；plans-style 完全重写（编辑分组、时间格、水路格、移动单列）。
+- 验证：`test_web_assets.py` PASS（12 片段）；主目标构建 SUCCESS（Flash 1,555,275 B/87.9%，较组2 -572 B；RAM 不变）；隔离子代理终审通过（槽位选择、POST 契约、面板配对、XSS、路由不冲突、无旧类残留）；串口烧录 `/dev/cu.wchusbserial130`（boot 900 正常启动、Web server ready、IP 192.168.2.127）；HTTP 实测列表 4,922 B 为 plan-rows 无 card/modal，编辑新页含保存表单/4 个时间/无删除，编辑 id=1 含删除表单且名称回填。页面视觉待用户真机确认。
 
 ## 本地网页 UI 重构 · 组2：设置页与事件页紧凑化（2026-10-31，专题进行中）
 

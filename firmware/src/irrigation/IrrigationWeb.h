@@ -11,6 +11,7 @@ private:
     static void settings();
     static void activeTask();
     static void plans();
+    static void planEdit();
     static void zones();
     static void zoneLearning();
     static void records();
