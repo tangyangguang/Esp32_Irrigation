@@ -28,4 +28,13 @@
 .irr-metrics small{display:block;margin-top:2px;color:var(--eb-muted);font-size:11px}
 @media(max-width:760px){.irr-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:420px){.irr-metrics{grid-template-columns:1fr}}
+/* 页码分页条 */
+.irr-pager{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:5px;margin:14px 0 4px}
+.irr-page{display:inline-flex;align-items:center;justify-content:center;min-width:32px;height:32px;padding:0 8px;border:1px solid var(--eb-line,#ccd5dd);border-radius:8px;background:#fff;color:var(--eb-ink);font-size:13px;font-variant-numeric:tabular-nums;line-height:1;text-decoration:none;box-sizing:border-box}
+a.irr-page:hover{border-color:var(--eb-primary);color:var(--eb-primary);background:var(--eb-primary-soft)}
+.irr-page.is-current{border-color:var(--eb-primary);background:var(--eb-primary);color:#fff;font-weight:600}
+.irr-page.is-disabled{opacity:.4;pointer-events:none}
+.irr-page-step{font-size:16px;font-weight:600}
+.irr-page-gap{display:inline-flex;align-items:center;min-width:24px;height:32px;justify-content:center;color:var(--eb-muted);user-select:none}
+@media(max-width:420px){.irr-pager{gap:4px}.irr-page{min-width:30px;height:30px;padding:0 6px;font-size:12px}}
 </style>

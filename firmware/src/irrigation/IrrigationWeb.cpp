@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 
 #include "IrrigationApp.h"
 #include "IrrigationConfig.h"
@@ -47,6 +48,9 @@
 namespace {
 
 IrrigationApp* g_app = nullptr;
+
+// 业务记录 / 操作日志列表每页条数。
+constexpr uint32_t kPageSize = 10;
 
 bool getParam(const char* name, char* output, std::size_t outputSize) {
     return Esp32BaseWeb::getParam(name, output, outputSize);
@@ -839,6 +843,58 @@ void sendRecordFlowAlertSummary(const WateringRecordPayload& payload,
 
 void html(const char* text) { Esp32BaseWeb::sendChunk(text); }
 
+// 页码分页条：matched 为筛选后总条数（遍历整库时已免费累计），offset 为本页起始下标。
+// pageHref(pageIndexZero) 由调用方拼好保留筛选参数的链接（offset 由本函数追加）。
+void sendPager(uint32_t matched, uint32_t offset,
+               const std::function<void(uint32_t)>& pageHref) {
+    if (matched == 0) return;
+    const uint32_t pages = (matched + kPageSize - 1) / kPageSize;
+    if (pages <= 1) return;
+    uint32_t current = offset / kPageSize;
+    if (current >= pages) current = pages - 1;
+    auto cell = [&](uint32_t page, const char* content, bool currentCell) {
+        if (currentCell) {
+            html("<span class='irr-page is-current' aria-current='page'>");
+        } else {
+            html("<a class='irr-page' href='");
+            pageHref(page);
+            html("'>");
+        }
+        html(content);
+        html(currentCell ? "</span>" : "</a>");
+    };
+    html("<nav class='irr-pager' aria-label='分页'>");
+    if (current > 0) {
+        html("<a class='irr-page irr-page-step' href='"); pageHref(current - 1);
+        html("'>‹</a>");
+    } else {
+        html("<span class='irr-page irr-page-step is-disabled'>‹</span>");
+    }
+    const uint32_t windowLow = current > 0 ? current - 1 : 0;
+    const uint32_t windowHigh = current + 1;
+    bool lastGap = false;
+    for (uint32_t page = 0; page < pages; ++page) {
+        const bool near = page == 0 || page == pages - 1 ||
+            (page >= windowLow && page <= windowHigh);
+        if (near) {
+            char num[12];
+            std::snprintf(num, sizeof(num), "%u", static_cast<unsigned>(page + 1));
+            cell(page, num, page == current);
+            lastGap = false;
+        } else if (!lastGap) {
+            html("<span class='irr-page-gap'>…</span>");
+            lastGap = true;
+        }
+    }
+    if (current + 1 < pages) {
+        html("<a class='irr-page irr-page-step' href='"); pageHref(current + 1);
+        html("'>›</a>");
+    } else {
+        html("<span class='irr-page irr-page-step is-disabled'>›</span>");
+    }
+    html("</nav>");
+}
+
 void escaped(const char* text) { Esp32BaseWeb::writeHtmlEscaped(text ? text : ""); }
 void epochText(uint32_t epoch, const char* format = "%m-%d %H:%M") {
     char text[32]{};
@@ -1479,7 +1535,7 @@ void historyRow(const StoredWateringRecord& record, void* user) {
     }
     if(q.result && !strcmp(q.result,"issues") && p.result==WateringResult::Completed && !recordFlowAlertZoneCount(p)) return;
     if(q.result && !strcmp(q.result,"ok") && (p.result!=WateringResult::Completed || recordFlowAlertZoneCount(p))) return;
-    if(q.matched++ < q.offset || q.shown>=20) return; ++q.shown;
+    if(q.matched++ < q.offset || q.shown>=kPageSize) return; ++q.shown;
     RecordRowsContext row{g_app->configuration(), 0};
     sendRecordRow(record, &row);
 }
@@ -1489,7 +1545,7 @@ void auditRow(const IrrigationEvents::EventRecord& event, void* user) {
     Esp32BaseRecordStore::resolveCompletedEpoch(event.timing,epoch);
     if(q.day && (!epoch || WateringHistory::localDay(epoch)!=q.day)) return;
     if(q.category && static_cast<uint8_t>(IrrigationEvents::category(event)) + 1U != q.category) return;
-    if(q.matched++ < q.offset || q.shown>=20) return; ++q.shown;
+    if(q.matched++ < q.offset || q.shown>=kPageSize) return; ++q.shown;
     char title[192]{}, summary[256]{};
     const auto* config=g_app->configuration();
     const char* zoneName=config && event.objectId>=1 && event.objectId<=BoardPins::kZoneCount ? config->zones[event.objectId-1].name.data() : nullptr;
@@ -2153,18 +2209,18 @@ void IrrigationWeb::plans() {
             Esp32BaseWeb::sendChunk("<ul class='plan-rows'>");
             for (const WateringPlan& plan : config->plans) {
                 if (!plan.configured) continue;
-                uint8_t zoneCount = 0;
                 uint32_t totalMinutes = 0;
+                uint8_t enabledZones = 0;
                 for (uint8_t index = 0; index < plan.zoneDurationMinutes.size(); ++index) {
-                    if (!config->zones[index].enabled || plan.zoneDurationMinutes[index] == 0) continue;
-                    ++zoneCount;
+                    if (!config->zones[index].enabled) continue;
+                    ++enabledZones;
                     totalMinutes += plan.zoneDurationMinutes[index];
                 }
                 Esp32BaseWeb::sendChunk("<li class='plan-row'><div class='plan-row-head'><b class='plan-row-name'>");
                 Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
                 Esp32BaseWeb::sendChunk("</b><span class='tag ");
                 Esp32BaseWeb::sendChunk(plan.scheduleEnabled ? "ok'>自动执行" : "'>已关闭");
-                Esp32BaseWeb::sendChunk("</span></div><div class='plan-row-body'><div class='plan-cell'><span class='plan-cell-label'>每日启动</span><span class='plan-times'>");
+                Esp32BaseWeb::sendChunk("</span></div><div class='plan-row-body'><div class='plan-cell plan-cell-times'><span class='plan-cell-label'>每日启动</span><span class='plan-times'>");
                 bool hasStartTime = false;
                 for (uint16_t minute : plan.startMinutes) {
                     if (minute == kUnusedStartMinute) continue;
@@ -2174,11 +2230,25 @@ void IrrigationWeb::plans() {
                     Esp32BaseWeb::sendChunk("<span class='plan-time-chip'>"); Esp32BaseWeb::sendChunk(time); Esp32BaseWeb::sendChunk("</span>");
                 }
                 if (!hasStartTime) Esp32BaseWeb::sendChunk("<span class='muted'>未设置</span>");
-                Esp32BaseWeb::sendChunk("</span></div><div class='plan-cell'><span class='plan-cell-label'>浇水时长</span><span class='plan-cell-value'>");
-                if (zoneCount == 0) html("<span class='muted'>无可执行水路</span>");
-                else { sendUnsigned(zoneCount); html(" 路 · 共 "); sendUnsigned(totalMinutes); html(" 分钟"); }
-                if (!plan.scheduleEnabled) html("<span class='muted plan-off-note'>仅用于手动浇水</span>");
-                Esp32BaseWeb::sendChunk("</span></div></div><div class='plan-row-edit'><a class='btnlink info' href='/irrigation/plans/edit?id=");
+                Esp32BaseWeb::sendChunk("</span></div><div class='plan-cell plan-cell-zones'><span class='plan-cell-label'>各水路时长");
+                if (totalMinutes) { html(" · 共 "); sendUnsigned(totalMinutes); html(" 分钟"); }
+                Esp32BaseWeb::sendChunk("</span>");
+                if (enabledZones == 0) html("<span class='muted'>暂无启用水路</span>");
+                else {
+                    html("<span class='plan-zones'>");
+                    for (uint8_t index = 0; index < plan.zoneDurationMinutes.size(); ++index) {
+                        if (!config->zones[index].enabled) continue;
+                        const uint32_t minutes = plan.zoneDurationMinutes[index];
+                        Esp32BaseWeb::sendChunk(minutes ? "<span class='plan-zone'>" : "<span class='plan-zone plan-zone-off'>");
+                        sendZoneName(config, index);
+                        if (minutes) { html("<b>"); sendUnsigned(minutes); html("</b>分"); }
+                        else html("<em>不浇</em>");
+                        Esp32BaseWeb::sendChunk("</span>");
+                    }
+                    html("</span>");
+                }
+                if (!plan.scheduleEnabled) html("<span class='muted plan-off-note'>已关闭自动执行，仅作为手动浇水模板</span>");
+                Esp32BaseWeb::sendChunk("</div></div><div class='plan-row-edit'><a class='btnlink info' href='/irrigation/plans/edit?id=");
                 sendUnsigned(plan.id);
                 Esp32BaseWeb::sendChunk("'>编辑</a></div></li>");
             }
@@ -2226,13 +2296,18 @@ void IrrigationWeb::records() {
     HistoryRows q{};
     char date[12]{}, result[16]{};
     if(getParam("date",date,sizeof(date)) && date[0]) q.day=selectedDay();
-    uintParam("offset",0,UINT32_MAX-20,q.offset);
+    uintParam("offset",0,UINT32_MAX-kPageSize,q.offset);
+    q.offset = (q.offset / kPageSize) * kPageSize;
     getParam("result",result,sizeof(result)); q.result=result;
     html("<form method='get' class='irr-filter'><label>日期<input type='date' name='date' value='");escaped(date);html("'></label><label>结果<select name='result'><option value=''>全部结果</option><option value='ok'");if(!strcmp(result,"ok"))html(" selected");html(">仅正常完成</option><option value='issues'");if(!strcmp(result,"issues"))html(" selected");html(">停止、异常或不完整</option></select></label><button>筛选</button><a class='btnlink secondary' href='/irrigation/records'>清除</a></form><section class='panel'><h2>历史记录</h2><div class='tablewrap'><table class='record-table'><thead><tr><th>开始时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
     Esp32BaseRecordStore::StoreStatus state{};const bool ok=g_app->readWateringRecordStoreStatus(state)&&state.ready&&(state.recordCount==0||g_app->readLatestWateringRecords(0,state.recordCount,historyRow,&q));
     html("</tbody></table></div>");
     if(!ok)html("<p class='notice warn'>记录读取失败，不能据此判断没有浇水。</p>");else if(!q.shown)html("<p>当前条件下暂无浇水记录。</p>");html("</section>");
-    if(q.offset || q.matched>q.offset+q.shown){html("<nav class='actions'>");for(int d=-1;d<=1;d+=2){if(d<0&&!q.offset)continue;if(d>0&&q.matched<=q.offset+q.shown)continue;html("<a class='btnlink secondary' href='?date=");escaped(date);html("&result=");escaped(result);html("&offset=");sendUnsigned(d<0?(q.offset>20?q.offset-20:0):q.offset+20);html("'>");html(d<0?"上一页":"下一页");html("</a>");}html("</nav>");}
+    sendPager(q.matched, q.offset, [&](uint32_t page) {
+        html("?date="); escaped(date);
+        html("&result="); escaped(result);
+        html("&offset="); sendUnsigned(page * kPageSize);
+    });
     if(state.oldestRecordId>1)html("<p class='muted'>本地历史按预算滚动保留，较早记录可能已淘汰。</p>");
     html("<p><a href='/irrigation/events'>操作日志 ›</a></p>");
     endPage();
@@ -2252,7 +2327,8 @@ void IrrigationWeb::events() {
         if (IrrigationTime::parseLocalDateTimeUtc8(dateTime, dayEpoch)) q.day = WateringHistory::localDay(dayEpoch);
     }
     if (uintParam("category", 1, 4, category)) q.category = static_cast<uint8_t>(category);
-    uintParam("offset", 0, UINT32_MAX - 20, q.offset);
+    uintParam("offset", 0, UINT32_MAX - kPageSize, q.offset);
+    q.offset = (q.offset / kPageSize) * kPageSize;
     html("<form method='get' class='irr-filter'><label>日期<input type='date' name='date' value='"); escaped(date);
     html("'></label><label>类别<select name='category'><option value='0'>全部类别</option>");
     for (uint8_t index = 0; index < 4; ++index) {
@@ -2270,17 +2346,11 @@ void IrrigationWeb::events() {
     if(!readable) html("<p>历史暂时无法读取，不能据此判断没有发生过事项。</p>");
     else if(!q.shown) html("<p>当前筛选条件下暂无事件。</p>");
     html("</section>");
-    if(q.offset || q.matched>q.offset+q.shown) {
-        auto pagingLink = [&](uint32_t nextOffset, const char* label) {
-            html("<a class='btnlink secondary' href='?date="); escaped(date);
-            html("&category="); sendUnsigned(q.category);
-            html("&offset="); sendUnsigned(nextOffset); html("'>"); html(label); html("</a> ");
-        };
-        html("<nav class='actions'>");
-        if (q.offset) pagingLink(q.offset>20?q.offset-20:0, "上一页");
-        if(q.matched>q.offset+q.shown) pagingLink(q.offset+20, "更早记录 ›");
-        html("</nav>");
-    }
+    sendPager(q.matched, q.offset, [&](uint32_t page) {
+        html("?date="); escaped(date);
+        html("&category="); sendUnsigned(q.category);
+        html("&offset="); sendUnsigned(page * kPageSize);
+    });
     endPage();
 }
 void IrrigationWeb::zones() {
