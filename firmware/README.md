@@ -69,7 +69,7 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 - 新增共享资产 `common-style.html`（CommonStyle，gzip 后极小，长期缓存），首批只放跨页复用的 `.irr-back` 返回链接与 `.irr-metrics` 紧凑指标格，不覆盖基础库全局类。
 - `flow-overview-script`：详情曲线加载从「只能在 dialog 内 showModal」改为容器无关（是 dialog 才 showModal，独立页直接在页内 fit 绘制，仅当 `[data-rfo-record]` 不在 dialog 内时自动加载一次，不误伤运行页/列表页）。
 - 记录列表/详情样式紧凑化（收紧行高、列宽、详情指标改 4 格、技术数字默认折叠），删除弹窗专用死选择器。
-- 验证：`generate_web_assets.py` 重生成、`test_web_assets.py` PASS（12 片段，含 JS 语法）；主目标构建 SUCCESS（Flash 1,556,319 B/88.0%，较基线 +84 B；RAM 115,652 B 不变；记录列表页还少引一份 FlowOverviewScript）；隔离子代理终审通过。页面视觉待用户 Web OTA 真机确认。
+- 验证：`generate_web_assets.py` 重生成、`test_web_assets.py` PASS（12 片段，含 JS 语法）；主目标构建 SUCCESS（Flash 1,556,319 B/88.0%，较基线 +84 B；RAM 115,652 B 不变；记录列表页还少引一份 FlowOverviewScript）；隔离子代理终审通过。已串口烧录 `/dev/cu.wchusbserial130`（boot 896 正常启动、Web server ready、NTP 同步），HTTP 实测（192.168.2.127）：列表页 12,294 B、20 行均为 `?id=N` 链接、零内嵌 dialog、无曲线快捷按钮、不引 FlowOverviewScript；`?id=49` 详情 4,215 B 含返回链接/曲线面板/技术折叠且无 dialog，FlowOverviewScript 200(gzip 3,917 B→9,422 B)；较旧记录 id=1/2/10/48 详情 3.3 KB 左右且按规则不出曲线面板。页面视觉待用户真机确认。
 
 ## 流量曲线增强（2026-10-25，见根目录《重构优化记录.md》会话 3/4）
 
