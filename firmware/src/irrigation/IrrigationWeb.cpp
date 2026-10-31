@@ -1511,13 +1511,13 @@ bool IrrigationWeb::registerRoutes(IrrigationApp& app) {
         Esp32BaseWeb::addPage("/irrigation","首页",overview) &&
         Esp32BaseWeb::addPage("/irrigation/plans","计划",plans) &&
         Esp32BaseWeb::addRoute("/irrigation/plans/edit",Esp32BaseWeb::METHOD_GET,planEdit) &&
-        Esp32BaseWeb::addPage("/irrigation/records","记录",records) &&
+        Esp32BaseWeb::addPage("/irrigation/records","业务记录",records) &&
+        Esp32BaseWeb::addPage("/irrigation/events","操作日志",events) &&
         Esp32BaseWeb::addPage("/irrigation/settings","设置",settings) &&
         Esp32BaseWeb::addRoute("/irrigation",Esp32BaseWeb::METHOD_POST,overview) &&
         Esp32BaseWeb::addRoute("/irrigation/plans",Esp32BaseWeb::METHOD_POST,plans) &&
         Esp32BaseWeb::addRoute("/irrigation/zones",Esp32BaseWeb::METHOD_GET,zones) &&
         Esp32BaseWeb::addRoute("/irrigation/zones",Esp32BaseWeb::METHOD_POST,zones) &&
-        Esp32BaseWeb::addRoute("/irrigation/events",Esp32BaseWeb::METHOD_GET,events) &&
         Esp32BaseWeb::addRoute("/irrigation/zones/learning",Esp32BaseWeb::METHOD_GET,zoneLearning) &&
         Esp32BaseWeb::addRoute("/irrigation/zones/learning",Esp32BaseWeb::METHOD_POST,zoneLearning) &&
         Esp32BaseWeb::addApi("/irrigation/api/status",statusApi) &&
@@ -1865,8 +1865,27 @@ void applyPostedPlanValues(WateringPlan& plan,
 // Standalone plan editor page (new or existing). retry=true refills a failed
 // save POST in-place so the entered values survive.
 void renderPlanEditPage(uint32_t requestedId, bool retry) {
+    if (!Esp32BaseWeb::checkAuth()) return;
     const IrrigationConfig* config = g_app->configuration();
-    if (!beginPage("编辑浇水计划", "设置启动时间与各水路时长")) return;
+    int slot = -1;
+    bool existing = false;
+    const char* pageTitle = "新增浇水计划";
+    if (config) {
+        int firstAvailable = -1;
+        for (const WateringPlan& item : config->plans) {
+            if (!item.configured) { firstAvailable = item.id - 1; break; }
+        }
+        if (requestedId >= 1 && requestedId <= config->plans.size()) {
+            slot = static_cast<int>(requestedId) - 1;
+        } else if (!retry) {
+            slot = firstAvailable;
+        }
+        if (slot >= 0) {
+            existing = config->plans[slot].configured;
+            pageTitle = existing ? "编辑浇水计划" : "新增浇水计划";
+        }
+    }
+    if (!beginPage(pageTitle, "设置启动时间与各水路时长")) return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::PlansStyle);
     html("<p class='irr-back'><a class='btnlink secondary compact' href='/irrigation/plans'>‹ 返回计划列表</a></p>");
@@ -1874,18 +1893,6 @@ void renderPlanEditPage(uint32_t requestedId, bool retry) {
         Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_DANGER, "灌溉配置不可用", "请先在系统工具检查设备状态。");
         endPage();
         return;
-    }
-    int firstAvailable = -1;
-    for (const WateringPlan& item : config->plans) {
-        if (!item.configured) { firstAvailable = item.id - 1; break; }
-    }
-    int slot = -1;
-    if (retry && requestedId >= 1 && requestedId <= config->plans.size()) {
-        slot = static_cast<int>(requestedId) - 1;
-    } else if (!retry && requestedId >= 1 && requestedId <= config->plans.size()) {
-        slot = static_cast<int>(requestedId) - 1;
-    } else if (!retry) {
-        slot = firstAvailable;
     }
     if (slot < 0) {
         if (retry) {
@@ -1898,7 +1905,6 @@ void renderPlanEditPage(uint32_t requestedId, bool retry) {
         endPage();
         return;
     }
-    const bool existing = config->plans[slot].configured;
     WateringPlan plan = config->plans[slot];
     uint32_t formRevision = config->revision;
     if (retry) {
@@ -1908,55 +1914,86 @@ void renderPlanEditPage(uint32_t requestedId, bool retry) {
                                      ? "配置已在其他页面更新，请调整后重试。"
                                      : g_app->configurationError());
     }
-    Esp32BaseWeb::beginPanel(existing ? "编辑浇水计划" : "新增浇水计划");
-    Esp32BaseWeb::sendChunk("<form id='plan-save-form' method='post' action='/irrigation/plans' onsubmit='return once(this)'>"
-         "<input type='hidden' name='action' value='save'><input type='hidden' name='plan_id' value='");
+    Esp32BaseWeb::beginPanel();
+    Esp32BaseWeb::sendChunk(
+        "<div class='plan-edit'>"
+        "<form id='plan-save-form' method='post' action='/irrigation/plans' onsubmit='return once(this)'>"
+        "<input type='hidden' name='action' value='save'><input type='hidden' name='plan_id' value='");
     sendUnsigned(plan.id);
     Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='");
     sendUnsigned(formRevision);
-    Esp32BaseWeb::sendChunk("'>");
-    // Basic info.
-    Esp32BaseWeb::sendChunk("<h3>基本信息</h3><div class='plan-edit-grid'>"
-         "<p class='field'><label>计划名称</label><input type='text' name='name' maxlength='63' required value='");
+    Esp32BaseWeb::sendChunk(
+        "'>"
+        // Basic info
+        "<div class='pe-section'>"
+        "<h3>基本信息</h3>"
+        "<div class='pe-basic'>"
+        "<div class='pe-field pe-name'>"
+        "<label for='plan-name'>计划名称</label>"
+        "<input id='plan-name' type='text' name='name' maxlength='63' required value='");
     Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
-    Esp32BaseWeb::sendChunk("'></p><div class='plan-switch'><label><input type='checkbox' name='schedule_enabled' value='1' ");
+    Esp32BaseWeb::sendChunk(
+        "'>"
+        "</div>"
+        "<div class='pe-field pe-switch'>"
+        "<label class='pe-check'><input type='checkbox' name='schedule_enabled' value='1' ");
     if (plan.scheduleEnabled) Esp32BaseWeb::sendChunk("checked");
-    Esp32BaseWeb::sendChunk("> 自动执行</label><small>仅控制定时执行；关闭后仍可在手动浇水时作为时长模板。</small></div></div>");
-    // Start times.
-    Esp32BaseWeb::sendChunk("<h3 style='margin-top:14px'>自动执行时间</h3><p class='muted' style='margin-bottom:8px'>每天最多执行 4 次；留空表示不使用。</p><div class='plan-edit-grid'>");
+    Esp32BaseWeb::sendChunk(
+        "> <span>自动执行</span></label>"
+        "<small>关闭后不按时启动，仍可在手动浇水时作为时长模板。</small>"
+        "</div>"
+        "</div></div>");
+    // Start times
+    Esp32BaseWeb::sendChunk(
+        "<div class='pe-section'>"
+        "<h3>每日启动时间</h3>"
+        "<p class='pe-hint'>最多 4 个时间点；留空表示不使用。</p>"
+        "<div class='pe-times'>");
     for (uint8_t index = 0; index < plan.startMinutes.size(); ++index) {
-        Esp32BaseWeb::sendChunk("<div class='field'><label>启动时间 "); sendUnsigned(index + 1U);
-        Esp32BaseWeb::sendChunk("</label><div style='display:flex;gap:8px'><input style='flex:1;max-width:none;margin:0' type='time' name='time"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("' value='");
+        Esp32BaseWeb::sendChunk("<div class='pe-time'><label>时间 "); sendUnsigned(index + 1U);
+        Esp32BaseWeb::sendChunk("</label><div class='pe-time-row'><input type='time' name='time"); sendUnsigned(index + 1U); Esp32BaseWeb::sendChunk("' value='");
         if (plan.startMinutes[index] != kUnusedStartMinute) {
             char time[8];
             std::snprintf(time, sizeof(time), "%02u:%02u", plan.startMinutes[index] / 60U, plan.startMinutes[index] % 60U);
             Esp32BaseWeb::sendChunk(time);
         }
-        Esp32BaseWeb::sendChunk("'><button type='button' class='secondary' onclick=\"this.previousElementSibling.value=''\">清除</button></div></div>");
+        Esp32BaseWeb::sendChunk("'><button type='button' class='secondary pe-clear' onclick=\"this.previousElementSibling.value=''\">清除</button></div></div>");
     }
-    Esp32BaseWeb::sendChunk("</div>");
-    // Per-zone durations.
-    Esp32BaseWeb::sendChunk("<h3 style='margin-top:14px'>各水路浇水时长</h3><p class='muted' style='margin-bottom:8px'>只显示已启用水路；0 分钟表示本计划不浇该水路。</p><div class='plan-zones'>");
+    Esp32BaseWeb::sendChunk("</div></div>");
+    // Per-zone durations
+    Esp32BaseWeb::sendChunk(
+        "<div class='pe-section'>"
+        "<h3>各水路浇水时长</h3>"
+        "<p class='pe-hint'>只显示已启用水路；0 分钟表示本计划不浇该水路。</p>"
+        "<div class='pe-zones'>");
     for (uint8_t index = 0; index < plan.zoneDurationMinutes.size(); ++index) {
         if (!config->zones[index].enabled) continue;
-        Esp32BaseWeb::sendChunk("<p class='plan-zone'><label>");
+        Esp32BaseWeb::sendChunk("<div class='pe-zone'><label>");
         Esp32BaseWeb::writeHtmlEscaped(config->zones[index].name.data());
-        Esp32BaseWeb::sendChunk("</label><input type='number' name='zone"); sendUnsigned(index + 1U);
+        Esp32BaseWeb::sendChunk("</label><div class='pe-zone-input'><input type='number' name='zone"); sendUnsigned(index + 1U);
         Esp32BaseWeb::sendChunk("' min='0' max='"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes);
         Esp32BaseWeb::sendChunk("' value='"); sendUnsigned(plan.zoneDurationMinutes[index]);
-        Esp32BaseWeb::sendChunk("'><small>单位：分钟，范围 0～"); sendUnsigned(config->runLimits.maximumZoneDurationMinutes);
-        Esp32BaseWeb::sendChunk("</small></p>");
+        Esp32BaseWeb::sendChunk("'><span class='pe-unit'>分钟</span></div></div>");
     }
-    Esp32BaseWeb::sendChunk("</div>");
-    Esp32BaseWeb::sendChunk("<div class='actions plan-edit-actions'><a class='btnlink secondary' href='/irrigation/plans'>返回列表</a><span class='spacer'></span><input type='submit' value='保存计划'></div></form>");
+    Esp32BaseWeb::sendChunk(
+        "</div></div>"
+        "<div class='pe-actions'>"
+        "<a class='btnlink secondary' href='/irrigation/plans'>返回列表</a>"
+        "<input type='submit' value='保存计划'>"
+        "</div></form></div>");
     Esp32BaseWeb::endPanel();
     if (existing) {
-        Esp32BaseWeb::sendChunk("<form method='post' action='/irrigation/plans' onsubmit=\"return confirm('确认删除该计划？')&&once(this)\">"
-             "<input type='hidden' name='action' value='delete'><input type='hidden' name='plan_id' value='");
+        Esp32BaseWeb::sendChunk(
+            "<section class='panel pe-danger'><form method='post' action='/irrigation/plans' "
+            "onsubmit=\"return confirm('确认删除该计划？')&&once(this)\">"
+            "<input type='hidden' name='action' value='delete'><input type='hidden' name='plan_id' value='");
         sendUnsigned(plan.id);
         Esp32BaseWeb::sendChunk("'><input type='hidden' name='revision' value='");
         sendUnsigned(formRevision);
-        Esp32BaseWeb::sendChunk("'><div class='actions'><input class='danger' type='submit' value='删除计划'></div></form>");
+        Esp32BaseWeb::sendChunk(
+            "'><div class='pe-danger-row'><div><b>删除该计划</b>"
+            "<small>删除后不再自动执行，也不能作为手动浇水模板。</small></div>"
+            "<input class='danger' type='submit' value='删除计划'></div></form></section>");
     }
     // Overlap warning for estimated run windows (same data/guard as before).
     html("<script>window.IRR_PLAN_WINDOWS=[");
@@ -2106,8 +2143,8 @@ void IrrigationWeb::plans() {
             if (item.configured) anyConfigured = true;
             else if (firstAvailable < 0) firstAvailable = item.id - 1;
         }
-        Esp32BaseWeb::beginPanel("计划列表");
-        Esp32BaseWeb::sendChunk("<div class='plan-list-head'><h2 style='margin:0'>计划列表</h2>");
+        Esp32BaseWeb::beginPanel();
+        Esp32BaseWeb::sendChunk("<div class='plan-list-head'><h2>计划列表</h2>");
         if (firstAvailable >= 0) {
             Esp32BaseWeb::sendChunk("<a class='btnlink' href='/irrigation/plans/edit'>新增计划</a>");
         }
@@ -2123,11 +2160,11 @@ void IrrigationWeb::plans() {
                     ++zoneCount;
                     totalMinutes += plan.zoneDurationMinutes[index];
                 }
-                Esp32BaseWeb::sendChunk("<li class='plan-row'><div class='plan-row-main'><div class='plan-row-title'><b>");
+                Esp32BaseWeb::sendChunk("<li class='plan-row'><div class='plan-row-head'><b class='plan-row-name'>");
                 Esp32BaseWeb::writeHtmlEscaped(plan.name.data());
                 Esp32BaseWeb::sendChunk("</b><span class='tag ");
                 Esp32BaseWeb::sendChunk(plan.scheduleEnabled ? "ok'>自动执行" : "'>已关闭");
-                Esp32BaseWeb::sendChunk("</span></div><div class='plan-row-meta'><span class='plan-times'>");
+                Esp32BaseWeb::sendChunk("</span></div><div class='plan-row-body'><div class='plan-cell'><span class='plan-cell-label'>每日启动</span><span class='plan-times'>");
                 bool hasStartTime = false;
                 for (uint16_t minute : plan.startMinutes) {
                     if (minute == kUnusedStartMinute) continue;
@@ -2136,12 +2173,12 @@ void IrrigationWeb::plans() {
                     std::snprintf(time, sizeof(time), "%02u:%02u", minute / 60U, minute % 60U);
                     Esp32BaseWeb::sendChunk("<span class='plan-time-chip'>"); Esp32BaseWeb::sendChunk(time); Esp32BaseWeb::sendChunk("</span>");
                 }
-                if (!hasStartTime) Esp32BaseWeb::sendChunk("<span class='muted'>未设置启动时间</span>");
-                Esp32BaseWeb::sendChunk("</span><span>");
-                if (zoneCount == 0) html("无可执行水路");
+                if (!hasStartTime) Esp32BaseWeb::sendChunk("<span class='muted'>未设置</span>");
+                Esp32BaseWeb::sendChunk("</span></div><div class='plan-cell'><span class='plan-cell-label'>浇水时长</span><span class='plan-cell-value'>");
+                if (zoneCount == 0) html("<span class='muted'>无可执行水路</span>");
                 else { sendUnsigned(zoneCount); html(" 路 · 共 "); sendUnsigned(totalMinutes); html(" 分钟"); }
-                if (!plan.scheduleEnabled) html("<span class='plan-off-note'>仅用于手动浇水</span>");
-                Esp32BaseWeb::sendChunk("</span></div></div><div class='plan-row-edit'><a class='btnlink info compact' href='/irrigation/plans/edit?id=");
+                if (!plan.scheduleEnabled) html("<span class='muted plan-off-note'>仅用于手动浇水</span>");
+                Esp32BaseWeb::sendChunk("</span></div></div><div class='plan-row-edit'><a class='btnlink info' href='/irrigation/plans/edit?id=");
                 sendUnsigned(plan.id);
                 Esp32BaseWeb::sendChunk("'>编辑</a></div></li>");
             }
@@ -2165,7 +2202,7 @@ void IrrigationWeb::records() {
     // the list so its HTML cost is paid only when a record is opened.
     uint32_t detailId = 0;
     if (uintParam("id", 1, UINT32_MAX, detailId)) {
-        if (!beginPage("浇水记录详情", "单次任务的执行结果与流量表现")) return;
+        if (!beginPage("业务记录详情", "单次任务的执行结果与流量表现")) return;
         StoredWateringRecord detail{};
         const bool found =
             g_app->readWateringRecordById(detailId, detail) ==
@@ -2183,7 +2220,7 @@ void IrrigationWeb::records() {
         endPage();
         return;
     }
-    if(!beginPage("浇水记录","实际时长为主，估算水量为辅"))return;
+    if(!beginPage("业务记录","实际时长为主，估算水量为辅"))return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
     HistoryRows q{};
@@ -2197,14 +2234,14 @@ void IrrigationWeb::records() {
     if(!ok)html("<p class='notice warn'>记录读取失败，不能据此判断没有浇水。</p>");else if(!q.shown)html("<p>当前条件下暂无浇水记录。</p>");html("</section>");
     if(q.offset || q.matched>q.offset+q.shown){html("<nav class='actions'>");for(int d=-1;d<=1;d+=2){if(d<0&&!q.offset)continue;if(d>0&&q.matched<=q.offset+q.shown)continue;html("<a class='btnlink secondary' href='?date=");escaped(date);html("&result=");escaped(result);html("&offset=");sendUnsigned(d<0?(q.offset>20?q.offset-20:0):q.offset+20);html("'>");html(d<0?"上一页":"下一页");html("</a>");}html("</nav>");}
     if(state.oldestRecordId>1)html("<p class='muted'>本地历史按预算滚动保留，较早记录可能已淘汰。</p>");
-    html("<p><a href='/irrigation/events'>操作与设备异常历史 ›</a></p>");
+    html("<p><a href='/irrigation/events'>操作日志 ›</a></p>");
     endPage();
 }
 void IrrigationWeb::events() {
-    if(!beginPage("操作与设备异常历史","查看影响计划和水路的必要变化"))return;
+    if(!beginPage("操作日志","查看影响计划和水路的必要变化"))return;
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
-    html("<p class='irr-back'><a class='btnlink secondary compact' href='/irrigation/records'>‹ 浇水记录</a></p>");
+    html("<p class='irr-back'><a class='btnlink secondary compact' href='/irrigation/records'>‹ 业务记录</a></p>");
     char date[12]{};
     AuditRows q{};
     uint32_t category = 0;
