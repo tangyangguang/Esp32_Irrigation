@@ -52,13 +52,24 @@ python3 foundation/Esp32Base/scripts/pio_arduino.py 3 --tls-toolchain run \
 
 | 项 | 值 |
 | --- | --- |
-| Flash（应用分区） | 1,556,235 B（87.9%，分区 1,769,472 B） |
+| Flash（应用分区） | 1,556,319 B（88.0%，分区 1,769,472 B） |
 | 静态 RAM（DRAM data+bss） | 115,652 B（35.3%，327,680 B） |
-| OTA 镜像 firmware.bin | 1,556,640 B |
-| 对侧 OTA 槽余量 | 212,832 B（约 207.8 KiB，12.03%） |
+| OTA 镜像 firmware.bin | 1,556,624 B |
+| 对侧 OTA 槽余量 | 212,848 B（约 207.9 KiB，12.03%） |
 | loopTask 栈 | 16 KB（`ARDUINO_LOOP_STACK_SIZE`，运行时从堆分配，不计入上方静态 RAM；空闲堆约因此少 8 KB） |
 
 运行堆/栈峰值未测量；OTA 余量偏紧，尺寸优化为待定项，不通过削弱 TLS/OTA/日志/记录预算来换体积。
+
+## 本地网页 UI 重构 · 组1：记录列表与详情独立页（2026-10-29，专题进行中）
+
+仅表现层重构，后端 POST 契约、JSON API、鉴权、revision 机制零改动。
+
+- 浇水记录列表不再为每行内嵌完整详情 `<dialog>`（原来 20 行各带一份最多 6 路明细表+指标+技术区+流量图容器，未压缩 HTML 首屏多传数十 KB）；行内「查看详情」改为链接 `/irrigation/records?id=N`，详情改为整页渲染：返回列表链接 + 摘要面板（来源/结果/4 指标）+ 执行时间 + 水路明细表（移动端转列表）+ 全程流量曲线（仅该记录在 RAM 中仍有曲线时出面板）+ 折叠的技术指标。动态 HTML 不压缩，此项是本轮主要的流量/首屏收益。
+- 记录页移除漂浮的「查看最后一次浇水曲线」按钮（看最近曲线即进最新记录详情，入口统一）；该按钮在首页的引用与函数本体留待首页组删除。
+- 新增共享资产 `common-style.html`（CommonStyle，gzip 后极小，长期缓存），首批只放跨页复用的 `.irr-back` 返回链接与 `.irr-metrics` 紧凑指标格，不覆盖基础库全局类。
+- `flow-overview-script`：详情曲线加载从「只能在 dialog 内 showModal」改为容器无关（是 dialog 才 showModal，独立页直接在页内 fit 绘制，仅当 `[data-rfo-record]` 不在 dialog 内时自动加载一次，不误伤运行页/列表页）。
+- 记录列表/详情样式紧凑化（收紧行高、列宽、详情指标改 4 格、技术数字默认折叠），删除弹窗专用死选择器。
+- 验证：`generate_web_assets.py` 重生成、`test_web_assets.py` PASS（12 片段，含 JS 语法）；主目标构建 SUCCESS（Flash 1,556,319 B/88.0%，较基线 +84 B；RAM 115,652 B 不变；记录列表页还少引一份 FlowOverviewScript）；隔离子代理终审通过。页面视觉待用户 Web OTA 真机确认。
 
 ## 流量曲线增强（2026-10-25，见根目录《重构优化记录.md》会话 3/4）
 

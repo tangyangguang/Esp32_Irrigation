@@ -164,12 +164,16 @@ function fetchJson(tail,cb){
     .then(function(r){return r.json();}).then(cb).catch(function(){cb(null);});
 }
 
-// Record detail: fetch the whole curve once the dialog is laid out; draw only
-// when the in-RAM curve still belongs to this exact record.
-window.openRecordFlowOverview=function(dialogId){
-  var d=document.getElementById(dialogId);
+// Record detail: fetch the whole curve once the container is laid out; draw
+// only when the in-RAM curve still belongs to this exact record. Works for a
+// <dialog> (kept for compatibility) and for the standalone detail page.
+window.openRecordFlowOverview=function(containerId){
+  var d=document.getElementById(containerId);
   if(!d)return;
-  d.showModal();
+  if(typeof d.showModal==='function'&&!d.open)d.showModal();
+  loadRecordFlowOverview(d);
+};
+function loadRecordFlowOverview(d){
   var canvas=d.querySelector('[data-rfo-record]'),legend=d.querySelector('.record-flow-legend');
   if(!canvas)return;
   var want=Number(canvas.getAttribute('data-rfo-record'))||0;
@@ -218,4 +222,9 @@ function startRunning(){
 
 // Detail-only page: no running canvas, nothing to poll.
 if(document.getElementById('run-overview-chart'))startRunning();
+// Standalone record detail page: load the in-page curve (if the record has one).
+(function(){
+  var holder=document.querySelector('[data-rfo-record]');
+  if(holder&&holder.closest('dialog')===null)loadRecordFlowOverview(document);
+})();
 })();</script>

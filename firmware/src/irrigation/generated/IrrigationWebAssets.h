@@ -5,6 +5,7 @@
 namespace IrrigationWebAssets {
 
 enum class Asset : uint8_t {
+    CommonStyle,
     HomeStyle,
     PlansStyle,
     HomeScript,

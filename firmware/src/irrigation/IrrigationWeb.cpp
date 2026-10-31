@@ -35,7 +35,7 @@
 //                            sendDuration / sendWaterVolume / sendCompactWaterVolume /
 //                            sendLiters / sendFlowRate / sendZoneName
 //   E. 浇水记录与审计渲染     record* / sendRecord* / outcome / historyRow /
-//                            auditRow / sendRecordRow / sendRecordDetailDialog /
+//                            auditRow / sendRecordRow / sendRecordDetailSections /
 //                            sendRecordFlowOverview / sendLastFlowOverviewLink
 //   F. 条件徽章与首页“今日”   collectConditions / conditionDetail / conditions /
 //                            epochText / selectedDay / dateNav / renderDayPlans /
@@ -1245,15 +1245,16 @@ struct RecordRowsContext {
 // if the in-RAM curve still belongs to this exact record id.
 void sendRecordFlowOverview(const StoredWateringRecord& record) {
     if (!g_app->hasFlowOverviewForRecord(record.recordId)) return;
+    Esp32BaseWeb::beginPanel("全程流量曲线");
     Esp32BaseWeb::sendChunk(
-        "<div class='record-detail-section record-flow-overview'><h3>全程流量曲线</h3>"
-        "<p>每 5 秒一个点，按任务时间轴顺序排列；颜色区分水路，虚线为该路基准。</p>"
+        "<div class='record-flow-overview'><p>每 5 秒一个点，按任务时间轴顺序排列；颜色区分水路，虚线为该路基准。</p>"
         "<canvas class='record-flow-canvas' data-rfo-record='");
     sendUnsigned(record.recordId);
     Esp32BaseWeb::sendChunk(
         "' height='140'></canvas>"
         "<div class='record-flow-empty muted' style='display:none'>该记录暂无可显示的全程曲线。</div>"
         "<div class='record-flow-legend'></div></div>");
+    Esp32BaseWeb::endPanel();
 }
 
 // Shortcut to the last completed watering's record detail (which embeds the
@@ -1267,28 +1268,26 @@ void sendLastFlowOverviewLink() {
     Esp32BaseWeb::sendChunk("'>查看最后一次浇水曲线</a></p>");
 }
 
-void sendRecordDetailDialog(const StoredWateringRecord& record,
-                            const IrrigationConfig* config,
-                            const char* dialogPrefix) {
+void sendRecordDetailSections(const StoredWateringRecord& record,
+                              const IrrigationConfig* config) {
     const WateringRecordTotals totals = WateringRecordCodec::calculateTotals(record.payload);
     const uint8_t plannedZoneCount = recordPlannedZoneCount(record.payload);
     const uint8_t startedZoneCount = recordStartedZoneCount(record.payload);
     const uint8_t baselineZoneCount = recordBaselineZoneCount(record.payload);
     const uint8_t alertZoneCount = recordFlowAlertZoneCount(record.payload);
-    Esp32BaseWeb::sendChunk("<dialog id='");
-    Esp32BaseWeb::sendChunk(dialogPrefix);
-    sendUnsigned(record.recordId);
-    Esp32BaseWeb::sendChunk("' class='panel eb-modal record-detail-dialog' data-eb-light-dismiss='1'><div class='record-detail-head'><div><span class='muted'>");
+    // Summary panel: source, outcome and the headline numbers.
+    Esp32BaseWeb::beginPanel();
+    Esp32BaseWeb::sendChunk("<div class='record-detail-head'><div><span class='muted'>");
     sendRecordSource(record.payload, config);
     Esp32BaseWeb::sendChunk("</span><h2>");
     epochText(record.payload.startedEpoch, "%m月%d日 %H:%M");
-    Esp32BaseWeb::sendChunk("</h2></div><button type='button' class='secondary record-detail-close' onclick='this.closest(\"dialog\").close()'>关闭</button></div><div class='record-detail-result'><span class='tag ");
+    Esp32BaseWeb::sendChunk("</h2></div></div><div class='record-detail-result'><span class='tag ");
     Esp32BaseWeb::sendChunk(recordOutcomeTone(record.payload));
     Esp32BaseWeb::sendChunk("'>");
     Esp32BaseWeb::sendChunk(outcome(record.payload));
     Esp32BaseWeb::sendChunk("</span><span>");
     sendRecordOutcomeSummary(record.payload, config);
-    Esp32BaseWeb::sendChunk("</span></div><div class='record-detail-metrics'><div><span>实际浇水</span><b>");
+    Esp32BaseWeb::sendChunk("</span></div><div class='irr-metrics'><div><span>实际浇水</span><b>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendDuration(totals.actualWateringSec);
@@ -1301,24 +1300,22 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
     else sendWaterVolume(totals.estimatedWaterMl);
     Esp32BaseWeb::sendChunk("</b></div><div><span>执行水路</span><b>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
-    else sendUnsigned(startedZoneCount);
-    Esp32BaseWeb::sendChunk(" / ");
-    sendUnsigned(plannedZoneCount);
-    Esp32BaseWeb::sendChunk(" 路</b></div><div><span>高低流量报警</span><b>");
+    else { sendUnsigned(startedZoneCount); html(" / "); sendUnsigned(plannedZoneCount); html(" 路"); }
+    Esp32BaseWeb::sendChunk("</b></div><div><span>高低流量报警</span><b>");
     if (record.payload.result == WateringResult::Incomplete) { html("未能确认"); }
     else if (record.payload.result == WateringResult::StartFailed) { html("—"); }
-    else if (alertZoneCount == 0) {
-        Esp32BaseWeb::sendChunk("无");
-    } else {
-        sendUnsigned(alertZoneCount);
-        Esp32BaseWeb::sendChunk(" 路");
-    }
+    else if (alertZoneCount == 0) { html("无"); }
+    else { sendUnsigned(alertZoneCount); html(" 路"); }
     Esp32BaseWeb::sendChunk("</b><small>");
     sendUnsigned(baselineZoneCount);
     Esp32BaseWeb::sendChunk(" / ");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
-    else sendUnsigned(startedZoneCount);
-    Esp32BaseWeb::sendChunk(" 路设置了基准</small></div></div><div class='record-detail-section'><h3>执行时间</h3><div class='record-detail-grid'><div class='record-time-range'><b>开始 — 完成</b><span>");
+    else { sendUnsigned(startedZoneCount); html(" 路设置了基准"); }
+    Esp32BaseWeb::sendChunk("</small></div></div>");
+    Esp32BaseWeb::endPanel();
+    // Execution time.
+    Esp32BaseWeb::beginPanel("执行时间");
+    Esp32BaseWeb::sendChunk("<div class='record-detail-grid'><div class='record-time-range'><b>开始 — 完成</b><span>");
     if (record.payload.result == WateringResult::Incomplete) { epochText(record.payload.startedEpoch); html(" — 中断时间未知"); }
     else sendRecordTimeRange(record.timing);
     Esp32BaseWeb::sendChunk("</span></div><div><b>执行目标</b><span>");
@@ -1328,17 +1325,16 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
     Esp32BaseWeb::sendChunk("</span></div><div><b>任务总历时</b><span>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else sendDuration(record.timing.durationSec);
-    Esp32BaseWeb::sendChunk("</span></div></div></div><div class='record-detail-section'><h3>水路明细</h3><p>计划和水路名称按当前设置显示；流量、基准和用水量均保留浇水当时的记录。</p><div class='tablewrap'><table class='record-zone-table'><thead><tr><th>水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>当时基准流量</th><th>流量表现</th></tr></thead><tbody>");
+    Esp32BaseWeb::sendChunk("</span></div></div>");
+    Esp32BaseWeb::endPanel();
+    // Per-zone detail table.
+    Esp32BaseWeb::beginPanel("水路明细");
+    Esp32BaseWeb::sendChunk("<p class='muted'>计划和水路名称按当前设置显示；流量、基准和用水量均保留浇水当时的记录。</p><div class='tablewrap'><table class='record-zone-table'><thead><tr><th>水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>当时基准流量</th><th>流量表现</th></tr></thead><tbody>");
     for (uint8_t index = 0; index < record.payload.zones.size(); ++index) {
         const ZoneWateringRecord& zone = record.payload.zones[index];
         if (zone.plannedDurationSec == 0) continue;
         Esp32BaseWeb::sendChunk("<tr><td data-label='水路'><b>");
-        if (config) {
-            Esp32BaseWeb::writeHtmlEscaped(config->zones[index].name.data());
-        } else {
-            Esp32BaseWeb::sendChunk("水路 ");
-            sendUnsigned(index + 1U);
-        }
+        sendZoneName(config, index);
         Esp32BaseWeb::sendChunk("</b></td><td data-label='执行结果'>");
         const bool unknown = (zone.flags & WateringRecordCodec::kZoneFlagUnknown) != 0;
         html(unknown ? "执行结果未知" : zoneResultName(zone.result));
@@ -1403,9 +1399,12 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
         }
         Esp32BaseWeb::sendChunk("</div></div></td></tr>");
     }
-    Esp32BaseWeb::sendChunk("</tbody></table></div><p class='record-detail-note'>相对基准差值用于解释流量表现，不等同于报警结果；报警以浇水当时的阈值和连续判定结果为准。</p></div>");
+    Esp32BaseWeb::sendChunk("</tbody></table></div><p class='record-detail-note'>相对基准差值用于解释流量表现，不等同于报警结果；报警以浇水当时的阈值和连续判定结果为准。</p>");
+    Esp32BaseWeb::endPanel();
+    // Whole-task curve, only when the device still holds it for this record.
     sendRecordFlowOverview(record);
-    Esp32BaseWeb::sendChunk("<details class='record-technical'><summary>指标与技术说明</summary><p class='record-technical-note'>整段平均只统计水流建立后的实际浇水阶段；估算用水量还包含建立水流和关阀尾水阶段的实际脉冲。未触发报警不等于流量一定正常，没有基准时不作高低流量判定。</p><div class='record-technical-grid'><div><b>总脉冲</b><span>");
+    // Technical numbers stay collapsed by default.
+    Esp32BaseWeb::sendChunk("<section class='panel'><details class='record-technical'><summary>指标与技术说明</summary><p class='record-technical-note'>整段平均只统计水流建立后的实际浇水阶段；估算用水量还包含建立水流和关阀尾水阶段的实际脉冲。未触发报警不等于流量一定正常，没有基准时不作高低流量判定。</p><div class='record-technical-grid'><div><b>总脉冲</b><span>");
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else sendUnsigned64(totals.pulseCount);
     Esp32BaseWeb::sendChunk("</span></div>");
@@ -1413,18 +1412,13 @@ void sendRecordDetailDialog(const StoredWateringRecord& record,
         const ZoneWateringRecord& zone = record.payload.zones[index];
         if (zone.plannedDurationSec == 0) continue;
         Esp32BaseWeb::sendChunk("<div><b>");
-        if (config) {
-            Esp32BaseWeb::writeHtmlEscaped(config->zones[index].name.data());
-        } else {
-            Esp32BaseWeb::sendChunk("水路 ");
-            sendUnsigned(index + 1U);
-        }
+        sendZoneName(config, index);
         Esp32BaseWeb::sendChunk("</b><span>");
         if (zone.flags & WateringRecordCodec::kZoneFlagUnknown) html("未知");
         else sendUnsigned(zone.pulseCount);
         Esp32BaseWeb::sendChunk(" 脉冲</span></div>");
     }
-    Esp32BaseWeb::sendChunk("</div></details><div class='actions record-detail-bottom-close'><button type='button' class='secondary' onclick='this.closest(\"dialog\").close()'>关闭</button></div></dialog>");
+    Esp32BaseWeb::sendChunk("</div></details></section>");
 }
 
 void sendRecordRow(const StoredWateringRecord& record, void* user) {
@@ -1466,11 +1460,9 @@ void sendRecordRow(const StoredWateringRecord& record, void* user) {
     if (record.payload.result == WateringResult::Incomplete) html("未知");
     else if (record.payload.result == WateringResult::StartFailed) html("—");
     else sendCompactWaterVolume(totals.estimatedWaterMl);
-    Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><button type='button' class='btnlink info compact' onclick=\"openRecordFlowOverview('record-detail-");
+    Esp32BaseWeb::sendChunk("</td><td data-label='操作' class='record-action'><a class='btnlink info compact' href='/irrigation/records?id=");
     sendUnsigned(record.recordId);
-    Esp32BaseWeb::sendChunk("')\">查看详情</button>");
-    sendRecordDetailDialog(record, context ? context->config : nullptr, "record-detail-");
-    Esp32BaseWeb::sendChunk("</td></tr>");
+    Esp32BaseWeb::sendChunk("'>查看详情</a></td></tr>");
 }
 
 struct HistoryRows { uint32_t day=0, offset=0, matched=0, shown=0; const char* result=nullptr; };
@@ -2111,16 +2103,37 @@ void IrrigationWeb::plans() {
 }
 
 void IrrigationWeb::records() {
+    // Standalone detail page: list rows link here with ?id=N. Rendered without
+    // the list so its HTML cost is paid only when a record is opened.
+    uint32_t detailId = 0;
+    if (uintParam("id", 1, UINT32_MAX, detailId)) {
+        if (!beginPage("浇水记录详情", "单次任务的执行结果与流量表现")) return;
+        StoredWateringRecord detail{};
+        const bool found =
+            g_app->readWateringRecordById(detailId, detail) ==
+            Esp32BaseRecordStore::RecordReadResult::Found;
+        IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
+        IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
+        html("<p class='irr-back'><a class='btnlink secondary compact' href='/irrigation/records'>‹ 返回记录列表</a></p>");
+        if (found) {
+            sendRecordDetailSections(detail, g_app->configuration());
+            IrrigationWebAssets::send(IrrigationWebAssets::Asset::FlowOverviewScript);
+        } else {
+            Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN, "找不到该浇水记录",
+                                     "记录无法读取或已被滚动淘汰。");
+        }
+        endPage();
+        return;
+    }
     if(!beginPage("浇水记录","实际时长为主，估算水量为辅"))return;
+    IrrigationWebAssets::send(IrrigationWebAssets::Asset::CommonStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::RecordsStyle);
     IrrigationWebAssets::send(IrrigationWebAssets::Asset::EventsStyle);
-    IrrigationWebAssets::send(IrrigationWebAssets::Asset::FlowOverviewScript);
     HistoryRows q{};
     char date[12]{}, result[16]{};
     if(getParam("date",date,sizeof(date)) && date[0]) q.day=selectedDay();
     uintParam("offset",0,UINT32_MAX-20,q.offset);
     getParam("result",result,sizeof(result)); q.result=result;
-    sendLastFlowOverviewLink();
     html("<form method='get' class='event-filter'><label>日期<input type='date' name='date' value='");escaped(date);html("'></label><label>结果<select name='result'><option value=''>全部结果</option><option value='ok'");if(!strcmp(result,"ok"))html(" selected");html(">仅正常完成</option><option value='issues'");if(!strcmp(result,"issues"))html(" selected");html(">停止、异常或不完整</option></select></label><button>筛选</button><a href='/irrigation/records'>清除</a></form><section class='panel'><h2>历史记录</h2><div class='tablewrap'><table class='record-table'><thead><tr><th>开始时间</th><th>浇水任务</th><th>执行水路</th><th>执行结果</th><th>实际 / 目标</th><th>估算用水量</th><th>操作</th></tr></thead><tbody>");
     Esp32BaseRecordStore::StoreStatus state{};const bool ok=g_app->readWateringRecordStoreStatus(state)&&state.ready&&(state.recordCount==0||g_app->readLatestWateringRecords(0,state.recordCount,historyRow,&q));
     html("</tbody></table></div>");
@@ -2128,14 +2141,6 @@ void IrrigationWeb::records() {
     if(q.offset || q.matched>q.offset+q.shown){html("<nav class='actions'>");for(int d=-1;d<=1;d+=2){if(d<0&&!q.offset)continue;if(d>0&&q.matched<=q.offset+q.shown)continue;html("<a class='btnlink secondary' href='?date=");escaped(date);html("&result=");escaped(result);html("&offset=");sendUnsigned(d<0?(q.offset>20?q.offset-20:0):q.offset+20);html("'>");html(d<0?"上一页":"下一页");html("</a>");}html("</nav>");}
     if(state.oldestRecordId>1)html("<p class='muted'>本地历史按预算滚动保留，较早记录可能已淘汰。</p>");
     html("<p><a href='/irrigation/events'>操作与设备异常历史 ›</a></p>");
-    uint32_t detailId=0;
-    if (uintParam("id",1,UINT32_MAX,detailId)) {
-        StoredWateringRecord detail{};
-        if (g_app->readWateringRecordById(detailId,detail)==Esp32BaseRecordStore::RecordReadResult::Found) {
-            sendRecordDetailDialog(detail,g_app->configuration(),"record-direct-detail-");
-            html("<script>openRecordFlowOverview('record-direct-detail-"); sendUnsigned(detailId); html("');</script>");
-        } else Esp32BaseWeb::sendNotice(Esp32BaseWeb::UI_WARN,"找不到该浇水记录","记录无法读取或已被滚动淘汰。");
-    }
     endPage();
 }
 void IrrigationWeb::events() {

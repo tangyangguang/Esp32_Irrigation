@@ -11,6 +11,7 @@ import json
 import re
 
 ASSETS = [
+    ("CommonStyle", "common-style.html"),
     ("HomeStyle", "home-style.html"),
     ("PlansStyle", "plans-style.html"),
     ("HomeScript", "home-script.html"),
